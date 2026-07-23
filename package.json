@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "audit": "node public/scripts/audit.mjs"
+    "audit": "node scripts/audit.mjs"
   },
   "dependencies": {
     "react": "^19.2.7",
