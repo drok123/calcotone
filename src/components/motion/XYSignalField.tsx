@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { ModuleState, XYAssignment } from '../../ui/types';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
-import { DreamFieldEngine } from './DreamFieldEngineV2';
+import { DreamFieldEngine } from './DreamFieldEngine';
 import './DreamField.css';
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
@@ -89,6 +89,16 @@ export function XYSignalField({
     let height = 1;
     let dpr = Math.min(1.5, window.devicePixelRatio || 1);
     let faulted = false;
+    let visualModuleSource: ModuleState[] | null = null;
+    let visualModules: ModuleState[] = modulesForDreamEngine(modulesRef.current);
+
+    const getVisualModules = () => {
+      if (visualModuleSource !== modulesRef.current) {
+        visualModuleSource = modulesRef.current;
+        visualModules = modulesForDreamEngine(modulesRef.current);
+      }
+      return visualModules;
+    };
 
     const resize = () => {
       const bounds = canvas.getBoundingClientRect();
@@ -132,7 +142,7 @@ export function XYSignalField({
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
       try {
         engine.render(context, {
-          modules: modulesForDreamEngine(modulesRef.current),
+          modules: getVisualModules(),
           assignments: assignmentsRef.current,
           x: positionRef.current.x / 100,
           // Keep the engine contract conventional: bottom = 0, top = 1.
