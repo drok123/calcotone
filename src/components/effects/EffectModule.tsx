@@ -255,10 +255,3 @@ export function EffectModule({
     </article>
   );
 }
-
-
-type ViewportRenderCallback = (time: number) => void;
-
-const viewportRenderCallbacks = new Set<ViewportRenderCallback>();
-let viewportAnimationFrame = 0;
-
