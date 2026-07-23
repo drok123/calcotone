@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { ModuleState, XYAssignment } from '../../ui/types';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
-import { DreamFieldEngine } from './DreamFieldEngine';
+import { DreamFieldEngine } from './DreamFieldEngineV2';
 import './DreamField.css';
 
 export function XYSignalField({
@@ -87,7 +87,8 @@ export function XYSignalField({
           modules: modulesRef.current,
           assignments: assignmentsRef.current,
           x: positionRef.current.x / 100,
-          y: 1 - positionRef.current.y / 100,
+          // Keep the engine contract conventional: bottom = 0, top = 1.
+          y: positionRef.current.y / 100,
           dragging: draggingRef.current,
           time: stamp / 1000,
         });
