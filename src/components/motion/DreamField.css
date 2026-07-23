@@ -1,8 +1,8 @@
 .xy-signal-field {
-  filter: brightness(2.35) contrast(1.12) saturate(0.9);
+  filter: brightness(1.18) contrast(1.08) saturate(0.94);
 }
 
 .xy-pad.is-dragging .xy-signal-field,
 .xy-pad.patch-target-active .xy-signal-field {
-  filter: brightness(2.65) contrast(1.14) saturate(0.95);
+  filter: brightness(1.28) contrast(1.1) saturate(0.98);
 }
