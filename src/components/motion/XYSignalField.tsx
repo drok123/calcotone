@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { ModuleState, XYAssignment } from '../../ui/types';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
 import { DreamFieldEngine } from './DreamFieldEngine';
+import './DreamField.css';
 
 export function XYSignalField({
   modules,
@@ -39,6 +40,7 @@ export function XYSignalField({
     let width = 1;
     let height = 1;
     let dpr = Math.min(1.5, window.devicePixelRatio || 1);
+    let faulted = false;
 
     const resize = () => {
       const bounds = canvas.getBoundingClientRect();
@@ -60,16 +62,40 @@ export function XYSignalField({
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
 
-    const render: ViewportRenderCallback = (stamp) => {
+    const drawFault = () => {
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
-      engine.render(context, {
-        modules: modulesRef.current,
-        assignments: assignmentsRef.current,
-        x: positionRef.current.x / 100,
-        y: 1 - positionRef.current.y / 100,
-        dragging: draggingRef.current,
-        time: stamp / 1000,
-      });
+      context.clearRect(0, 0, width, height);
+      context.fillStyle = 'rgba(10, 3, 3, 0.96)';
+      context.fillRect(0, 0, width, height);
+      context.strokeStyle = 'rgba(220, 118, 90, 0.85)';
+      context.lineWidth = 1;
+      context.strokeRect(8.5, 8.5, Math.max(1, width - 17), Math.max(1, height - 17));
+      context.fillStyle = 'rgba(238, 188, 166, 0.92)';
+      context.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace';
+      context.fillText('DREAM ENGINE FAULT', 18, 28);
+    };
+
+    const render: ViewportRenderCallback = (stamp) => {
+      if (faulted) {
+        drawFault();
+        return;
+      }
+
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      try {
+        engine.render(context, {
+          modules: modulesRef.current,
+          assignments: assignmentsRef.current,
+          x: positionRef.current.x / 100,
+          y: 1 - positionRef.current.y / 100,
+          dragging: draggingRef.current,
+          time: stamp / 1000,
+        });
+      } catch (error) {
+        faulted = true;
+        console.error('CALCOTONE Dream Engine render failed', error);
+        drawFault();
+      }
     };
 
     const unsubscribe = subscribeViewportAnimation(render);
