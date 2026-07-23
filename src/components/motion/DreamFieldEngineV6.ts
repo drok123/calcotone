@@ -17,6 +17,7 @@ type Lens = {
   phase: number;
   drift: number;
   zoom: number;
+  squash: number;
 };
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
@@ -58,9 +59,9 @@ export class DreamFieldEngine {
 
     if (!this.lenses.length) {
       this.lenses = [
-        { x: 0.28, y: 0.34, radius: 0.29, phase: 0.3, drift: 0.7, zoom: 1.16 },
-        { x: 0.70, y: 0.42, radius: 0.34, phase: 2.1, drift: 0.5, zoom: 1.20 },
-        { x: 0.46, y: 0.72, radius: 0.31, phase: 4.4, drift: 0.8, zoom: 1.13 },
+        { x: 0.24, y: 0.31, radius: 0.34, phase: 0.2, drift: 0.66, zoom: 1.14, squash: 0.78 },
+        { x: 0.70, y: 0.40, radius: 0.41, phase: 2.0, drift: 0.48, zoom: 1.21, squash: 1.18 },
+        { x: 0.48, y: 0.73, radius: 0.36, phase: 4.3, drift: 0.82, zoom: 1.12, squash: 0.92 },
       ];
     }
   }
@@ -77,63 +78,80 @@ export class DreamFieldEngine {
     this.snapshotCtx.clearRect(0, 0, this.snapshot.width, this.snapshot.height);
     this.snapshotCtx.drawImage(source, 0, 0, source.width, source.height, 0, 0, this.snapshot.width, this.snapshot.height);
 
-    // Let the bloom remember previous shapes, but decay them every frame so highlights do not
-    // accumulate into a flat white fog.
+    // Dream memory: soft, decaying persistence rather than a static blur layer.
     this.bloomCtx.setTransform(1, 0, 0, 1, 0, 0);
     this.bloomCtx.globalCompositeOperation = 'source-over';
-    this.bloomCtx.globalAlpha = 0.16;
-    this.bloomCtx.fillStyle = 'rgba(5,8,7,0.55)';
+    this.bloomCtx.globalAlpha = 0.18;
+    this.bloomCtx.fillStyle = 'rgba(5,8,7,0.62)';
     this.bloomCtx.fillRect(0, 0, this.bloom.width, this.bloom.height);
     this.bloomCtx.globalCompositeOperation = 'screen';
-    this.bloomCtx.globalAlpha = 0.10;
-    this.bloomCtx.filter = 'blur(7px) saturate(1.04)';
+    this.bloomCtx.globalAlpha = 0.095;
+    this.bloomCtx.filter = 'blur(8px) saturate(1.05)';
     this.bloomCtx.drawImage(this.snapshot, 0, 0, w, h);
     this.bloomCtx.filter = 'none';
 
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = 0.16;
+    ctx.globalAlpha = 0.15;
     ctx.drawImage(this.bloom, 0, 0, w, h);
     ctx.restore();
 
-    const activity = clamp01(frame.assignments.length / 5 + (frame.dragging ? 0.22 : 0));
-    // Engine input is already normalized: x/y are 0..1 with y increasing upward.
+    const activity = clamp01(frame.assignments.length / 5 + (frame.dragging ? 0.24 : 0));
     const steerX = clamp01(frame.x) - 0.5;
     const steerY = 0.5 - clamp01(frame.y);
 
-    // Local semantic lenses: pieces of the current scene inflate, drift and overlap their
-    // neighbours. The masks are feathered so the eye reads metamorphosis, not picture-in-picture.
     for (let index = 0; index < this.lenses.length; index += 1) {
       const lens = this.lenses[index];
-      const t = frame.time * (0.10 + lens.drift * 0.035) + lens.phase;
-      const cx = w * (lens.x + Math.sin(t * 0.73) * 0.055 + steerX * 0.05);
-      const cy = h * (lens.y + Math.cos(t * 0.61) * 0.045 + steerY * 0.04);
-      const radius = Math.min(w, h) * lens.radius * (0.92 + Math.sin(t * 0.47) * 0.10);
-      const zoom = lens.zoom + Math.sin(t * 0.39 + index) * 0.045 + activity * 0.035;
-      const pullX = Math.sin(t * 0.83 + index * 1.7) * radius * 0.10;
-      const pullY = Math.cos(t * 0.69 + index * 2.1) * radius * 0.08;
+      const t = frame.time * (0.085 + lens.drift * 0.031) + lens.phase;
+      const takeover = 0.5 - 0.5 * Math.cos(t * 0.41 + index * 1.73);
+      const hesitate = Math.pow(takeover, 2.4) * (3 - 2 * takeover);
+      const cx = w * (lens.x + Math.sin(t * 0.69) * 0.070 + steerX * 0.055);
+      const cy = h * (lens.y + Math.cos(t * 0.57) * 0.058 + steerY * 0.045);
+      const baseRadius = Math.min(w, h) * lens.radius;
+      const radius = baseRadius * (0.72 + hesitate * 0.72 + Math.sin(t * 0.43) * 0.07);
+      const zoom = lens.zoom + hesitate * 0.16 + Math.sin(t * 0.35 + index) * 0.035 + activity * 0.035;
+      const pullX = Math.sin(t * 0.79 + index * 1.7) * radius * (0.09 + hesitate * 0.05);
+      const pullY = Math.cos(t * 0.63 + index * 2.1) * radius * (0.07 + hesitate * 0.04);
+      const rotation = Math.sin(t * 0.31 + index) * (0.035 + hesitate * 0.025);
 
       ctx.save();
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.clip();
+      this.organicClip(ctx, cx, cy, radius, lens.squash, t, index);
       ctx.globalCompositeOperation = index === 1 ? 'screen' : 'source-over';
-      ctx.globalAlpha = 0.20 + activity * 0.05;
+      ctx.globalAlpha = 0.14 + hesitate * 0.16 + activity * 0.035;
       ctx.translate(cx + pullX, cy + pullY);
+      ctx.rotate(rotation);
       ctx.scale(zoom, zoom);
       ctx.translate(-cx, -cy);
       ctx.drawImage(this.snapshot, 0, 0, w, h);
       ctx.restore();
-
-      // Feather the lens boundary with a very faint luminous membrane.
-      ctx.save();
-      ctx.globalCompositeOperation = 'screen';
-      ctx.strokeStyle = `rgba(220,232,225,${0.018 + activity * 0.012})`;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius * (0.82 + Math.sin(t) * 0.03), 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
     }
+  }
+
+  private organicClip(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    radius: number,
+    squash: number,
+    time: number,
+    index: number
+  ) {
+    const points = 18;
+    ctx.beginPath();
+    for (let i = 0; i <= points; i += 1) {
+      const a = (i / points) * Math.PI * 2;
+      const wobble =
+        1 +
+        Math.sin(a * 3 + time * 0.91 + index) * 0.10 +
+        Math.sin(a * 5 - time * 0.57 + index * 2.3) * 0.055 +
+        Math.cos(a * 2 + time * 0.33) * 0.035;
+      const rx = radius * wobble;
+      const x = cx + Math.cos(a) * rx * squash;
+      const y = cy + Math.sin(a) * rx / Math.max(0.72, squash);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.clip();
   }
 }
