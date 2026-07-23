@@ -11,6 +11,7 @@ import type {
 } from '../../ui/types';
 import { getEffectiveMotionValue } from '../../ui/motion';
 import { XYSignalField } from './XYSignalField';
+import './MotionPad.css';
 
 export interface MotionPadProps {
   padRef: RefObject<HTMLDivElement | null>;
@@ -46,7 +47,7 @@ export function MotionPad({
     <>
       <div
         ref={padRef}
-        className={`xy-pad ${dragging ? 'is-dragging' : ''} ${patchActive ? 'patch-target-active' : ''} ${
+        className={`xy-pad dream-pad ${dragging ? 'is-dragging' : ''} ${patchActive ? 'patch-target-active' : ''} ${
           hoverAxis ? `hover-axis-${hoverAxis}` : ''
         }`}
         onPointerDown={(event) => {
@@ -71,19 +72,25 @@ export function MotionPad({
           position={position}
           dragging={dragging || patchActive}
         />
-        <div className="xy-grid horizontal" />
-        <div className="xy-grid vertical" />
-        <span className="xy-axis-mark x" aria-hidden="true">X</span>
-        <span className="xy-axis-mark y" aria-hidden="true">Y</span>
-        <div
-          className="xy-cursor"
-          style={{ '--x': `${position.x}%`, '--y': `${100 - position.y}%` } as React.CSSProperties}
-        />
-      </div>
 
-      <div className="xy-values" aria-label="Motion coordinates">
-        <div><span>X</span><strong>{Math.round(position.x)}</strong></div>
-        <div><span>Y</span><strong>{Math.round(position.y)}</strong></div>
+        <div className="dream-reticle horizontal" aria-hidden="true" />
+        <div className="dream-reticle vertical" aria-hidden="true" />
+
+        <span className="xy-axis-mark x" aria-hidden="true"><i />X</span>
+        <span className="xy-axis-mark y" aria-hidden="true"><i />Y</span>
+
+        <div
+          className="xy-cursor dream-cursor"
+          style={{ '--x': `${position.x}%`, '--y': `${100 - position.y}%` } as React.CSSProperties}
+          aria-hidden="true"
+        />
+
+        <div className="dream-hud" aria-hidden="true">
+          <span>DREAM FIELD</span>
+          <strong>X {Math.round(position.x).toString().padStart(3, '0')}</strong>
+          <strong>Y {Math.round(position.y).toString().padStart(3, '0')}</strong>
+          <em>{assignments.length ? `${assignments.length} PATCH${assignments.length === 1 ? '' : 'ES'}` : 'UNPATCHED'}</em>
+        </div>
       </div>
 
       <section className="motion-route-inspector" aria-label="Motion patches">
@@ -92,7 +99,7 @@ export function MotionPad({
           <span className="route-count"><i />{assignments.length}</span>
         </div>
         {assignments.length === 0 ? (
-          <p className="empty-routes">Drag any knob jack to the pad.</p>
+          <p className="empty-routes">Drag any knob jack toward X or Y. The nearest socket will latch.</p>
         ) : (
           <div className="motion-route-list">
             {assignments.map((assignment) => {
