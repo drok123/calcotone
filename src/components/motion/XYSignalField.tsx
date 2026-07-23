@@ -2,17 +2,6 @@ import { useEffect, useRef } from 'react';
 import type { ModuleState, XYAssignment } from '../../ui/types';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
 
-type FieldBody = {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  phase: number;
-  radius: number;
-  speed: number;
-  trail: { x: number; y: number }[];
-};
-
 export function XYSignalField({
   modules,
   assignments,
@@ -38,69 +27,25 @@ export function XYSignalField({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const context = canvas.getContext('2d', { alpha: true });
     if (!context) return;
 
     let width = 1;
     let height = 1;
     let dpr = Math.min(1.5, window.devicePixelRatio || 1);
-    let lastTime = performance.now();
-    let attractX = 0.5;
-    let attractY = 0.5;
-    let disturbance = 0;
-    let initialized = false;
-
-    const BODY_COUNT = 8;
-    const bodies: FieldBody[] = Array.from({ length: BODY_COUNT }, (_, index) => ({
-      x: 0,
-      y: 0,
-      vx: 0,
-      vy: 0,
-      phase: (index / BODY_COUNT) * Math.PI * 2 + Math.sin(index * 2.31) * 0.12,
-      radius: 0.16 + (index % 4) * 0.055,
-      speed: 0.12 + index * 0.018,
-      trail: [],
-    }));
-
-    const seedBodies = () => {
-      const scale = Math.min(width, height);
-      bodies.forEach((body) => {
-        body.x = width * 0.5 + Math.cos(body.phase) * scale * body.radius;
-        body.y = height * 0.5 + Math.sin(body.phase) * scale * body.radius * 0.62;
-        body.vx = 0;
-        body.vy = 0;
-        body.trail = [{ x: body.x, y: body.y }];
-      });
-      initialized = true;
-    };
+    let cursorX = 0.5;
+    let cursorY = 0.5;
+    let motion = 0;
 
     const resize = () => {
-      const rect = canvas.getBoundingClientRect();
-      const previousWidth = width;
-      const previousHeight = height;
-      width = Math.max(1, rect.width);
-      height = Math.max(1, rect.height);
+      const bounds = canvas.getBoundingClientRect();
+      width = Math.max(1, bounds.width);
+      height = Math.max(1, bounds.height);
       dpr = Math.min(1.5, window.devicePixelRatio || 1);
-
-      const pixelWidth = Math.round(width * dpr);
-      const pixelHeight = Math.round(height * dpr);
-      if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
-        canvas.width = pixelWidth;
-        canvas.height = pixelHeight;
-      }
-
-      if (!initialized) {
-        seedBodies();
-      } else if (previousWidth > 1 && previousHeight > 1) {
-        const sx = width / previousWidth;
-        const sy = height / previousHeight;
-        bodies.forEach((body) => {
-          body.x *= sx;
-          body.y *= sy;
-          body.trail = body.trail.map((point) => ({ x: point.x * sx, y: point.y * sy }));
-        });
-      }
+      const nextWidth = Math.round(width * dpr);
+      const nextHeight = Math.round(height * dpr);
+      if (canvas.width !== nextWidth || canvas.height !== nextHeight) canvas.width = nextWidth;
+      if (canvas.height !== nextHeight) canvas.height = nextHeight;
     };
 
     resize();
@@ -119,18 +64,14 @@ export function XYSignalField({
       moduleId === 'media' ? [214, 139, 72] :
       [101, 255, 154];
 
-    const rgba = (rgb: [number, number, number], alpha: number) =>
-      `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${Math.max(0, Math.min(1, alpha))})`;
+    const rgba = (color: [number, number, number], alpha: number) =>
+      `rgba(${color[0]},${color[1]},${color[2]},${Math.max(0, Math.min(1, alpha))})`;
 
     const render: ViewportRenderCallback = (stamp) => {
-      if (!initialized) return;
-
-      const dt = Math.min(0.033, Math.max(0.001, (stamp - lastTime) / 1000));
-      lastTime = stamp;
       const t = stamp / 1000;
-
       const active = modulesRef.current.filter((module) => module.enabled && module.available);
       const byId = (id: string) => active.find((module) => module.id === id);
+
       const ember = byId('saturation');
       const drift = byId('chorus');
       const halo = byId('delay');
@@ -142,8 +83,8 @@ export function XYSignalField({
       const heat = valueOf(ember, 'heat');
       const drive = valueOf(ember, 'drive');
       const driftMix = valueOf(drift, 'mix');
-      const driftRate = valueOf(drift, 'rate');
-      const driftDepth = valueOf(drift, 'depth');
+      const rate = valueOf(drift, 'rate');
+      const depth = valueOf(drift, 'depth');
       const spread = valueOf(drift, 'spread');
       const haloMix = valueOf(halo, 'mix');
       const haloTime = valueOf(halo, 'time');
@@ -154,195 +95,171 @@ export function XYSignalField({
       const grainMix = valueOf(grain, 'mix');
       const density = valueOf(grain, 'density');
       const chaos = valueOf(grain, 'chaos');
-      const wear = valueOf(artifact, 'wear');
-      const wow = valueOf(artifact, 'wow');
       const artifactMix = valueOf(artifact, 'mix');
-
-      const activeMixes = [emberMix, driftMix, haloMix, atmosMix, grainMix, artifactMix].filter((value) => value > 0);
-      const mixEnergy = activeMixes.length
-        ? activeMixes.reduce((sum, value) => sum + value, 0) / activeMixes.length
-        : 0;
+      const wow = valueOf(artifact, 'wow');
+      const wear = valueOf(artifact, 'wear');
 
       const targetX = positionRef.current.x / 100;
       const targetY = 1 - positionRef.current.y / 100;
-      const follow = draggingRef.current ? 0.24 : 0.075;
-      attractX += (targetX - attractX) * follow;
-      attractY += (targetY - attractY) * follow;
-      disturbance += ((draggingRef.current ? 1 : 0) - disturbance) * (draggingRef.current ? 0.14 : 0.035);
+      const follow = draggingRef.current ? 0.28 : 0.09;
+      cursorX += (targetX - cursorX) * follow;
+      cursorY += (targetY - cursorY) * follow;
+      motion += ((draggingRef.current ? 1 : 0) - motion) * (draggingRef.current ? 0.18 : 0.045);
 
+      const cx = cursorX * width;
+      const cy = cursorY * height;
       const centerX = width * 0.5;
       const centerY = height * 0.5;
-      const cursorX = attractX * width;
-      const cursorY = attractY * height;
       const scale = Math.min(width, height);
-      const expansion = 1 + atmosMix * size * 0.42;
-      const driftSpin = drift ? (0.08 + driftRate * 0.3) * driftMix : 0;
-      const trailLength = Math.round(32 + haloMix * (24 + haloTime * 56 + feedback * 34));
-      const owners = active.length ? active : modulesRef.current.slice(0, 1);
+      const patchEnergy = Math.min(1, assignmentsRef.current.length / 6);
+      const activeEnergy = Math.min(1, active.length / 6);
 
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
       context.clearRect(0, 0, width, height);
 
-      // Soft CRT-like chamber illumination.
-      const chamber = context.createRadialGradient(cursorX, cursorY, 0, centerX, centerY, scale * 0.72);
-      chamber.addColorStop(0, `rgba(101,255,154,${0.025 + disturbance * 0.035})`);
-      chamber.addColorStop(0.42, 'rgba(10,28,18,0.018)');
-      chamber.addColorStop(1, 'rgba(0,0,0,0)');
-      context.fillStyle = chamber;
+      // Deep instrument glass with a faint phosphor pool under the control point.
+      const glass = context.createRadialGradient(cx, cy, 2, centerX, centerY, scale * 0.78);
+      glass.addColorStop(0, `rgba(101,255,154,${0.028 + motion * 0.055})`);
+      glass.addColorStop(0.35, 'rgba(9,28,17,0.025)');
+      glass.addColorStop(1, 'rgba(0,0,0,0)');
+      context.fillStyle = glass;
       context.fillRect(0, 0, width, height);
 
-      // Sparse instrument geometry instead of a busy grid.
-      context.strokeStyle = 'rgba(185,205,193,0.032)';
+      // Minimal scope geometry. This is instrumentation, not decoration.
+      context.strokeStyle = 'rgba(160,200,177,0.028)';
       context.lineWidth = 1;
       context.beginPath();
-      context.moveTo(centerX, height * 0.08);
-      context.lineTo(centerX, height * 0.92);
-      context.moveTo(width * 0.08, centerY);
-      context.lineTo(width * 0.92, centerY);
+      context.moveTo(centerX, height * 0.06);
+      context.lineTo(centerX, height * 0.94);
+      context.moveTo(width * 0.06, centerY);
+      context.lineTo(width * 0.94, centerY);
       context.stroke();
 
-      for (let ring = 1; ring <= 3; ring += 1) {
-        context.strokeStyle = `rgba(101,255,154,${0.012 + ring * 0.006})`;
+      const owners = active.length ? active : modulesRef.current.slice(0, 1);
+      const lineCount = 11;
+      const pointsPerLine = 56;
+      const fieldStrength = 0.16 + motion * 0.34 + patchEnergy * 0.12;
+      const waveSpeed = 0.18 + rate * driftMix * 0.8;
+      const expansion = 0.92 + size * atmosMix * 0.3;
+
+      for (let lineIndex = 0; lineIndex < lineCount; lineIndex += 1) {
+        const owner = owners[lineIndex % Math.max(1, owners.length)];
+        const color = moduleColor(owner?.id ?? 'saturation');
+        const lane = lineIndex / (lineCount - 1);
+        const baseY = height * (0.13 + lane * 0.74);
+        const phase = t * waveSpeed + lineIndex * 0.42;
+
         context.beginPath();
-        context.ellipse(centerX, centerY, scale * ring * 0.105, scale * ring * 0.072, 0, 0, Math.PI * 2);
+        for (let pointIndex = 0; pointIndex < pointsPerLine; pointIndex += 1) {
+          const u = pointIndex / (pointsPerLine - 1);
+          const x = width * (0.04 + u * 0.92);
+
+          const dx = x - cx;
+          const normalizedDx = dx / Math.max(1, scale);
+          const cursorFalloff = Math.exp(-Math.abs(normalizedDx) * (3.4 - diffusion * atmosMix));
+          const signedLane = lane - 0.5;
+          const pull = (cy - baseY) * cursorFalloff * fieldStrength;
+
+          const slowWave = Math.sin(u * Math.PI * (1.4 + depth * driftMix * 1.6) + phase) * scale * (0.010 + depth * driftMix * 0.028);
+          const secondary = Math.sin(u * Math.PI * 4.2 - phase * 0.58 + lineIndex) * scale * 0.006 * (0.25 + spread * driftMix);
+          const breathing = Math.sin(t * 0.22 + lineIndex * 0.5) * scale * 0.004 * atmosMix;
+          const edgeCurve = Math.sin(u * Math.PI) * signedLane * scale * 0.035 * atmosMix * expansion;
+
+          let y = baseY + pull + slowWave + secondary + breathing + edgeCurve;
+
+          if (ember) {
+            const facets = 5 + Math.round(heat * 6);
+            const stepped = Math.round(y / (scale / (facets * 3))) * (scale / (facets * 3));
+            y += (stepped - y) * emberMix * (0.06 + drive * 0.18);
+          }
+
+          if (artifact) {
+            y += Math.sin(t * (0.8 + wow * 2) + u * 18 + lineIndex) * scale * artifactMix * (0.0015 + wear * 0.006);
+          }
+
+          if (grain && chaos > 0.01) {
+            y += Math.sin(pointIndex * 2.73 + lineIndex * 5.1 + t * 3.2) * scale * chaos * grainMix * 0.003;
+          }
+
+          if (pointIndex === 0) context.moveTo(x, y);
+          else context.lineTo(x, y);
+        }
+
+        const lineAlpha = 0.11 + activeEnergy * 0.08 + patchEnergy * 0.06;
+        context.save();
+        context.globalCompositeOperation = 'lighter';
+        context.strokeStyle = rgba(color, lineAlpha * (0.32 + diffusion * atmosMix * 0.28));
+        context.lineWidth = 3 + diffusion * atmosMix * 3.5;
         context.stroke();
-      }
+        context.restore();
 
-      bodies.forEach((body, index) => {
-        const owner = owners[index % Math.max(1, owners.length)];
-        const ownerId = owner?.id ?? 'saturation';
-        const color = moduleColor(ownerId);
-        const direction = index % 2 ? -1 : 1;
-        const phase = body.phase + t * body.speed * (1 + driftSpin * 1.8) * direction;
-        const radius = body.radius * scale * (1.02 + mixEnergy * 0.16) * expansion;
-        const widthBias = 1 + spread * driftMix * (index % 2 ? 0.11 : -0.05);
+        context.strokeStyle = rgba(color, lineAlpha + 0.08);
+        context.lineWidth = 0.9 + atmosMix * 0.45;
+        context.stroke();
 
-        let homeX = centerX + Math.cos(phase) * radius * widthBias;
-        let homeY = centerY + Math.sin(phase * (1 + driftDepth * driftMix * 0.08)) * radius * 0.62;
-
-        if (ember) {
-          const facets = 7 + Math.round(heat * 5);
-          const step = Math.PI * 2 / facets;
-          const snapped = Math.round(phase / step) * step;
-          const amount = emberMix * (0.045 + drive * 0.16);
-          homeX += (centerX + Math.cos(snapped) * radius - homeX) * amount;
-          homeY += (centerY + Math.sin(snapped) * radius * 0.62 - homeY) * amount;
-        }
-
-        if (artifact) {
-          const wobble = artifactMix * (0.003 + wow * 0.013 + wear * 0.006);
-          homeX += Math.sin(t * (0.42 + wow) + index * 1.7) * scale * wobble;
-          homeY += Math.cos(t * (0.31 + wear * 0.7) + index * 1.1) * scale * wobble * 0.65;
-        }
-
-        const dx = cursorX - body.x;
-        const dy = cursorY - body.y;
-        const distance = Math.max(18, Math.hypot(dx, dy));
-        const cursorGravity = (0.004 + disturbance * 0.052) / (1 + distance / (scale * 0.34));
-        const spring = 0.025 + diffusion * atmosMix * 0.012;
-
-        let fx = (homeX - body.x) * spring + dx * cursorGravity;
-        let fy = (homeY - body.y) * spring + dy * cursorGravity;
-
-        if (drift) {
-          const ox = body.x - centerX;
-          const oy = body.y - centerY;
-          const orbitalDistance = Math.max(24, Math.hypot(ox, oy));
-          fx += (-oy / orbitalDistance) * driftDepth * driftMix * 2.5;
-          fy += (ox / orbitalDistance) * driftDepth * driftMix * 2.5;
-        }
-
-        if (grain) {
-          const jitter = chaos * grainMix * 0.22;
-          fx += Math.sin(t * 2.1 + index * 3.7) * jitter;
-          fy += Math.cos(t * 1.7 + index * 2.9) * jitter;
-        }
-
-        const damping = draggingRef.current ? 0.84 : 0.89;
-        body.vx = (body.vx + fx * dt * 60) * damping;
-        body.vy = (body.vy + fy * dt * 60) * damping;
-        body.x += body.vx * dt * 60;
-        body.y += body.vy * dt * 60;
-
-        body.trail.unshift({ x: body.x, y: body.y });
-        if (body.trail.length > trailLength) body.trail.length = trailLength;
-
-        if (body.trail.length > 2) {
-          context.beginPath();
-          body.trail.forEach((point, pointIndex) => {
-            if (pointIndex === 0) context.moveTo(point.x, point.y);
-            else context.lineTo(point.x, point.y);
-          });
-
-          const alpha = 0.16 + mixEnergy * 0.18 + haloMix * 0.14;
-          context.save();
-          context.globalCompositeOperation = 'lighter';
-          context.strokeStyle = rgba(color, alpha * (0.3 + diffusion * atmosMix * 0.35));
-          context.lineWidth = 3.2 + atmosMix * diffusion * 3.2;
-          context.stroke();
-          context.restore();
-
-          context.strokeStyle = rgba(color, alpha + 0.12);
-          context.lineWidth = 1.1 + mixEnergy * 0.45;
-          context.stroke();
-        }
-      });
-
-      // Grain is a fine phosphor dust, not a second competing animation.
-      if (grain && grainMix > 0.01) {
-        const particleCount = Math.round(10 + density * grainMix * 28);
-        for (let particle = 0; particle < particleCount; particle += 1) {
-          const seed = particle * 12.9898;
-          const orbit = t * 0.12 + seed;
-          const ring = 0.11 + ((particle % 7) / 7) * 0.25;
-          const px = centerX + Math.cos(orbit) * scale * ring;
-          const py = centerY + Math.sin(orbit * 0.83 + particle * 0.2) * scale * ring * 0.62;
-          const pull = disturbance * 0.09 / (1 + Math.hypot(cursorX - px, cursorY - py) / (scale * 0.28));
-          const gx = px + (cursorX - px) * pull;
-          const gy = py + (cursorY - py) * pull;
-          const sparkle = 0.5 + Math.sin(t * 0.7 + seed) * 0.5;
-          context.fillStyle = rgba(moduleColor('bitcrusher'), 0.09 + sparkle * 0.08 * grainMix);
-          context.fillRect(gx, gy, 1 + grainMix * 0.7, 1 + grainMix * 0.7);
+        // Halo creates restrained temporal echoes rather than more moving objects.
+        if (halo && haloMix > 0.03) {
+          const echoes = 1 + Math.round(feedback * 2);
+          for (let echo = 1; echo <= echoes; echo += 1) {
+            context.save();
+            context.translate((echo * (2 + haloTime * 7)) * (lineIndex % 2 ? -1 : 1), 0);
+            context.strokeStyle = rgba(color, lineAlpha * haloMix * (0.28 / echo));
+            context.lineWidth = 0.8;
+            context.stroke();
+            context.restore();
+          }
         }
       }
 
-      // Magnetic influence rings make the XY gesture readable without dominating the field.
+      // Fine grain appears as restrained phosphor dust around the field.
+      if (grain && grainMix > 0.02) {
+        const count = Math.round(8 + density * grainMix * 24);
+        for (let i = 0; i < count; i += 1) {
+          const seed = i * 17.17;
+          const px = width * (0.08 + ((Math.sin(seed) + 1) * 0.5) * 0.84);
+          const py = height * (0.08 + ((Math.cos(seed * 1.37) + 1) * 0.5) * 0.84);
+          const shimmer = 0.5 + 0.5 * Math.sin(t * 0.55 + seed);
+          context.fillStyle = rgba(moduleColor('bitcrusher'), (0.025 + shimmer * 0.05) * grainMix);
+          context.fillRect(px, py, 1, 1);
+        }
+      }
+
+      // Cursor field: clean, precise, obviously interactive.
       context.save();
       context.globalCompositeOperation = 'lighter';
-      for (let ring = 0; ring < 3; ring += 1) {
-        const pulse = (t * 0.18 + ring / 3) % 1;
-        const radius = 8 + pulse * (18 + disturbance * 22);
-        context.strokeStyle = `rgba(101,255,154,${(1 - pulse) * (0.045 + disturbance * 0.08)})`;
+      for (let ring = 0; ring < 2; ring += 1) {
+        const pulse = (t * 0.24 + ring * 0.5) % 1;
+        context.strokeStyle = `rgba(165,255,194,${(1 - pulse) * (0.035 + motion * 0.08)})`;
         context.lineWidth = 0.8;
         context.beginPath();
-        context.arc(cursorX, cursorY, radius, 0, Math.PI * 2);
+        context.arc(cx, cy, 8 + pulse * (18 + motion * 16), 0, Math.PI * 2);
         context.stroke();
       }
       context.restore();
 
       if (draggingRef.current) {
-        context.setLineDash([3, 7]);
-        context.strokeStyle = 'rgba(220,245,230,0.11)';
-        context.lineWidth = 0.75;
+        context.setLineDash([2, 7]);
+        context.strokeStyle = 'rgba(215,245,225,0.09)';
+        context.lineWidth = 0.7;
         context.beginPath();
-        context.moveTo(cursorX, height * 0.04);
-        context.lineTo(cursorX, height * 0.96);
-        context.moveTo(width * 0.04, cursorY);
-        context.lineTo(width * 0.96, cursorY);
+        context.moveTo(cx, height * 0.05);
+        context.lineTo(cx, height * 0.95);
+        context.moveTo(width * 0.05, cy);
+        context.lineTo(width * 0.95, cy);
         context.stroke();
         context.setLineDash([]);
       }
 
-      context.strokeStyle = 'rgba(235,255,243,0.88)';
+      context.strokeStyle = 'rgba(236,255,243,0.92)';
       context.lineWidth = 1;
       context.beginPath();
-      context.arc(cursorX, cursorY, 4.5 + disturbance * 1.8, 0, Math.PI * 2);
+      context.arc(cx, cy, 4.4 + motion * 1.2, 0, Math.PI * 2);
       context.stroke();
       context.beginPath();
-      context.moveTo(cursorX - 10, cursorY); context.lineTo(cursorX - 6, cursorY);
-      context.moveTo(cursorX + 6, cursorY); context.lineTo(cursorX + 10, cursorY);
-      context.moveTo(cursorX, cursorY - 10); context.lineTo(cursorX, cursorY - 6);
-      context.moveTo(cursorX, cursorY + 6); context.lineTo(cursorX, cursorY + 10);
+      context.moveTo(cx - 11, cy); context.lineTo(cx - 6, cy);
+      context.moveTo(cx + 6, cy); context.lineTo(cx + 11, cy);
+      context.moveTo(cx, cy - 11); context.lineTo(cx, cy - 6);
+      context.moveTo(cx, cy + 6); context.lineTo(cx, cy + 11);
       context.stroke();
     };
 
