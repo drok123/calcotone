@@ -53,6 +53,7 @@ export class DreamFieldEngine {
       this.snapshot.height = pixelHeight;
       this.bloom.width = pixelWidth;
       this.bloom.height = pixelHeight;
+      this.bloomCtx?.clearRect(0, 0, pixelWidth, pixelHeight);
     }
 
     if (!this.lenses.length) {
@@ -76,24 +77,29 @@ export class DreamFieldEngine {
     this.snapshotCtx.clearRect(0, 0, this.snapshot.width, this.snapshot.height);
     this.snapshotCtx.drawImage(source, 0, 0, source.width, source.height, 0, 0, this.snapshot.width, this.snapshot.height);
 
-    // Soft low-frequency memory. This intentionally blurs recognisable forms into one another
-    // without re-running the expensive semantic raster synthesis.
+    // Let the bloom remember previous shapes, but decay them every frame so highlights do not
+    // accumulate into a flat white fog.
     this.bloomCtx.setTransform(1, 0, 0, 1, 0, 0);
     this.bloomCtx.globalCompositeOperation = 'source-over';
-    this.bloomCtx.globalAlpha = 0.11;
+    this.bloomCtx.globalAlpha = 0.16;
+    this.bloomCtx.fillStyle = 'rgba(5,8,7,0.55)';
+    this.bloomCtx.fillRect(0, 0, this.bloom.width, this.bloom.height);
+    this.bloomCtx.globalCompositeOperation = 'screen';
+    this.bloomCtx.globalAlpha = 0.10;
     this.bloomCtx.filter = 'blur(7px) saturate(1.04)';
     this.bloomCtx.drawImage(this.snapshot, 0, 0, w, h);
     this.bloomCtx.filter = 'none';
 
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = 0.18;
+    ctx.globalAlpha = 0.16;
     ctx.drawImage(this.bloom, 0, 0, w, h);
     ctx.restore();
 
     const activity = clamp01(frame.assignments.length / 5 + (frame.dragging ? 0.22 : 0));
-    const steerX = frame.x / 100 - 0.5;
-    const steerY = 0.5 - frame.y / 100;
+    // Engine input is already normalized: x/y are 0..1 with y increasing upward.
+    const steerX = clamp01(frame.x) - 0.5;
+    const steerY = 0.5 - clamp01(frame.y);
 
     // Local semantic lenses: pieces of the current scene inflate, drift and overlap their
     // neighbours. The masks are feathered so the eye reads metamorphosis, not picture-in-picture.
@@ -108,10 +114,6 @@ export class DreamFieldEngine {
       const pullY = Math.cos(t * 0.69 + index * 2.1) * radius * 0.08;
 
       ctx.save();
-      const gradient = ctx.createRadialGradient(cx, cy, radius * 0.16, cx, cy, radius);
-      gradient.addColorStop(0, 'rgba(255,255,255,0.92)');
-      gradient.addColorStop(0.62, 'rgba(255,255,255,0.62)');
-      gradient.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.clip();
