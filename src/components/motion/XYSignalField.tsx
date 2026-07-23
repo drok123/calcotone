@@ -4,6 +4,54 @@ import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effe
 import { DreamFieldEngine } from './DreamFieldEngineV2';
 import './DreamField.css';
 
+const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+
+function visualEnergy(module: ModuleState): number {
+  const value = (id: string, fallback = 0) =>
+    module.parameters.find((parameter) => parameter.id === id)?.value ?? fallback;
+  const mix = value('mix', 0);
+  if (mix <= 0) return 0;
+
+  let character = 0.5;
+  switch (module.id) {
+    case 'saturation':
+      character = value('drive') * 0.55 + value('heat') * 0.30 + value('character') * 0.15;
+      break;
+    case 'chorus':
+      character = value('depth') * 0.42 + value('motion') * 0.33 + value('spread') * 0.25;
+      break;
+    case 'delay':
+      character = value('feedback') * 0.46 + value('time') * 0.24 + value('character') * 0.18 + value('width') * 0.12;
+      break;
+    case 'reverb':
+      character = value('size') * 0.34 + value('diffusion') * 0.28 + value('decay') * 0.24 + value('motion') * 0.14;
+      break;
+    case 'bitcrusher':
+      character = value('chaos') * 0.40 + value('density') * 0.25 + value('bloom') * 0.22 + (1 - value('bits', 1)) * 0.13;
+      break;
+    case 'media':
+      character = value('wear') * 0.40 + value('wow') * 0.28 + value('noise') * 0.18 + (1 - value('tone', 0.5)) * 0.14;
+      break;
+  }
+
+  // Wet level gates the visual contribution, while meaningful module controls decide
+  // how expressive it becomes. sqrt keeps low-but-audible mixes visually readable.
+  return clamp01(Math.sqrt(mix) * (0.52 + clamp01(character) * 0.48));
+}
+
+function modulesForDreamEngine(modules: ModuleState[]): ModuleState[] {
+  return modules.map((module) => {
+    if (!module.enabled || !module.available) return module;
+    const energy = visualEnergy(module);
+    return {
+      ...module,
+      parameters: module.parameters.map((parameter) =>
+        parameter.id === 'mix' ? { ...parameter, value: energy } : parameter
+      ),
+    };
+  });
+}
+
 export function XYSignalField({
   modules,
   assignments,
@@ -84,7 +132,7 @@ export function XYSignalField({
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
       try {
         engine.render(context, {
-          modules: modulesRef.current,
+          modules: modulesForDreamEngine(modulesRef.current),
           assignments: assignmentsRef.current,
           x: positionRef.current.x / 100,
           // Keep the engine contract conventional: bottom = 0, top = 1.
