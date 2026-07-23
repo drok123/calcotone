@@ -1,0 +1,149 @@
+.dream-pad {
+  aspect-ratio: 1.12 / 1;
+  min-height: 230px;
+  border-color: rgba(126, 176, 150, 0.42);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 50% 44%, rgba(134, 165, 149, 0.08), transparent 46%),
+    linear-gradient(180deg, rgba(12, 18, 15, 0.98), rgba(5, 9, 7, 0.98));
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.035),
+    inset 0 -18px 40px rgba(0,0,0,.28),
+    0 0 0 1px rgba(0,0,0,.62),
+    0 8px 24px rgba(0,0,0,.28);
+}
+
+.dream-pad::before {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  z-index: 1;
+  border: 1px solid rgba(210, 224, 216, 0.07);
+  border-radius: 11px;
+  pointer-events: none;
+}
+
+.dream-pad::after {
+  opacity: .18;
+  background:
+    linear-gradient(105deg, transparent 18%, rgba(255,255,255,.055) 44%, transparent 56%),
+    radial-gradient(circle at 50% 50%, transparent 52%, rgba(0,0,0,.22) 100%);
+}
+
+.dream-pad .xy-grid { display: none; }
+
+.dream-reticle {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  opacity: .22;
+}
+
+.dream-reticle.horizontal {
+  left: 11%;
+  right: 11%;
+  top: 50%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(215,229,220,.18) 22%, rgba(215,229,220,.32) 50%, rgba(215,229,220,.18) 78%, transparent);
+}
+
+.dream-reticle.vertical {
+  top: 11%;
+  bottom: 11%;
+  left: 50%;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(215,229,220,.18) 22%, rgba(215,229,220,.32) 50%, rgba(215,229,220,.18) 78%, transparent);
+}
+
+.dream-pad .xy-cursor.dream-cursor {
+  z-index: 5;
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(239, 244, 240, .88);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(236,244,238,.95) 0 6%, rgba(217,229,221,.48) 7% 12%, transparent 13%);
+  box-shadow:
+    0 0 0 5px rgba(232, 240, 235, .025),
+    0 0 14px rgba(210, 226, 216, .36),
+    0 0 32px rgba(210, 226, 216, .12);
+}
+
+.dream-pad .xy-cursor.dream-cursor::before,
+.dream-pad .xy-cursor.dream-cursor::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: rgba(230, 239, 233, .54);
+  transform: translate(-50%, -50%);
+}
+
+.dream-pad .xy-cursor.dream-cursor::before { width: 38px; height: 1px; }
+.dream-pad .xy-cursor.dream-cursor::after { width: 1px; height: 38px; }
+
+.dream-pad.is-dragging .dream-cursor {
+  box-shadow:
+    0 0 0 7px rgba(232, 240, 235, .035),
+    0 0 18px rgba(228, 238, 232, .50),
+    0 0 42px rgba(228, 238, 232, .18);
+}
+
+.dream-pad .xy-axis-mark {
+  z-index: 6;
+  width: 34px;
+  height: 34px;
+  gap: 3px;
+  border-color: rgba(176, 190, 180, .42);
+  color: rgba(229, 236, 231, .82);
+  background: radial-gradient(circle at 38% 32%, rgba(133, 118, 83, .72), rgba(41, 39, 30, .96) 58%, #10130f 100%);
+  box-shadow: inset 0 1px rgba(255,255,255,.13), inset 0 -3px 7px rgba(0,0,0,.7), 0 2px 6px rgba(0,0,0,.48);
+}
+
+.dream-pad .xy-axis-mark i {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #050706;
+  box-shadow: inset 0 1px 3px #000;
+}
+
+.dream-pad.hover-axis-x .xy-axis-mark.x,
+.dream-pad.hover-axis-y .xy-axis-mark.y {
+  color: #10130f;
+  background: radial-gradient(circle at 38% 32%, #f2d693, #b68c48 52%, #69502b 100%);
+  border-color: #f0d28a;
+  box-shadow: 0 0 0 5px rgba(232,190,104,.08), 0 0 18px rgba(232,190,104,.46), inset 0 1px rgba(255,255,255,.32);
+}
+
+.dream-pad.patch-target-active .xy-axis-mark {
+  animation: dream-jack-breathe 900ms ease-in-out infinite alternate;
+}
+
+.dream-hud {
+  position: absolute;
+  z-index: 4;
+  left: 14px;
+  right: 14px;
+  bottom: 11px;
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+  color: rgba(211, 221, 214, .64);
+  font: 800 .56rem/1 var(--mono);
+  letter-spacing: .08em;
+  text-shadow: 0 1px 3px rgba(0,0,0,.85);
+}
+
+.dream-hud span { color: rgba(232, 238, 234, .72); letter-spacing: .15em; }
+.dream-hud strong { color: rgba(235, 241, 237, .82); font-size: .62rem; }
+.dream-hud em { color: rgba(189, 202, 193, .52); font-style: normal; }
+
+.dream-pad + .motion-route-inspector { margin-top: 10px; }
+
+@keyframes dream-jack-breathe {
+  from { filter: brightness(1); }
+  to { filter: brightness(1.32); }
+}
