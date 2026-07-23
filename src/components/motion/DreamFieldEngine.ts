@@ -1,1 +1,1 @@
-export { DreamFieldEngine } from './DreamFieldEngineV5';
+export { DreamFieldEngine } from './DreamFieldEngineV6';
