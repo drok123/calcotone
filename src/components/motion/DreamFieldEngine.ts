@@ -1,14 +1,7 @@
 import type { ModuleState, XYAssignment } from '../../ui/types';
 
 type RGB = [number, number, number];
-type DreamWeights = {
-  organic: number;
-  ocean: number;
-  radial: number;
-  cosmic: number;
-  crystal: number;
-  decay: number;
-};
+type Vec2 = { x: number; y: number };
 
 type DreamFrame = {
   modules: ModuleState[];
@@ -19,6 +12,14 @@ type DreamFrame = {
   time: number;
 };
 
+type MorphWeights = {
+  eye: number;
+  tree: number;
+  ocean: number;
+  galaxy: number;
+  crystal: number;
+};
+
 const PALETTE = {
   bone: [238, 244, 239] as RGB,
   copper: [232, 165, 96] as RGB,
@@ -27,8 +28,15 @@ const PALETTE = {
   ash: [186, 171, 154] as RGB,
 };
 
+const GRID_X = 34;
+const GRID_Y = 22;
+
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const lerp = (a: number, b: number, amount: number) => a + (b - a) * amount;
+const smoothstep = (edge0: number, edge1: number, value: number) => {
+  const t = clamp01((value - edge0) / Math.max(1e-6, edge1 - edge0));
+  return t * t * (3 - 2 * t);
+};
 const rgba = (rgb: RGB, alpha: number) =>
   `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${clamp01(alpha)})`;
 const valueOf = (module: ModuleState | undefined, id: string, fallback = 0) =>
@@ -42,13 +50,12 @@ export class DreamFieldEngine {
   private gesture = 0;
   private memory: HTMLCanvasElement | null = null;
   private memoryCtx: CanvasRenderingContext2D | null = null;
-  private weights: DreamWeights = {
-    organic: 0.32,
-    ocean: 0.24,
-    radial: 0.34,
-    cosmic: 0.34,
+  private weights: MorphWeights = {
+    eye: 0.28,
+    tree: 0.28,
+    ocean: 0.28,
+    galaxy: 0.28,
     crystal: 0.18,
-    decay: 0.08,
   };
 
   resize(width: number, height: number) {
@@ -74,6 +81,7 @@ export class DreamFieldEngine {
     const { modules, assignments, x, y, dragging, time } = frame;
     const active = modules.filter((module) => module.enabled && module.available);
     const byId = (id: string) => active.find((module) => module.id === id);
+
     const ember = byId('saturation');
     const drift = byId('chorus');
     const halo = byId('delay');
@@ -81,38 +89,13 @@ export class DreamFieldEngine {
     const grain = byId('bitcrusher');
     const artifact = byId('media');
 
-    this.smoothedX += (x - this.smoothedX) * (dragging ? 0.24 : 0.065);
-    this.smoothedY += (y - this.smoothedY) * (dragging ? 0.24 : 0.065);
-    this.gesture += ((dragging ? 1 : 0) - this.gesture) * (dragging ? 0.18 : 0.04);
-
-    const target: DreamWeights = {
-      organic: 0.18 + (atmos ? 0.38 + valueOf(atmos, 'size', 0.5) * 0.42 : 0),
-      ocean: 0.14 + (drift ? 0.42 + valueOf(drift, 'depth', 0.3) * 0.42 : 0),
-      radial: 0.20 + (ember ? 0.36 + valueOf(ember, 'heat', 0.25) * 0.48 : 0) + (halo ? 0.12 : 0),
-      cosmic: 0.20 + (halo ? 0.36 + valueOf(halo, 'feedback', 0.25) * 0.42 : 0) + (atmos ? 0.18 : 0),
-      crystal: 0.10 + (grain ? 0.44 + valueOf(grain, 'chaos', 0.15) * 0.46 : 0),
-      decay: artifact ? 0.30 + valueOf(artifact, 'wear', 0.2) * 0.60 : 0.04,
-    };
+    this.smoothedX += (x - this.smoothedX) * (dragging ? 0.24 : 0.055);
+    this.smoothedY += (y - this.smoothedY) * (dragging ? 0.24 : 0.055);
+    this.gesture += ((dragging ? 1 : 0) - this.gesture) * (dragging ? 0.18 : 0.035);
 
     const semanticX = this.smoothedX;
     const semanticY = 1 - this.smoothedY;
-    target.organic += (1 - semanticX) * 0.32;
-    target.ocean += (1 - semanticX) * (1 - semanticY) * 0.26;
-    target.cosmic += semanticX * 0.38;
-    target.radial += semanticX * semanticY * 0.30;
-    target.crystal += semanticY * 0.30;
 
-    const smoothing = dragging ? 0.06 : 0.022;
-    (Object.keys(this.weights) as (keyof DreamWeights)[]).forEach((key) => {
-      this.weights[key] = lerp(this.weights[key], clamp01(target[key]), smoothing);
-    });
-
-    const width = this.width;
-    const height = this.height;
-    const cx = width * 0.5;
-    const cy = height * 0.5;
-    const scale = Math.min(width, height) * 1.18;
-    const patchEnergy = Math.min(1, assignments.length / 6);
     const emberMix = valueOf(ember, 'mix', 0);
     const driftMix = valueOf(drift, 'mix', 0);
     const haloMix = valueOf(halo, 'mix', 0);
@@ -120,57 +103,330 @@ export class DreamFieldEngine {
     const grainMix = valueOf(grain, 'mix', 0);
     const artifactMix = valueOf(artifact, 'mix', 0);
 
+    const targets: MorphWeights = {
+      eye: 0.18 + semanticX * semanticY * 0.46 + emberMix * 0.44 + haloMix * 0.12,
+      tree: 0.16 + (1 - semanticX) * 0.42 + atmosMix * 0.48,
+      ocean: 0.15 + (1 - semanticX) * (1 - semanticY) * 0.44 + driftMix * 0.52,
+      galaxy: 0.18 + semanticX * 0.48 + haloMix * 0.46 + atmosMix * 0.18,
+      crystal: 0.08 + semanticY * 0.34 + grainMix * 0.58,
+    };
+
+    const weightEase = dragging ? 0.05 : 0.014;
+    (Object.keys(this.weights) as (keyof MorphWeights)[]).forEach((key) => {
+      this.weights[key] = lerp(this.weights[key], clamp01(targets[key]), weightEase);
+    });
+
+    const width = this.width;
+    const height = this.height;
+    const cx = width * 0.5;
+    const cy = height * 0.5;
+    const scale = Math.min(width, height) * 1.08;
+    const patchEnergy = Math.min(1, assignments.length / 6);
+
     ctx.clearRect(0, 0, width, height);
-    ctx.save();
-    ctx.fillStyle = 'rgba(3,4,4,0.64)';
+    ctx.fillStyle = 'rgba(3,4,4,0.42)';
     ctx.fillRect(0, 0, width, height);
 
     this.drawMemory(ctx, time, cx, cy, width, height, haloMix, artifactMix);
 
-    const vignette = ctx.createRadialGradient(cx, cy, scale * 0.02, cx, cy, scale * 0.56);
-    vignette.addColorStop(0, 'rgba(62,66,61,0.22)');
-    vignette.addColorStop(0.55, 'rgba(18,22,20,0.10)');
-    vignette.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = vignette;
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, scale * 0.58);
+    halo.addColorStop(0, 'rgba(78,84,78,0.16)');
+    halo.addColorStop(0.48, 'rgba(22,27,24,0.07)');
+    halo.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = halo;
     ctx.fillRect(0, 0, width, height);
 
-    const metamorph = (Math.sin(time * 0.07) * 0.5 + 0.5) * 0.52 + semanticX * 0.48;
-    this.drawNebula(ctx, time, cx, cy, scale, haloMix, atmosMix, metamorph);
-    this.drawFlowFabric(ctx, time, cx, cy, scale, driftMix, semanticY, metamorph);
-    this.drawBranchGalaxy(ctx, time, cx, cy, scale, atmosMix, semanticX, metamorph);
-    this.drawEyeGalaxy(ctx, time, cx, cy, scale, emberMix, haloMix, metamorph);
-    this.drawCrystalBloom(ctx, time, cx, cy, scale, grainMix, semanticY, metamorph);
-    this.drawEchoArchitecture(ctx, time, cx, cy, scale, haloMix, patchEnergy, metamorph);
-    this.drawSeedForm(ctx, time, cx, cy, scale, metamorph);
-    this.drawSemanticGravity(ctx, cx, cy, scale, semanticX, semanticY);
+    const field = this.buildMorphField(time, scale, semanticX, semanticY, emberMix, driftMix, haloMix, atmosMix, grainMix);
+    this.drawField(ctx, field, cx, cy, scale, emberMix, driftMix, haloMix, atmosMix, grainMix, artifactMix, patchEnergy, time);
+    this.drawEmergentForms(ctx, field, cx, cy, scale, time, emberMix, haloMix, atmosMix, grainMix);
+    this.drawArtifactDecay(ctx, time, width, height, artifactMix, valueOf(artifact, 'wear', 0));
 
-    if (artifact && artifactMix > 0.01) {
-      this.drawDecay(ctx, time, width, height, artifactMix, valueOf(artifact, 'wear', 0.2));
-    }
-
-    ctx.restore();
     this.captureMemory(ctx, width, height);
   }
 
-  private drawMemory(
-    ctx: CanvasRenderingContext2D,
+  private buildMorphField(
     time: number,
+    scale: number,
+    semanticX: number,
+    semanticY: number,
+    emberMix: number,
+    driftMix: number,
+    haloMix: number,
+    atmosMix: number,
+    grainMix: number
+  ): Vec2[][] {
+    const total = Math.max(0.001, this.weights.eye + this.weights.tree + this.weights.ocean + this.weights.galaxy + this.weights.crystal);
+    const eyeW = this.weights.eye / total;
+    const treeW = this.weights.tree / total;
+    const oceanW = this.weights.ocean / total;
+    const galaxyW = this.weights.galaxy / total;
+    const crystalW = this.weights.crystal / total;
+
+    const field: Vec2[][] = [];
+    const dreamPhase = time * 0.035;
+
+    for (let gy = 0; gy < GRID_Y; gy += 1) {
+      const row: Vec2[] = [];
+      const v = gy / (GRID_Y - 1) * 2 - 1;
+
+      for (let gx = 0; gx < GRID_X; gx += 1) {
+        const u = gx / (GRID_X - 1) * 2 - 1;
+        const radius = Math.hypot(u, v);
+        const angle = Math.atan2(v, u);
+
+        const eye = this.eyeTarget(u, v, radius, angle, dreamPhase, emberMix, haloMix);
+        const tree = this.treeTarget(u, v, dreamPhase, atmosMix);
+        const ocean = this.oceanTarget(u, v, dreamPhase, driftMix);
+        const galaxy = this.galaxyTarget(u, v, radius, angle, dreamPhase, haloMix, atmosMix);
+        const crystal = this.crystalTarget(u, v, radius, angle, dreamPhase, grainMix);
+
+        let px = eye.x * eyeW + tree.x * treeW + ocean.x * oceanW + galaxy.x * galaxyW + crystal.x * crystalW;
+        let py = eye.y * eyeW + tree.y * treeW + ocean.y * oceanW + galaxy.y * galaxyW + crystal.y * crystalW;
+
+        // Shared dream-flow displacement prevents any target from remaining cleanly legible.
+        const flowA = Math.sin(px * 5.4 + py * 3.7 + time * 0.11);
+        const flowB = Math.cos(py * 6.1 - px * 2.9 - time * 0.085);
+        const surreal = 0.018 + semanticY * 0.022 + this.gesture * 0.014;
+        px += flowB * surreal;
+        py += flowA * surreal;
+
+        // XY becomes a gravitational semantic bias rather than a cursor overlay.
+        const gravityX = (semanticX - 0.5) * 0.22;
+        const gravityY = (0.5 - semanticY) * 0.15;
+        const influence = Math.exp(-(px * px + py * py) * 1.8) * (0.18 + this.gesture * 0.22);
+        px += gravityX * influence;
+        py += gravityY * influence;
+
+        row.push({ x: px, y: py });
+      }
+      field.push(row);
+    }
+
+    return field;
+  }
+
+  private eyeTarget(u: number, v: number, radius: number, angle: number, phase: number, emberMix: number, haloMix: number): Vec2 {
+    const eyelid = Math.sin((u + 1) * Math.PI * 0.5) * 0.52;
+    const lidShape = Math.sign(v || 1) * Math.min(Math.abs(v), eyelid);
+    const irisPull = Math.exp(-radius * 3.8);
+    const twist = irisPull * (0.24 + haloMix * 0.26) * Math.sin(angle * 8 + phase * 3.2);
+    const heat = emberMix * irisPull * 0.11;
+    return {
+      x: u * (0.82 + irisPull * 0.18) + Math.cos(angle + twist) * heat,
+      y: lidShape * 0.72 + Math.sin(angle * 6 + phase) * irisPull * 0.045,
+    };
+  }
+
+  private treeTarget(u: number, v: number, phase: number, atmosMix: number): Vec2 {
+    const trunk = Math.exp(-Math.abs(u) * 4.2) * smoothstep(0.15, 1, 1 - Math.abs(v));
+    const branchBand = 1 - Math.abs(v);
+    const branch = Math.sin((u * 5.8 + v * 2.1) + phase * 2.1) * branchBand;
+    const fork = Math.sin(v * 10.5 - Math.abs(u) * 5 + phase) * 0.5;
+    return {
+      x: u * (0.72 + atmosMix * 0.12) + branch * 0.10 * (1 - Math.abs(v)) + Math.sign(u || 1) * trunk * 0.04,
+      y: v * 0.88 - trunk * 0.10 + fork * Math.abs(u) * 0.035,
+    };
+  }
+
+  private oceanTarget(u: number, v: number, phase: number, driftMix: number): Vec2 {
+    const wave = Math.sin(u * 5.2 + phase * (4 + driftMix * 3.5) + v * 1.8);
+    const undertow = Math.sin(u * 2.2 - phase * 2.3 + v * 6.3);
+    return {
+      x: u + undertow * 0.025 * (0.5 + driftMix),
+      y: v * 0.78 + wave * (0.055 + driftMix * 0.075) + undertow * 0.018,
+    };
+  }
+
+  private galaxyTarget(u: number, v: number, radius: number, angle: number, phase: number, haloMix: number, atmosMix: number): Vec2 {
+    const spiral = angle + radius * (2.8 + haloMix * 3.8) + phase * (1.4 + haloMix * 1.8);
+    const squash = 0.62 + atmosMix * 0.16;
+    const r = radius * (0.82 + Math.sin(radius * 11 - phase) * 0.035);
+    return {
+      x: Math.cos(spiral) * r,
+      y: Math.sin(spiral) * r * squash,
+    };
+  }
+
+  private crystalTarget(u: number, v: number, radius: number, angle: number, phase: number, grainMix: number): Vec2 {
+    const facets = 6 + Math.round(grainMix * 6);
+    const snappedAngle = Math.round(angle / (Math.PI * 2 / facets)) * (Math.PI * 2 / facets);
+    const steppedRadius = Math.round(radius * (7 + grainMix * 10)) / (7 + grainMix * 10);
+    const fracture = Math.sin((u * 13.1 + v * 17.3) + phase * 2) * grainMix * 0.035;
+    return {
+      x: Math.cos(snappedAngle) * steppedRadius + fracture,
+      y: Math.sin(snappedAngle) * steppedRadius * 0.72 - fracture,
+    };
+  }
+
+  private drawField(
+    ctx: CanvasRenderingContext2D,
+    field: Vec2[][],
     cx: number,
     cy: number,
-    width: number,
-    height: number,
+    scale: number,
+    emberMix: number,
+    driftMix: number,
     haloMix: number,
-    artifactMix: number
+    atmosMix: number,
+    grainMix: number,
+    artifactMix: number,
+    patchEnergy: number,
+    time: number
   ) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    const toScreen = (point: Vec2) => ({
+      x: cx + point.x * scale * 0.42,
+      y: cy + point.y * scale * 0.42,
+    });
+
+    // Draw contour family in both directions so the image reads as a morphing surface,
+    // not as independent stacked line layers.
+    for (let pass = 0; pass < 2; pass += 1) {
+      const count = pass === 0 ? GRID_Y : GRID_X;
+      for (let index = 0; index < count; index += 1) {
+        ctx.beginPath();
+        const points: Vec2[] = [];
+        const length = pass === 0 ? GRID_X : GRID_Y;
+        for (let step = 0; step < length; step += 1) {
+          const point = pass === 0 ? field[index][step] : field[step][index];
+          points.push(point);
+          const screen = toScreen(point);
+          if (step === 0) ctx.moveTo(screen.x, screen.y);
+          else ctx.lineTo(screen.x, screen.y);
+        }
+
+        const centerBias = 1 - Math.abs(index / Math.max(1, count - 1) - 0.5) * 2;
+        const color = emberMix > 0.15 && centerBias > 0.45
+          ? PALETTE.copper
+          : driftMix > 0.18 && pass === 0
+            ? PALETTE.sea
+            : grainMix > 0.2 && index % 4 === 0
+              ? PALETTE.dusk
+              : PALETTE.bone;
+
+        const alpha = 0.07 + centerBias * 0.12 + haloMix * 0.025 + patchEnergy * 0.018;
+        ctx.strokeStyle = rgba(color, alpha);
+        ctx.lineWidth = 0.72 + centerBias * 0.75 + atmosMix * 0.25;
+        ctx.stroke();
+      }
+    }
+
+    // A few moving energy veins run through the same field and reinforce continuity.
+    for (let vein = 0; vein < 5; vein += 1) {
+      const rowIndex = Math.floor(((time * (0.09 + vein * 0.006) + vein * 0.19) % 1) * (GRID_Y - 1));
+      const row = field[rowIndex];
+      ctx.beginPath();
+      row.forEach((point, index) => {
+        const screen = toScreen(point);
+        if (index === 0) ctx.moveTo(screen.x, screen.y);
+        else ctx.lineTo(screen.x, screen.y);
+      });
+      ctx.strokeStyle = rgba(vein % 2 ? PALETTE.copper : PALETTE.bone, 0.08 + this.gesture * 0.08);
+      ctx.lineWidth = 1.15 + this.gesture * 0.45;
+      ctx.stroke();
+    }
+
+    if (artifactMix > 0.2) {
+      ctx.globalAlpha = 0.12 + artifactMix * 0.12;
+      ctx.translate(Math.sin(time * 3.2) * artifactMix * 2.2, 0);
+    }
+
+    ctx.restore();
+  }
+
+  private drawEmergentForms(
+    ctx: CanvasRenderingContext2D,
+    field: Vec2[][],
+    cx: number,
+    cy: number,
+    scale: number,
+    time: number,
+    emberMix: number,
+    haloMix: number,
+    atmosMix: number,
+    grainMix: number
+  ) {
+    const eyeMoment = smoothstep(0.42, 0.72, this.weights.eye) * smoothstep(0.25, 0.58, Math.sin(time * 0.07) * 0.5 + 0.5);
+    const treeMoment = smoothstep(0.40, 0.72, this.weights.tree) * smoothstep(0.28, 0.62, Math.sin(time * 0.053 + 1.7) * 0.5 + 0.5);
+    const galaxyMoment = smoothstep(0.40, 0.72, this.weights.galaxy) * smoothstep(0.30, 0.66, Math.sin(time * 0.061 + 3.2) * 0.5 + 0.5);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    // These recognizable shapes only reveal themselves briefly and are anchored to the same field.
+    if (eyeMoment > 0.02) {
+      const center = field[Math.floor(GRID_Y / 2)][Math.floor(GRID_X / 2)];
+      const ex = cx + center.x * scale * 0.42;
+      const ey = cy + center.y * scale * 0.42;
+      const radius = scale * (0.075 + emberMix * 0.025);
+      ctx.strokeStyle = rgba(emberMix > 0.1 ? PALETTE.copper : PALETTE.bone, eyeMoment * 0.24);
+      ctx.lineWidth = 1.35;
+      ctx.beginPath();
+      ctx.ellipse(ex, ey, radius * 1.8, radius * 0.72, Math.sin(time * 0.03) * 0.12, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(ex, ey, radius * 0.34, radius * 0.34, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    if (treeMoment > 0.02) {
+      const trunkX = cx;
+      const trunkY = cy + scale * 0.28;
+      const drawBranch = (x: number, y: number, length: number, angle: number, depth: number, seed: number) => {
+        if (depth <= 0) return;
+        const curl = Math.sin(seed + time * 0.045) * 0.16 + this.weights.galaxy * 0.12;
+        const nx = x + Math.cos(angle + curl) * length;
+        const ny = y + Math.sin(angle + curl) * length;
+        ctx.strokeStyle = rgba(PALETTE.bone, treeMoment * (0.055 + depth * 0.018));
+        ctx.lineWidth = Math.max(0.55, depth * 0.32);
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.quadraticCurveTo((x + nx) * 0.5, (y + ny) * 0.5 - atmosMix * length * 0.12, nx, ny);
+        ctx.stroke();
+        drawBranch(nx, ny, length * 0.67, angle - 0.48, depth - 1, seed + 1.7);
+        drawBranch(nx, ny, length * 0.64, angle + 0.42, depth - 1, seed + 2.9);
+      };
+      drawBranch(trunkX, trunkY, scale * 0.11, -Math.PI * 0.5, 5, 1.3);
+    }
+
+    if (galaxyMoment > 0.02) {
+      const stars = 48;
+      for (let i = 0; i < stars; i += 1) {
+        const r = scale * (0.025 + ((i * 17) % 100) / 100 * 0.30);
+        const a = i * 2.399 + r * 0.04 + time * (0.018 + haloMix * 0.025);
+        const sx = cx + Math.cos(a) * r;
+        const sy = cy + Math.sin(a) * r * 0.48;
+        ctx.fillStyle = rgba(i % 9 === 0 ? PALETTE.dusk : PALETTE.bone, galaxyMoment * 0.16);
+        ctx.fillRect(sx, sy, 1.1 + (i % 3) * 0.35, 1.1 + (i % 3) * 0.35);
+      }
+    }
+
+    if (grainMix > 0.18) {
+      for (let i = 0; i < 18; i += 1) {
+        const a = i * 2.73 + time * 0.02;
+        const r = scale * (0.09 + ((i * 11) % 17) * 0.013);
+        const x = cx + Math.cos(a) * r;
+        const y = cy + Math.sin(a * 0.83) * r * 0.62;
+        ctx.strokeStyle = rgba(PALETTE.dusk, 0.05 + grainMix * 0.12);
+        ctx.strokeRect(x - 2, y - 2, 4 + (i % 3), 4 + (i % 2));
+      }
+    }
+
+    ctx.restore();
+  }
+
+  private drawMemory(ctx: CanvasRenderingContext2D, time: number, cx: number, cy: number, width: number, height: number, haloMix: number, artifactMix: number) {
     if (!this.memory) return;
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = 0.18 + haloMix * 0.12 + artifactMix * 0.05;
-    const breathe = 1.010 + Math.sin(time * 0.10) * 0.006 + haloMix * 0.008;
+    ctx.globalAlpha = 0.19 + haloMix * 0.10 + artifactMix * 0.05;
+    const breathe = 1.012 + Math.sin(time * 0.075) * 0.007 + haloMix * 0.008;
     ctx.translate(cx, cy);
-    ctx.rotate(Math.sin(time * 0.04) * 0.004);
+    ctx.rotate(Math.sin(time * 0.031) * 0.006 + artifactMix * Math.sin(time * 0.4) * 0.002);
     ctx.scale(breathe, breathe);
-    ctx.translate(-cx + Math.sin(time * 0.14) * artifactMix * 3.0, -cy);
+    ctx.translate(-cx + Math.sin(time * 0.12) * artifactMix * 4, -cy + Math.cos(time * 0.08) * haloMix * 1.5);
     ctx.drawImage(this.memory, 0, 0, width, height);
     ctx.restore();
   }
@@ -181,227 +437,15 @@ export class DreamFieldEngine {
     this.memoryCtx.drawImage(ctx.canvas, 0, 0, width, height, 0, 0, this.memory.width, this.memory.height);
   }
 
-  private drawNebula(ctx: CanvasRenderingContext2D, time: number, cx: number, cy: number, scale: number, haloMix: number, atmosMix: number, morph: number) {
-    const weight = this.weights.cosmic;
-    if (weight < 0.02) return;
+  private drawArtifactDecay(ctx: CanvasRenderingContext2D, time: number, width: number, height: number, mix: number, wear: number) {
+    if (mix <= 0.01) return;
     ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const count = 90 + Math.round(weight * 150);
-    for (let i = 0; i < count; i += 1) {
-      const seed = i * 12.9898;
-      const u = ((i * 37) % 101) / 100;
-      const arm = i % 5;
-      const radius = scale * (0.02 + u * (0.30 + atmosMix * 0.12));
-      const angle = arm * Math.PI * 0.4 + u * (3.8 + morph * 4.8) + time * (0.024 + haloMix * 0.032) + Math.sin(seed) * 0.12;
-      const px = cx + Math.cos(angle) * radius;
-      const py = cy + Math.sin(angle) * radius * (0.42 + atmosMix * 0.22);
-      const pulse = 0.55 + Math.sin(time * 0.5 + seed) * 0.35;
-      ctx.fillStyle = rgba(i % 11 === 0 ? PALETTE.dusk : PALETTE.bone, weight * (0.07 + pulse * 0.14));
-      const size = 1.0 + (i % 5) * 0.34 + atmosMix * 0.7;
-      ctx.fillRect(px, py, size, size);
-    }
-    ctx.restore();
-  }
-
-  private drawFlowFabric(ctx: CanvasRenderingContext2D, time: number, cx: number, cy: number, scale: number, driftMix: number, semanticY: number, morph: number) {
-    const weight = this.weights.ocean;
-    if (weight < 0.02) return;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const lines = 13;
-    for (let row = 0; row < lines; row += 1) {
-      const v = row / (lines - 1) - 0.5;
-      ctx.beginPath();
-      for (let step = 0; step <= 120; step += 1) {
-        const u = step / 120;
-        const fold = Math.sin(u * Math.PI * (2.8 + morph * 3.6) + time * (0.15 + driftMix * 0.32) + row * 0.5);
-        const undertow = Math.sin(u * 9.2 - time * 0.11 + row * 0.8) * 0.42;
-        const depth = Math.cos(u * Math.PI * 2 + row * 0.35 + time * 0.08);
-        const px = cx + (u - 0.5) * scale * 0.82;
-        const py = cy + v * scale * 0.25 + (fold + undertow) * scale * (0.018 + weight * 0.035 + semanticY * 0.012) + depth * morph * scale * 0.020;
-        if (step === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-      }
-      ctx.strokeStyle = rgba(PALETTE.sea, weight * (0.07 + row * 0.008));
-      ctx.lineWidth = 1.0 + driftMix * 0.75;
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  private drawBranchGalaxy(ctx: CanvasRenderingContext2D, time: number, cx: number, cy: number, scale: number, atmosMix: number, semanticX: number, morph: number) {
-    const weight = this.weights.organic;
-    if (weight < 0.02) return;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const rootX = cx - scale * (0.02 + (1 - semanticX) * 0.05);
-    const rootY = cy + scale * 0.22;
-    const sway = Math.sin(time * 0.13) * 0.055;
-
-    const branch = (x: number, y: number, length: number, angle: number, depth: number, seed: number) => {
-      if (depth <= 0 || length < 2) return;
-      const curl = morph * (0.11 + (7 - depth) * 0.04) * Math.sin(seed * 1.7 + time * 0.05);
-      const nextAngle = angle + sway * depth + curl;
-      const nx = x + Math.cos(nextAngle) * length;
-      const ny = y + Math.sin(nextAngle) * length;
-      ctx.strokeStyle = rgba(depth <= 2 && morph > 0.52 ? PALETTE.dusk : PALETTE.bone, weight * (0.07 + depth * 0.028));
-      ctx.lineWidth = Math.max(0.8, depth * 0.42);
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.quadraticCurveTo((x + nx) * 0.5 + Math.sin(seed + time * 0.07) * length * 0.12, (y + ny) * 0.5 - morph * length * 0.08, nx, ny);
-      ctx.stroke();
-      if (depth === 1 && morph > 0.35) {
-        const r = scale * (0.008 + morph * 0.012);
-        ctx.strokeStyle = rgba(PALETTE.dusk, weight * morph * 0.18);
-        ctx.beginPath();
-        ctx.ellipse(nx, ny, r, r * 0.44, nextAngle, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      const spread = 0.40 + atmosMix * 0.25 + morph * 0.09;
-      branch(nx, ny, length * 0.70, nextAngle - spread, depth - 1, seed + 1.7);
-      branch(nx, ny, length * 0.67, nextAngle + spread * 0.84, depth - 1, seed + 2.9);
-    };
-
-    branch(rootX, rootY, scale * (0.12 + weight * 0.085), -Math.PI * 0.5, 7, 1.2);
-    ctx.restore();
-  }
-
-  private drawEyeGalaxy(ctx: CanvasRenderingContext2D, time: number, cx: number, cy: number, scale: number, emberMix: number, haloMix: number, morph: number) {
-    const weight = this.weights.radial;
-    if (weight < 0.02) return;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const radius = scale * (0.10 + weight * 0.12);
-    const open = 0.48 + morph * 0.36 + Math.sin(time * 0.10) * 0.03;
-    const color = emberMix > 0.08 ? PALETTE.copper : PALETTE.bone;
-
-    for (let side = -1; side <= 1; side += 2) {
-      ctx.beginPath();
-      for (let i = 0; i <= 72; i += 1) {
-        const u = i / 72;
-        const xx = (u - 0.5) * radius * 2.9;
-        const lid = Math.sin(u * Math.PI) * radius * open * side;
-        const spiral = Math.sin(u * Math.PI * 4.2 + time * 0.09) * radius * morph * 0.14;
-        const px = cx + xx;
-        const py = cy + lid + spiral;
-        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-      }
-      ctx.strokeStyle = rgba(color, weight * 0.30);
-      ctx.lineWidth = 1.4;
-      ctx.stroke();
-    }
-
-    for (let ring = 0; ring < 10; ring += 1) {
-      const rr = radius * (0.16 + ring * 0.085 + Math.sin(time * 0.17 + ring) * 0.012);
-      ctx.strokeStyle = rgba(color, weight * (0.10 + ring * 0.015));
-      ctx.lineWidth = ring === 0 ? 1.5 : 0.9;
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, rr * (1 + haloMix * 0.15), rr * (0.72 - morph * 0.17), morph * ring * 0.07 + time * 0.018, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    for (let i = 0; i < 52; i += 1) {
-      const a = (i / 52) * Math.PI * 2 + morph * Math.sin(i * 2.31 + time * 0.08) * 0.22;
-      const inner = radius * 0.13;
-      const outer = radius * (0.72 + Math.sin(i * 2.11 + time * 0.11) * 0.20 + morph * 0.30);
-      ctx.strokeStyle = rgba(color, weight * 0.13);
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner * 0.68);
-      ctx.quadraticCurveTo(cx + Math.cos(a + morph * 0.55) * outer * 0.58, cy + Math.sin(a + morph * 0.55) * outer * 0.35, cx + Math.cos(a + morph * 0.9) * outer, cy + Math.sin(a + morph * 0.9) * outer * 0.54);
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = rgba(PALETTE.bone, 0.14 + weight * 0.16);
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, radius * 0.10, radius * 0.072, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  private drawCrystalBloom(ctx: CanvasRenderingContext2D, time: number, cx: number, cy: number, scale: number, grainMix: number, semanticY: number, morph: number) {
-    const weight = this.weights.crystal;
-    if (weight < 0.02) return;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const shards = 18 + Math.round(weight * 40);
-    for (let i = 0; i < shards; i += 1) {
-      const seed = i * 4.123;
-      const radial = ((i * 29) % 101) / 100;
-      const angle = seed * 0.71 + time * 0.02 + morph * radial * 2.4;
-      const ring = scale * (0.06 + radial * 0.31);
-      const px = cx + Math.cos(angle) * ring;
-      const py = cy + Math.sin(angle * (0.72 + morph * 0.17)) * ring * 0.58;
-      const length = scale * (0.012 + ((i * 13) % 9) * 0.0035 + semanticY * 0.015 + morph * 0.008);
-      const a = angle * 1.55 + Math.sin(seed) * 0.5;
-      ctx.strokeStyle = rgba(PALETTE.dusk, weight * (0.10 + grainMix * 0.14));
-      ctx.lineWidth = 0.9;
-      ctx.beginPath();
-      ctx.moveTo(px - Math.cos(a) * length, py - Math.sin(a) * length);
-      ctx.lineTo(px + Math.cos(a) * length, py + Math.sin(a) * length);
-      ctx.lineTo(px + Math.cos(a + 1.3) * length * 0.52, py + Math.sin(a + 1.3) * length * 0.52);
-      ctx.closePath();
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  private drawEchoArchitecture(ctx: CanvasRenderingContext2D, time: number, cx: number, cy: number, scale: number, haloMix: number, patchEnergy: number, morph: number) {
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 8; i += 1) {
-      const phase = (time * 0.045 + i / 8) % 1;
-      const radius = scale * (0.05 + phase * 0.34);
-      const sides = 6 + Math.round(morph * 6);
-      ctx.strokeStyle = rgba(PALETTE.ash, (1 - phase) * (0.05 + patchEnergy * 0.09 + haloMix * 0.08));
-      ctx.lineWidth = 0.9;
-      ctx.beginPath();
-      for (let side = 0; side <= sides; side += 1) {
-        const a = (side / sides) * Math.PI * 2 + phase * morph * 0.85;
-        const rx = radius * (1 + Math.sin(a * 3 + time * 0.09) * morph * 0.10);
-        const px = cx + Math.cos(a) * rx;
-        const py = cy + Math.sin(a) * rx * (0.46 + morph * 0.08);
-        if (side === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-      }
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  private drawSeedForm(ctx: CanvasRenderingContext2D, time: number, cx: number, cy: number, scale: number, morph: number) {
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const radius = scale * (0.18 + Math.sin(time * 0.12) * 0.015);
-    ctx.strokeStyle = rgba(PALETTE.bone, 0.18);
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, radius, radius * (0.42 + morph * 0.10), time * 0.02, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.strokeStyle = rgba(PALETTE.copper, 0.09);
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, radius * 0.72, radius * 0.31, -time * 0.025, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  private drawSemanticGravity(ctx: CanvasRenderingContext2D, cx: number, cy: number, scale: number, semanticX: number, semanticY: number) {
-    const px = lerp(cx - scale * 0.22, cx + scale * 0.22, semanticX);
-    const py = lerp(cy + scale * 0.14, cy - scale * 0.14, semanticY);
-    const glow = ctx.createRadialGradient(px, py, 0, px, py, scale * (0.08 + this.gesture * 0.06));
-    glow.addColorStop(0, rgba(PALETTE.bone, 0.12 + this.gesture * 0.15));
-    glow.addColorStop(0.45, rgba(PALETTE.copper, 0.03 + this.gesture * 0.04));
-    glow.addColorStop(1, rgba(PALETTE.bone, 0));
-    ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, this.width, this.height);
-  }
-
-  private drawDecay(ctx: CanvasRenderingContext2D, time: number, width: number, height: number, mix: number, wear: number) {
-    ctx.save();
-    const scars = 4 + Math.round(wear * 9);
+    const scars = 3 + Math.round(wear * 7);
     for (let i = 0; i < scars; i += 1) {
-      const seed = i * 8.13;
-      const rawY = (Math.sin(seed) * 0.5 + 0.5) * height + time * (3 + wear * 9) * (i % 2 ? 1 : -1);
+      const rawY = (Math.sin(i * 8.13) * 0.5 + 0.5) * height + time * (2 + wear * 7) * (i % 2 ? 1 : -1);
       const y = ((rawY % height) + height) % height;
-      ctx.fillStyle = `rgba(220,180,120,${0.035 + mix * wear * 0.07})`;
-      ctx.fillRect(0, y, width, 1 + (i % 3));
+      ctx.fillStyle = rgba(PALETTE.ash, 0.018 + mix * wear * 0.05);
+      ctx.fillRect(Math.sin(time * 0.7 + i) * wear * 8, y, width, 1 + (i % 3));
     }
     ctx.restore();
   }
