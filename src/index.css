@@ -1,0 +1,56 @@
+:root {
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  color: #edf2ed;
+  background: #080b0a;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+  background: #080b0a;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  background: #080b0a;
+}
+
+button,
+select,
+input {
+  min-width: 0;
+  font: inherit;
+}
+
+button { color: inherit; }
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+[role="slider"]:focus-visible {
+  outline: 2px solid rgba(101, 255, 154, 0.65);
+  outline-offset: 2px;
+}
+
+#root {
+  width: 100%;
+  min-height: 100dvh;
+}
+
+/* V7.2: maximize crisp rendering without sacrificing legibility. */
+svg, canvas { shape-rendering: geometricPrecision; }
+img { image-rendering: auto; }
+select, button, input { -webkit-tap-highlight-color: transparent; }
