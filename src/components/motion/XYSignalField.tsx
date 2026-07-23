@@ -4,14 +4,19 @@ import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effe
 
 const MODULE_ORDER = ['saturation', 'chorus', 'delay', 'reverb', 'bitcrusher', 'media'];
 
+// One instrument, one visual language. Modules keep a subtle mineral tint instead
+// of competing neon identities; their behavior does most of the differentiating.
 const MODULE_COLORS: Record<string, [number, number, number]> = {
-  saturation: [241, 153, 66],
-  chorus: [68, 214, 232],
-  delay: [166, 112, 255],
-  reverb: [72, 133, 255],
-  bitcrusher: [236, 88, 207],
-  media: [214, 139, 72],
+  saturation: [205, 151, 96],   // oxidized copper
+  chorus: [121, 166, 157],      // smoked teal
+  delay: [143, 126, 166],       // bruised violet
+  reverb: [105, 137, 154],      // slate blue
+  bitcrusher: [159, 121, 139],  // dusty rose
+  media: [177, 142, 101],       // aged amber
 };
+
+const SIGNAL_COLOR: [number, number, number] = [178, 205, 190];
+const CURSOR_COLOR: [number, number, number] = [188, 220, 201];
 
 export function XYSignalField({
   modules,
@@ -103,21 +108,20 @@ export function XYSignalField({
       const assignmentEnergy = Math.min(1, assignmentsRef.current.length / 6);
 
       const chamber = context.createRadialGradient(cursorPx, cursorPy, 0, width * 0.5, midY, padScale * 0.76);
-      chamber.addColorStop(0, `rgba(101,255,154,${0.025 + gestureEnergy * 0.04})`);
-      chamber.addColorStop(0.46, 'rgba(8,18,14,0.018)');
+      chamber.addColorStop(0, `rgba(${CURSOR_COLOR[0]},${CURSOR_COLOR[1]},${CURSOR_COLOR[2]},${0.018 + gestureEnergy * 0.032})`);
+      chamber.addColorStop(0.46, 'rgba(15,18,17,0.022)');
       chamber.addColorStop(1, 'rgba(0,0,0,0)');
       context.fillStyle = chamber;
       context.fillRect(0, 0, width, height);
 
-      context.strokeStyle = 'rgba(206,230,216,0.035)';
+      context.strokeStyle = 'rgba(206,218,211,0.035)';
       context.lineWidth = 1;
       context.beginPath();
       context.moveTo(inputX, midY);
       context.lineTo(outputX, midY);
       context.stroke();
 
-      const baseSignal: [number, number, number] = [118, 255, 165];
-      let signalColor = baseSignal;
+      const baseSignal: [number, number, number] = SIGNAL_COLOR;
       let amplitude = height * 0.032;
       let frequency = 1.55;
       let phaseWarp = 0;
@@ -145,7 +149,7 @@ export function XYSignalField({
           const module = stage.module;
           const mix = valueOf(module, 'mix', 0.4);
           const color = MODULE_COLORS[module.id] ?? baseSignal;
-          localColor = mixColor(localColor, color, 0.34 + mix * 0.36);
+          localColor = mixColor(localColor, color, 0.18 + mix * 0.22);
 
           if (module.id === 'saturation') {
             const drive = valueOf(module, 'drive', 0.2);
@@ -207,8 +211,8 @@ export function XYSignalField({
         }
         context.save();
         context.globalCompositeOperation = 'lighter';
-        context.strokeStyle = rgba(lastColor, ghost === 0 ? 0.48 : 0.055 + assignmentEnergy * 0.02);
-        context.lineWidth = ghost === 0 ? 2.0 : 0.75;
+        context.strokeStyle = rgba(lastColor, ghost === 0 ? 0.42 : 0.045 + assignmentEnergy * 0.018);
+        context.lineWidth = ghost === 0 ? 1.85 : 0.7;
         context.stroke();
         context.restore();
       }
@@ -221,8 +225,8 @@ export function XYSignalField({
 
         context.save();
         context.globalCompositeOperation = 'lighter';
-        context.fillStyle = rgba(color, 0.035 + mix * 0.045);
-        context.strokeStyle = rgba(color, 0.34 + pulse * 0.16);
+        context.fillStyle = rgba(color, 0.018 + mix * 0.025);
+        context.strokeStyle = rgba(color, 0.20 + pulse * 0.10);
         context.lineWidth = 1;
         const stageWidth = Math.max(20, width * 0.055);
         const stageHeight = height * (0.34 + mix * 0.12);
@@ -231,7 +235,7 @@ export function XYSignalField({
 
         for (let bar = 0; bar < 3; bar += 1) {
           const barY = midY - stageHeight * 0.28 + bar * stageHeight * 0.28;
-          context.strokeStyle = rgba(color, 0.14 + bar * 0.05);
+          context.strokeStyle = rgba(color, 0.08 + bar * 0.035);
           context.beginPath();
           context.moveTo(stage.x - stageWidth * 0.36, barY);
           context.lineTo(stage.x + stageWidth * 0.36, barY);
@@ -241,8 +245,8 @@ export function XYSignalField({
       }
 
       if (stages.length === 0) {
-        context.strokeStyle = 'rgba(118,255,165,0.24)';
-        context.lineWidth = 1.3;
+        context.strokeStyle = rgba(baseSignal, 0.20);
+        context.lineWidth = 1.25;
         context.beginPath();
         for (let x = inputX; x <= outputX; x += 3) {
           const progress = (x - inputX) / Math.max(1, outputX - inputX);
@@ -258,15 +262,15 @@ export function XYSignalField({
         const p = (travel + packet * 0.2) % 1;
         const x = inputX + p * (outputX - inputX);
         const sample = sampleSignal(x);
-        context.fillStyle = rgba(sample.color, 0.55);
+        context.fillStyle = rgba(sample.color, 0.42);
         context.beginPath();
-        context.arc(x, sample.y, 1.3 + gestureEnergy * 0.6, 0, Math.PI * 2);
+        context.arc(x, sample.y, 1.1 + gestureEnergy * 0.55, 0, Math.PI * 2);
         context.fill();
       }
 
       context.save();
       context.globalCompositeOperation = 'lighter';
-      context.strokeStyle = `rgba(118,255,165,${0.22 + gestureEnergy * 0.35})`;
+      context.strokeStyle = rgba(CURSOR_COLOR, 0.18 + gestureEnergy * 0.30);
       context.lineWidth = 1;
       context.beginPath();
       context.arc(cursorPx, cursorPy, 6 + gestureEnergy * 2.5, 0, Math.PI * 2);
