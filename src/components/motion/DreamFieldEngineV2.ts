@@ -288,7 +288,7 @@ export class DreamFieldEngine {
     const ground = y > 0.18;
     const trunkCenter = Math.sin((y + 0.4) * 4 + t * 0.7) * 0.04;
     const trunk = 1 - smoothstep(0.025, 0.10 + atmos * 0.035, Math.abs(x - trunkCenter));
-    const heightMask = smoothstep(0.75, -0.85, y);
+    const heightMask = 1 - smoothstep(0.70, 0.94, y);
 
     let branches = 0;
     for (let level = 0; level < 4; level += 1) {
@@ -349,7 +349,8 @@ export class DreamFieldEngine {
     const farRidge = 1 - smoothstep(0.025, 0.085, Math.abs(y - farY));
 
     const valleyGlow = smoothstep(ridgeY - 0.12, ridgeY + 0.42, y) * (1 - smoothstep(ridgeY + 0.22, 1.1, y));
-    const sky = smoothstep(0.52, 0.82, fbm(x * 2.4 + t * 0.08, y * 2.4 - t * 0.06)) * smoothstep(ridgeY, -1.0, y);
+    const skyMask = 1 - smoothstep(ridgeY - 0.08, ridgeY + 0.10, y);
+    const sky = smoothstep(0.52, 0.82, fbm(x * 2.4 + t * 0.08, y * 2.4 - t * 0.06)) * skyMask;
     const shoreline = 1 - smoothstep(0.015, 0.05, Math.abs(y - 0.42 - Math.sin(x * 2.1 + t * 0.25) * 0.04 * (0.4 + drift)));
     return clamp01(ridge * 0.86 + farRidge * 0.45 + valleyGlow * 0.18 + sky * 0.15 + shoreline * drift * 0.22);
   }
