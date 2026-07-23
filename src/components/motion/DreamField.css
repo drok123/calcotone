@@ -1,8 +1,16 @@
 .xy-signal-field {
-  filter: brightness(1.18) contrast(1.08) saturate(0.94);
+  filter:
+    brightness(1.72)
+    contrast(1.03)
+    saturate(0.98)
+    drop-shadow(0 0 5px rgba(210, 226, 216, 0.16));
 }
 
 .xy-pad.is-dragging .xy-signal-field,
 .xy-pad.patch-target-active .xy-signal-field {
-  filter: brightness(1.28) contrast(1.1) saturate(0.98);
+  filter:
+    brightness(1.92)
+    contrast(1.04)
+    saturate(1.02)
+    drop-shadow(0 0 7px rgba(226, 182, 126, 0.20));
 }
