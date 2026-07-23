@@ -1,0 +1,12 @@
+.dsp-viewport {
+  overflow: hidden;
+}
+
+.dsp-viewport canvas {
+  transform: scaleX(1.22) scaleY(1.04);
+  transform-origin: 50% 50%;
+}
+
+.dsp-viewport .viewport-glass {
+  inset: 3px 7px;
+}
