@@ -207,7 +207,7 @@
 
 /* --------------------------------------------------------------------------
    ART-FIRST MODULE BEAUTY PASS
-   The screen is the hero. Controls become a compact lower deck.
+   Simple geometry: one large display, then a natural 3 x 2 control grid.
    -------------------------------------------------------------------------- */
 
 .effect-module {
@@ -307,14 +307,13 @@
 }
 .effect-module.enabled .module-toggle span { transform: translateX(14px); }
 
-/* Make every animation a real full-width piece of glass, not a 300px canvas sitting
-   inside a wider card. ResizeObserver in ModuleViewport automatically follows this. */
+/* The display simply gets taller. No fixed faceplate height and no absolute control deck. */
 .dsp-viewport {
   position: relative;
   width: 100%;
-  height: clamp(178px, 13vw, 214px);
-  min-height: 178px;
-  margin: 0 0 8px;
+  height: clamp(220px, 16vw, 270px);
+  min-height: 220px;
+  margin: 0 0 12px;
   overflow: hidden;
   isolation: isolate;
   border: 1px solid rgba(73, 84, 90, .80);
@@ -391,14 +390,14 @@
   backdrop-filter: blur(2px);
 }
 
-/* Compact control deck: roughly 25% smaller knobs and much less dead vertical space. */
+/* Six controls naturally become the two rows shown in the reference: 3 across, 2 down. */
 .knob-row {
   position: relative;
-  grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: start;
-  gap: 6px 5px;
+  gap: 14px 16px;
   margin-top: 0;
-  padding: 8px 3px 1px;
+  padding: 10px 16px 2px;
   border-top: 1px solid rgba(255,255,255,.045);
   background: linear-gradient(180deg, rgba(255,255,255,.012), transparent 68%);
 }
@@ -492,29 +491,32 @@
 }
 .knob-patch-jack b { font-size: .46rem; }
 
-/* The artwork gets a little more room on large monitors without making the rack giant. */
 @media (min-width: 1500px) {
   .dsp-viewport {
-    height: 214px;
-    min-height: 214px;
+    height: 270px;
+    min-height: 270px;
   }
 }
 
 @media (max-width: 1180px) {
   .effect-module { min-height: 338px; }
   .dsp-viewport {
-    height: 170px;
-    min-height: 170px;
+    height: 205px;
+    min-height: 205px;
   }
-  .knob-row { grid-template-columns: repeat(auto-fit, minmax(64px, 1fr)); }
+  .knob-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px 10px;
+    padding-inline: 10px;
+  }
 }
 
 @media (max-width: 760px) {
   .module-grid { grid-template-columns: 1fr; }
   .effect-module { min-height: 344px; }
   .dsp-viewport {
-    height: 184px;
-    min-height: 184px;
+    height: 220px;
+    min-height: 220px;
   }
   .module-header-control { max-width: 46%; }
 }
