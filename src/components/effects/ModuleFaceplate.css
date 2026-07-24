@@ -1,59 +1,70 @@
-/* CALCOTONE module faceplate — large display, dense 3x2 hardware control bank.
-   Geometry follows the painted layout reference: screen dominates the faceplate,
-   two compact rows of three knobs live at the bottom, and patch jacks hug the knob rim. */
+/* CALCOTONE module faceplate — geometry matched to the painted reference.
+   Header -> dominant display -> dense 3x2 hardware bank along the bottom. */
 
 .effect-module {
-  min-height: 438px;
+  /* A definite faceplate height keeps the screen/control ratio stable instead of letting
+     flexbox make a different-looking module at every viewport width. */
+  height: clamp(418px, 29vw, 462px);
+  min-height: 418px;
 }
 
-/* Extend the existing screen downward instead of growing it sideways. The viewport keeps
-   the same card margins/header relationship while taking the vertical space recovered
-   from the compact control bank below. */
+/* The painted blue rectangle: preserve the normal left/right inset, but make the display
+   occupy roughly the upper half of the usable faceplate and extend its lower edge down. */
 .dsp-viewport {
-  flex: 1 1 320px;
+  flex: 1 1 auto;
   width: 100%;
   height: auto;
-  min-height: 304px;
-  margin: 0 0 6px;
+  min-height: 0;
+  margin: 0 0 4px;
 }
 
-/* Exactly three controls per row. Fixed slots prevent the browser from stretching the
-   knobs across the whole module and make every six-control module read as a 3 x 2 bank. */
+/* One physical control bank, not six controls distributed across the whole module.
+   Three columns stay centered under the display. */
 .knob-row {
-  flex: 0 0 auto;
-  grid-template-columns: repeat(3, 66px);
-  grid-auto-rows: 68px;
+  flex: 0 0 126px;
+  display: grid;
+  grid-template-columns: repeat(3, 68px);
+  grid-template-rows: repeat(2, 60px);
   justify-content: center;
   align-content: end;
   align-items: start;
-  column-gap: clamp(24px, 3vw, 48px);
-  row-gap: 3px;
+  column-gap: clamp(30px, 3.3vw, 52px);
+  row-gap: 1px;
   margin: 0;
-  padding: 5px 6px 1px;
+  padding: 4px 6px 0;
+  border-top-color: rgba(255,255,255,.035);
 }
 
-/* Collapse each control vertically around the 56px knob. The readout floats instead of
-   reserving a permanent row, so the second knob row can sit close under the first. */
+/* Keep the 56px knob size the user already approved. The control box is only slightly
+   taller than the knob so adjacent rows visually belong together. */
 .knob-control {
   position: relative;
   display: block;
-  width: 66px;
-  min-width: 66px;
-  height: 68px;
+  width: 68px;
+  min-width: 68px;
+  height: 60px;
 }
 
 .knob-shell {
   position: absolute;
   top: 0;
-  left: 5px;
+  left: 6px;
+  width: 56px;
+  height: 56px;
 }
 
+/* Labels sit just beneath the knob face without forcing a large grid row. */
 .knob-label {
   position: absolute;
+  z-index: 9;
   left: 50%;
-  bottom: 0;
-  max-width: 66px;
+  top: 48px;
+  bottom: auto;
+  max-width: 68px;
+  padding: 0 2px;
   transform: translateX(-50%);
+  color: #c8cfcd;
+  background: linear-gradient(90deg, transparent, rgba(17,20,21,.76) 18% 82%, transparent);
   text-align: center;
 }
 
@@ -61,14 +72,16 @@
   transform: translateX(-50%) translateY(-1px);
 }
 
+/* Value readout is contextual rather than structural: it floats over the upper rim while
+   hovering/adjusting and therefore consumes zero permanent faceplate height. */
 .knob-value {
   position: absolute;
   z-index: 12;
-  top: -12px;
+  top: -11px;
   left: 50%;
   min-width: 46px;
   max-width: 66px;
-  opacity: .28;
+  opacity: 0;
   pointer-events: none;
   transform: translateX(-50%);
   transition: opacity 120ms ease, transform 120ms ease, border-color 140ms ease;
@@ -81,13 +94,12 @@
   transform: translateX(-50%) translateY(-2px);
 }
 
-/* Painted yellow-jack position: immediately outside the knob's right rim and centered
-   vertically on the control, not parked in the empty space between columns. */
+/* Yellow circles in the mock: jack on the knob's three-o'clock edge. */
 .knob-patch-jack {
   top: 20px;
-  left: calc(50% + 25px);
-  width: 16px;
-  height: 16px;
+  left: 55px;
+  width: 15px;
+  height: 15px;
 }
 
 .knob-patch-jack > span {
@@ -96,58 +108,53 @@
 }
 
 .knob-patch-jack b {
-  font-size: .40rem;
+  font-size: .39rem;
 }
 
-/* On the large desktop layout, match the painted blue rectangle aggressively: almost
-   all available module depth above the control bank belongs to the animation screen. */
+/* On the wide desktop rack shown in the reference, give the screen slightly more than half
+   of the faceplate while retaining the same compact two-row bank. */
 @media (min-width: 1500px) {
   .effect-module {
-    min-height: 468px;
-  }
-
-  .dsp-viewport {
-    flex-basis: 372px;
-    min-height: 352px;
+    height: clamp(448px, 27vw, 486px);
+    min-height: 448px;
   }
 
   .knob-row {
-    column-gap: 46px;
+    flex-basis: 126px;
+    column-gap: 50px;
   }
 }
 
 @media (max-width: 1180px) {
   .effect-module {
-    min-height: 418px;
-  }
-
-  .dsp-viewport {
-    flex-basis: 286px;
-    min-height: 270px;
+    height: 404px;
+    min-height: 404px;
   }
 
   .knob-row {
-    grid-template-columns: repeat(3, 64px);
-    column-gap: clamp(14px, 2.2vw, 28px);
+    flex-basis: 124px;
+    grid-template-columns: repeat(3, 66px);
+    column-gap: clamp(20px, 2.4vw, 34px);
   }
 
   .knob-control {
-    width: 64px;
-    min-width: 64px;
+    width: 66px;
+    min-width: 66px;
+  }
+
+  .knob-shell {
+    left: 5px;
   }
 }
 
 @media (max-width: 760px) {
   .effect-module {
-    min-height: 430px;
-  }
-
-  .dsp-viewport {
-    flex-basis: 292px;
-    min-height: 278px;
+    height: 426px;
+    min-height: 426px;
   }
 
   .knob-row {
-    column-gap: clamp(20px, 7vw, 44px);
+    flex-basis: 126px;
+    column-gap: clamp(24px, 7vw, 46px);
   }
 }
