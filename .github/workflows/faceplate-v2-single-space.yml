@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-permissions:
-  contents: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -20,17 +17,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Apply v2 migration
-        run: python scripts/faceplate_v2_single_space.py
       - name: Install dependencies
         run: npm ci --silent
       - name: Build CALCOTONE
         run: npm run build
-      - name: Commit verified source only
-        if: github.event_name == 'push'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/ui/faceplateLayout.ts src/components/effects/EffectModule.tsx
-          git commit -m "Use one coordinate space for faceplate editing"
-          git push origin faceplate-v2-single-space
