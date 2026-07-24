@@ -90,9 +90,12 @@ expect(
     'this.outputGain.connect(this.safetyClipper);',
     'this.safetyClipper.connect(this.limiter);',
     'this.limiter.connect(this.analyser);',
-    'this.analyser.connect(this.context.destination);',
   ]),
-  'master chain order changed: rack -> DC -> output gain -> clipper -> limiter -> analyser -> speakers is required',
+  'protected master chain changed: rack -> DC -> output gain -> clipper -> limiter -> analyser is required',
+);
+expect(
+  engine.includes('this.analyser.connect(this.context.destination);'),
+  'protected analyser output is no longer connected to the speakers',
 );
 expect(
   engine.includes('new WavRecorder(this.context, this.analyser)'),
