@@ -20,13 +20,12 @@ const IDLE_STATE: VisualAudioState = {
   time: 0,
 };
 
+const REACT_TELEMETRY_HZ = 10;
 let latestVisualAudioState: VisualAudioState = IDLE_STATE;
 
 /**
- * The canvas Dream Field renders on the shared viewport scheduler instead of
- * React's render cadence. Exposing the latest analyser snapshot lets that
- * canvas consume the same audio state without causing another component tree
- * update on every animation frame.
+ * Canvas renderers consume the freshest analyser snapshot without routing every animation
+ * frame through React. The hook still returns low-rate telemetry for CSS/UI consumers.
  */
 export function getLatestVisualAudioState(): VisualAudioState {
   return latestVisualAudioState;
@@ -44,12 +43,21 @@ export function useVisualEngine(
   useEffect(() => {
     let frame = 0;
     let lastFrame = 0;
-    const interval = 1000 / frameRate;
+    let lastReactPublish = Number.NEGATIVE_INFINITY;
+    const interval = 1000 / Math.max(1, frameRate);
+    const reactInterval = 1000 / REACT_TELEMETRY_HZ;
     const data = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
 
-    const publish = (next: VisualAudioState) => {
+    const publish = (next: VisualAudioState, timestamp: number) => {
+      // Always keep the realtime canvas snapshot fresh.
       latestVisualAudioState = next;
-      setState(next);
+
+      // React only needs telemetry fast enough for LEDs/CSS state. Keeping it off the
+      // 30–45 fps canvas clock avoids re-rendering the entire workstation every frame.
+      if (timestamp - lastReactPublish >= reactInterval) {
+        lastReactPublish = timestamp;
+        setState(next);
+      }
     };
 
     const render = (timestamp: number) => {
@@ -69,7 +77,7 @@ export function useVisualEngine(
         smoothedBands.current.mid *= 0.9;
         smoothedBands.current.high *= 0.9;
         previousLevel.current *= 0.9;
-        publish(next);
+        publish(next, timestamp);
         return;
       }
 
@@ -81,12 +89,11 @@ export function useVisualEngine(
         return safeEnd > start ? total / (safeEnd - start) / 255 : 0;
       };
 
-      const rawLow = average(1, Math.floor(data.length * 0.12));
-      const rawMid = average(
-        Math.floor(data.length * 0.12),
-        Math.floor(data.length * 0.48)
-      );
-      const rawHigh = average(Math.floor(data.length * 0.48), data.length);
+      const lowEnd = Math.floor(data.length * 0.12);
+      const midEnd = Math.floor(data.length * 0.48);
+      const rawLow = average(1, lowEnd);
+      const rawMid = average(lowEnd, midEnd);
+      const rawHigh = average(midEnd, data.length);
 
       // Light attack/release smoothing keeps the physics input musical while
       // still allowing kicks and snares to create useful impulses.
@@ -101,19 +108,24 @@ export function useVisualEngine(
 
       const level = Math.min(1, low * 0.40 + mid * 0.43 + high * 0.17);
       const levelRise = Math.max(0, level - previousLevel.current);
-      const spectralSnap = Math.max(0, rawHigh - high) * 0.45 + Math.max(0, rawMid - mid) * 0.25;
+      const spectralSnap =
+        Math.max(0, rawHigh - high) * 0.45 +
+        Math.max(0, rawMid - mid) * 0.25;
       const transient = Math.min(1, levelRise * 8.5 + spectralSnap * 2.8);
       previousLevel.current = previousLevel.current * 0.66 + level * 0.34;
 
-      publish({
-        level,
-        low,
-        mid,
-        high,
-        transient,
-        driftPhase: (timestamp * 0.00008) % 1,
-        time: timestamp / 1000,
-      });
+      publish(
+        {
+          level,
+          low,
+          mid,
+          high,
+          transient,
+          driftPhase: (timestamp * 0.00008) % 1,
+          time: timestamp / 1000,
+        },
+        timestamp
+      );
     };
 
     frame = requestAnimationFrame(render);
