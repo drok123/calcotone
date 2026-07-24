@@ -257,7 +257,8 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
   }
 
   updateEmergencyGuard(callbackMs, callbackBudgetMs) {
-    const load = callbackBudgetMs > 0 ? callbackMs / callbackBudgetMs : 0;
+    if (callbackBudgetMs <= 0) return;
+    const load = callbackMs / callbackBudgetMs;
     const stressed = load > 0.72;
     const relaxed = load < 0.34;
     this.guardStressBlocks = stressed ? this.guardStressBlocks + 1 : 0;
@@ -273,6 +274,8 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
   }
 
   process(inputs, outputs, parameters) {
+    const clock = globalThis.performance;
+    const startedAt = clock && typeof clock.now === 'function' ? clock.now() : null;
     const input = inputs[0];
     const output = outputs[0];
     if (!output?.[0]) return true;
@@ -399,14 +402,15 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       this.writeIndex = (this.writeIndex + 1) & this.mask;
     }
 
-    const callbackBudgetMs = outL.length / sampleRate * 1000;
-    const callbackMs = 0;
+    const rawBudgetMs = outL.length / sampleRate * 1000;
+    const callbackMs = startedAt === null ? 0 : Math.max(0, clock.now() - startedAt);
+    const callbackBudgetMs = startedAt === null ? 0 : rawBudgetMs;
     this.updateEmergencyGuard(callbackMs, callbackBudgetMs);
     this.profileBlocks += 1;
     this.profileTotalMs += callbackMs;
     this.profileTotalSquaredMs += callbackMs * callbackMs;
     this.profileWorstMs = Math.max(this.profileWorstMs, callbackMs);
-    if (callbackMs > callbackBudgetMs) this.profileOverruns += 1;
+    if (callbackBudgetMs > 0 && callbackMs > callbackBudgetMs) this.profileOverruns += 1;
     if (this.profileBlocks >= 160) {
       let activeVoices = 0;
       for (let i = 0; i < this.effectiveVoiceLimit; i += 1) if (this.voices[i].active) activeVoices += 1;

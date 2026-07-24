@@ -141,7 +141,6 @@ export class InputMatrix {
     let lr = 0;
     let rl = 0;
     let rr = 0;
-    const sum = Math.SQRT1_2;
 
     switch (this.mode) {
       case 'stereo':
@@ -158,10 +157,12 @@ export class InputMatrix {
         rr = 1;
         break;
       case 'sum-mono':
-        ll = sum;
-        rl = sum;
-        lr = sum;
-        rr = sum;
+        // Peak-normalized mono fold-down. 0.5 + 0.5 keeps correlated stereo/dual-mono
+        // at unity instead of the +3 dB jump produced by equal-power coefficients.
+        ll = 0.5;
+        rl = 0.5;
+        lr = 0.5;
+        rr = 0.5;
         break;
       case 'swap':
         lr = 1;

@@ -1,32 +1,46 @@
-# React + TypeScript + Vite
+# CALCOTONE
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+CALCOTONE is a browser-based stereo sound-design processor built as a six-module rack: **Ember → Drift → Halo** and **Atmos → Grain → Artifact**, with click-safe reordering inside each rail, an XY Dream Field modulation system, shared Dream Buffer memory, hardware-inspired coloration modes, and lossless 24-bit stereo capture.
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Before merging a change, run:
+
+```bash
+npm run check
+```
+
+`check` runs the structural/DSP invariant audit, Oxlint, TypeScript, and the Vite production build.
+
+## Signal-path invariants
+
+The audible master path is intentionally explicit:
+
+`input → stereo matrix → input gain → serial rack → Dream returns → DC block → output makeup → soft ceiling → limiter → analyser/recorder → speakers`
+
+Important rules:
+
+- User gain never occurs after the final master protection stage.
+- Hardware/insert coloration uses unity-preserving complementary dry/processed blending; spatial and destructive effects use equal-power wet/dry blending.
+- Dream cross-routes are filtered, delayed, hard-capped texture couplings rather than unrestricted feedback paths.
+- UI state is authoritative at power-up and is synchronized into the DSP graph before the startup self-check passes.
+- Audio topology stays fixed when performance quality changes; quality modes change processing cost, not the signal route.
+
+## Architecture
+
+- `src/audio/` — Web Audio graph, input matrix, recorder, Dream Buffer, DSP effect models and AudioWorklet coordination.
+- `public/*processor.js` — realtime AudioWorklet processors. Keep callback work deterministic and allocation-light.
+- `src/components/effects/` — rack modules, viewports and shared viewport scheduler.
+- `src/components/motion/` — XY Dream Field and motion-route UI.
+- `src/ui/` — UI-domain math, motion rules, faceplate layout state and persistence.
+- `src/visual/` — analyser-derived visual telemetry shared by the canvas renderers.
+- `scripts/audit.mjs` — cheap regression checks for structural and signal-path invariants.
+
+## DSP safety philosophy
+
+CALCOTONE should get strange because the effect model is strange, not because a hidden gain sum, discontinuity, NaN, or runaway loop slipped into the graph. Safety stages are therefore intended to be transparent until needed, while individual algorithms own their musical compression, saturation, feedback character and reconstruction behavior.

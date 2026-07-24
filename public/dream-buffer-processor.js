@@ -23,6 +23,22 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
     return buffer[readIndex];
   }
 
+  protectSample(value) {
+    if (!Number.isFinite(value) || Math.abs(value) < 1e-20) return 0;
+    const magnitude = Math.abs(value);
+    const knee = 0.98;
+    if (magnitude <= knee) return value;
+
+    // Continuous soft ceiling: value and first derivative both meet the linear path
+    // at the knee, avoiding the large discontinuity created by switching to tanh()
+    // only after an arbitrary threshold. The history remains nearly linear below
+    // full scale while pathological summed sends asymptotically stop around 1.18.
+    const ceiling = 1.18;
+    const range = ceiling - knee;
+    const limited = knee + range * Math.tanh((magnitude - knee) / range);
+    return Math.sign(value) * limited;
+  }
+
   process(inputs, outputs) {
     const input = inputs[0];
     const inL = input && input[0];
@@ -30,17 +46,8 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
     const frames = outputs[0]?.[0]?.length || 128;
 
     for (let i = 0; i < frames; i += 1) {
-      let l = inL ? inL[i] || 0 : 0;
-      let r = inR ? inR[i] || 0 : l;
-      if (!Number.isFinite(l)) l = 0;
-      if (!Number.isFinite(r)) r = 0;
-
-      // The memory store itself is protected but intentionally almost linear.
-      // tanh only catches pathological summed sends before they poison history.
-      if (Math.abs(l) > 1.25) l = Math.tanh(l);
-      if (Math.abs(r) > 1.25) r = Math.tanh(r);
-      if (Math.abs(l) < 1e-20) l = 0;
-      if (Math.abs(r) < 1e-20) r = 0;
+      const l = this.protectSample(inL ? inL[i] || 0 : 0);
+      const r = this.protectSample(inR ? inR[i] || 0 : l);
 
       this.left[this.writeIndex] = l;
       this.right[this.writeIndex] = r;

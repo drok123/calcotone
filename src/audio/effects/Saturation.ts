@@ -71,6 +71,7 @@ export class SaturationEffect extends BaseEffect {
   private character = 0.22;
   private dynamics = 0.38;
   private toneHz = 9500;
+  private emberMix = MIX.defaultValue;
 
   public constructor(context: AudioContext) {
     super(context);
@@ -102,7 +103,7 @@ export class SaturationEffect extends BaseEffect {
     this.input.connect(this.preGain);
     this.preGain.connect(this.hp);
 
-    // Generic Ember branch: creative saturation modes.
+    // Generic Ember branch: creative saturation plus topology-informed insert modes.
     this.hp.connect(this.shaper);
     this.shaper.connect(this.genericGain);
     this.genericGain.connect(this.tone);
@@ -137,6 +138,7 @@ export class SaturationEffect extends BaseEffect {
       this.parameterValues.set(id, next);
       this.mode = EMBER_MODE_ORDER[Math.round(next)] ?? 'velvet';
       this.apply(now);
+      this.applyMixRouting(now);
       return;
     }
 
@@ -146,9 +148,9 @@ export class SaturationEffect extends BaseEffect {
     else if (id === 'character') this.character = clampParameter(value, CHARACTER);
     else if (id === 'dynamics') this.dynamics = clampParameter(value, DYNAMICS);
     else if (id === 'mix') {
-      const next = clampParameter(value, MIX);
-      this.parameterValues.set(id, next);
-      this.setWetDryMix(next);
+      this.emberMix = clampParameter(value, MIX);
+      this.parameterValues.set(id, this.emberMix);
+      this.applyMixRouting(now);
       return;
     } else {
       console.warn(`Unknown parameter "${id}" for ${this.name}.`);
@@ -170,6 +172,26 @@ export class SaturationEffect extends BaseEffect {
     this.apply(now);
   }
 
+  private isInsertColorMode(): boolean {
+    return this.mode === 'tube' ||
+      this.mode === 'console' ||
+      this.mode === 'transformer' ||
+      NAMED_TUBE_MODEL[this.mode] !== undefined;
+  }
+
+  private applyMixRouting(now = this.context.currentTime): void {
+    if (!this.isInsertColorMode()) {
+      this.setWetDryMix(this.emberMix);
+      return;
+    }
+
+    // Insert-style coloration is highly correlated with the source. Linear complementary
+    // gains preserve unity for a level-matched transfer instead of producing a +3 dB-ish
+    // parallel sum at middle Mix values.
+    this.dryGain.gain.setTargetAtTime(1 - this.emberMix, now, 0.025);
+    this.wetGain.gain.setTargetAtTime(this.emberMix, now, 0.025);
+  }
+
   private apply(now = this.context.currentTime): void {
     const tubeModel = NAMED_TUBE_MODEL[this.mode] ?? 'bypass';
     const namedTube = tubeModel !== 'bypass';
@@ -179,17 +201,35 @@ export class SaturationEffect extends BaseEffect {
 
     if (namedTube) {
       // Named Tube Lab models are rack coloration stages, not distortion effects.
-      // They retain unity-ish gain and let the reusable tube core supply only a
-      // restrained nonlinear residual, bias memory and gentle transient rounding.
       this.preGain.gain.setTargetAtTime(1, now, 0.012);
       this.genericGain.gain.setTargetAtTime(0, now, 0.018);
       this.tubeGain.gain.setTargetAtTime(1, now, 0.018);
       this.shaper.curve = getIdentityCurve();
-      this.tone.frequency.setTargetAtTime(Math.max(2200, this.toneHz * (1 - this.heat * 0.055)), now, 0.025);
-      this.presence.gain.setTargetAtTime((this.character - 0.5) * 0.9, now, 0.025);
-      this.presence.frequency.setTargetAtTime(3000 + this.character * 1600, now, 0.025);
-      this.compressor.threshold.setTargetAtTime(-1.2 - this.dynamics * 2.8, now, 0.03);
-      this.compressor.ratio.setTargetAtTime(1.02 + this.dynamics * 0.42, now, 0.03);
+      this.tone.frequency.setTargetAtTime(
+        Math.max(2200, this.toneHz * (1 - this.heat * 0.055)),
+        now,
+        0.025
+      );
+      this.presence.gain.setTargetAtTime(
+        (this.character - 0.5) * 0.9,
+        now,
+        0.025
+      );
+      this.presence.frequency.setTargetAtTime(
+        3000 + this.character * 1600,
+        now,
+        0.025
+      );
+      this.compressor.threshold.setTargetAtTime(
+        -1.2 - this.dynamics * 2.8,
+        now,
+        0.03
+      );
+      this.compressor.ratio.setTargetAtTime(
+        1.02 + this.dynamics * 0.42,
+        now,
+        0.03
+      );
       this.post.gain.setTargetAtTime(0.99 - this.drive * 0.025, now, 0.02);
       return;
     }
@@ -216,13 +256,50 @@ export class SaturationEffect extends BaseEffect {
     const input = fallbackMode === 'tube'
       ? 1 + Math.pow(this.drive, 1.5) * 1.15 + this.heat * 0.24
       : 1 + Math.pow(this.drive, 1.35) * (4.2 * aggression) + this.heat * 1.4;
+
     this.preGain.gain.setTargetAtTime(input, now, 0.012);
-    this.tone.frequency.setTargetAtTime(Math.max(1200, this.toneHz * (1 - this.heat * (fallbackMode === 'tube' ? 0.07 : 0.18))), now, 0.025);
-    this.presence.gain.setTargetAtTime((fallbackMode === 'exciter' ? 5 : fallbackMode === 'tube' ? 0.8 : 2.2) * (this.character - 0.35), now, 0.025);
-    this.presence.frequency.setTargetAtTime(fallbackMode === 'transformer' ? 1700 : 3200 + this.character * 2600, now, 0.025);
-    this.compressor.threshold.setTargetAtTime(fallbackMode === 'tube' ? -2 - this.dynamics * 4 : -4 - this.dynamics * 12, now, 0.03);
-    this.compressor.ratio.setTargetAtTime(fallbackMode === 'tube' ? 1.05 + this.dynamics * 0.65 : 1.2 + this.dynamics * 3.8, now, 0.03);
-    this.post.gain.setTargetAtTime(fallbackMode === 'tube' ? 0.98 / Math.pow(input, 0.22) : 1 / Math.pow(input, 0.72), now, 0.02);
+    this.tone.frequency.setTargetAtTime(
+      Math.max(
+        1200,
+        this.toneHz * (1 - this.heat * (fallbackMode === 'tube' ? 0.07 : 0.18))
+      ),
+      now,
+      0.025
+    );
+    this.presence.gain.setTargetAtTime(
+      (fallbackMode === 'exciter' ? 5 : fallbackMode === 'tube' ? 0.8 : 2.2) *
+        (this.character - 0.35),
+      now,
+      0.025
+    );
+    this.presence.frequency.setTargetAtTime(
+      fallbackMode === 'transformer' ? 1700 : 3200 + this.character * 2600,
+      now,
+      0.025
+    );
+
+    if (fallbackMode === 'tube') {
+      this.compressor.threshold.setTargetAtTime(-2 - this.dynamics * 4, now, 0.03);
+      this.compressor.ratio.setTargetAtTime(1.05 + this.dynamics * 0.65, now, 0.03);
+    } else if (fallbackMode === 'console') {
+      this.compressor.threshold.setTargetAtTime(-3 - this.dynamics * 5, now, 0.03);
+      this.compressor.ratio.setTargetAtTime(1.1 + this.dynamics * 1.2, now, 0.03);
+    } else if (fallbackMode === 'transformer') {
+      this.compressor.threshold.setTargetAtTime(-3.5 - this.dynamics * 6, now, 0.03);
+      this.compressor.ratio.setTargetAtTime(1.15 + this.dynamics * 1.6, now, 0.03);
+    } else {
+      this.compressor.threshold.setTargetAtTime(-4 - this.dynamics * 12, now, 0.03);
+      this.compressor.ratio.setTargetAtTime(1.2 + this.dynamics * 3.8, now, 0.03);
+    }
+
+    const insertMode =
+      fallbackMode === 'tube' ||
+      fallbackMode === 'console' ||
+      fallbackMode === 'transformer';
+    const postGain = insertMode
+      ? 0.985 / Math.max(1, input * getCurveSmallSignalSlope(fallbackMode, this.drive, this.heat, this.character))
+      : 1 / Math.pow(input, 0.72);
+    this.post.gain.setTargetAtTime(postGain, now, 0.02);
     this.shaper.curve = getCurve(fallbackMode, this.drive, this.heat, this.character);
   }
 
@@ -248,18 +325,19 @@ function getIdentityCurve(): Float32Array<ArrayBuffer> {
   if (identityCurve) return identityCurve;
   const samples = 2048;
   const curve = new Float32Array(samples);
-  for (let index = 0; index < samples; index += 1) curve[index] = (index / (samples - 1)) * 2 - 1;
+  for (let index = 0; index < samples; index += 1) {
+    curve[index] = (index / (samples - 1)) * 2 - 1;
+  }
   identityCurve = curve;
   return curve;
 }
 
-function getCurve(mode: EmberMode, drive: number, heat: number, character: number): Float32Array<ArrayBuffer> {
-  const key = `${mode}:${Math.round(drive * 64)}:${Math.round(heat * 32)}:${Math.round(character * 32)}`;
-  const hit = curveCache.get(key);
-  if (hit) return hit;
-
-  const samples = 8192;
-  const curve = new Float32Array(samples);
+function getCurveShape(
+  mode: EmberMode,
+  drive: number,
+  heat: number,
+  character: number
+): { amount: number; asymmetry: number } {
   const asymmetry = mode === 'tube'
     ? 0.035 + 0.055 * character
     : mode === 'transformer'
@@ -270,19 +348,72 @@ function getCurve(mode: EmberMode, drive: number, heat: number, character: numbe
   const amount = mode === 'tube'
     ? 0.95 + drive * 1.55 + heat * 0.55
     : 1.2 + drive * 7 + heat * 3 + (mode === 'furnace' ? 5 : 0);
+  return { amount, asymmetry };
+}
+
+function getCurveSmallSignalSlope(
+  mode: EmberMode,
+  drive: number,
+  heat: number,
+  character: number
+): number {
+  const { amount, asymmetry } = getCurveShape(mode, drive, heat, character);
+  const tanhNorm = Math.max(1e-6, Math.tanh(amount));
+  // Average the positive/negative zero-crossing slopes for the asymmetric transfer.
+  const shapedSlope = (amount / tanhNorm) * (1 + asymmetry * 0.5);
+
+  if (mode === 'tube') return 0.8 + shapedSlope * 0.2;
+  if (mode === 'console') {
+    const atanAmount = amount * 1.3;
+    const atanSlope = atanAmount / Math.max(1e-6, Math.atan(atanAmount));
+    return shapedSlope * 0.72 + atanSlope * 0.28;
+  }
+  if (mode === 'transformer') {
+    return shapedSlope + Math.PI * 0.035 * heat;
+  }
+  return shapedSlope;
+}
+
+function getCurve(
+  mode: EmberMode,
+  drive: number,
+  heat: number,
+  character: number
+): Float32Array<ArrayBuffer> {
+  const key = `${mode}:${Math.round(drive * 64)}:${Math.round(heat * 32)}:${Math.round(character * 32)}`;
+  const hit = curveCache.get(key);
+  if (hit) return hit;
+
+  const samples = 8192;
+  const curve = new Float32Array(samples);
+  const { amount, asymmetry } = getCurveShape(mode, drive, heat, character);
 
   for (let index = 0; index < samples; index += 1) {
     const x = (index / (samples - 1)) * 2 - 1;
-    const shaped = Math.tanh((x + Math.max(0, x) * asymmetry) * amount) / Math.tanh(amount);
+    const shaped =
+      Math.tanh((x + Math.max(0, x) * asymmetry) * amount) /
+      Math.tanh(amount);
     let y = mode === 'tube' ? x * 0.80 + shaped * 0.20 : shaped;
-    if (mode === 'console') y = 0.72 * y + 0.28 * Math.atan(x * amount * 1.3) / Math.atan(amount * 1.3);
-    if (mode === 'transformer') y += Math.sin(x * Math.PI) * 0.035 * heat;
-    if (mode === 'exciter') y = 0.82 * y + 0.18 * Math.tanh(x * amount * 2.4);
-    if (mode === 'broken') y = Math.tanh((y + Math.sin(x * 17) * 0.06 * character) * 1.15);
+    if (mode === 'console') {
+      y =
+        0.72 * y +
+        0.28 * Math.atan(x * amount * 1.3) / Math.atan(amount * 1.3);
+    }
+    if (mode === 'transformer') {
+      y += Math.sin(x * Math.PI) * 0.035 * heat;
+    }
+    if (mode === 'exciter') {
+      y = 0.82 * y + 0.18 * Math.tanh(x * amount * 2.4);
+    }
+    if (mode === 'broken') {
+      y = Math.tanh((y + Math.sin(x * 17) * 0.06 * character) * 1.15);
+    }
     curve[index] = Math.max(-1, Math.min(1, y));
   }
 
   curveCache.set(key, curve);
-  if (curveCache.size > 180) curveCache.delete(curveCache.keys().next().value!);
+  if (curveCache.size > 180) {
+    curveCache.delete(curveCache.keys().next().value!);
+  }
   return curve;
 }
