@@ -189,7 +189,7 @@ export function EffectModule({
                 value={module.mediaMode ?? 'cassette'}
                 onChange={(event: ReactChangeEvent<HTMLSelectElement>) => onMediaModeChange(event.target.value as MediaMode)}
               >
-                {MEDIA_MODE_ORDER.map((mode) => <option key={mode} value={mode}>{mode.charAt(0).toUpperCase()+mode.slice(1)}</option>)}
+                {MEDIA_MODE_ORDER.map((mode) => <option key={mode} value={mode}>{formatMediaMode(mode)}</option>)}
               </select>
             </label>
           )}
@@ -217,13 +217,14 @@ export function EffectModule({
           const effectiveValue = assignment
             ? getEffectiveMotionValue(parameter.value, assignment, xyPosition)
             : parameter.value;
+          const presentation = parameterPresentation(module, parameter.id, parameter.label, parameter.display, parameter.value);
           return (
           <Knob
             key={parameter.id}
-            label={parameter.label}
+            label={presentation.label}
             value={parameter.value}
             effectiveValue={effectiveValue}
-            display={parameter.display}
+            display={presentation.display}
             disabled={!module.available}
             patchTarget={`${module.id}.${parameter.id}`}
             assignment={assignment}
@@ -232,7 +233,7 @@ export function EffectModule({
             onPatchStart={(startX, startY, pointerX, pointerY) =>
               onPatchStart(
                 `${module.id}.${parameter.id}`,
-                `${module.name} ${parameter.label}`,
+                `${module.name} ${presentation.label}`,
                 startX,
                 startY,
                 pointerX,
@@ -254,4 +255,33 @@ export function EffectModule({
       )}
     </article>
   );
+}
+
+function formatMediaMode(mode: MediaMode): string {
+  if (mode === 'tascam424') return 'TASCAM 424 MKI';
+  return mode.charAt(0).toUpperCase() + mode.slice(1);
+}
+
+function parameterPresentation(
+  module: ModuleState,
+  parameterId: string,
+  label: string,
+  display: string,
+  value: number
+): { label: string; display: string } {
+  if (module.id !== 'media' || module.mediaMode !== 'tascam424') return { label, display };
+
+  if (parameterId === 'wear') return { label: 'Trim', display: `${Math.round(value * 100)}%` };
+  if (parameterId === 'wow') return { label: 'Low', display: `${format424Eq(value, 0.16)} dB` };
+  if (parameterId === 'noise') return { label: 'High', display: `${format424Eq(value, 0.10)} dB` };
+  if (parameterId === 'tone') return { label: 'Drive', display: `${Math.round(value * 100)}%` };
+  return { label, display };
+}
+
+function format424Eq(value: number, center: number): string {
+  const normalized = value >= center
+    ? (value - center) / Math.max(1e-6, 1 - center)
+    : (value - center) / Math.max(1e-6, center);
+  const db = normalized * 10;
+  return `${db >= 0 ? '+' : ''}${db.toFixed(1)}`;
 }
