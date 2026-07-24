@@ -33,6 +33,7 @@ import { LinearControl } from './components/controls/LinearControl';
 import { LevelMeter } from './components/meters/LevelMeter';
 import { SpectrumWaterfall } from './components/meters/SpectrumWaterfall';
 import { RecorderPanel, type RecordedTake } from './components/recorder/RecorderPanel';
+import { FaceplateLayoutEditor } from './components/layout/FaceplateLayoutEditor';
 import type { ModuleState, XYAssignment, XYAxis } from './ui/types';
 import { clamp } from './ui/math';
 import { shapeMotionSource } from './ui/motion';
@@ -1357,6 +1358,7 @@ export default function App() {
           <button type="button" className="profiler-toggle randomizer-toggle" onClick={randomizeActiveModules} title="Randomize only active modules within musically guarded ranges">RANDOM</button>
           <button type="button" className="profiler-toggle signal-randomizer-toggle" onClick={randomizeSignalOrder} title="Randomize the order of both three-module signal rails">SIGNAL RANDOM</button>
           <button type="button" className={`profiler-toggle ${explainMode ? 'active' : ''}`} aria-pressed={explainMode} onClick={() => setExplainMode((value) => !value)}>EXPLAIN</button>
+          <FaceplateLayoutEditor />
           <button type="button" className={`profiler-toggle ${profilerOpen ? 'active' : ''}`} aria-pressed={profilerOpen} onClick={() => setProfilerOpen((open) => !open)}>DSP</button>
         </section>
 
