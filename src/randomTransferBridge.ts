@@ -1,4 +1,10 @@
 import { AudioEngine } from './audio/AudioEngine';
+import {
+  abortRandomProfile,
+  beginRandomProfile,
+  finishMusicalRandomProfile,
+  noteRandomMutationWall,
+} from './perf/randomProfiler';
 
 const RANDOM_PREP_MS = 72;
 const RANDOM_SETTLE_MS = 18;
@@ -30,6 +36,7 @@ AudioEngine.prototype.stop = async function (
     await originalStop.apply(this, args);
   } finally {
     if (activeEngine === this) activeEngine = null;
+    abortRandomProfile();
   }
 };
 
@@ -51,16 +58,19 @@ function markBusy(button: HTMLButtonElement, busy: boolean): void {
 }
 
 function handleSignalRandom(button: HTMLButtonElement, event: MouseEvent): void {
-  const now = performance.now();
-  if (now < signalBusyUntil) {
+  const stamp = performance.now();
+  if (stamp < signalBusyUntil) {
     consumeClick(event);
     return;
   }
 
-  // SIGNAL RANDOM already uses AudioEngine.reorderEffectsClickSafe(). This short
-  // guard simply prevents repeated clicks from queueing several graph rebuilds while
-  // the first click-safe reorder is still fading out/in.
-  signalBusyUntil = now + SIGNAL_LOCK_MS;
+  // SIGNAL RANDOM already uses AudioEngine.reorderEffectsClickSafe(). The profiler
+  // measures both its intentional transfer window and the synchronous graph surgery.
+  if (activeEngine?.getState() === 'running') beginRandomProfile('signal');
+
+  // Prevent repeated clicks from queueing several graph rebuilds while the first
+  // click-safe reorder is still fading out/in.
+  signalBusyUntil = stamp + SIGNAL_LOCK_MS;
   markBusy(button, true);
   window.setTimeout(() => markBusy(button, false), SIGNAL_LOCK_MS);
 }
@@ -92,6 +102,7 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
   consumeClick(event);
   randomBusy = true;
   markBusy(button, true);
+  beginRandomProfile('musical');
 
   // Dry bridge: fade the old processed rack toward each effect's clean bypass path,
   // perform the existing RANDOM mutation while the wet rack is effectively hidden,
@@ -103,11 +114,19 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
     if (activeEngine !== engine || engine.getState() !== 'running') {
       randomBusy = false;
       markBusy(button, false);
+      abortRandomProfile();
       return;
     }
 
     replayButton = button;
-    button.click();
+    const mutationStarted = performance.now();
+    try {
+      // HTMLElement.click() dispatches synchronously, so this measures planning,
+      // React state scheduling, mode initialization and all DSP parameter writes.
+      button.click();
+    } finally {
+      noteRandomMutationWall(performance.now() - mutationStarted);
+    }
 
     window.setTimeout(() => {
       if (activeEngine === engine && engine.getState() === 'running') {
@@ -117,6 +136,7 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
       }
       randomBusy = false;
       markBusy(button, false);
+      finishMusicalRandomProfile();
     }, RANDOM_SETTLE_MS);
   }, RANDOM_PREP_MS);
 }
