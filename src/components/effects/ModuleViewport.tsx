@@ -8,6 +8,7 @@ import {
   drawViewportRoomFront,
   getViewportSculptureTransform,
 } from './viewportRoom';
+import { drawViewportStageLight } from './viewportStageLight';
 
 const W = 240, H = 150, TAU = Math.PI * 2;
 type RGB = readonly [number, number, number];
@@ -77,6 +78,7 @@ function draw(ctx:CanvasRenderingContext2D,cw:number,ch:number,k:Kit){
   ctx.save();ctx.translate((cw-W*s)/2,(ch-H*s)/2);ctx.scale(s,s);
   background(k);
   drawViewportRoomBack(ctx,W,H,k.module.id,k.time,k.motion,k.p);
+  drawViewportStageLight(ctx,W,H,k.module.id,k.time,k.motion,k.p);
   const sculpture=getViewportSculptureTransform(k.module.id,k.time,k.motion);
   ctx.save();
   ctx.translate(W/2+sculpture.x,H/2+sculpture.y);
