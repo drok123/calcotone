@@ -3,6 +3,11 @@ import type { ModuleState } from '../../ui/types';
 import type { VisualAudioState } from '../../visual/VisualEngine';
 import { formatAlgorithmName } from '../../ui/formatting';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from './viewportScheduler';
+import {
+  drawViewportRoomBack,
+  drawViewportRoomFront,
+  getViewportSculptureTransform,
+} from './viewportRoom';
 
 const W = 240, H = 150, TAU = Math.PI * 2;
 type RGB = readonly [number, number, number];
@@ -68,7 +73,21 @@ export function ModuleViewport({module,visualState}:{module:ModuleState;visualSt
 
 function draw(ctx:CanvasRenderingContext2D,cw:number,ch:number,k:Kit){
   ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#010203';ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);ctx.restore();if(!k.module.enabled)return;
-  const s=Math.max(.01,Math.min((cw-8)/W,(ch-8)/H));ctx.save();ctx.translate((cw-W*s)/2,(ch-H*s)/2);ctx.scale(s,s);background(k);art(k);finish(k);ctx.restore();
+  const s=Math.max(.01,Math.min((cw-8)/W,(ch-8)/H));
+  ctx.save();ctx.translate((cw-W*s)/2,(ch-H*s)/2);ctx.scale(s,s);
+  background(k);
+  drawViewportRoomBack(ctx,W,H,k.module.id,k.time,k.motion,k.p);
+  const sculpture=getViewportSculptureTransform(k.module.id,k.time,k.motion);
+  ctx.save();
+  ctx.translate(W/2+sculpture.x,H/2+sculpture.y);
+  ctx.rotate(sculpture.rotation);
+  ctx.scale(sculpture.scale,sculpture.scale);
+  ctx.translate(-W/2,-H/2);
+  art(k);
+  ctx.restore();
+  drawViewportRoomFront(ctx,W,H,k.time,k.motion,k.p);
+  finish(k);
+  ctx.restore();
 }
 function grad(ctx:CanvasRenderingContext2D,top:RGB,bottom:RGB){const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,rgba(top,1));g.addColorStop(1,rgba(bottom,1));ctx.fillStyle=g;ctx.fillRect(0,0,W,H)}
 function stroke(ctx:CanvasRenderingContext2D,c:RGB,a:number,w=1){ctx.strokeStyle=rgba(c,a);ctx.lineWidth=w}
