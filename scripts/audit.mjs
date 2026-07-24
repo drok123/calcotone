@@ -68,6 +68,8 @@ const graph = file('src/audio/AudioGraph.ts');
 const faceplate = file('src/ui/faceplateLayout.ts');
 const viewport = file('src/components/effects/ModuleViewport.tsx');
 const viewportRoom = file('src/components/effects/viewportRoom.ts');
+const viewportProjection = file('src/components/effects/viewportProjection.ts');
+const viewportField = file('src/components/effects/viewportSculptureField.ts');
 const viewportCss = file('src/components/effects/ViewportOptics.css');
 const moduleViewportCss = file('src/components/effects/ModuleViewport.css');
 const visualEngine = file('src/visual/VisualEngine.ts');
@@ -148,10 +150,21 @@ expect(
 
 expect(viewport.includes('drawViewportRoomBack'), 'module art lost the shared 3D room back pass');
 expect(viewport.includes('drawViewportRoomFront'), 'module art lost the shared 3D room front pass');
+expect(viewport.includes('drawViewportSculptureFieldBack'), 'module art lost the rear depth-sorted sculpture field');
+expect(viewport.includes('drawViewportSculptureFieldFront'), 'module art lost the front depth-sorted sculpture field');
 expect(viewport.includes('getViewportSculptureTransform'), 'module artwork is no longer staged as a room sculpture');
 expect(viewport.includes('getLatestVisualAudioState'), 'module viewport no longer reads realtime canvas telemetry');
-expect(viewportRoom.includes('drawPerspectivePlane'), '3D room perspective renderer is missing');
-expect(viewportRoom.includes("moduleId === 'saturation'"), '3D room lost module-specific visual signatures');
+expect(viewportProjection.includes('export function project3'), 'projected viewport scene no longer has a real XYZ projection core');
+expect(viewportProjection.includes('export function rotate3'), 'projected viewport scene no longer has camera rotation');
+expect(viewportRoom.includes('makeViewportCamera'), '3D room no longer uses the shared camera model');
+expect(viewportRoom.includes('line3('), '3D room no longer draws projected XYZ architecture');
+expect(viewportRoom.includes("moduleId === 'saturation'"), '3D room lost module-specific architecture');
+expect(viewportField.includes('drawDepthSortedCurve'), 'sculpture field lost depth-sorted rear/front geometry');
+expect(viewportField.includes("moduleId === 'reverb'"), 'sculpture field lost module-specific choreography');
+expect(
+  !viewportField.includes('createLinearGradient(a.x, a.y, b.x, b.y)'),
+  'sculpture hot loop is allocating a CanvasGradient per segment again',
+);
 expect(
   viewportCss.includes('animation: none !important') && viewportCss.includes('transform: none !important'),
   'CSS is moving the whole viewport canvas again; canvas renderer must own artwork motion',
