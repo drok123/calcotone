@@ -101,13 +101,85 @@ Validate on drums, bass, synths, vocals and full mixes. A model should have a re
 
 The model may contain many internal variables while the CALCOTONE panel remains simple. Controls should operate meaningful groups of real behaviors rather than expose every component.
 
+## First selected hardware model: TASCAM 424 MkI preamp
+
+Artifact's first named hardware model is the **original TASCAM Portastudio 424 MkI dry channel / preamp path**.
+
+The model is intentionally separate from Artifact's generic Cassette mode. It represents the front-end electronics, not cassette transport decoration.
+
+Documented target topology:
+
+1. input / Trim stage
+2. first op-amp gain and overload behavior
+3. active two-band Baxandall EQ centered around 100 Hz and 10 kHz
+4. later channel / output gain stage and op-amp overload behavior
+5. output level compensation
+
+The original MkI path is associated with the μPC4570 and NJM4565 op-amp families. The clipping identity comes from overdriving the gain stages, so CALCOTONE should model the transition from rubbery clean headroom into compressed overdrive and smashed fuzz rather than bolting generic tape saturation onto the end.
+
+### CALCOTONE 424 control mapping
+
+When **TASCAM 424 MKI** is selected in Artifact, the five existing controls change meaning:
+
+- **Trim** — input drive into the first preamp stage.
+- **Low** — low shelf centered around 100 Hz, approximately ±10 dB.
+- **High** — high shelf centered around 10 kHz, approximately ±10 dB.
+- **Drive** — later gain-stage overload; this is the main control for pushing the 424 sound from clean into overdrive/fuzz.
+- **Mix** — CALCOTONE wet/dry control outside the modeled hardware path.
+
+Wow/flutter, cassette hiss and vinyl noise are disabled in this mode. Those belong to media/transport models, not the dry 424 preamp path.
+
+The current implementation is **topology-informed, not measurement-certified**. Do not label it calibrated or exact until it has been compared against real 424 MkI captures or trustworthy bench measurements.
+
+## Retro hardware target selection
+
+CALCOTONE should prioritize culturally important, widely recognized retro hardware **when enough technical information exists to model it honestly**. Popularity alone is not enough; documentation and measurable behavior matter.
+
+### Artifact
+
+- TASCAM Portastudio 424 MkI — selected and in development.
+- Future cassette/media machines should be chosen by exact model and revision rather than generic brand families.
+
+### Halo
+
+Research first:
+
+- Roland RE-201 Space Echo
+- iconic BBD delay units with documented clock/filter/feedback topology
+
+### Drift
+
+Research first:
+
+- Boss CE-1 Chorus Ensemble
+- Roland SDD-320 Dimension D
+
+### Atmos
+
+Research first:
+
+- EMT 140 plate reverb
+- Lexicon 224 digital reverb
+
+### Grain
+
+Research first:
+
+- E-mu SP-1200
+- Akai MPC60
+- Ensoniq Mirage
+
+For digital samplers, model the actual sample rate / bit depth / converter and reconstruction-filter behavior rather than merely applying a bitcrusher.
+
+### Ember
+
+Research classic console and preamp stages by exact revision. Do not add a famous name until the relevant gain stage, EQ/filter path and nonlinear behavior can be justified technically.
+
 ## Artifact: hardware-media laboratory
 
 Artifact is the natural home for machines whose identity comes from recording / playback media and front-end electronics.
 
-A future four-track model should be based on an **exact selected Tascam unit**, not a generic four-track caricature.
-
-Candidate behavior to model after the exact unit is selected:
+Candidate behavior to model when relevant to a selected device:
 
 - input / preamp gain and clipping transition
 - frequency-dependent preamp saturation
