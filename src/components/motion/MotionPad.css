@@ -3,6 +3,9 @@
   min-height: 230px;
   border-color: rgba(126, 176, 150, 0.42);
   border-radius: 16px;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
   background:
     radial-gradient(circle at 50% 44%, rgba(134, 165, 149, 0.08), transparent 46%),
     linear-gradient(180deg, rgba(12, 18, 15, 0.98), rgba(5, 9, 7, 0.98));
@@ -32,10 +35,15 @@
 
 .dream-pad .xy-grid { display: none; }
 
-.dream-reticle {
+.dream-reticle,
+.dream-position-guide,
+.dream-origin {
   position: absolute;
-  z-index: 2;
   pointer-events: none;
+}
+
+.dream-reticle {
+  z-index: 2;
   opacity: .22;
 }
 
@@ -53,6 +61,46 @@
   left: 50%;
   width: 1px;
   background: linear-gradient(180deg, transparent, rgba(215,229,220,.18) 22%, rgba(215,229,220,.32) 50%, rgba(215,229,220,.18) 78%, transparent);
+}
+
+.dream-position-guide {
+  z-index: 3;
+  opacity: .13;
+  transition: opacity 140ms ease;
+}
+
+.dream-position-guide.x {
+  top: 10%;
+  bottom: 10%;
+  left: var(--pad-x);
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(219,232,224,.12) 14%, rgba(235,242,238,.55) 50%, rgba(219,232,224,.12) 86%, transparent);
+  box-shadow: 0 0 7px rgba(204,226,214,.10);
+}
+
+.dream-position-guide.y {
+  left: 10%;
+  right: 10%;
+  top: var(--pad-y);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(219,232,224,.12) 14%, rgba(235,242,238,.55) 50%, rgba(219,232,224,.12) 86%, transparent);
+  box-shadow: 0 0 7px rgba(204,226,214,.10);
+}
+
+.dream-pad.is-dragging .dream-position-guide {
+  opacity: .42;
+}
+
+.dream-origin {
+  z-index: 3;
+  left: 50%;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  border: 1px solid rgba(224,234,228,.16);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 4px rgba(224,234,228,.018);
 }
 
 .dream-pad .xy-cursor.dream-cursor {
@@ -90,7 +138,7 @@
 
 .dream-pad .xy-axis-mark {
   z-index: 6;
-  width: 34px;
+  width: 38px;
   height: 34px;
   gap: 3px;
   border-color: rgba(176, 190, 180, .42);
@@ -108,12 +156,46 @@
   box-shadow: inset 0 1px 3px #000;
 }
 
+.dream-pad .xy-axis-mark b {
+  font: 900 .58rem/1 var(--mono);
+  letter-spacing: .05em;
+}
+
+.dream-pad .xy-axis-mark small {
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(224,205,152,.24);
+  border-radius: 999px;
+  color: rgba(244,224,171,.82);
+  background: rgba(8,10,8,.72);
+  font: 800 .46rem/1 var(--mono);
+}
+
+.dream-pad .xy-axis-mark.has-routes {
+  border-color: rgba(201, 181, 126, .58);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.15),
+    inset 0 -3px 7px rgba(0,0,0,.7),
+    0 0 10px rgba(218,184,111,.10),
+    0 2px 6px rgba(0,0,0,.48);
+}
+
 .dream-pad.hover-axis-x .xy-axis-mark.x,
 .dream-pad.hover-axis-y .xy-axis-mark.y {
   color: #10130f;
   background: radial-gradient(circle at 38% 32%, #f2d693, #b68c48 52%, #69502b 100%);
   border-color: #f0d28a;
   box-shadow: 0 0 0 5px rgba(232,190,104,.08), 0 0 18px rgba(232,190,104,.46), inset 0 1px rgba(255,255,255,.32);
+}
+
+.dream-pad.hover-axis-x .xy-axis-mark.x small,
+.dream-pad.hover-axis-y .xy-axis-mark.y small {
+  color: #1a160c;
+  border-color: rgba(29,23,10,.25);
+  background: rgba(255,240,198,.55);
 }
 
 .dream-pad.patch-target-active .xy-axis-mark {
@@ -137,9 +219,21 @@
   text-shadow: 0 1px 3px rgba(0,0,0,.85);
 }
 
+.dream-hud::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: -7px;
+  right: -7px;
+  top: -8px;
+  bottom: -7px;
+  background: linear-gradient(180deg, transparent, rgba(2,5,4,.44));
+  border-radius: 7px;
+}
+
 .dream-hud span { color: rgba(232, 238, 234, .72); letter-spacing: .15em; }
 .dream-hud strong { color: rgba(235, 241, 237, .82); font-size: .62rem; }
-.dream-hud em { color: rgba(189, 202, 193, .52); font-style: normal; }
+.dream-hud em { color: rgba(212, 196, 147, .64); font-style: normal; }
 
 .dream-pad + .motion-route-inspector { margin-top: 10px; }
 
