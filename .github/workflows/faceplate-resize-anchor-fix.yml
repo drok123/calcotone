@@ -21,13 +21,26 @@ jobs:
           node-version: 24
           cache: npm
       - name: Apply resize-anchor fix
-        run: python scripts/fix_faceplate_resize_anchor.py
+        id: patch
+        continue-on-error: true
+        run: python scripts/fix_faceplate_resize_anchor.py > faceplate-resize-patch.log 2>&1
+      - name: Upload patch diagnostics
+        if: steps.patch.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: faceplate-resize-patch-log
+          path: faceplate-resize-patch.log
+      - name: Fail if patch failed
+        if: steps.patch.outcome == 'failure'
+        run: exit 1
       - name: Install dependencies
+        if: steps.patch.outcome == 'success'
         run: npm ci --silent
       - name: Build CALCOTONE
+        if: steps.patch.outcome == 'success'
         run: npm run build
       - name: Commit verified source only
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.patch.outcome == 'success'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
