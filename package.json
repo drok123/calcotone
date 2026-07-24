@@ -1,12 +1,15 @@
 {
-  "name": "vite-react-typescript-starter",
+  "name": "calcotone",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "audit": "node scripts/audit.mjs",
+    "typecheck": "tsc -b --pretty false",
     "lint": "oxlint",
+    "build": "tsc -b && vite build",
+    "check": "npm run audit && npm run lint && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {
