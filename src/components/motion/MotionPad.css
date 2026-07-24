@@ -1,12 +1,14 @@
 .dream-pad {
   aspect-ratio: 1.12 / 1;
   min-height: 230px;
-  border-color: rgba(126, 176, 150, 0.42);
+  border: 1px solid rgba(126, 176, 150, 0.42);
   border-radius: 16px;
   cursor: crosshair;
   touch-action: none;
   user-select: none;
   background:
+    radial-gradient(circle at 22% 18%, rgba(54, 208, 216, .055), transparent 32%),
+    radial-gradient(circle at 78% 72%, rgba(213, 88, 185, .045), transparent 34%),
     radial-gradient(circle at 50% 44%, rgba(134, 165, 149, 0.08), transparent 46%),
     linear-gradient(180deg, rgba(12, 18, 15, 0.98), rgba(5, 9, 7, 0.98));
   box-shadow:
@@ -87,9 +89,7 @@
   box-shadow: 0 0 7px rgba(204,226,214,.10);
 }
 
-.dream-pad.is-dragging .dream-position-guide {
-  opacity: .42;
-}
+.dream-pad.is-dragging .dream-position-guide { opacity: .42; }
 
 .dream-origin {
   z-index: 3;
@@ -107,6 +107,7 @@
   z-index: 5;
   width: 22px;
   height: 22px;
+  opacity: 1;
   border: 1px solid rgba(239, 244, 240, .88);
   border-radius: 50%;
   background: radial-gradient(circle, rgba(236,244,238,.95) 0 6%, rgba(217,229,221,.48) 7% 12%, transparent 13%);
@@ -134,72 +135,6 @@
     0 0 0 7px rgba(232, 240, 235, .035),
     0 0 18px rgba(228, 238, 232, .50),
     0 0 42px rgba(228, 238, 232, .18);
-}
-
-.dream-pad .xy-axis-mark {
-  z-index: 6;
-  width: 38px;
-  height: 34px;
-  gap: 3px;
-  border-color: rgba(176, 190, 180, .42);
-  color: rgba(229, 236, 231, .82);
-  background: radial-gradient(circle at 38% 32%, rgba(133, 118, 83, .72), rgba(41, 39, 30, .96) 58%, #10130f 100%);
-  box-shadow: inset 0 1px rgba(255,255,255,.13), inset 0 -3px 7px rgba(0,0,0,.7), 0 2px 6px rgba(0,0,0,.48);
-}
-
-.dream-pad .xy-axis-mark i {
-  display: block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #050706;
-  box-shadow: inset 0 1px 3px #000;
-}
-
-.dream-pad .xy-axis-mark b {
-  font: 900 .58rem/1 var(--mono);
-  letter-spacing: .05em;
-}
-
-.dream-pad .xy-axis-mark small {
-  min-width: 13px;
-  height: 13px;
-  padding: 0 3px;
-  display: inline-grid;
-  place-items: center;
-  border: 1px solid rgba(224,205,152,.24);
-  border-radius: 999px;
-  color: rgba(244,224,171,.82);
-  background: rgba(8,10,8,.72);
-  font: 800 .46rem/1 var(--mono);
-}
-
-.dream-pad .xy-axis-mark.has-routes {
-  border-color: rgba(201, 181, 126, .58);
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.15),
-    inset 0 -3px 7px rgba(0,0,0,.7),
-    0 0 10px rgba(218,184,111,.10),
-    0 2px 6px rgba(0,0,0,.48);
-}
-
-.dream-pad.hover-axis-x .xy-axis-mark.x,
-.dream-pad.hover-axis-y .xy-axis-mark.y {
-  color: #10130f;
-  background: radial-gradient(circle at 38% 32%, #f2d693, #b68c48 52%, #69502b 100%);
-  border-color: #f0d28a;
-  box-shadow: 0 0 0 5px rgba(232,190,104,.08), 0 0 18px rgba(232,190,104,.46), inset 0 1px rgba(255,255,255,.32);
-}
-
-.dream-pad.hover-axis-x .xy-axis-mark.x small,
-.dream-pad.hover-axis-y .xy-axis-mark.y small {
-  color: #1a160c;
-  border-color: rgba(29,23,10,.25);
-  background: rgba(255,240,198,.55);
-}
-
-.dream-pad.patch-target-active .xy-axis-mark {
-  animation: dream-jack-breathe 900ms ease-in-out infinite alternate;
 }
 
 .dream-hud {
@@ -233,11 +168,138 @@
 
 .dream-hud span { color: rgba(232, 238, 234, .72); letter-spacing: .15em; }
 .dream-hud strong { color: rgba(235, 241, 237, .82); font-size: .62rem; }
-.dream-hud em { color: rgba(212, 196, 147, .64); font-style: normal; }
+.dream-hud em { color: rgba(212, 196, 147, .72); font-style: normal; }
 
-.dream-pad + .motion-route-inspector { margin-top: 10px; }
+.xy-patch-bay {
+  position: relative;
+  height: 58px;
+  flex: 0 0 58px;
+  margin-top: -4px;
+  overflow: visible;
+  border: 1px solid rgba(103, 114, 116, .62);
+  border-top-color: rgba(154, 164, 164, .70);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.065), transparent 28%),
+    radial-gradient(circle at 18% 50%, rgba(70, 218, 221, .055), transparent 18%),
+    radial-gradient(circle at 82% 50%, rgba(233, 177, 89, .050), transparent 18%),
+    linear-gradient(180deg, #272c2e, #15191b);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.07),
+    inset 0 -1px rgba(0,0,0,.9),
+    0 5px 14px rgba(0,0,0,.22);
+}
+
+.xy-patch-anchor-plane {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  pointer-events: none;
+}
+
+.xy-patch-bay-label,
+.xy-patch-bay-hint {
+  position: absolute;
+  top: 8px;
+  color: rgba(214, 222, 217, .58);
+  font: 800 .50rem/1 var(--mono);
+  letter-spacing: .14em;
+  pointer-events: none;
+}
+
+.xy-patch-bay-label { left: 10px; color: rgba(239, 242, 237, .76); }
+.xy-patch-bay-hint { right: 10px; letter-spacing: .08em; color: rgba(158, 167, 163, .48); }
+
+.xy-patch-destination {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  display: grid;
+  grid-template-columns: 12px auto auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 72px;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid rgba(120, 128, 125, .56);
+  border-radius: 999px;
+  color: rgba(234, 239, 235, .82);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.09), transparent 35%),
+    linear-gradient(180deg, #313637, #15191a);
+  box-shadow:
+    0 3px 7px rgba(0,0,0,.44),
+    inset 0 1px rgba(255,255,255,.10),
+    inset 0 -1px rgba(0,0,0,.82);
+  transform: translate(-50%, -50%);
+  transition: transform 120ms ease, border-color 140ms ease, box-shadow 160ms ease, filter 140ms ease;
+  pointer-events: none;
+}
+
+.xy-patch-destination.axis-x { left: 18%; }
+.xy-patch-destination.axis-y { left: 82%; }
+
+.xy-patch-destination i {
+  width: 11px;
+  height: 11px;
+  border: 2px solid rgba(177, 190, 185, .72);
+  border-radius: 50%;
+  background: #020504;
+  box-shadow: inset 0 1px 3px #000, 0 0 0 2px rgba(0,0,0,.22);
+}
+
+.xy-patch-destination b {
+  font: 900 .68rem/1 var(--mono);
+  letter-spacing: .06em;
+}
+
+.xy-patch-destination small {
+  min-width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: rgba(227, 234, 229, .66);
+  background: rgba(0,0,0,.34);
+  font: 800 .48rem/1 var(--mono);
+}
+
+.xy-patch-destination.axis-x i { border-color: rgba(92, 218, 222, .74); box-shadow: inset 0 1px 3px #000, 0 0 7px rgba(70, 212, 218, .12); }
+.xy-patch-destination.axis-y i { border-color: rgba(235, 188, 99, .78); box-shadow: inset 0 1px 3px #000, 0 0 7px rgba(232, 177, 82, .12); }
+.xy-patch-destination.axis-x b { color: rgba(128, 231, 232, .88); }
+.xy-patch-destination.axis-y b { color: rgba(242, 204, 129, .90); }
+
+.xy-patch-destination.has-routes {
+  border-color: rgba(198, 209, 202, .68);
+  filter: brightness(1.08);
+}
+
+.xy-patch-bay.patch-target-active .xy-patch-destination {
+  animation: dream-jack-breathe 900ms ease-in-out infinite alternate;
+}
+
+.xy-patch-bay.hover-axis-x .axis-x,
+.xy-patch-bay.hover-axis-y .axis-y {
+  transform: translate(-50%, -50%) scale(1.10);
+  border-color: rgba(240, 239, 212, .88);
+}
+
+.xy-patch-bay.hover-axis-x .axis-x {
+  box-shadow: 0 0 0 4px rgba(70, 218, 221, .06), 0 0 20px rgba(70, 218, 221, .30), inset 0 1px rgba(255,255,255,.16);
+}
+
+.xy-patch-bay.hover-axis-y .axis-y {
+  box-shadow: 0 0 0 4px rgba(235, 188, 99, .06), 0 0 20px rgba(235, 188, 99, .28), inset 0 1px rgba(255,255,255,.16);
+}
+
+.xy-patch-bay.hover-axis-x .axis-x i { background: #5bd9dd; }
+.xy-patch-bay.hover-axis-y .axis-y i { background: #edbc64; }
+
+.xy-patch-bay + .motion-route-inspector { margin-top: 4px; }
 
 @keyframes dream-jack-breathe {
   from { filter: brightness(1); }
-  to { filter: brightness(1.32); }
+  to { filter: brightness(1.24); }
 }
