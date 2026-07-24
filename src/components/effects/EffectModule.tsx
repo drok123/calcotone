@@ -141,7 +141,16 @@ export function EffectModule({
           )}
 
           {module.id === 'saturation' && (
-            <label className="algorithm-selector"><span className="sr-only">Ember mode</span><select aria-label="Ember mode" value={module.emberMode ?? 'velvet'} onChange={(event: ReactChangeEvent<HTMLSelectElement>) => onEmberModeChange(event.target.value as EmberMode)}>{EMBER_MODE_ORDER.map((mode) => <option key={mode} value={mode}>{mode.charAt(0).toUpperCase()+mode.slice(1)}</option>)}</select></label>
+            <label className="algorithm-selector ember-mode-selector">
+              <span className="sr-only">Ember mode</span>
+              <select
+                aria-label="Ember mode"
+                value={module.emberMode ?? 'velvet'}
+                onChange={(event: ReactChangeEvent<HTMLSelectElement>) => onEmberModeChange(event.target.value as EmberMode)}
+              >
+                {EMBER_MODE_ORDER.map((mode) => <option key={mode} value={mode}>{formatEmberMode(mode)}</option>)}
+              </select>
+            </label>
           )}
           {module.id === 'chorus' && (
             <label className="algorithm-selector"><span className="sr-only">Drift mode</span><select aria-label="Drift mode" value={module.driftMode ?? 'chorus'} onChange={(event: ReactChangeEvent<HTMLSelectElement>) => onDriftModeChange(event.target.value as DriftMode)}>{DRIFT_MODE_ORDER.map((mode) => <option key={mode} value={mode}>{mode.charAt(0).toUpperCase()+mode.slice(1)}</option>)}</select></label>
@@ -255,6 +264,15 @@ export function EffectModule({
       )}
     </article>
   );
+}
+
+function formatEmberMode(mode: EmberMode): string {
+  if (mode === 'goldlion') return 'Gold Lion B759';
+  if (mode === 'mullard') return 'Mullard ECC83';
+  if (mode === 'telefunken') return 'Telefunken ECC83';
+  if (mode === 'bugleboy') return 'Amperex Bugle Boy';
+  if (mode === 'rcablack') return 'RCA 12AX7 Black Plate';
+  return mode.charAt(0).toUpperCase() + mode.slice(1);
 }
 
 function formatMediaMode(mode: MediaMode): string {
