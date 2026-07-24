@@ -247,8 +247,10 @@ function drawEmber(scene:Scene):void {
   drawEmberPipeNetwork(scene,style,character);
   drawEmberGantries(scene,style);
   drawEmberFoundation(scene,style,heat);
+  drawEmberPowerBackplane(scene,style,drive,heat,tone,dynamics);
   drawEmberFurnaceCore(scene,style,drive,heat,dynamics,tone);
   drawEmberMoltenFloor(scene,style,drive,heat);
+  drawEmberPowerFeed(scene,style,drive,heat,tone,dynamics);
   drawEmberAtmosphere(scene,style,heat);
 }
 
@@ -377,6 +379,71 @@ function drawEmberFoundation({ctx,audio:a}:Scene,style:EmberStyle,heat:number):v
   const glow=ctx.createLinearGradient(0,101,0,112);glow.addColorStop(0,'transparent');glow.addColorStop(1,rgba(style.accent,.035+heat*.03+a.low*.025));ctx.fillStyle=glow;ctx.fillRect(74,101,92,11);
 }
 
+function drawEmberPowerBackplane(scene:Scene,style:EmberStyle,drive:number,heat:number,tone:number,dynamics:number):void {
+  const {ctx,p,audio:a,time,mode}=scene;
+  const broken=mode==='broken';
+  const transformer=mode==='transformer';
+  const precision=clamp((style.symmetry-.45)/.8);
+  const energy=clamp(.12+drive*.34+heat*.34+a.level*.26);
+  const railY=100;
+  const innerLeft=96,innerRight=144;
+  const railWidth=(transformer?4.3:3.2)+heat*.6;
+  const hotColor=tone>.56?p.hot:style.accent;
+
+  const rail=(side:-1|1)=>{
+    const from=side<0?innerLeft:innerRight;
+    const to=side<0?3:237;
+    const gapStart=side>0&&broken?184:null;
+    const gapEnd=side>0&&broken?198:null;
+    stroke(ctx,[58,36,32],.42,railWidth+2.2);
+    ctx.beginPath();ctx.moveTo(from,railY);ctx.lineTo(gapStart??to,railY);ctx.stroke();
+    if(gapStart!==null&&gapEnd!==null){ctx.beginPath();ctx.moveTo(gapEnd,railY);ctx.lineTo(to,railY);ctx.stroke();}
+    stroke(ctx,[146,80,50],.18+heat*.12,railWidth);
+    ctx.beginPath();ctx.moveTo(from,railY);ctx.lineTo(gapStart??to,railY);ctx.stroke();
+    if(gapStart!==null&&gapEnd!==null){ctx.beginPath();ctx.moveTo(gapEnd,railY);ctx.lineTo(to,railY);ctx.stroke();}
+    stroke(ctx,hotColor,.05+energy*.11+a.mid*.025,1.05+heat*.35);
+    ctx.beginPath();ctx.moveTo(from,railY);ctx.lineTo(gapStart??to,railY);ctx.stroke();
+    if(gapStart!==null&&gapEnd!==null){ctx.beginPath();ctx.moveTo(gapEnd,railY);ctx.lineTo(to,railY);ctx.stroke();}
+
+    const standoffs=precision>.7?[24,48,72]:[20,48,76];
+    for(let i=0;i<standoffs.length;i+=1){
+      const offset=standoffs[i]+(1-precision)*(i%2?3:-2);
+      const x=from+side*offset;
+      if(side>0&&broken&&x>gapStart!&&x<gapEnd!)continue;
+      ctx.fillStyle='rgba(9,7,7,.96)';ctx.fillRect(x-2,railY-5,4,10);
+      stroke(ctx,[111,85,68],.15,.55);ctx.strokeRect(x-2,railY-5,4,10);
+      ctx.fillStyle=rgba(style.accent,.025+heat*.03);ctx.fillRect(x-1.2,railY-1.2,2.4,2.4);
+    }
+
+    const speed=.06+drive*.18+(mode==='exciter'?.08:0)+a.low*.04;
+    for(let pulse=0;pulse<2;pulse+=1){
+      const t=fract(time*speed+pulse*.5+(side>0?.13:0));
+      const available=broken&&side>0?(t<.56?lerp(innerRight,gapStart!,t/.56):lerp(gapEnd!,to,(t-.56)/.44)):lerp(from,to,t);
+      const length=3.5+drive*4+a.transient*(5+dynamics*5);
+      ctx.save();ctx.globalCompositeOperation='screen';
+      const grad=ctx.createLinearGradient(available,railY,available-side*length,railY);
+      grad.addColorStop(0,rgba(p.pale,.16+energy*.22+a.transient*.12));grad.addColorStop(1,'transparent');
+      ctx.strokeStyle=grad;ctx.lineWidth=1.2+heat*.45;ctx.beginPath();ctx.moveTo(available,railY);ctx.lineTo(available-side*length,railY);ctx.stroke();ctx.restore();
+    }
+  };
+
+  rail(-1);rail(1);
+
+  for(const side of[-1,1] as const){
+    const x=side<0?2:238;
+    ctx.fillStyle='rgba(7,5,5,.98)';ctx.fillRect(x-(side<0?0:5),railY-6,5,12);
+    stroke(ctx,[151,92,63],.18+energy*.08,.7);ctx.strokeRect(x-(side<0?0:5),railY-6,5,12);
+    dot(ctx,side<0?3:237,railY,hotColor,.7,.045+energy*.075+a.transient*.04,4);
+  }
+
+  if(broken){
+    const faultX=191;
+    const fault=clamp(.25+a.high*.5+a.transient*.65);
+    dot(ctx,faultX,railY,p.hot,.8+.7*fault,.08+.18*fault,7);
+    stroke(ctx,p.hot,.05+.12*fault,.75);ctx.beginPath();ctx.moveTo(faultX-4,railY-1);ctx.lineTo(faultX-1,railY-6-fault*2);ctx.lineTo(faultX+2,railY+1);ctx.stroke();
+  }
+}
+
 function drawEmberFurnaceCore(scene:Scene,style:EmberStyle,drive:number,heat:number,dynamics:number,tone:number):void {
   const {ctx,p,audio:a}=scene;
   const cx=120, base=111, w=58*style.coreWidth, h=52*style.coreHeight;
@@ -471,6 +538,63 @@ function drawEmberMoltenFloor(scene:Scene,style:EmberStyle,drive:number,heat:num
 
   const lip=ctx.createLinearGradient(0,137,0,H);lip.addColorStop(0,'rgba(26,17,16,.99)');lip.addColorStop(1,'rgba(5,3,4,1)');ctx.fillStyle=lip;ctx.fillRect(0,139,W,11);
   stroke(ctx,[101,65,54],.1,.7);ctx.beginPath();ctx.moveTo(0,139);ctx.lineTo(W,139);ctx.stroke();
+}
+
+function drawEmberPowerFeed(scene:Scene,style:EmberStyle,drive:number,heat:number,tone:number,dynamics:number):void {
+  const {ctx,p,audio:a,time,mode}=scene;
+  const precision=clamp((style.symmetry-.45)/.8);
+  const asym=(1-precision)*(mode==='broken'?4:mode==='bugleboy'?2.2:1.2);
+  const energy=clamp(.1+drive*.38+heat*.32+a.level*.24);
+  const hotColor=tone>.58?p.hot:style.accent;
+  const circuitAlpha=.04+heat*.055+drive*.035+a.mid*.018;
+
+  ctx.save();
+  const traces=[
+    {side:-1 as const,y:117,branch:44},
+    {side:-1 as const,y:129,branch:73},
+    {side:1 as const,y:117,branch:196},
+    {side:1 as const,y:129,branch:167},
+  ];
+  for(let i=0;i<traces.length;i+=1){
+    const t=traces[i];
+    const side=t.side;
+    const startX=120+side*(28+(i%2)*4);
+    const bendX=120+side*(48+(i%2)*12)+side*asym*(i%2?1:-.5);
+    const endX=t.branch+side*asym*(i%2?.5:-.25);
+    const y=t.y+(i%2?asym*.25:-asym*.18);
+
+    stroke(ctx,[87,53,44],.22,2.05);
+    ctx.beginPath();ctx.moveTo(startX,109);ctx.lineTo(startX,y-5);ctx.quadraticCurveTo(startX,y,bendX,y);ctx.lineTo(endX,y);ctx.stroke();
+    stroke(ctx,[180,95,52],.11+heat*.08,1.05);
+    ctx.beginPath();ctx.moveTo(startX,109);ctx.lineTo(startX,y-5);ctx.quadraticCurveTo(startX,y,bendX,y);ctx.lineTo(endX,y);ctx.stroke();
+    stroke(ctx,hotColor,circuitAlpha,.45+heat*.22);
+    ctx.beginPath();ctx.moveTo(startX,109);ctx.lineTo(startX,y-5);ctx.quadraticCurveTo(startX,y,bendX,y);ctx.lineTo(endX,y);ctx.stroke();
+
+    for(const q of [.28,.62,.92]){
+      const nx=lerp(startX,endX,q);
+      ctx.fillStyle='rgba(8,5,5,.98)';ctx.beginPath();ctx.arc(nx,y,1.8,0,TAU);ctx.fill();stroke(ctx,[142,89,65],.13,.5);ctx.stroke();
+    }
+
+    const speed=.07+drive*.22+(mode==='exciter'?.07:0);
+    const pulse=fract(time*speed+i*.23);
+    const px=lerp(startX,endX,pulse);
+    const pulseAlpha=.06+energy*.15+a.transient*(.08+dynamics*.08);
+    dot(ctx,px,y,hotColor,.55+a.transient*.65,pulseAlpha,5);
+  }
+
+  const centerFeed=ctx.createLinearGradient(0,108,0,139);
+  centerFeed.addColorStop(0,rgba(hotColor,.10+energy*.11));centerFeed.addColorStop(.55,rgba(style.accent,.035+heat*.055));centerFeed.addColorStop(1,'transparent');
+  ctx.fillStyle=centerFeed;ctx.fillRect(116,108,8,31);
+
+  if(mode==='transformer'){
+    stroke(ctx,p.hot,.045+a.mid*.04,1.1);
+    for(const x of [82,158])for(let ring=0;ring<3;ring+=1){ctx.beginPath();ctx.arc(x,123,3+ring*2.2,0,TAU);ctx.stroke();}
+  }
+  if(mode==='console'||mode==='telefunken'){
+    stroke(ctx,style.accent,.035+a.high*.02,.55);
+    for(const y of [116,123,130]){ctx.beginPath();ctx.moveTo(30,y);ctx.lineTo(88,y);ctx.moveTo(152,y);ctx.lineTo(210,y);ctx.stroke();}
+  }
+  ctx.restore();
 }
 
 function drawEmberAtmosphere(scene:Scene,style:EmberStyle,heat:number):void {
