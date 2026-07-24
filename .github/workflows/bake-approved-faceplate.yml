@@ -1,0 +1,71 @@
+name: Bake approved faceplate geometry
+
+on:
+  push:
+    branches: [bake-approved-faceplate-264]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: bake-approved-faceplate-264
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Bake approved geometry
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/ui/faceplateLayout.ts')
+          text = path.read_text()
+          old = '''export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
+            version: 2,
+            custom: true,
+            viewportHeight: 192,
+            stageHeight: 526,
+            knobs: [
+              { x: 0.15929910480312698, y: 364 },
+              { x: 0.5, y: 364 },
+              { x: 0.85451197053407, y: 364 },
+              { x: 0.15929910480312698, y: 468 },
+              { x: 0.5, y: 468 },
+              { x: 0.85451197053407, y: 468 },
+            ],
+            snap: 8,
+          };'''
+          new = '''export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
+            version: 2,
+            custom: true,
+            viewportHeight: 264,
+            stageHeight: 526,
+            knobs: [
+              { x: 0.15929910480312698, y: 348 },
+              { x: 0.5, y: 348 },
+              { x: 0.85451197053407, y: 348 },
+              { x: 0.15929910480312698, y: 452 },
+              { x: 0.5, y: 452 },
+              { x: 0.85451197053407, y: 452 },
+            ],
+            snap: 8,
+          };'''
+          if old not in text:
+              raise SystemExit('Approved faceplate source block was not found exactly once.')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Install dependencies
+        run: npm ci --silent
+      - name: Build CALCOTONE
+        run: npm run build
+      - name: Commit verified geometry
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ui/faceplateLayout.ts
+          git commit -m "Bake approved module faceplate geometry"
+          git push origin bake-approved-faceplate-264
