@@ -2,12 +2,11 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import './components/effects/ModuleViewport.css'
+import './components/effects/ViewportOptics.css'
 import './components/effects/HardwareIdentity.css'
 import './components/layout/SignalRailBackplane.css'
+import './components/layout/PanelTheme.css'
 import App from './App.tsx'
-import './components/layout/FaceplateResizeFix.css'
-import './components/layout/PanelContrastRefresh.css'
-import './components/effects/ViewportAccentRing.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
