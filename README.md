@@ -1,32 +1,31 @@
-# React + TypeScript + Vite
+# CALCOTONE
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+CALCOTONE is a browser-based stereo multi-effects workstation built with React, TypeScript, Vite, and the Web Audio API.
 
-Currently, two official plugins are available:
+The instrument currently centers on six effect modules arranged across two fixed three-slot routing rails:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Rail A: Ember → Drift → Halo
+- Rail B: Atmos → Grain → Artifact
 
-## React Compiler
+Each rail can be reordered while preserving its membership. The workstation also includes musical parameter randomization, signal-order randomization, XY modulation patching, adaptive SAFE quality management, DSP profiling, a Dream Buffer side-path system, and stereo WAV recording.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Development
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm ci
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Useful checks:
+
+```bash
+npm run audit
+npm run lint
+npm run build
+```
+
+`npm run audit` performs CALCOTONE-specific structural checks, including worklet syntax, routing invariants, default effect power state, and other regression guards.
+
+## Current workflow
+
+The `main` branch is the canonical CALCOTONE source. Changes should be audited for UI/state consistency before the final DSP-focused pass.
