@@ -1,5 +1,6 @@
 import type {
   ChangeEvent as ReactChangeEvent,
+  CSSProperties,
   PointerEvent as ReactPointerEvent,
   RefObject,
 } from 'react';
@@ -43,6 +44,13 @@ export function MotionPad({
   onDisconnect,
   onRouteChange,
 }: MotionPadProps) {
+  const xRoutes = assignments.filter((assignment) => assignment.axis === 'x');
+  const yRoutes = assignments.filter((assignment) => assignment.axis === 'y');
+  const padStyle = {
+    '--pad-x': `${position.x}%`,
+    '--pad-y': `${100 - position.y}%`,
+  } as CSSProperties;
+
   return (
     <>
       <div
@@ -50,6 +58,7 @@ export function MotionPad({
         className={`xy-pad dream-pad ${dragging ? 'is-dragging' : ''} ${patchActive ? 'patch-target-active' : ''} ${
           hoverAxis ? `hover-axis-${hoverAxis}` : ''
         }`}
+        style={padStyle}
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId);
           onDraggingChange(true);
@@ -60,11 +69,13 @@ export function MotionPad({
         }}
         onPointerUp={(event) => {
           if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            onPadPointer(event);
             event.currentTarget.releasePointerCapture(event.pointerId);
           }
           onDraggingChange(false);
         }}
         onPointerCancel={() => onDraggingChange(false)}
+        onLostPointerCapture={() => onDraggingChange(false)}
       >
         <XYSignalField
           modules={modules}
@@ -75,13 +86,24 @@ export function MotionPad({
 
         <div className="dream-reticle horizontal" aria-hidden="true" />
         <div className="dream-reticle vertical" aria-hidden="true" />
+        <div className="dream-position-guide x" aria-hidden="true" />
+        <div className="dream-position-guide y" aria-hidden="true" />
+        <div className="dream-origin" aria-hidden="true" />
 
-        <span className="xy-axis-mark x" aria-hidden="true"><i />X</span>
-        <span className="xy-axis-mark y" aria-hidden="true"><i />Y</span>
+        <span className={`xy-axis-mark x ${xRoutes.length ? 'has-routes' : ''}`} aria-hidden="true">
+          <i />
+          <b>X</b>
+          {xRoutes.length > 0 && <small>{xRoutes.length}</small>}
+        </span>
+        <span className={`xy-axis-mark y ${yRoutes.length ? 'has-routes' : ''}`} aria-hidden="true">
+          <i />
+          <b>Y</b>
+          {yRoutes.length > 0 && <small>{yRoutes.length}</small>}
+        </span>
 
         <div
           className="xy-cursor dream-cursor"
-          style={{ '--x': `${position.x}%`, '--y': `${100 - position.y}%` } as React.CSSProperties}
+          style={{ '--x': `${position.x}%`, '--y': `${100 - position.y}%` } as CSSProperties}
           aria-hidden="true"
         />
 
@@ -89,7 +111,11 @@ export function MotionPad({
           <span>DREAM FIELD</span>
           <strong>X {Math.round(position.x).toString().padStart(3, '0')}</strong>
           <strong>Y {Math.round(position.y).toString().padStart(3, '0')}</strong>
-          <em>{assignments.length ? `${assignments.length} PATCH${assignments.length === 1 ? '' : 'ES'}` : 'UNPATCHED'}</em>
+          <em>
+            {assignments.length
+              ? `X${xRoutes.length} · Y${yRoutes.length}`
+              : 'UNPATCHED'}
+          </em>
         </div>
       </div>
 
