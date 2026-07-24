@@ -61,10 +61,10 @@ const CONFIGS: Record<ReverbAlgorithm, AlgorithmConfig> = {
   abyss: { id:'abyss', lineTimes:[0.0481,0.0593,0.0727,0.0883,0.1061,0.1261,0.1483,0.1727,0.1993,0.2281], predelay:[0.019,0.031], sizeRange:[1,3], decayBias:1.9, dampingBias:0.38, diffusionBias:1.18, modulationDepth:0.0015, modulationRates:[0.029,0.037,0.047,0.061,0.079,0.101,0.127,0.157,0.193,0.233], crossAmount:0.17, outputTrim:0.15, inputTrim:0.44, highpass:58 },
 
   // EMT 140 study: dense, nearly static dispersive plate with mono excitation and stereo pickup-like decorrelation.
-  emt140: { id:'emt140', lineTimes:[0.0119,0.0157,0.0193,0.0233,0.0277,0.0329,0.0383,0.0449,0.0521,0.0601,0.0691,0.0793], predelay:[0.0035,0.0052], sizeRange:[0.88,1.34], decayBias:1.0, dampingBias:1.34, diffusionBias:1.55, modulationDepth:0.000035, modulationRates:[0.031,0.037,0.043,0.047,0.053,0.059,0.067,0.071,0.079,0.083,0.089,0.097], crossAmount:0.105, outputTrim:0.19, inputTrim:0.62, highpass:115, splitDecay:0.16, plateDispersion:1.0 },
+  emt140: { id:'emt140', lineTimes:[0.0119,0.0157,0.0193,0.0233,0.0277,0.0329,0.0383,0.0449,0.0521,0.0601,0.0691,0.0793], predelay:[0.0035,0.0052], sizeRange:[0.94,1.08], decayBias:1.0, dampingBias:1.34, diffusionBias:1.62, modulationDepth:0, modulationRates:[0.031,0.037,0.043,0.047,0.053,0.059,0.067,0.071,0.079,0.083,0.089,0.097], crossAmount:0.105, outputTrim:0.19, inputTrim:0.31, highpass:115, splitDecay:0.16, plateDispersion:1.0 },
 
   // Lexicon 224 study: vintage digital FDN character, split decay and early 12-bit converter staging.
-  lexicon224: { id:'lexicon224', lineTimes:[0.0247,0.0311,0.0389,0.0473,0.0571,0.0683,0.0811,0.0953,0.1117,0.1301], predelay:[0.024,0.031], sizeRange:[0.78,2.2], decayBias:1.12, dampingBias:0.72, diffusionBias:1.24, modulationDepth:0.00082, modulationRates:[0.071,0.089,0.113,0.137,0.173,0.211,0.257,0.307,0.367,0.433], crossAmount:0.12, outputTrim:0.21, inputTrim:0.58, highpass:145, converterBits:12, converterLowpass:9800, splitDecay:0.34 },
+  lexicon224: { id:'lexicon224', lineTimes:[0.0247,0.0311,0.0389,0.0473,0.0571,0.0683,0.0811,0.0953,0.1117,0.1301], predelay:[0.024,0.031], sizeRange:[0.78,2.2], decayBias:1.12, dampingBias:0.72, diffusionBias:1.24, modulationDepth:0.00082, modulationRates:[0.071,0.089,0.113,0.137,0.173,0.211,0.257,0.307,0.367,0.433], crossAmount:0.12, outputTrim:0.21, inputTrim:0.58, highpass:145, converterBits:12, converterLowpass:8800, splitDecay:0.34 },
 };
 
 class ReverbNetwork {
@@ -75,6 +75,8 @@ class ReverbNetwork {
   private readonly inputConverter: WaveShaperNode;
   private readonly outputConverter: WaveShaperNode;
   private readonly converterLowpass: BiquadFilterNode;
+  private readonly lexiconInput: AudioWorkletNode | null;
+  private readonly lexiconOutput: AudioWorkletNode | null;
   private readonly splitter: ChannelSplitterNode;
   private readonly merger: ChannelMergerNode;
   private readonly predelays: [DelayNode, DelayNode];
@@ -100,9 +102,15 @@ class ReverbNetwork {
     this.outputConverter = context.createWaveShaper();
     this.inputConverter.oversample = '2x';
     this.outputConverter.oversample = '2x';
-    const converterCurve = config.converterBits ? createConverterCurve(config.converterBits) : IDENTITY_CURVE;
+    const converterCurve = config.converterBits && config.id !== 'lexicon224' ? createConverterCurve(config.converterBits) : IDENTITY_CURVE;
     this.inputConverter.curve = converterCurve;
     this.outputConverter.curve = converterCurve;
+    this.lexiconInput = config.id === 'lexicon224'
+      ? new AudioWorkletNode(context, 'calcotone-lexicon224-converter', { processorOptions: { role: 'input' }, numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] })
+      : null;
+    this.lexiconOutput = config.id === 'lexicon224'
+      ? new AudioWorkletNode(context, 'calcotone-lexicon224-converter', { processorOptions: { role: 'output' }, numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] })
+      : null;
     this.converterLowpass = context.createBiquadFilter();
     this.converterLowpass.type = 'lowpass';
     this.converterLowpass.frequency.value = config.converterLowpass ?? 19_000;
@@ -113,12 +121,23 @@ class ReverbNetwork {
 
     this.input.gain.value = config.inputTrim;
     this.input.connect(this.inputConverter);
-    this.inputConverter.connect(this.splitter);
+    if (this.lexiconInput) {
+      this.inputConverter.connect(this.lexiconInput);
+      this.lexiconInput.connect(this.splitter);
+    } else {
+      this.inputConverter.connect(this.splitter);
+    }
 
     for (let channel = 0; channel < 2; channel += 1) {
       const hp = context.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = config.highpass; hp.Q.value = 0.55;
       const lp = context.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = config.converterLowpass ?? 16_000; lp.Q.value = 0.4;
-      this.splitter.connect(hp, channel); hp.connect(lp); lp.connect(this.predelays[channel]); this.inputFilters.push(hp, lp);
+      if (config.id === 'emt140') {
+        this.splitter.connect(hp, 0);
+        this.splitter.connect(hp, 1);
+      } else {
+        this.splitter.connect(hp, channel);
+      }
+      hp.connect(lp); lp.connect(this.predelays[channel]); this.inputFilters.push(hp, lp);
     }
     this.predelays[0].delayTime.value = config.predelay[0];
     this.predelays[1].delayTime.value = config.predelay[1];
@@ -145,14 +164,23 @@ class ReverbNetwork {
       const cross = context.createGain(); cross.gain.value = 0;
       this.delays[i].connect(cross); cross.connect(this.delays[(i + Math.max(3, Math.floor(this.delays.length / 2))) % this.delays.length]); this.crossGains.push(cross);
     }
-    this.merger.connect(this.converterLowpass); this.converterLowpass.connect(this.outputConverter); this.outputConverter.connect(this.output);
+    this.merger.connect(this.converterLowpass); this.converterLowpass.connect(this.outputConverter);
+    if (this.lexiconOutput) {
+      this.outputConverter.connect(this.lexiconOutput);
+      this.lexiconOutput.connect(this.output);
+    } else {
+      this.outputConverter.connect(this.output);
+    }
   }
 
   public update(decay: number, size: number, color: number, diffusion: number, motion: number): void {
     if (this.disposed) return;
     const now = this.context.currentTime;
     const sizeScale = this.config.sizeRange[0] + size * (this.config.sizeRange[1] - this.config.sizeRange[0]);
-    const effectiveDecay = Math.max(0.25, decay * this.config.decayBias);
+    const normalizedDecay = Math.max(0, Math.min(1, Math.log(Math.max(0.35, decay) / 0.35) / Math.log(16 / 0.35)));
+    const effectiveDecay = this.config.id === 'emt140'
+      ? 0.5 + normalizedDecay * 5.0
+      : Math.max(0.25, decay * this.config.decayBias);
     const colorCutoff = 1700 * Math.pow(10.2, color) * this.config.dampingBias;
     const freeze = this.config.id === 'freeze';
     const loopBudget = freeze ? 0.965 : 0.9;
@@ -197,7 +225,7 @@ class ReverbNetwork {
     if (this.disposed) return;
     this.disposed = true;
     this.lfos.forEach((lfo) => { try { lfo.stop(); } catch { /* already stopped */ } lfo.disconnect(); });
-    [this.input,this.output,this.inputConverter,this.outputConverter,this.converterLowpass,this.splitter,this.merger,...this.predelays,...this.inputFilters,...this.diffusers,...this.delays,...this.damping,...this.loopHighpasses,...this.loopSaturators,...this.feedback,...this.outputGains,...this.crossGains,...this.lfoDepths].forEach((node) => node.disconnect());
+    [this.input,this.output,this.inputConverter,this.outputConverter,this.converterLowpass,...(this.lexiconInput ? [this.lexiconInput] : []),...(this.lexiconOutput ? [this.lexiconOutput] : []),this.splitter,this.merger,...this.predelays,...this.inputFilters,...this.diffusers,...this.delays,...this.damping,...this.loopHighpasses,...this.loopSaturators,...this.feedback,...this.outputGains,...this.crossGains,...this.lfoDepths].forEach((node) => node.disconnect());
   }
 }
 
@@ -209,10 +237,10 @@ const ATMOS_LOOP_CURVE = createAtmosLoopCurve();
 const IDENTITY_CURVE = createIdentityCurve();
 
 function reverbOutputPolarity(index: number): number { return index % 4 === 1 || index % 4 === 2 ? -1 : 1; }
-function createAtmosFade(fadeIn: boolean): Float32Array { const curve = new Float32Array(64); for (let i = 0; i < curve.length; i += 1) { const t = i / (curve.length - 1); curve[i] = fadeIn ? Math.sin(t * Math.PI * 0.5) : Math.cos(t * Math.PI * 0.5); } return curve; }
-function createAtmosLoopCurve(): Float32Array { const curve = new Float32Array(4096); for (let i = 0; i < curve.length; i += 1) { const x = (i / (curve.length - 1)) * 2 - 1; curve[i] = x - 0.035 * x * x * x; } return curve; }
-function createIdentityCurve(): Float32Array { const curve = new Float32Array(1024); for (let i = 0; i < curve.length; i += 1) curve[i] = (i / (curve.length - 1)) * 2 - 1; return curve; }
-function createConverterCurve(bits: number): Float32Array { const curve = new Float32Array(8192); const levels = Math.pow(2, Math.max(4, bits) - 1); for (let i = 0; i < curve.length; i += 1) { const x = (i / (curve.length - 1)) * 2 - 1; const stepped = Math.round(x * levels) / levels; const gainStep = Math.round((Math.abs(x) * 15)) / 15; const textured = stepped * (0.998 - gainStep * 0.0045); curve[i] = Math.max(-1, Math.min(1, textured)); } return curve; }
+function createAtmosFade(fadeIn: boolean): Float32Array<ArrayBuffer> { const curve = new Float32Array(64); for (let i = 0; i < curve.length; i += 1) { const t = i / (curve.length - 1); curve[i] = fadeIn ? Math.sin(t * Math.PI * 0.5) : Math.cos(t * Math.PI * 0.5); } return curve; }
+function createAtmosLoopCurve(): Float32Array<ArrayBuffer> { const curve = new Float32Array(4096); for (let i = 0; i < curve.length; i += 1) { const x = (i / (curve.length - 1)) * 2 - 1; curve[i] = x - 0.035 * x * x * x; } return curve; }
+function createIdentityCurve(): Float32Array<ArrayBuffer> { const curve = new Float32Array(1024); for (let i = 0; i < curve.length; i += 1) curve[i] = (i / (curve.length - 1)) * 2 - 1; return curve; }
+function createConverterCurve(bits: number): Float32Array<ArrayBuffer> { const curve = new Float32Array(8192); const levels = Math.pow(2, Math.max(4, bits) - 1); for (let i = 0; i < curve.length; i += 1) { const x = (i / (curve.length - 1)) * 2 - 1; const stepped = Math.round(x * levels) / levels; const gainStep = Math.round((Math.abs(x) * 15)) / 15; const textured = stepped * (0.998 - gainStep * 0.0045); curve[i] = Math.max(-1, Math.min(1, textured)); } return curve; }
 
 interface ActiveNetwork { algorithm: ReverbAlgorithm; network: ReverbNetwork; gain: GainNode; disposeTimer: ReturnType<typeof globalThis.setTimeout> | null; }
 
