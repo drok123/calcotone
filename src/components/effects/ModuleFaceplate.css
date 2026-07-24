@@ -1,0 +1,92 @@
+/* CALCOTONE module faceplate — big display, compact hardware bank. */
+
+.effect-module {
+  min-height: 414px;
+}
+
+/* Let the display absorb the vertical room instead of leaving it in the control deck. */
+.dsp-viewport {
+  flex: 1 1 248px;
+  width: 100%;
+  height: auto;
+  min-height: 224px;
+  margin-bottom: 5px;
+}
+
+/* Keep the knob diameter from the beauty pass, but stop the grid from stretching each
+   control. Fixed hardware slots make the bank feel like one physical control cluster. */
+.knob-row {
+  flex: 0 0 auto;
+  grid-template-columns: repeat(auto-fit, 62px);
+  justify-content: center;
+  align-items: end;
+  gap: 3px;
+  margin-top: auto;
+  padding: 6px 2px 0;
+}
+
+.knob-control {
+  width: 62px;
+  min-width: 62px;
+}
+
+/* Tuck patch sockets into the outside edge of each knob instead of reserving a wide
+   invisible lane between controls. */
+.knob-patch-jack {
+  top: 38px;
+  left: calc(50% + 20px);
+  width: 18px;
+  height: 18px;
+}
+
+.knob-patch-jack > span {
+  width: 5px;
+  height: 5px;
+}
+
+.knob-patch-jack b {
+  font-size: .43rem;
+}
+
+@media (min-width: 1500px) {
+  .effect-module {
+    min-height: 438px;
+  }
+
+  .dsp-viewport {
+    flex-basis: 274px;
+    min-height: 250px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .effect-module {
+    min-height: 390px;
+  }
+
+  .dsp-viewport {
+    flex-basis: 224px;
+    min-height: 208px;
+  }
+
+  .knob-row {
+    grid-template-columns: repeat(auto-fit, 60px);
+    gap: 2px;
+  }
+
+  .knob-control {
+    width: 60px;
+    min-width: 60px;
+  }
+}
+
+@media (max-width: 760px) {
+  .effect-module {
+    min-height: 400px;
+  }
+
+  .dsp-viewport {
+    flex-basis: 238px;
+    min-height: 220px;
+  }
+}
