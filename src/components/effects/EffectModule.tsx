@@ -308,52 +308,61 @@ export function EffectModule({
 
       {customFaceplate ? (
         <div
-          className={`faceplate-viewport-shell ${faceplateEditor.editing ? 'is-editing' : ''}`}
-          style={{ height: `${faceplateEditor.layout.viewportHeight}px` }}
+          className="faceplate-layout-stage"
+          style={{ height: `${Math.max(faceplateEditor.layout.viewportHeight + 12, faceplateEditor.layout.controlTop + faceplateEditor.layout.controlAreaHeight)}px` }}
         >
-          <ModuleViewport module={module} visualState={visualState} />
-          {faceplateEditor.editing && (
-            <button
-              type="button"
-              className="faceplate-viewport-resize"
-              onPointerDown={beginViewportResize}
-              aria-label="Resize module animation viewport"
-              title="Drag to resize viewport · hold Alt to bypass snapping"
-            >
-              <span aria-hidden="true" />
-            </button>
-          )}
+          <div
+            className={`faceplate-viewport-shell ${faceplateEditor.editing ? 'is-editing' : ''}`}
+            style={{ height: `${faceplateEditor.layout.viewportHeight}px` }}
+          >
+            <ModuleViewport module={module} visualState={visualState} />
+            {faceplateEditor.editing && (
+              <button
+                type="button"
+                className="faceplate-viewport-resize"
+                onPointerDown={beginViewportResize}
+                aria-label="Resize module animation viewport"
+                title="Drag only the screen edge · controls stay fixed · hold Alt to bypass snapping"
+              >
+                <span aria-hidden="true" />
+              </button>
+            )}
+          </div>
+
+          <div
+            className={`knob-row faceplate-control-surface ${faceplateEditor.editing ? 'is-editing' : ''}`}
+            style={{ top: `${faceplateEditor.layout.controlTop}px`, height: `${faceplateEditor.layout.controlAreaHeight}px` }}
+          >
+            {faceplateEditor.editing && faceplateEditor.guides.x !== null && (
+              <span className="faceplate-guide faceplate-guide-x" style={{ left: `${faceplateEditor.guides.x * 100}%` }} aria-hidden="true" />
+            )}
+            {faceplateEditor.editing && faceplateEditor.guides.y !== null && (
+              <span className="faceplate-guide faceplate-guide-y" style={{ top: `${faceplateEditor.guides.y}px` }} aria-hidden="true" />
+            )}
+            {module.parameters.map((parameter, index) => {
+              const point = faceplateEditor.layout.knobs[index] ?? { x: ((index % 3) + 0.5) / 3, y: index < 3 ? 160 : 264 };
+              return (
+                <div
+                  key={parameter.id}
+                  className="faceplate-knob-slot"
+                  style={{ '--faceplate-x': `${point.x * 100}%`, '--faceplate-y': `${point.y}px` } as CSSProperties}
+                  onPointerDownCapture={faceplateEditor.editing ? (event) => beginKnobLayoutDrag(index, event) : undefined}
+                  title={faceplateEditor.editing ? 'Drag control to reposition · hold Alt to bypass snapping' : undefined}
+                >
+                  {renderKnob(parameter)}
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : (
-        <ModuleViewport module={module} visualState={visualState} />
+        <>
+          <ModuleViewport module={module} visualState={visualState} />
+          <div className="knob-row">
+            {module.parameters.map((parameter) => renderKnob(parameter))}
+          </div>
+        </>
       )}
-
-      <div
-        className={`knob-row ${customFaceplate ? 'faceplate-control-surface' : ''} ${faceplateEditor.editing ? 'is-editing' : ''}`}
-        style={customFaceplate ? { height: `${faceplateEditor.layout.controlAreaHeight}px` } : undefined}
-      >
-        {customFaceplate && faceplateEditor.editing && faceplateEditor.guides.x !== null && (
-          <span className="faceplate-guide faceplate-guide-x" style={{ left: `${faceplateEditor.guides.x * 100}%` }} aria-hidden="true" />
-        )}
-        {customFaceplate && faceplateEditor.editing && faceplateEditor.guides.y !== null && (
-          <span className="faceplate-guide faceplate-guide-y" style={{ top: `${faceplateEditor.guides.y}px` }} aria-hidden="true" />
-        )}
-        {module.parameters.map((parameter, index) => {
-          if (!customFaceplate) return renderKnob(parameter);
-          const point = faceplateEditor.layout.knobs[index] ?? { x: ((index % 3) + 0.5) / 3, y: index < 3 ? 54 : 154 };
-          return (
-            <div
-              key={parameter.id}
-              className="faceplate-knob-slot"
-              style={{ '--faceplate-x': `${point.x * 100}%`, '--faceplate-y': `${point.y}px` } as CSSProperties}
-              onPointerDownCapture={faceplateEditor.editing ? (event) => beginKnobLayoutDrag(index, event) : undefined}
-              title={faceplateEditor.editing ? 'Drag control to reposition · hold Alt to bypass snapping' : undefined}
-            >
-              {renderKnob(parameter)}
-            </div>
-          );
-        })}
-      </div>
 
       {!module.available && <div className="coming-soon">DSP not connected</div>}
     </article>
