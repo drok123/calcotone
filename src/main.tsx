@@ -5,9 +5,8 @@ import './components/effects/ModuleViewport.css'
 import './components/effects/HardwareIdentity.css'
 import './components/layout/SignalRailBackplane.css'
 import App from './App.tsx'
-import './components/layout/FaceplateResizeFix.css'
-import './components/layout/PanelContrastRefresh.css'
-import './components/effects/ViewportAccentRing.css'
+import './components/layout/PanelTheme.css'
+import './components/effects/ViewportOptics.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
