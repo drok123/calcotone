@@ -13,6 +13,7 @@ import type {
 import { getEffectiveMotionValue } from '../../ui/motion';
 import { XYSignalField } from './XYSignalField';
 import './MotionPad.css';
+import './UiPolish.css';
 
 export interface MotionPadProps {
   padRef: RefObject<HTMLDivElement | null>;
@@ -54,10 +55,7 @@ export function MotionPad({
   return (
     <>
       <div
-        ref={padRef}
-        className={`xy-pad dream-pad ${dragging ? 'is-dragging' : ''} ${patchActive ? 'patch-target-active' : ''} ${
-          hoverAxis ? `hover-axis-${hoverAxis}` : ''
-        }`}
+        className={`xy-pad dream-pad ${dragging ? 'is-dragging' : ''} ${patchActive ? 'patch-target-active' : ''}`}
         style={padStyle}
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId);
@@ -90,17 +88,6 @@ export function MotionPad({
         <div className="dream-position-guide y" aria-hidden="true" />
         <div className="dream-origin" aria-hidden="true" />
 
-        <span className={`xy-axis-mark x ${xRoutes.length ? 'has-routes' : ''}`} aria-hidden="true">
-          <i />
-          <b>X</b>
-          {xRoutes.length > 0 && <small>{xRoutes.length}</small>}
-        </span>
-        <span className={`xy-axis-mark y ${yRoutes.length ? 'has-routes' : ''}`} aria-hidden="true">
-          <i />
-          <b>Y</b>
-          {yRoutes.length > 0 && <small>{yRoutes.length}</small>}
-        </span>
-
         <div
           className="xy-cursor dream-cursor"
           style={{ '--x': `${position.x}%`, '--y': `${100 - position.y}%` } as CSSProperties}
@@ -111,12 +98,27 @@ export function MotionPad({
           <span>DREAM FIELD</span>
           <strong>X {Math.round(position.x).toString().padStart(3, '0')}</strong>
           <strong>Y {Math.round(position.y).toString().padStart(3, '0')}</strong>
-          <em>
-            {assignments.length
-              ? `X${xRoutes.length} · Y${yRoutes.length}`
-              : 'UNPATCHED'}
-          </em>
+          <em>{assignments.length ? `X${xRoutes.length} · Y${yRoutes.length}` : 'UNPATCHED'}</em>
         </div>
+      </div>
+
+      <div
+        className={`xy-patch-bay ${patchActive ? 'patch-target-active' : ''} ${hoverAxis ? `hover-axis-${hoverAxis}` : ''}`}
+        aria-label="XY patch destinations"
+      >
+        <span className="xy-patch-bay-label">XY PATCH</span>
+        <div ref={padRef} className="xy-patch-anchor-plane" aria-hidden="true" />
+        <span className={`xy-patch-destination axis-x ${xRoutes.length ? 'has-routes' : ''}`} aria-hidden="true">
+          <i />
+          <b>X</b>
+          <small>{xRoutes.length}</small>
+        </span>
+        <span className={`xy-patch-destination axis-y ${yRoutes.length ? 'has-routes' : ''}`} aria-hidden="true">
+          <i />
+          <b>Y</b>
+          <small>{yRoutes.length}</small>
+        </span>
+        <span className="xy-patch-bay-hint">DROP KNOB JACKS HERE</span>
       </div>
 
       <section className="motion-route-inspector" aria-label="Motion patches">
@@ -125,7 +127,7 @@ export function MotionPad({
           <span className="route-count"><i />{assignments.length}</span>
         </div>
         {assignments.length === 0 ? (
-          <p className="empty-routes">Drag any knob jack toward X or Y. The nearest socket will latch.</p>
+          <p className="empty-routes">Drag any knob jack to the X or Y socket above.</p>
         ) : (
           <div className="motion-route-list">
             {assignments.map((assignment) => {
