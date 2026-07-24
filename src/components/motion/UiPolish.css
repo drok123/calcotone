@@ -524,3 +524,245 @@
 @media (prefers-reduced-motion: reduce) {
   .dsp-viewport.active .viewport-glass { animation: none !important; }
 }
+
+/* --------------------------------------------------------------------------
+   FACEPLATE LAYOUT EDITOR V1
+   One saved master geometry is shared by all six modules.
+   -------------------------------------------------------------------------- */
+
+.control-strip {
+  position: relative;
+  overflow: visible;
+  z-index: 80;
+}
+
+.control-strip .layout-editor-toggle {
+  color: #b9e9ee;
+  border-color: rgba(104, 198, 207, .48);
+}
+
+.control-strip .layout-editor-toggle.active {
+  color: #e8fcff;
+  border-color: rgba(103, 224, 232, .72);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.08), transparent 34%),
+    linear-gradient(180deg, #173239, #0b181c);
+  box-shadow: inset 0 0 14px rgba(91, 222, 231, .08), 0 0 12px rgba(91, 222, 231, .08), 0 3px 7px rgba(0,0,0,.4);
+}
+
+.faceplate-editor-panel {
+  position: absolute;
+  z-index: 300;
+  top: calc(100% + 8px);
+  right: 18px;
+  width: min(760px, calc(100vw - 44px));
+  padding: 12px;
+  border: 1px solid rgba(96, 112, 117, .88);
+  border-radius: 9px;
+  color: #dce5e4;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.045), transparent 24%),
+    #111619;
+  box-shadow: 0 16px 34px rgba(0,0,0,.58), inset 0 1px rgba(255,255,255,.055), inset 0 -1px rgba(0,0,0,.9);
+}
+
+.faceplate-editor-panel header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+}
+
+.faceplate-editor-panel header div {
+  display: grid;
+  gap: 4px;
+}
+
+.faceplate-editor-panel strong {
+  color: #f0f7f7;
+  font: 900 .68rem/1 var(--mono);
+  letter-spacing: .13em;
+}
+
+.faceplate-editor-panel header span,
+.faceplate-editor-panel p {
+  color: #8fa3a4;
+  font: 800 .50rem/1.35 var(--mono);
+  letter-spacing: .055em;
+}
+
+.faceplate-editor-readout {
+  color: #9de6eb !important;
+  white-space: nowrap;
+}
+
+.faceplate-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.faceplate-editor-actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(90, 102, 107, .72);
+  border-radius: 5px;
+  color: #cbd5d4;
+  background: linear-gradient(180deg, #2d3337, #171b1e);
+  box-shadow: inset 0 1px rgba(255,255,255,.08), 0 2px 5px rgba(0,0,0,.34);
+  font: 900 .52rem/1 var(--mono);
+  letter-spacing: .08em;
+}
+
+.faceplate-editor-actions button:hover:not(:disabled) { color: #fff; filter: brightness(1.09); }
+.faceplate-editor-actions button:disabled { opacity: .34; cursor: default; }
+.faceplate-editor-actions button.active { color: #dffcff; border-color: rgba(91,222,231,.58); background: linear-gradient(#18343a,#0d1c20); }
+.faceplate-editor-actions button.cancel { margin-left: auto; }
+.faceplate-editor-actions button.save { color: #dfffe9; border-color: rgba(101,255,154,.48); background: linear-gradient(#1b3927,#0d1d14); }
+.faceplate-editor-panel p { margin: 9px 2px 0; }
+.faceplate-editor-panel p b { color: #cbe5e5; }
+
+.faceplate-layout-custom .faceplate-viewport-shell {
+  position: relative;
+  width: 100%;
+  margin: 0 0 12px;
+}
+
+.faceplate-layout-custom .faceplate-viewport-shell .dsp-viewport {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+}
+
+.faceplate-viewport-resize {
+  position: absolute;
+  z-index: 30;
+  left: 12%;
+  right: 12%;
+  bottom: -7px;
+  height: 15px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.faceplate-viewport-resize::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 6px;
+  height: 2px;
+  border-radius: 99px;
+  background: rgba(91, 222, 231, .68);
+  box-shadow: 0 0 8px rgba(91, 222, 231, .34);
+}
+
+.faceplate-viewport-resize span {
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  width: 36px;
+  height: 10px;
+  border: 1px solid rgba(120, 223, 230, .62);
+  border-radius: 4px;
+  background: #10181b;
+  transform: translateX(-50%);
+}
+
+.knob-row.faceplate-control-surface {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 150px;
+  margin-top: 0;
+  padding: 0;
+  overflow: visible;
+  border-top: 1px solid rgba(255,255,255,.045);
+  background: linear-gradient(180deg, rgba(255,255,255,.012), transparent 68%);
+}
+
+.faceplate-knob-slot {
+  position: absolute;
+  z-index: 3;
+  left: var(--faceplate-x);
+  top: var(--faceplate-y);
+  width: 92px;
+  transform: translate(-50%, -50%);
+  touch-action: none;
+}
+
+.faceplate-knob-slot > .knob-control { width: 100%; }
+
+.faceplate-layout-editing {
+  outline: 1px solid rgba(91, 222, 231, .20);
+  outline-offset: -3px;
+}
+
+.faceplate-layout-editing .module-header {
+  pointer-events: none;
+  opacity: .72;
+}
+
+.faceplate-layout-editing .faceplate-knob-slot {
+  z-index: 20;
+  cursor: move;
+}
+
+.faceplate-layout-editing .faceplate-knob-slot::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -4px 2px -4px;
+  border: 1px dashed rgba(91, 222, 231, .26);
+  border-radius: 8px;
+  background: rgba(8, 24, 27, .08);
+  opacity: .72;
+}
+
+.faceplate-layout-editing .faceplate-knob-slot:hover::before {
+  border-color: rgba(91, 222, 231, .72);
+  background: rgba(31, 91, 96, .10);
+  box-shadow: 0 0 12px rgba(91, 222, 231, .08);
+}
+
+.faceplate-layout-editing .knob-shell,
+.faceplate-layout-editing .knob-patch-jack {
+  pointer-events: none;
+}
+
+.faceplate-guide {
+  position: absolute;
+  z-index: 60;
+  pointer-events: none;
+  background: rgba(79, 222, 235, .86);
+  box-shadow: 0 0 7px rgba(79, 222, 235, .42);
+}
+
+.faceplate-guide-x {
+  top: -6px;
+  bottom: -6px;
+  width: 1px;
+}
+
+.faceplate-guide-y {
+  left: -6px;
+  right: -6px;
+  height: 1px;
+}
+
+body.faceplate-layout-dragging,
+body.faceplate-layout-dragging * { cursor: move !important; user-select: none !important; }
+body.faceplate-layout-resizing,
+body.faceplate-layout-resizing * { cursor: ns-resize !important; user-select: none !important; }
+
+@media (max-width: 900px) {
+  .faceplate-editor-panel { right: 8px; width: calc(100vw - 24px); }
+  .faceplate-editor-actions button.cancel { margin-left: 0; }
+}

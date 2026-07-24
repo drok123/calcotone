@@ -1,4 +1,4 @@
-import type { CSSProperties, ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
+import type { CSSProperties, ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { REVERB_ALGORITHM_ORDER, type ReverbAlgorithm } from '../../audio/effects/Reverb';
 import { MEDIA_MODE_ORDER, type MediaMode } from '../../audio/effects/Media';
 import { EMBER_MODE_ORDER, type EmberMode } from '../../audio/effects/Saturation';
@@ -6,9 +6,18 @@ import { DRIFT_MODE_ORDER, type DriftMode } from '../../audio/effects/Chorus';
 import { GRAIN_MODE_ORDER, type GrainMode } from '../../audio/effects/Bitcrusher';
 import { DELAY_ALGORITHM_ORDER, type DelayAlgorithm } from '../../audio/effects/Delay';
 import type { VisualAudioState } from '../../visual/VisualEngine';
-import type { ModuleState, XYAssignment } from '../../ui/types';
+import type { ModuleParameter, ModuleState, XYAssignment } from '../../ui/types';
 import { formatAlgorithmName } from '../../ui/formatting';
 import { getEffectiveMotionValue } from '../../ui/motion';
+import {
+  beginFaceplateGesture,
+  endFaceplateGesture,
+  setFaceplateGuides,
+  setFaceplateKnob,
+  setFaceplateViewportHeight,
+  snapFaceplatePoint,
+  useFaceplateLayoutEditor,
+} from '../../ui/faceplateLayout';
 import { Knob } from '../controls/Knob';
 import { ModuleViewport } from './ModuleViewport';
 
@@ -81,6 +90,8 @@ export function EffectModule({
   onRoutingDragEnd: () => void;
   onRoutingNudge: (direction: -1 | 1) => void;
 }) {
+  const faceplateEditor = useFaceplateLayoutEditor();
+  const customFaceplate = faceplateEditor.layout.custom;
   const moduleStyle = {
     '--module-activity': module.enabled ? 1 : 0,
     '--module-low': visualState.low,
@@ -89,9 +100,114 @@ export function EffectModule({
     '--module-delay': `${(Number(slotLabel.slice(1)) - 1) * 65}ms`,
   } as CSSProperties;
 
+  function beginKnobLayoutDrag(index: number, event: ReactPointerEvent<HTMLDivElement>): void {
+    if (!faceplateEditor.editing || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const surface = event.currentTarget.parentElement;
+    if (!surface) return;
+
+    const pointerId = event.pointerId;
+    const bounds = surface.getBoundingClientRect();
+    const scale = bounds.width / Math.max(1, surface.offsetWidth);
+    beginFaceplateGesture();
+    document.body.classList.add('faceplate-layout-dragging');
+
+    const move = (pointerEvent: PointerEvent): void => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      pointerEvent.preventDefault();
+      const raw = {
+        x: (pointerEvent.clientX - bounds.left) / Math.max(1, bounds.width),
+        y: (pointerEvent.clientY - bounds.top) / Math.max(0.01, scale),
+      };
+      const snapped = snapFaceplatePoint(index, raw, surface.offsetWidth, pointerEvent.altKey);
+      setFaceplateKnob(index, snapped.point);
+      setFaceplateGuides(snapped.guides);
+    };
+
+    const finish = (pointerEvent: PointerEvent): void => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      pointerEvent.preventDefault();
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      document.body.classList.remove('faceplate-layout-dragging');
+      setFaceplateGuides({ x: null, y: null });
+      endFaceplateGesture();
+    };
+
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', finish, { passive: false });
+    window.addEventListener('pointercancel', finish, { passive: false });
+  }
+
+  function beginViewportResize(event: ReactPointerEvent<HTMLButtonElement>): void {
+    if (!faceplateEditor.editing || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const shell = event.currentTarget.parentElement;
+    if (!shell) return;
+
+    const pointerId = event.pointerId;
+    const startY = event.clientY;
+    const startHeight = faceplateEditor.layout.viewportHeight;
+    const bounds = shell.getBoundingClientRect();
+    const scale = bounds.height / Math.max(1, shell.offsetHeight);
+    beginFaceplateGesture();
+    document.body.classList.add('faceplate-layout-resizing');
+
+    const move = (pointerEvent: PointerEvent): void => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      pointerEvent.preventDefault();
+      let height = startHeight + (pointerEvent.clientY - startY) / Math.max(0.01, scale);
+      if (faceplateEditor.snapEnabled && !pointerEvent.altKey) {
+        height = Math.round(height / faceplateEditor.layout.snap) * faceplateEditor.layout.snap;
+      }
+      setFaceplateViewportHeight(height);
+    };
+
+    const finish = (pointerEvent: PointerEvent): void => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      pointerEvent.preventDefault();
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      document.body.classList.remove('faceplate-layout-resizing');
+      endFaceplateGesture();
+    };
+
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', finish, { passive: false });
+    window.addEventListener('pointercancel', finish, { passive: false });
+  }
+
+  function renderKnob(parameter: ModuleParameter) {
+    const assignment = assignments.find((candidate) => candidate.target === `${module.id}.${parameter.id}`);
+    const effectiveValue = assignment ? getEffectiveMotionValue(parameter.value, assignment, xyPosition) : parameter.value;
+    const presentation = parameterPresentation(module, parameter.id, parameter.label, parameter.display, parameter.value);
+    return (
+      <Knob
+        key={parameter.id}
+        label={presentation.label}
+        value={parameter.value}
+        effectiveValue={effectiveValue}
+        display={presentation.display}
+        disabled={!module.available || presentation.disabled === true}
+        patchTarget={`${module.id}.${parameter.id}`}
+        assignment={assignment}
+        onReset={() => onParameterReset(parameter.id)}
+        onChange={(value: number) => onParameterChange(parameter.id, value)}
+        onPatchStart={(startX: number, startY: number, pointerX: number, pointerY: number) => onPatchStart(`${module.id}.${parameter.id}`, `${module.name} ${presentation.label}`, startX, startY, pointerX, pointerY)}
+        onPatchMove={onPatchMove}
+        onPatchEnd={onPatchEnd}
+        onPatchDisconnect={() => onPatchDisconnect(`${module.id}.${parameter.id}`)}
+      />
+    );
+  }
+
   return (
     <article
-      className={`effect-module module-${module.id} ${module.enabled ? 'enabled' : ''} ${!module.available ? 'unavailable' : ''} ${routingDragging ? 'routing-dragging' : ''} ${routingDropTarget ? 'routing-drop-target' : ''}`}
+      className={`effect-module module-${module.id} ${module.enabled ? 'enabled' : ''} ${!module.available ? 'unavailable' : ''} ${routingDragging ? 'routing-dragging' : ''} ${routingDropTarget ? 'routing-drop-target' : ''} ${customFaceplate ? 'faceplate-layout-custom' : ''} ${faceplateEditor.editing ? 'faceplate-layout-editing' : ''}`}
       style={moduleStyle}
       onDragOver={onRoutingDragOver}
       onDrop={onRoutingDrop}
@@ -99,9 +215,9 @@ export function EffectModule({
       <header className="module-header">
         <div
           className="module-title module-drag-handle"
-          draggable={module.available}
+          draggable={module.available && !faceplateEditor.editing}
           role="button"
-          tabIndex={module.available ? 0 : -1}
+          tabIndex={module.available && !faceplateEditor.editing ? 0 : -1}
           aria-label={`${module.name}, signal slot ${slotLabel}. Drag or use left and right arrow keys to reorder.`}
           onDragStart={onRoutingDragStart}
           onDragEnd={onRoutingDragEnd}
@@ -190,30 +306,51 @@ export function EffectModule({
         </button>
       </header>
 
-      <ModuleViewport module={module} visualState={visualState} />
+      {customFaceplate ? (
+        <div
+          className={`faceplate-viewport-shell ${faceplateEditor.editing ? 'is-editing' : ''}`}
+          style={{ height: `${faceplateEditor.layout.viewportHeight}px` }}
+        >
+          <ModuleViewport module={module} visualState={visualState} />
+          {faceplateEditor.editing && (
+            <button
+              type="button"
+              className="faceplate-viewport-resize"
+              onPointerDown={beginViewportResize}
+              aria-label="Resize module animation viewport"
+              title="Drag to resize viewport · hold Alt to bypass snapping"
+            >
+              <span aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      ) : (
+        <ModuleViewport module={module} visualState={visualState} />
+      )}
 
-      <div className="knob-row">
-        {module.parameters.map((parameter) => {
-          const assignment = assignments.find((candidate) => candidate.target === `${module.id}.${parameter.id}`);
-          const effectiveValue = assignment ? getEffectiveMotionValue(parameter.value, assignment, xyPosition) : parameter.value;
-          const presentation = parameterPresentation(module, parameter.id, parameter.label, parameter.display, parameter.value);
+      <div
+        className={`knob-row ${customFaceplate ? 'faceplate-control-surface' : ''} ${faceplateEditor.editing ? 'is-editing' : ''}`}
+        style={customFaceplate ? { height: `${faceplateEditor.layout.controlAreaHeight}px` } : undefined}
+      >
+        {customFaceplate && faceplateEditor.editing && faceplateEditor.guides.x !== null && (
+          <span className="faceplate-guide faceplate-guide-x" style={{ left: `${faceplateEditor.guides.x * 100}%` }} aria-hidden="true" />
+        )}
+        {customFaceplate && faceplateEditor.editing && faceplateEditor.guides.y !== null && (
+          <span className="faceplate-guide faceplate-guide-y" style={{ top: `${faceplateEditor.guides.y}px` }} aria-hidden="true" />
+        )}
+        {module.parameters.map((parameter, index) => {
+          if (!customFaceplate) return renderKnob(parameter);
+          const point = faceplateEditor.layout.knobs[index] ?? { x: ((index % 3) + 0.5) / 3, y: index < 3 ? 54 : 154 };
           return (
-            <Knob
+            <div
               key={parameter.id}
-              label={presentation.label}
-              value={parameter.value}
-              effectiveValue={effectiveValue}
-              display={presentation.display}
-              disabled={!module.available || presentation.disabled === true}
-              patchTarget={`${module.id}.${parameter.id}`}
-              assignment={assignment}
-              onReset={() => onParameterReset(parameter.id)}
-              onChange={(value: number) => onParameterChange(parameter.id, value)}
-              onPatchStart={(startX: number, startY: number, pointerX: number, pointerY: number) => onPatchStart(`${module.id}.${parameter.id}`, `${module.name} ${presentation.label}`, startX, startY, pointerX, pointerY)}
-              onPatchMove={onPatchMove}
-              onPatchEnd={onPatchEnd}
-              onPatchDisconnect={() => onPatchDisconnect(`${module.id}.${parameter.id}`)}
-            />
+              className="faceplate-knob-slot"
+              style={{ '--faceplate-x': `${point.x * 100}%`, '--faceplate-y': `${point.y}px` } as CSSProperties}
+              onPointerDownCapture={faceplateEditor.editing ? (event) => beginKnobLayoutDrag(index, event) : undefined}
+              title={faceplateEditor.editing ? 'Drag control to reposition · hold Alt to bypass snapping' : undefined}
+            >
+              {renderKnob(parameter)}
+            </div>
           );
         })}
       </div>
