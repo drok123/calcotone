@@ -4,402 +4,90 @@ import type { VisualAudioState } from '../../visual/VisualEngine';
 import { formatAlgorithmName } from '../../ui/formatting';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from './viewportScheduler';
 
-const WORLD_W = 240;
-const WORLD_H = 150;
-const TAU = Math.PI * 2;
-
+const W = 240, H = 150, TAU = Math.PI * 2;
 type RGB = readonly [number, number, number];
-type Palette = { primary: RGB; secondary: RGB; warm: RGB; pale: RGB };
-type Kit = {
-  ctx: CanvasRenderingContext2D;
-  cx: number;
-  cy: number;
-  time: number;
-  energy: number;
-  transient: number;
-  palette: Palette;
-  rgba: (color: RGB, alpha: number, whiten?: boolean) => string;
-  stroke: (color: RGB, alpha?: number, width?: number, whiten?: boolean) => void;
-  glow: (x: number, y: number, radius?: number, alpha?: number, color?: RGB) => void;
-  orb: (x: number, y: number, radius: number, color: RGB, alpha: number) => void;
-};
+type Params = Record<string, number>;
+type Physics = { level:number; low:number; mid:number; high:number; transient:number };
+type Spring = { value:number; velocity:number };
+type Palette = { a:RGB; b:RGB; warm:RGB; pale:RGB };
+type Kit = { ctx:CanvasRenderingContext2D; module:ModuleState; params:Params; time:number; motion:Physics; p:Palette };
 
-const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
-const hash = (value: number) => {
-  const n = Math.sin(value * 127.1) * 43758.5453123;
-  return n - Math.floor(n);
-};
+const clamp = (v:number,a:number,b:number)=>Math.max(a,Math.min(b,v));
+const c01 = (v:number)=>clamp(v,0,1);
+const fract = (v:number)=>v-Math.floor(v);
+const hash = (v:number)=>fract(Math.sin(v*127.1)*43758.5453123);
+const rgba = (c:RGB,a:number)=>`rgba(${c[0]},${c[1]},${c[2]},${c01(a)})`;
+const val = (p:Params,id:string,f=0)=>p[id]??f;
+const is = (m:string,...v:string[])=>v.includes(m);
 
-export function ModuleViewport({ module, visualState }: { module: ModuleState; visualState: VisualAudioState }) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const moduleRef = useRef(module);
-  const visualRef = useRef(visualState);
-  moduleRef.current = module;
-  visualRef.current = visualState;
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const context = canvas.getContext('2d', { alpha: false });
-    if (!context) return;
-
-    let cssWidth = 1;
-    let cssHeight = 1;
-    let pixelRatio = Math.min(1.5, window.devicePixelRatio || 1);
-
-    const resize = (): void => {
-      const rect = canvas.getBoundingClientRect();
-      cssWidth = Math.max(1, rect.width);
-      cssHeight = Math.max(1, rect.height);
-      pixelRatio = Math.min(1.5, window.devicePixelRatio || 1);
-      const width = Math.max(1, Math.round(cssWidth * pixelRatio));
-      const height = Math.max(1, Math.round(cssHeight * pixelRatio));
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-      }
-    };
-
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
-
-    const render: ViewportRenderCallback = (timestamp) => {
-      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-      const current = moduleRef.current;
-      const params: Record<string, number> = {};
-      for (const parameter of current.parameters) params[parameter.id] = parameter.value;
-      drawViewport(context, cssWidth, cssHeight, current, visualRef.current, params, timestamp / 1000);
-    };
-
-    const unsubscribe = subscribeViewportAnimation(render);
-    return () => {
-      unsubscribe();
-      observer.disconnect();
-    };
-  }, [module.id]);
-
-  return (
-    <div className={`dsp-viewport viewport-${module.id} ${module.enabled ? 'active' : ''}`}>
-      <div className="viewport-glass" aria-hidden="true" />
-      <canvas ref={canvasRef} aria-hidden="true" />
-      <span className="viewport-caption">{captionFor(module)}</span>
-    </div>
-  );
+function palette(id:string):Palette {
+  if(id==='saturation') return {a:[243,132,62],b:[204,69,127],warm:[255,194,100],pale:[247,230,207]};
+  if(id==='chorus') return {a:[75,198,225],b:[102,116,235],warm:[225,202,128],pale:[220,242,246]};
+  if(id==='delay') return {a:[153,117,246],b:[210,88,170],warm:[245,178,95],pale:[232,227,248]};
+  if(id==='reverb') return {a:[82,142,238],b:[161,111,235],warm:[231,190,127],pale:[225,237,246]};
+  if(id==='media') return {a:[215,148,80],b:[178,82,111],warm:[247,188,101],pale:[238,226,203]};
+  return {a:[216,92,193],b:[89,190,152],warm:[239,172,91],pale:[234,230,242]};
 }
 
-function captionFor(module: ModuleState): string {
-  if (module.id === 'saturation') {
-    const mode = module.emberMode ?? 'velvet';
-    const names: Record<string, string> = {
-      goldlion: 'B759 · GOLD LION FIELD', mullard: 'ECC83 · MULLARD HEAT',
-      telefunken: 'ECC83 · TELEFUNKEN GRID', bugleboy: '12AX7 · BUGLE BOY AIR',
-      rcablack: '12AX7 · RCA BLACK PLATE',
-    };
-    return names[mode] ?? 'THERMAL REACTOR';
-  }
-  if (module.id === 'chorus') {
-    if (module.driftMode === 'ce1') return 'CE-1 · BBD CHORUS';
-    if (module.driftMode === 'dimensiond') return 'DIMENSION D · PHASE MATRIX';
-    return 'PHASE CURRENT';
-  }
-  if (module.id === 'delay') return module.delayAlgorithm === 're201' ? 'RE-201 · TAPE ECHO' : formatAlgorithmName(module.delayAlgorithm ?? 'tape');
-  if (module.id === 'reverb') {
-    if (module.algorithm === 'emt140') return 'EMT 140 · PLATE FIELD';
-    if (module.algorithm === 'lexicon224') return '224 · DIGITAL SPACE';
-    return (module.algorithm ?? 'hall').toUpperCase();
-  }
-  if (module.id === 'bitcrusher') {
-    if (module.grainMode === 'sp1200') return 'SP-1200 · 26.04 KHZ';
-    if (module.grainMode === 'mpc60') return 'MPC60 · 40 KHZ';
-    if (module.grainMode === 'mirage') return 'MIRAGE · 8 BIT';
-    return (module.grainMode ?? 'reconstruct').toUpperCase();
-  }
-  if (module.id === 'media') return module.mediaMode === 'tascam424' ? 'PORTASTUDIO 424 · 4 TRACK' : (module.mediaMode ?? 'cassette').toUpperCase();
+function mode(m:ModuleState){
+  if(m.id==='saturation') return m.emberMode??'velvet';
+  if(m.id==='chorus') return m.driftMode??'chorus';
+  if(m.id==='delay') return m.delayAlgorithm??'tape';
+  if(m.id==='reverb') return m.algorithm??'hall';
+  if(m.id==='media') return m.mediaMode??'cassette';
+  return m.grainMode??'reconstruct';
+}
+
+function caption(m:ModuleState){
+  if(m.id==='saturation') return ({goldlion:'B759 · GOLD LION FIELD',mullard:'ECC83 · MULLARD HEAT',telefunken:'ECC83 · TELEFUNKEN GRID',bugleboy:'12AX7 · BUGLE BOY AIR',rcablack:'12AX7 · RCA BLACK PLATE'} as Record<string,string>)[m.emberMode??'']??'THERMAL REACTOR';
+  if(m.id==='chorus') return m.driftMode==='ce1'?'CE-1 · BBD CHORUS':m.driftMode==='dimensiond'?'DIMENSION D · PHASE MATRIX':'PHASE CURRENT';
+  if(m.id==='delay') return m.delayAlgorithm==='re201'?'RE-201 · TAPE ECHO':formatAlgorithmName(m.delayAlgorithm??'tape');
+  if(m.id==='reverb') return m.algorithm==='emt140'?'EMT 140 · PLATE FIELD':m.algorithm==='lexicon224'?'224 · DIGITAL SPACE':(m.algorithm??'hall').toUpperCase();
+  if(m.id==='bitcrusher') return m.grainMode==='sp1200'?'SP-1200 · 26.04 KHZ':m.grainMode==='mpc60'?'MPC60 · 40 KHZ':m.grainMode==='mirage'?'MIRAGE · 8 BIT':(m.grainMode??'reconstruct').toUpperCase();
+  if(m.id==='media') return m.mediaMode==='tascam424'?'PORTASTUDIO 424 · 4 TRACK':(m.mediaMode??'cassette').toUpperCase();
   return 'SIGNAL WORLD';
 }
 
-function modeFor(module: ModuleState): string {
-  if (module.id === 'saturation') return module.emberMode ?? 'velvet';
-  if (module.id === 'chorus') return module.driftMode ?? 'chorus';
-  if (module.id === 'delay') return module.delayAlgorithm ?? 'tape';
-  if (module.id === 'reverb') return module.algorithm ?? 'hall';
-  if (module.id === 'media') return module.mediaMode ?? 'cassette';
-  return module.grainMode ?? 'reconstruct';
+function spring(s:Spring,target:number,k:number,d:number,dt:number){s.velocity+=(target-s.value)*k*dt;s.velocity*=Math.exp(-d*dt);s.value+=s.velocity*dt;return c01(s.value)}
+function physics(s:Record<keyof Physics,Spring>,a:VisualAudioState,dt:number):Physics{return{level:spring(s.level,c01(a.level),42,10,dt),low:spring(s.low,c01(a.low),28,7,dt),mid:spring(s.mid,c01(a.mid),43,9,dt),high:spring(s.high,c01(a.high),58,11,dt),transient:spring(s.transient,c01(a.transient),86,12,dt)}}
+
+export function ModuleViewport({module,visualState}:{module:ModuleState;visualState:VisualAudioState}){
+  const canvasRef=useRef<HTMLCanvasElement|null>(null), moduleRef=useRef(module), visualRef=useRef(visualState), last=useRef(0);
+  const springs=useRef<Record<keyof Physics,Spring>>({level:{value:0,velocity:0},low:{value:0,velocity:0},mid:{value:0,velocity:0},high:{value:0,velocity:0},transient:{value:0,velocity:0}});
+  moduleRef.current=module; visualRef.current=visualState;
+  useEffect(()=>{
+    const canvas=canvasRef.current;if(!canvas)return;const ctx=canvas.getContext('2d',{alpha:false});if(!ctx)return;
+    let cw=1,ch=1,dpr=Math.min(1.5,window.devicePixelRatio||1);
+    const resize=()=>{const r=canvas.getBoundingClientRect();cw=Math.max(1,r.width);ch=Math.max(1,r.height);dpr=Math.min(1.5,window.devicePixelRatio||1);const w=Math.round(cw*dpr),h=Math.round(ch*dpr);if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h}};
+    resize();const ro=new ResizeObserver(resize);ro.observe(canvas);
+    const render:ViewportRenderCallback=(stamp)=>{const t=stamp/1000,dt=last.current?clamp(t-last.current,.001,.08):1/60;last.current=t;const m=moduleRef.current,p:Params={};for(const x of m.parameters)p[x.id]=x.value;ctx.setTransform(dpr,0,0,dpr,0,0);draw(ctx,cw,ch,{ctx,module:m,params:p,time:t,motion:physics(springs.current,visualRef.current,dt),p:palette(m.id)})};
+    const off=subscribeViewportAnimation(render);return()=>{off();ro.disconnect()};
+  },[module.id]);
+  return <div className={`dsp-viewport viewport-${module.id} ${module.enabled?'active':''}`}><div className="viewport-glass" aria-hidden="true"/><canvas ref={canvasRef} aria-hidden="true"/><span className="viewport-caption">{caption(module)}</span></div>;
 }
 
-function paletteFor(id: string): Palette {
-  if (id === 'saturation') return { primary: [244, 152, 67], secondary: [219, 76, 151], warm: [255, 194, 104], pale: [244, 236, 220] };
-  if (id === 'chorus') return { primary: [87, 208, 226], secondary: [132, 121, 255], warm: [233, 210, 130], pale: [226, 246, 246] };
-  if (id === 'delay') return { primary: [164, 130, 255], secondary: [78, 218, 223], warm: [252, 182, 101], pale: [234, 236, 250] };
-  if (id === 'reverb') return { primary: [90, 151, 255], secondary: [97, 224, 209], warm: [240, 187, 116], pale: [229, 242, 240] };
-  if (id === 'media') return { primary: [213, 154, 93], secondary: [80, 210, 214], warm: [250, 190, 108], pale: [239, 232, 215] };
-  return { primary: [226, 108, 202], secondary: [83, 218, 216], warm: [245, 184, 105], pale: [234, 241, 237] };
+function draw(ctx:CanvasRenderingContext2D,cw:number,ch:number,k:Kit){
+  ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#010203';ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);ctx.restore();if(!k.module.enabled)return;
+  const s=Math.max(.01,Math.min((cw-8)/W,(ch-8)/H));ctx.save();ctx.translate((cw-W*s)/2,(ch-H*s)/2);ctx.scale(s,s);background(k);art(k);finish(k);ctx.restore();
 }
+function grad(ctx:CanvasRenderingContext2D,top:RGB,bottom:RGB){const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,rgba(top,1));g.addColorStop(1,rgba(bottom,1));ctx.fillStyle=g;ctx.fillRect(0,0,W,H)}
+function stroke(ctx:CanvasRenderingContext2D,c:RGB,a:number,w=1){ctx.strokeStyle=rgba(c,a);ctx.lineWidth=w}
+function glow(ctx:CanvasRenderingContext2D,x:number,y:number,c:RGB,r:number,a:number){ctx.save();ctx.fillStyle=rgba(c,a);ctx.shadowColor=rgba(c,Math.min(.5,a));ctx.shadowBlur=3+r*2;ctx.beginPath();ctx.arc(x,y,r,0,TAU);ctx.fill();ctx.restore()}
 
-function drawViewport(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  module: ModuleState,
-  audio: VisualAudioState,
-  params: Record<string, number>,
-  time: number
-): void {
-  ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = '#010304';
-  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  ctx.restore();
-  if (!module.enabled) return;
-
-  const palette = paletteFor(module.id);
-  const mix = clamp01(params.mix ?? 0.5);
-  const energy = clamp01(audio.level * 1.55 + audio.low * 0.25 + audio.mid * 0.2);
-  const transient = clamp01(audio.transient * 1.2);
-  drawBackdrop(ctx, width, height, palette, mix, energy, time);
-
-  const margin = 9;
-  const scale = Math.max(0.01, Math.min((width - margin * 2) / WORLD_W, (height - margin * 2) / WORLD_H));
-  ctx.save();
-  ctx.translate((width - WORLD_W * scale) / 2, (height - WORLD_H * scale) / 2);
-  ctx.scale(scale, scale);
-
-  const whiteMix = 0.12 + mix * 0.44 + energy * 0.08;
-  const rgba = (color: RGB, alpha: number, whiten = false) => {
-    const blend = whiten ? whiteMix : 0;
-    return `rgba(${Math.round(color[0] + (255 - color[0]) * blend)},${Math.round(color[1] + (255 - color[1]) * blend)},${Math.round(color[2] + (255 - color[2]) * blend)},${clamp01(alpha)})`;
-  };
-  const stroke = (color: RGB, alpha = 0.3, lineWidth = 1, whiten = true) => {
-    ctx.strokeStyle = rgba(color, alpha, whiten);
-    ctx.lineWidth = lineWidth;
-  };
-  const glow = (x: number, y: number, radius = 1.4, alpha = 0.45, color = palette.primary) => {
-    ctx.save();
-    ctx.fillStyle = rgba(color, alpha, true);
-    ctx.shadowColor = rgba(color, Math.min(0.48, alpha));
-    ctx.shadowBlur = 3 + radius * 2.4;
-    ctx.beginPath(); ctx.arc(x, y, radius, 0, TAU); ctx.fill(); ctx.restore();
-  };
-  const orb = (x: number, y: number, radius: number, color: RGB, alpha: number) => {
-    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    gradient.addColorStop(0, rgba(color, alpha, true));
-    gradient.addColorStop(0.3, rgba(color, alpha * 0.3));
-    gradient.addColorStop(1, rgba(color, 0));
-    ctx.fillStyle = gradient;
-    ctx.beginPath(); ctx.arc(x, y, radius, 0, TAU); ctx.fill();
-  };
-  const kit: Kit = { ctx, cx: WORLD_W / 2, cy: WORLD_H / 2, time, energy, transient, palette, rgba, stroke, glow, orb };
-  drawGrid(kit);
-  const mode = modeFor(module);
-  if (!drawHardware(kit, module.id, mode, params)) drawCreative(kit, module.id, mode, params);
-  ctx.restore();
-  drawGlassFinish(ctx, width, height, palette, time);
+function background({ctx,module,time,motion,p}:Kit){
+  if(module.id==='saturation'){grad(ctx,[21,7,11],[6,3,5]);const g=ctx.createLinearGradient(0,0,W,0);g.addColorStop(0,rgba(p.b,.05));g.addColorStop(.5,rgba(p.a,.12+motion.low*.05));g.addColorStop(1,rgba(p.b,.04));ctx.fillStyle=g;ctx.fillRect(0,0,W,H);return}
+  if(module.id==='chorus'){grad(ctx,[4,10,28],[3,6,16]);const g=ctx.createLinearGradient(0,0,W,0);g.addColorStop(0,rgba(p.a,.07));g.addColorStop(.47,'transparent');g.addColorStop(.53,'transparent');g.addColorStop(1,rgba(p.b,.07));ctx.fillStyle=g;ctx.fillRect(0,0,W,H);return}
+  if(module.id==='delay'){grad(ctx,[10,7,29],[3,4,11]);for(let i=0;i<7;i++){const q=i/6,y=18+q*116;stroke(ctx,i%2?p.b:p.a,.022+(1-q)*.02,.6);ctx.beginPath();ctx.moveTo(14+q*12,y);ctx.lineTo(226-q*12,y-q*7);ctx.stroke()}return}
+  if(module.id==='reverb'){grad(ctx,[5,12,27],[4,7,18]);ctx.save();ctx.globalCompositeOperation='screen';for(let i=0;i<5;i++){const x=-20+i*64+Math.sin(time*.035+i)*8,g=ctx.createLinearGradient(x,0,x+70,H);g.addColorStop(0,'transparent');g.addColorStop(.45,rgba(i%2?p.b:p.a,.02+motion.mid*.03));g.addColorStop(1,'transparent');ctx.fillStyle=g;ctx.fillRect(x,0,90,H)}ctx.restore();return}
+  if(module.id==='bitcrusher'){grad(ctx,[13,5,18],[4,4,10]);stroke(ctx,p.b,.023,.55);for(let x=12;x<W;x+=12){ctx.beginPath();ctx.moveTo(x,12);ctx.lineTo(x,138);ctx.stroke()}for(let y=18;y<H;y+=12){ctx.beginPath();ctx.moveTo(10,y);ctx.lineTo(230,y);ctx.stroke()}return}
+  grad(ctx,[16,10,7],[5,5,7]);for(let y=9;y<H;y+=9){stroke(ctx,y%18?p.a:p.b,.024,.5);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
 }
+function art(k:Kit){if(k.module.id==='saturation')ember(k);else if(k.module.id==='chorus')drift(k);else if(k.module.id==='delay')halo(k);else if(k.module.id==='reverb')atmos(k);else if(k.module.id==='bitcrusher')grain(k);else artifact(k)}
 
-function drawBackdrop(ctx: CanvasRenderingContext2D, width: number, height: number, palette: Palette, mix: number, energy: number, time: number): void {
-  const color = (rgb: RGB, a: number) => `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${clamp01(a)})`;
-  const cx = width / 2;
-  const cy = height / 2;
-  const gradient = ctx.createRadialGradient(cx, cy * 0.9, 4, cx, cy, Math.max(width, height) * 0.7);
-  gradient.addColorStop(0, color(palette.primary, 0.09 + mix * 0.035 + energy * 0.035));
-  gradient.addColorStop(0.4, color(palette.secondary, 0.03 + energy * 0.02));
-  gradient.addColorStop(0.76, 'rgba(4,8,11,.985)');
-  gradient.addColorStop(1, '#010203');
-  ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
-  ctx.save(); ctx.globalCompositeOperation = 'screen';
-  for (let i = 0; i < 9; i += 1) {
-    const seed = hash(i * 7.17 + palette.primary[0]);
-    ctx.fillStyle = i % 2 ? color(palette.primary, 0.035 + energy * 0.03) : color(palette.secondary, 0.03 + mix * 0.025);
-    ctx.beginPath();
-    ctx.arc(width * (0.06 + seed * 0.88) + Math.sin(time * 0.02 + i) * 2, height * (0.1 + hash(i * 3.31) * 0.7), 0.5 + hash(i * 4.7), 0, TAU);
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
-function drawGrid({ ctx, cx, cy, time, energy, palette, stroke }: Kit): void {
-  stroke(palette.primary, 0.05 + energy * 0.025, 0.55, false);
-  for (let row = 0; row < 5; row += 1) {
-    const p = row / 4;
-    const y = cy + 18 + p * 46;
-    const half = 92 - p * 24;
-    ctx.beginPath(); ctx.moveTo(cx - half, y); ctx.quadraticCurveTo(cx, y - 2 - Math.sin(time * 0.08 + row), cx + half, y); ctx.stroke();
-  }
-  for (let col = -4; col <= 4; col += 1) {
-    ctx.beginPath(); ctx.moveTo(cx + col * 15, cy + 18); ctx.lineTo(cx + col * 22, WORLD_H + 2); ctx.stroke();
-  }
-}
-
-function drawHardware(kit: Kit, moduleId: string, mode: string, params: Record<string, number>): boolean {
-  if (moduleId === 'saturation' && ['goldlion', 'mullard', 'telefunken', 'bugleboy', 'rcablack'].includes(mode)) {
-    drawNamedTube(kit, mode, clamp01(params.drive ?? 0.2), clamp01(params.heat ?? 0.2)); return true;
-  }
-  if (moduleId === 'chorus' && mode === 'ce1') { drawCE1(kit, clamp01(params.shape ?? 0.35), clamp01(params.motion ?? 0.3)); return true; }
-  if (moduleId === 'chorus' && mode === 'dimensiond') { drawDimensionD(kit, clamp01(params.shape ?? 0.35)); return true; }
-  if (moduleId === 'delay' && mode === 're201') { drawRE201(kit, clamp01(params.feedback ?? 0.3), clamp01(params.character ?? 0.2), clamp01(params.width ?? 0.5)); return true; }
-  if (moduleId === 'reverb' && mode === 'emt140') { drawEMT140(kit, clamp01(params.diffusion ?? 0.6)); return true; }
-  if (moduleId === 'reverb' && mode === 'lexicon224') { drawLexicon224(kit, clamp01(params.motion ?? 0.2), clamp01(params.diffusion ?? 0.6)); return true; }
-  if (moduleId === 'bitcrusher' && mode === 'sp1200') { drawSP1200(kit, clamp01(params.density ?? 0.4), clamp01(params.chaos ?? 0.2)); return true; }
-  if (moduleId === 'bitcrusher' && mode === 'mpc60') { drawMPC60(kit, clamp01(params.density ?? 0.4), clamp01(params.bloom ?? 0.3)); return true; }
-  if (moduleId === 'bitcrusher' && mode === 'mirage') { drawMirage(kit, clamp01(params.density ?? 0.4), clamp01(params.pitch ?? 0.38)); return true; }
-  if (moduleId === 'media' && mode === 'tascam424') { drawTascam424(kit, clamp01(params.wear ?? 0.25), clamp01(params.tone ?? 0.6)); return true; }
-  return false;
-}
-
-function drawNamedTube(kit: Kit, mode: string, drive: number, heat: number): void {
-  const { ctx, cx, cy, time, energy, transient, palette, stroke, glow, orb } = kit;
-  const profiles: Record<string, { plate: RGB; heater: RGB; spacing: number }> = {
-    goldlion: { plate: [246, 196, 92], heater: [255, 222, 126], spacing: 45 },
-    mullard: { plate: [225, 117, 73], heater: [255, 174, 95], spacing: 40 },
-    telefunken: { plate: [183, 218, 228], heater: [255, 202, 120], spacing: 43 },
-    bugleboy: { plate: [241, 181, 96], heater: [255, 228, 153], spacing: 48 },
-    rcablack: { plate: [177, 112, 91], heater: [255, 126, 66], spacing: 38 },
-  };
-  const profile = profiles[mode] ?? profiles.goldlion;
-  orb(cx, cy - 6, 64, profile.plate, 0.055 + heat * 0.045 + energy * 0.03);
-  for (let tube = -1; tube <= 1; tube += 1) {
-    const x = cx + tube * profile.spacing;
-    stroke(profile.plate, 0.25 + drive * 0.12, 1.1);
-    ctx.beginPath(); ctx.roundRect(x - 15, cy - 36, 30, 58, 11); ctx.stroke();
-    for (let grid = -2; grid <= 2; grid += 1) {
-      const y = cy - 7 + grid * 10;
-      stroke(profile.plate, 0.17 + heat * 0.08, 0.85);
-      ctx.beginPath(); ctx.moveTo(x - 8, y); ctx.lineTo(x + 8, y + Math.sin(time * 0.12 + tube + grid) * 1.4); ctx.stroke();
-    }
-    const phase = (time * (0.35 + heat * 0.25) + tube * 0.17) % 1;
-    glow(x, cy + 15 - phase * 42, 1.5 + drive * 0.7, 0.45 + heat * 0.22 + transient * 0.14, profile.heater);
-  }
-  if (mode === 'goldlion') {
-    for (let ring = 0; ring < 4; ring += 1) { stroke(profile.plate, 0.18, 1); ctx.beginPath(); ctx.ellipse(cx, cy - 7, 35 + ring * 14, 15 + ring * 7, time * 0.012 * (ring % 2 ? -1 : 1), 0, TAU); ctx.stroke(); }
-  } else if (mode === 'mullard') {
-    for (let row = -5; row <= 5; row += 1) { stroke(row % 2 ? palette.secondary : profile.plate, 0.1 + (5 - Math.abs(row)) * 0.014, 0.9); ctx.beginPath(); ctx.moveTo(cx - 86, cy + row * 7); ctx.bezierCurveTo(cx - 32, cy + row * 8 + Math.sin(time * 0.15 + row) * 3, cx + 32, cy + row * 5, cx + 86, cy + row * 7); ctx.stroke(); }
-  } else if (mode === 'telefunken') {
-    ctx.save(); ctx.translate(cx, cy - 7); ctx.rotate(Math.PI / 4 + Math.sin(time * 0.05) * 0.02); stroke(profile.plate, 0.28, 1.05); for (let i = 0; i < 4; i += 1) ctx.strokeRect(-14 - i * 8, -14 - i * 8, 28 + i * 16, 28 + i * 16); ctx.restore();
-  } else if (mode === 'bugleboy') {
-    for (let i = 0; i < 18; i += 1) { const a = i * 2.399 + time * 0.045; const r = 18 + (i % 6) * 12; glow(cx + Math.cos(a) * r, cy - 7 + Math.sin(a * 1.13) * r * 0.45, 0.8 + (i % 3) * 0.3, 0.16 + energy * 0.08, i % 2 ? profile.plate : palette.secondary); }
-  } else {
-    ctx.fillStyle = 'rgba(2,2,2,.26)'; ctx.fillRect(cx - 45, cy - 39, 22, 66); ctx.fillRect(cx + 23, cy - 39, 22, 66);
-  }
-}
-
-function drawCE1(kit: Kit, intensity: number, preamp: number): void {
-  const { ctx, cx, cy, time, transient, palette, stroke, glow, orb } = kit;
-  orb(cx, cy - 8, 58, palette.primary, 0.05 + intensity * 0.035);
-  for (let lane = 0; lane < 2; lane += 1) {
-    const y = cy - 25 + lane * 35;
-    stroke(lane ? palette.secondary : palette.primary, 0.28, 1.2); ctx.beginPath(); ctx.moveTo(cx - 91, y);
-    for (let step = 1; step <= 48; step += 1) { const p = step / 48; ctx.lineTo(cx - 91 + p * 182, y + Math.sin(p * Math.PI * 5 + time * 0.7 + lane * Math.PI) * (3 + intensity * 10)); } ctx.stroke();
-  }
-  stroke(palette.warm, 0.18 + preamp * 0.16, 1.1); ctx.strokeRect(cx - 86, cy + 29, 172, 13);
-  glow(cx - 78 + ((Math.sin(time * 1.1) + 1) * 0.5) * 156, cy + 35.5, 1.8 + transient, 0.5, palette.warm);
-}
-
-function drawDimensionD(kit: Kit, modeValue: number): void {
-  const { ctx, cx, cy, time, palette, stroke, glow } = kit;
-  const active = Math.max(0, Math.min(6, Math.floor(modeValue * 7)));
-  for (let lane = 0; lane < 4; lane += 1) {
-    const y = cy - 42 + lane * 25; stroke(lane % 2 ? palette.secondary : palette.primary, 0.18 + lane * 0.03, 1.1); ctx.beginPath();
-    for (let step = 0; step <= 60; step += 1) { const p = step / 60; const x = cx - 96 + p * 192; const yy = y + Math.sin(p * Math.PI * 2 + time * 0.24 + lane * Math.PI * 0.5) * 5.5; step === 0 ? ctx.moveTo(x, yy) : ctx.lineTo(x, yy); } ctx.stroke();
-    glow(cx - 86, y, 1.1, lane === active % 4 ? 0.52 : 0.18, lane % 2 ? palette.secondary : palette.primary);
-  }
-  stroke(palette.pale, 0.16, 1); for (let button = 0; button < 4; button += 1) { const x = cx - 46 + button * 31; ctx.strokeRect(x - 9, cy + 37, 18, 9); if (button === active % 4 || (active > 3 && button === 3)) glow(x, cy + 41.5, 1.8, 0.5, palette.pale); }
-}
-
-function drawRE201(kit: Kit, feedback: number, age: number, modeValue: number): void {
-  const { ctx, cx, cy, time, energy, palette, stroke, glow, orb } = kit;
-  orb(cx, cy - 6, 68, palette.warm, 0.04 + feedback * 0.04 + energy * 0.02);
-  const left: readonly [number, number] = [cx - 66, cy - 18]; const right: readonly [number, number] = [cx + 66, cy - 18]; const bottom: readonly [number, number] = [cx, cy + 40];
-  stroke(palette.warm, 0.34, 1.4); ctx.beginPath(); ctx.moveTo(...left); ctx.lineTo(...right); ctx.lineTo(...bottom); ctx.closePath(); ctx.stroke();
-  const spin = time * (0.8 + feedback * 0.55);
-  for (const [x, y] of [left, right]) { stroke(palette.primary, 0.32, 1.15); ctx.beginPath(); ctx.arc(x, y, 22, 0, TAU); ctx.stroke(); for (let spoke = 0; spoke < 6; spoke += 1) { const a = spin + spoke * TAU / 6; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * 17, y + Math.sin(a) * 17); ctx.stroke(); } }
-  const heads = 3 + Math.round(modeValue * 4); stroke(palette.secondary, 0.24 + age * 0.1, 1.1);
-  for (let i = 0; i < heads; i += 1) { const p = i / Math.max(1, heads - 1); const x = cx - 54 + p * 108; const y = cy + 13 + Math.sin(p * Math.PI) * 17; ctx.strokeRect(x - 5, y - 4, 10, 8); if ((Math.floor(time * 2 + i) % heads) === i) glow(x, y, 1.4, 0.48, palette.secondary); }
-}
-
-function drawEMT140(kit: Kit, diffusion: number): void {
-  const { ctx, cx, cy, time, energy, palette, stroke, glow, orb } = kit;
-  orb(cx, cy - 6, 70, palette.primary, 0.045 + diffusion * 0.035 + energy * 0.02); stroke(palette.primary, 0.36, 1.35); ctx.strokeRect(cx - 95, cy - 54, 190, 98);
-  for (const [x, y] of [[cx - 95, cy - 54], [cx + 95, cy - 54], [cx - 95, cy + 44], [cx + 95, cy + 44]] as const) glow(x, y, 1.5, 0.42, palette.warm);
-  for (let row = 0; row < 13; row += 1) { const baseY = cy - 49 + row * 8; ctx.beginPath(); for (let step = 0; step <= 64; step += 1) { const p = step / 64; const x = cx - 95 + p * 190; const y = baseY + Math.sin(p * Math.PI * 6 + time * 0.22 + row * 0.65) * (1.2 + diffusion * 4.8); step === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } stroke(row % 2 ? palette.secondary : palette.primary, 0.075 + row * 0.007, 0.75); ctx.stroke(); }
-}
-
-function drawLexicon224(kit: Kit, motion: number, diffusion: number): void {
-  const { ctx, cx, cy, time, palette, stroke, glow, orb, rgba } = kit;
-  orb(cx, cy - 8, 68, palette.secondary, 0.04 + motion * 0.03); const cols = 12; const rows = 7; const cellW = 14; const cellH = 11; const startX = cx - 84; const startY = cy - 46;
-  for (let row = 0; row < rows; row += 1) for (let col = 0; col < cols; col += 1) { const phase = Math.sin(time * 0.7 + row * 1.3 + col * 0.73); ctx.fillStyle = rgba((row + col) % 3 ? palette.primary : palette.secondary, 0.055 + Math.max(0, phase) * (0.08 + diffusion * 0.08), true); ctx.fillRect(startX + col * cellW + 1, startY + row * cellH + 1, cellW - 2, cellH - 2); }
-  stroke(palette.pale, 0.18, 1); ctx.strokeRect(startX, startY, cols * cellW, rows * cellH); const scan = Math.floor((time * (1.2 + motion)) % cols); for (let row = 0; row < rows; row += 1) glow(startX + scan * cellW + cellW / 2, startY + row * cellH + cellH / 2, 0.9, 0.26, palette.pale);
-}
-
-function drawSP1200(kit: Kit, density: number, filterEnv: number): void {
-  const { ctx, cx, cy, time, transient, palette, stroke, glow, rgba } = kit;
-  for (let i = 0; i < 8; i += 1) { const x = cx - 80 + i * 23; const level = 12 + ((i * 17) % 29) + Math.sin(time * 0.9 + i) * (4 + density * 8); stroke(i % 2 ? palette.secondary : palette.primary, 0.24, 1); ctx.strokeRect(x, cy - 42, 20, 70); ctx.fillStyle = rgba(i % 2 ? palette.secondary : palette.primary, 0.08 + density * 0.06, true); ctx.fillRect(x + 3, cy + 24 - level, 14, level); if ((Math.floor(time * 3.2) + i) % 8 === 0) glow(x + 10, cy + 34, 1.7 + transient, 0.55, palette.warm); }
-  stroke(palette.warm, 0.16 + filterEnv * 0.1, 1); ctx.beginPath(); for (let step = 0; step <= 64; step += 1) { const p = step / 64; const x = cx - 91 + p * 182; const y = cy + 48 + Math.round(Math.sin(p * Math.PI * 4 + time * 0.35) * 6) / 2; step === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } ctx.stroke();
-}
-
-function drawMPC60(kit: Kit, density: number, bloom: number): void {
-  const { ctx, cx, cy, time, energy, palette, stroke, glow, rgba } = kit; const size = 23; const gap = 5; const startX = cx - (4 * size + 3 * gap) / 2; const startY = cy - 55; const active = Math.floor(time * (2.2 + density * 1.5)) % 16;
-  for (let row = 0; row < 4; row += 1) for (let col = 0; col < 4; col += 1) { const index = row * 4 + col; const x = startX + col * (size + gap); const y = startY + row * (size + gap); stroke(index === active ? palette.pale : index % 2 ? palette.secondary : palette.primary, index === active ? 0.44 : 0.16, index === active ? 1.4 : 1); ctx.beginPath(); ctx.roundRect(x, y, size, size, 3); ctx.stroke(); if (index === active) { ctx.fillStyle = rgba(palette.warm, 0.08 + bloom * 0.08 + energy * 0.04, true); ctx.fill(); glow(x + size / 2, y + size / 2, 1.5, 0.5, palette.warm); } }
-}
-
-function drawMirage(kit: Kit, drive: number, rate: number): void {
-  const { ctx, cx, cy, time, palette, stroke, glow, orb } = kit; orb(cx, cy - 8, 58, palette.secondary, 0.05); stroke(palette.primary, 0.24, 1.1); ctx.strokeRect(cx - 96, cy - 50, 192, 88); ctx.beginPath();
-  for (let step = 0; step <= 72; step += 1) { const p = step / 72; const x = cx - 91 + p * 182; const raw = Math.sin(p * Math.PI * (3 + rate * 5) + time * (0.3 + rate * 0.45)) * (18 + drive * 18); const y = cy - 7 + Math.round(raw / 5) * 5; step === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
-  stroke(palette.pale, 0.28, 1.2); ctx.stroke(); for (let i = 0; i < 8; i += 1) { const x = cx - 78 + i * 22; const lit = (Math.floor(time * 4) + i) % 8 === 0; glow(x, cy + 48, lit ? 1.7 : 0.8, lit ? 0.52 : 0.12, lit ? palette.warm : palette.primary); }
-}
-
-function drawTascam424(kit: Kit, trim: number, drive: number): void {
-  const { ctx, cx, cy, time, energy, palette, stroke, glow, orb, rgba } = kit; orb(cx, cy - 3, 66, palette.warm, 0.04 + drive * 0.035 + energy * 0.02); const channelW = 39; const gap = 7; const startX = cx - (4 * channelW + 3 * gap) / 2;
-  for (let channel = 0; channel < 4; channel += 1) { const x = startX + channel * (channelW + gap); stroke(channel % 2 ? palette.secondary : palette.primary, 0.2, 1.05); ctx.beginPath(); ctx.roundRect(x, cy - 55, channelW, 92, 4); ctx.stroke(); const meter = clamp01(0.18 + trim * 0.46 + Math.sin(time * (0.7 + channel * 0.08) + channel) * 0.13 + energy * 0.3); for (let segment = 0; segment < 8; segment += 1) { const lit = segment / 8 < meter; const y = cy - 47 + (7 - segment) * 6; ctx.fillStyle = rgba(segment > 5 ? palette.warm : channel % 2 ? palette.secondary : palette.primary, lit ? 0.42 : 0.055, true); ctx.fillRect(x + 6, y, channelW - 12, 3); } const faderY = cy + 28 - drive * 27; stroke(palette.pale, 0.13, 0.8, false); ctx.beginPath(); ctx.moveTo(x + channelW / 2, cy - 2); ctx.lineTo(x + channelW / 2, cy + 32); ctx.stroke(); ctx.fillStyle = rgba(palette.pale, 0.24, true); ctx.fillRect(x + channelW / 2 - 6, faderY - 2, 12, 4); if ((Math.floor(time * 2.5) + channel) % 4 === 0) glow(x + channelW / 2, cy - 60, 1.2, 0.42, palette.warm); }
-}
-
-function drawCreative(kit: Kit, moduleId: string, mode: string, params: Record<string, number>): void {
-  if (moduleId === 'saturation') drawCreativeEmber(kit, mode, params);
-  else if (moduleId === 'chorus') drawCreativeDrift(kit, mode, params);
-  else if (moduleId === 'delay') drawCreativeHalo(kit, mode, params);
-  else if (moduleId === 'reverb') drawCreativeAtmos(kit, mode, params);
-  else if (moduleId === 'media') drawCreativeArtifact(kit, mode, params);
-  else drawCreativeGrain(kit, mode, params);
-}
-
-function drawCreativeEmber(kit: Kit, mode: string, params: Record<string, number>): void {
-  const { ctx, cx, cy, time, energy, palette, stroke, glow, orb, rgba } = kit; const drive = clamp01(params.drive ?? 0.2); const heat = clamp01(params.heat ?? 0.2); const character = clamp01(params.character ?? 0.3); orb(cx, cy - 7, 56, palette.primary, 0.06 + drive * 0.05 + energy * 0.02);
-  const core = ctx.createRadialGradient(cx - 4, cy - 14, 1, cx, cy - 7, 28 + drive * 8); core.addColorStop(0, rgba(palette.warm, 0.48 + heat * 0.18, true)); core.addColorStop(0.4, rgba(palette.primary, 0.25 + drive * 0.12)); core.addColorStop(1, rgba(palette.secondary, 0)); ctx.fillStyle = core; ctx.beginPath(); ctx.ellipse(cx, cy - 7, 38 + drive * 9, 23 + heat * 5, Math.sin(time * 0.08) * 0.05, 0, TAU); ctx.fill();
-  const rows = mode === 'broken' ? 12 : 9; for (let row = 0; row < rows; row += 1) { const y = cy - 45 + row * (90 / Math.max(1, rows - 1)); const bend = Math.sin(time * (mode === 'furnace' ? 0.34 : 0.2) + row) * (2 + heat * 4); stroke(row % 2 ? palette.secondary : palette.primary, 0.13 + drive * 0.07, 1); ctx.beginPath(); if (mode === 'broken') { const gap = 10 + (row * 9) % 24; ctx.moveTo(cx - 94, y); ctx.lineTo(cx - gap, y); ctx.moveTo(cx + gap, y + (row % 2 ? 4 : -4)); ctx.lineTo(cx + 94, y); } else { ctx.moveTo(cx - 94, y); ctx.bezierCurveTo(cx - 40, y, cx - 18, y + bend, cx, y + bend); ctx.bezierCurveTo(cx + 20, y + bend, cx + 44, y, cx + 94, y); } ctx.stroke(); }
-  glow(cx, cy - 7, 2.1, 0.4 + character * 0.12, palette.warm);
-}
-
-function drawCreativeDrift(kit: Kit, mode: string, params: Record<string, number>): void {
-  const { ctx, cx, cy, time, energy, palette, stroke, glow, orb } = kit; const depth = clamp01((params.depth ?? 0.3) * 110); const rate = 0.22 + clamp01((params.rate ?? 0.2) / 2.5) * 0.75; const spread = clamp01(params.spread ?? 0.5); const motion = clamp01(params.motion ?? 0.3); orb(cx - 35, cy - 7, 52, palette.primary, 0.04 + depth * 0.03 + energy * 0.02); orb(cx + 39, cy - 4, 50, palette.secondary, 0.035 + motion * 0.025);
-  for (let ribbon = 0; ribbon < 5; ribbon += 1) { const phase = time * rate * (0.5 + ribbon * 0.04) + ribbon * 1.3; ctx.beginPath(); for (let step = 0; step <= 60; step += 1) { const p = step / 60; const x = cx - 99 + p * 198; let y = cy - 7 + (ribbon - 2) * 18 + Math.sin(p * Math.PI * 2.4 + phase) * (6 + depth * 9); if (mode === 'liquid') y += Math.sin(p * Math.PI * 6 - time * 0.2 + ribbon) * 6 * motion; if (mode === 'dimension') y += (p - 0.5) * (ribbon - 2) * 11 * spread; if (mode === 'vibrato') y += Math.sin(p * Math.PI * 8 + time * rate * 2) * (3 + depth * 5); step === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } stroke(ribbon % 2 ? palette.secondary : palette.primary, 0.14 + ribbon * 0.022, 1.05); ctx.stroke(); }
-  if (mode === 'rotary' || mode === 'orbit') { for (let ring = 0; ring < (mode === 'orbit' ? 6 : 4); ring += 1) { const angle = time * rate * (ring % 2 ? -0.16 : 0.13); stroke(ring % 2 ? palette.secondary : palette.primary, 0.18 + ring * 0.02, 1); ctx.beginPath(); ctx.ellipse(cx, cy - 7, 24 + ring * 12, 10 + ring * 6, angle, 0, TAU); ctx.stroke(); const a = time * rate * 1.8 + ring * 1.3; glow(cx + Math.cos(a) * (24 + ring * 12), cy - 7 + Math.sin(a) * (10 + ring * 6), 1.1, 0.34, ring % 2 ? palette.pale : palette.primary); } }
-}
-
-function drawCreativeHalo(kit: Kit, mode: string, params: Record<string, number>): void {
-  const { ctx, cx, cy, time, energy, palette, stroke, glow, orb } = kit; const feedback = clamp01(params.feedback ?? 0.3); const character = clamp01(params.character ?? 0.2); const width = clamp01(params.width ?? 0.5); orb(cx, cy - 8, 62, palette.primary, 0.045 + feedback * 0.04 + energy * 0.02); const depth = 7 + Math.round(feedback * 5);
-  for (let i = depth - 1; i >= 0; i -= 1) { const k = i / Math.max(1, depth - 1); const scale = 0.24 + (1 - k) * 0.88; const w = 170 * scale * (0.9 + width * 0.14); const h = 92 * scale; const x = cx + Math.sin(time * 0.04 + i * 0.7) * character * 4; const y = cy - 8 + (k - 0.5) * 8; stroke(i % 2 ? palette.secondary : palette.primary, 0.08 + (1 - k) * 0.17, 1); ctx.beginPath(); if (mode === 'diffuse' || mode === 'constellation') ctx.ellipse(x, y, w / 2, h / 2, 0, 0, TAU); else ctx.roundRect(x - w / 2, y - h / 2, w, h, 5 + scale * 5); ctx.stroke(); }
-  glow(cx, cy - 8, 2.4, 0.5, palette.warm); if (mode === 'pingpong') { let x = cx - 82; let y = cy - 48; for (let i = 0; i < 10; i += 1) { const nx = i % 2 ? cx - 66 + i * 4 : cx + 66 - i * 4; const ny = cy - 45 + i * 10; stroke(i % 2 ? palette.secondary : palette.primary, 0.31 - i * 0.02, 1.1); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(nx, ny); ctx.stroke(); glow(nx, ny, 1.1, 0.34 - i * 0.02, i % 2 ? palette.secondary : palette.primary); x = nx; y = ny; } }
-}
-
-function drawCreativeAtmos(kit: Kit, mode: string, params: Record<string, number>): void {
-  const { ctx, cx, cy, time, energy, palette, stroke, glow, orb } = kit; const size = 0.58 + clamp01(params.size ?? 0.5) * 0.42; const motion = clamp01(params.motion ?? 0.2); const diffusion = clamp01(params.diffusion ?? 0.5); orb(cx - 36, cy - 14, 65 * size, palette.primary, 0.035 + diffusion * 0.03 + energy * 0.02); orb(cx + 42, cy - 5, 58 * size, palette.secondary, 0.03 + motion * 0.025);
-  if (mode === 'room' || mode === 'hall' || mode === 'cinema') { const columns = mode === 'cinema' ? 9 : mode === 'hall' ? 7 : 5; const roomScale = (mode === 'room' ? 0.72 : mode === 'hall' ? 0.88 : 1) * size; stroke(palette.primary, 0.13, 1); ctx.strokeRect(cx - 94 * roomScale, cy - 52 * roomScale, 188 * roomScale, 92 * roomScale); for (let i = 0; i < columns; i += 1) { const x = cx + (-82 + i * (164 / Math.max(1, columns - 1))) * roomScale; stroke(i % 2 ? palette.secondary : palette.primary, 0.14 + diffusion * 0.06, 1); ctx.beginPath(); ctx.moveTo(x, cy - 48 * roomScale); ctx.lineTo(x, cy + 36 * roomScale); ctx.stroke(); } }
-  else if (mode === 'plate') { stroke(palette.primary, 0.34, 1.3); ctx.strokeRect(cx - 92 * size, cy - 49 * size, 184 * size, 91 * size); for (let row = 0; row < 10; row += 1) { ctx.beginPath(); for (let step = 0; step <= 48; step += 1) { const p = step / 48; const x = cx - 92 * size + p * 184 * size; const y = cy - 4 + (row - 4.5) * 8 + Math.sin(p * Math.PI * 5 + time * 0.2 + row) * (2 + motion * 6); step === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } stroke(row % 2 ? palette.secondary : palette.primary, 0.1 + row * 0.012, 0.9); ctx.stroke(); } }
-  else { const count = mode === 'nebula' ? 42 : mode === 'cloud' ? 28 : 18; for (let i = 0; i < count; i += 1) { const angle = i * 2.399 + time * (0.02 + motion * 0.025); const radius = 10 + (i % 10) * 8 * size; glow(cx + Math.cos(angle) * radius, cy - 7 + Math.sin(angle * 1.13) * radius * 0.48, 0.7 + (i % 3) * 0.3, 0.09 + (i % 6) * 0.018, i % 3 ? palette.primary : palette.secondary); } }
-}
-
-function drawCreativeGrain(kit: Kit, mode: string, params: Record<string, number>): void {
-  const { ctx, cx, cy, time, energy, palette, stroke, orb, rgba } = kit; const density = clamp01(params.density ?? 0.4); const chaos = clamp01(params.chaos ?? 0.2); const bloom = clamp01(params.bloom ?? 0.3); orb(cx, cy - 7, 60, palette.primary, 0.04 + bloom * 0.035 + energy * 0.02); stroke(palette.secondary, 0.06, 0.7, false); for (let i = -5; i <= 5; i += 1) { ctx.beginPath(); ctx.moveTo(cx - 95, cy + i * 9); ctx.lineTo(cx + 95, cy + i * 9); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx + i * 18, cy - 52); ctx.lineTo(cx + i * 18, cy + 45); ctx.stroke(); }
-  const count = 22 + Math.round(density * 34); for (let i = 0; i < count; i += 1) { const seed = i * 12.9898; let orbit = time * (0.07 + chaos * 0.12) + seed; let radiusX = 22 + (i % 9) * 8; let radiusY = 10 + (i % 7) * 5; if (mode === 'shatter') { radiusX *= 1.18; radiusY *= 1.18; } if (mode === 'smear') radiusX *= 1.32; if (mode === 'stutter') orbit = Math.floor(orbit * 4) / 4; const x = cx + Math.sin(seed * 1.7 + orbit) * radiusX; const y = cy - 7 + Math.cos(seed * 0.9 + orbit * 1.2) * radiusY; const size = 1 + (i % 4) * 0.65 + bloom * 1.4; ctx.save(); ctx.translate(x, y); ctx.rotate(seed + time * 0.05 * (i % 2 ? -1 : 1)); ctx.fillStyle = rgba(mode === 'prism' && i % 3 === 0 ? palette.pale : i % 2 ? palette.secondary : palette.primary, 0.13 + bloom * 0.05, true); ctx.beginPath(); ctx.moveTo(0, -size * 2); ctx.lineTo(size * 1.5, 0); ctx.lineTo(0, size * 1.8); ctx.lineTo(-size * 1.5, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
-}
-
-function drawCreativeArtifact(kit: Kit, mode: string, params: Record<string, number>): void {
-  const { ctx, cx, cy, time, energy, palette, stroke, glow, orb } = kit; const wear = clamp01(params.wear ?? 0.25); const wow = clamp01(params.wow ?? 0.16); const noise = clamp01(params.noise ?? 0.1); orb(cx - 30, cy - 7, 60, palette.primary, 0.035 + wear * 0.025 + energy * 0.02); orb(cx + 38, cy, 54, palette.secondary, 0.025 + wow * 0.03);
-  if (mode === 'cassette' || mode === 'reel') { const shellW = mode === 'cassette' ? 184 : 176; const shellH = mode === 'cassette' ? 92 : 88; stroke(palette.primary, 0.32, 1.2); ctx.strokeRect(cx - shellW / 2, cy - shellH / 2 - 5, shellW, shellH); const radius = mode === 'cassette' ? 20 : 29; const spin = time * (0.65 + wear * 0.7); for (const x of [cx - 47, cx + 47]) { stroke(palette.secondary, 0.27, 1.1); ctx.beginPath(); ctx.arc(x, cy - 7, radius, 0, TAU); ctx.stroke(); for (let spoke = 0; spoke < 6; spoke += 1) { const a = spin + spoke * TAU / 6; ctx.beginPath(); ctx.moveTo(x, cy - 7); ctx.lineTo(x + Math.cos(a) * (radius - 4), cy - 7 + Math.sin(a) * (radius - 4)); ctx.stroke(); } } }
-  else if (mode === 'vinyl' || mode === 'wax') { const radius = mode === 'wax' ? 56 : 49; stroke(palette.primary, 0.31, 1.2); for (let ring = 0; ring < 8; ring += 1) { ctx.beginPath(); ctx.arc(cx - 12, cy - 7, radius - ring * 5, 0, TAU); ctx.stroke(); } const angle = time * (0.8 + wow * 0.4); const x = cx - 12 + Math.cos(angle * 0.07) * 38; const y = cy - 7 + Math.sin(angle * 0.07) * 38; stroke(palette.warm, 0.34, 1.2); ctx.beginPath(); ctx.moveTo(cx + 78, cy - 48); ctx.lineTo(x, y); ctx.stroke(); glow(x, y, 1.5, 0.5, palette.warm); }
-  else { const bands = mode === 'radio' ? 10 : 16; for (let row = 0; row < bands; row += 1) { const y = cy - 52 + row * (96 / Math.max(1, bands - 1)); const shift = Math.sin(time * (0.4 + wow) + row * 1.7) * (2 + wear * 8); stroke(row % 2 ? palette.secondary : palette.primary, 0.08 + noise * 0.07, 0.9); ctx.beginPath(); ctx.moveTo(cx - 96 + shift, y); ctx.lineTo(cx + 96 - shift * 0.4, y); ctx.stroke(); } }
-}
-
-function drawGlassFinish(ctx: CanvasRenderingContext2D, width: number, height: number, palette: Palette, time: number): void {
-  ctx.save(); const vignette = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.22, width / 2, height / 2, Math.max(width, height) * 0.67); vignette.addColorStop(0, 'rgba(0,0,0,0)'); vignette.addColorStop(0.72, 'rgba(0,0,0,.08)'); vignette.addColorStop(1, 'rgba(0,0,0,.66)'); ctx.fillStyle = vignette; ctx.fillRect(0, 0, width, height); ctx.globalAlpha = 0.035; ctx.fillStyle = `rgb(${palette.primary[0]} ${palette.primary[1]} ${palette.primary[2]})`; ctx.fillRect(0, ((time * 7) % (height + 8)) - 4, width, 1); ctx.restore();
-}
+function ember({ctx,module,params,time,motion,p}:Kit){const m=mode(module),drive=c01(val(params,'drive',.2)),heat=c01(val(params,'heat',.2)),cx=120,cy=72-motion.low*2;const g=ctx.createRadialGradient(cx-4,cy-6,2,cx,cy,40+drive*12);g.addColorStop(0,rgba(p.warm,.45+heat*.2+motion.transient*.08));g.addColorStop(.3,rgba(p.a,.24+drive*.12));g.addColorStop(1,'transparent');ctx.fillStyle=g;ctx.beginPath();ctx.ellipse(cx,cy,44+drive*8,27+heat*7,Math.sin(time*.07)*.04,0,TAU);ctx.fill();if(is(m,'goldlion','mullard','telefunken','bugleboy','rcablack')){for(let i=-1;i<=1;i++){const x=cx+i*46;stroke(ctx,i?p.a:p.warm,.25+drive*.1,1.1);ctx.beginPath();ctx.roundRect(x-14,cy-35,28,62,10);ctx.stroke();for(let r=-2;r<=2;r++){const y=cy+r*10;stroke(ctx,p.b,.13+heat*.07,.7);ctx.beginPath();ctx.moveTo(x-9,y);ctx.lineTo(x+9,y+Math.sin(time*.2+r+i)*1.5);ctx.stroke()}glow(ctx,x,cy+20-((time*(.4+heat*.2)+i*.18)%1)*48,p.warm,1.4+drive,.4)}}else{for(let r=0;r<(m==='broken'?11:8);r++){const y=38+r*(74/(m==='broken'?10:7)),bend=Math.sin(time*(m==='furnace'?.34:.18)+r)*(2+heat*5+motion.low*2);stroke(ctx,r%2?p.b:p.a,.12+drive*.08,.9);ctx.beginPath();ctx.moveTo(18,y);ctx.bezierCurveTo(70,y,94,y+bend,120,y+bend);ctx.bezierCurveTo(148,y+bend,172,y,222,y);ctx.stroke()}}glow(ctx,cx,cy,p.warm,1.7+motion.transient*1.4,.35)}
+function drift({ctx,module,params,time,motion,p}:Kit){const m=mode(module),depth=c01(val(params,'depth',.3)*110),rate=.18+c01(val(params,'rate',.2)/2.5)*.85,spread=c01(val(params,'spread',.5)),mv=c01(val(params,'motion',.3));for(let r=0;r<5;r++){const ph=time*rate*(.55+r*.04)+r*1.27+motion.mid*.5;ctx.beginPath();for(let s=0;s<=72;s++){const q=s/72,x=8+q*224;let y=42+r*17+Math.sin(q*Math.PI*2.4+ph)*(5+depth*10);if(m==='liquid')y+=Math.sin(q*Math.PI*6-time*.24+r)*6*mv;if(is(m,'dimension','dimensiond'))y+=(q-.5)*(r-2)*11*spread;if(m==='vibrato')y+=Math.sin(q*Math.PI*8+time*rate*2)*(3+depth*5);s?ctx.lineTo(x,y):ctx.moveTo(x,y)}stroke(ctx,r%2?p.b:p.a,.14+r*.024+motion.high*.03,1.05);ctx.stroke()}}
+function halo({ctx,module,params,time,motion,p}:Kit){const m=mode(module),fb=c01(val(params,'feedback',.3)),ch=c01(val(params,'character',.2)),wide=c01(val(params,'width',.5)),depth=7+Math.round(fb*6);ctx.save();ctx.translate(Math.sin(time*.08)*(1+ch*5)+motion.mid*2,Math.cos(time*.06)*(0.5+ch*2)-motion.low*2);for(let i=depth-1;i>=0;i--){const k=i/Math.max(1,depth-1),sc=.28+(1-k)*.92,w=172*sc*(.9+wide*.14),h=96*sc,x=120+(i-depth/2)*ch*1.2,y=74+(k-.5)*8;stroke(ctx,i%2?p.b:p.a,.055+(1-k)*.2+motion.transient*(1-k)*.04,.9+(1-k)*.25);ctx.beginPath();is(m,'diffuse','constellation')?ctx.ellipse(x,y,w/2,h/2,0,0,TAU):ctx.roundRect(x-w/2,y-h/2,w,h,4+sc*6);ctx.stroke()}ctx.restore();if(m==='pingpong'){let x=28,y=27;for(let i=0;i<11;i++){const nx=i%2?66+i*4:176-i*4,ny=28+i*9;stroke(ctx,i%2?p.b:p.a,.3-i*.018,1);ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(nx,ny);ctx.stroke();glow(ctx,nx,ny,i%2?p.b:p.a,.9,.24);x=nx;y=ny}}glow(ctx,120,74,p.warm,1.4+motion.transient*1.5,.36)}
+function atmos({ctx,module,params,time,motion,p}:Kit){const m=mode(module),size=.62+c01(val(params,'size',.5))*.38,diff=c01(val(params,'diffusion',.5)),mv=c01(val(params,'motion',.2)),sheets=m==='room'?4:m==='hall'?6:m==='cinema'?8:7;ctx.save();ctx.globalCompositeOperation='screen';for(let i=0;i<sheets;i++){const seed=hash(i*9.17+2),base=18+i*(112/Math.max(1,sheets-1)),amp=(3+diff*9)*(.5+seed*.7),speed=.035+mv*.07+seed*.015;ctx.beginPath();for(let s=0;s<=42;s++){const q=s/42,x=-8+q*256,y=base+Math.sin(q*Math.PI*(1.2+seed)+time*speed+i)*amp+Math.sin(q*7+time*.018)*1.5-motion.mid*(i%2?3:1.5);s?ctx.lineTo(x,y):ctx.moveTo(x,y)}stroke(ctx,i%3===0?p.b:p.a,.045+diff*.045+motion.high*.02,1+size*.5);ctx.stroke()}if(is(m,'cloud','nebula','celestial','aurora','freeze','abyss')){const n=m==='nebula'?34:m==='cloud'?24:16;for(let i=0;i<n;i++){const seed=hash(i*17.3),x=8+hash(i*4.1+time*.003)*224,y=12+hash(i*6.7+time*.002)*118;glow(ctx,x+Math.sin(time*(.015+seed*.02)+i)*4,y-motion.mid*3,i%4?p.a:p.b,.6+(i%4)*.35,.07+motion.high*.04)}}ctx.restore();if(is(m,'plate','emt140')){stroke(ctx,p.pale,.18,1);ctx.strokeRect(22,24,196,96);for(let r=0;r<10;r++){const y=30+r*9;ctx.beginPath();for(let s=0;s<=52;s++){const q=s/52,x=24+q*192,yy=y+Math.sin(q*Math.PI*5+time*.21+r)*(1.3+diff*4.5);s?ctx.lineTo(x,yy):ctx.moveTo(x,yy)}stroke(ctx,r%2?p.b:p.a,.075+r*.006,.75);ctx.stroke()}}}
+function grain({ctx,module,params,time,motion,p}:Kit){const m=mode(module),density=c01(val(params,'density',.4)),chaos=c01(val(params,'chaos',.2)),bloom=c01(val(params,'bloom',.3));if(m==='mpc60'){const size=24,gap=6,sx=57,sy=20,active=Math.floor(time*(2.2+density*1.5)+motion.transient*4)%16;for(let r=0;r<4;r++)for(let c=0;c<4;c++){const i=r*4+c,x=sx+c*(size+gap),y=sy+r*(size+gap);stroke(ctx,i===active?p.pale:i%2?p.b:p.a,i===active?.42:.16,i===active?1.3:.9);ctx.strokeRect(x,y,size,size);if(i===active){ctx.fillStyle=rgba(p.warm,.07+bloom*.07);ctx.fillRect(x+2,y+2,size-4,size-4)}}return}const n=18+Math.round(density*30),st=m==='stutter'?Math.floor(time*(4+chaos*8))/(4+chaos*8):time;for(let i=0;i<n;i++){const seed=i*12.9898,q=m==='mirage'?6:m==='reconstruct'?3:1;let x=18+hash(seed*1.7+st*.09)*204,y=20+hash(seed*.9+st*.11)*106;if(q>1){x=Math.round(x/q)*q;y=Math.round(y/q)*q}if(m==='smear')x+=Math.sin(time*.25+i)*(8+chaos*12);const z=1.5+(i%4)*1.1+bloom*2+motion.transient*1.4;ctx.save();ctx.translate(x,y);ctx.fillStyle=rgba(m==='prism'&&i%3===0?p.pale:i%2?p.b:p.a,.13+bloom*.06+motion.high*.04);if(is(m,'shatter','prism','ruin')){ctx.rotate(seed+time*.04*(i%2?-1:1));ctx.beginPath();ctx.moveTo(0,-z*2);ctx.lineTo(z*1.5,0);ctx.lineTo(0,z*1.7);ctx.lineTo(-z*1.4,0);ctx.closePath();ctx.fill()}else ctx.fillRect(-z,-z,z*2,z*(1+hash(i)*2));ctx.restore()}}
+function artifact({ctx,module,params,time,motion,p}:Kit){const m=mode(module),wear=c01(val(params,'wear',.25)),wow=c01(val(params,'wow',.16)),noise=c01(val(params,'noise',.1)),transport=Math.sin(time*(.22+wow*.45))*(1+wow*4);if(is(m,'cassette','reel','tascam424','Ampex ATR-102')){const reel=is(m,'reel','Ampex ATR-102'),sw=reel?188:194,sh=reel?92:98,l=reel?72:74,r=reel?168:166,rad=reel?31:21,spin=time*(.7+wear*.65);stroke(ctx,p.a,.28,1.1);ctx.strokeRect(120-sw/2+transport*.2,72-sh/2,sw,sh);for(const x of [l,r]){stroke(ctx,p.b,.24,1);ctx.beginPath();ctx.arc(x+transport*.15,67,rad,0,TAU);ctx.stroke();for(let s=0;s<6;s++){const a=spin+s*TAU/6;ctx.beginPath();ctx.moveTo(x,67);ctx.lineTo(x+Math.cos(a)*(rad-4),67+Math.sin(a)*(rad-4));ctx.stroke()}}}else if(is(m,'vinyl','wax')){const rad=m==='wax'?58:50,cx=102+transport*.15,cy=72;stroke(ctx,p.a,.28,1.05);for(let r=0;r<8;r++){ctx.beginPath();ctx.arc(cx,cy,rad-r*5,0,TAU);ctx.stroke()}const needle=time*(.08+wow*.04),x=cx+Math.cos(needle)*37,y=cy+Math.sin(needle)*37;stroke(ctx,p.warm,.34,1.1);ctx.beginPath();ctx.moveTo(202,26);ctx.lineTo(x,y);ctx.stroke();glow(ctx,x,y,p.warm,1.3,.42)}else if(is(m,'Neve 1073','SSL 4000E','API 1608')){const n=m==='API 1608'?8:6;for(let i=0;i<n;i++){const x=28+i*(184/Math.max(1,n-1)),meter=c01(.2+motion.level*.7+Math.sin(time*(.6+i*.03)+i)*.12);stroke(ctx,i%2?p.b:p.a,.18,.9);ctx.beginPath();ctx.moveTo(x,32);ctx.lineTo(x,116);ctx.stroke();ctx.fillStyle=rgba(m==='Neve 1073'?p.warm:p.a,.08+meter*.22);ctx.fillRect(x-2,108-meter*55,4,meter*55)}}else if(m==='vhs'){for(let r=0;r<15;r++){const y=16+r*8,shift=Math.sin(time*(.45+wow)+r*1.5)*(2+wear*8)+(r%4===0?motion.transient*6:0);stroke(ctx,r%3?p.a:p.b,.07+noise*.08,r%4===0?1.2:.7);ctx.beginPath();ctx.moveTo(12+shift,y);ctx.lineTo(228-shift*.45,y);ctx.stroke()}for(let i=0;i<9;i++){const x=22+i*24+transport,h=18+hash(i*4.2)*54;ctx.fillStyle=rgba(i%2?p.b:p.a,.045+motion.high*.035);ctx.fillRect(x,122-h,12,h)}}else{const bands=m==='radio'?10:16;for(let r=0;r<bands;r++){const y=20+r*(104/Math.max(1,bands-1)),shift=Math.sin(time*(.4+wow)+r*1.7)*(2+wear*9);stroke(ctx,r%2?p.b:p.a,.07+noise*.08,.9);ctx.beginPath();ctx.moveTo(12+shift,y);ctx.lineTo(228-shift*.4,y);ctx.stroke()}}}
+function finish({ctx,module,time,motion,p}:Kit){if(module.id==='media'){ctx.fillStyle=rgba(p.a,.025+motion.high*.015);ctx.fillRect(0,((time*7)%(H+8))-4,W,1)}const g=ctx.createLinearGradient(0,0,W,0);g.addColorStop(0,'rgba(0,0,0,.25)');g.addColorStop(.08,'transparent');g.addColorStop(.92,'transparent');g.addColorStop(1,'rgba(0,0,0,.25)');ctx.fillStyle=g;ctx.fillRect(0,0,W,H)}
