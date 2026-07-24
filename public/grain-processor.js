@@ -149,6 +149,18 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     return Math.round(Math.max(-1, Math.min(1, value)) * levels) / levels;
   }
 
+  quantizeNonlinear12(value) {
+    // MPC60 stores a proprietary nonlinear 12-bit representation after its input A/D.
+    // The exact companding law is not public, so use a conservative reversible log law
+    // rather than pretending ordinary linear 12-bit truncation is the original machine.
+    const sign = value < 0 ? -1 : 1;
+    const magnitude = Math.min(1, Math.abs(value));
+    const mu = 7.5;
+    const encoded = Math.log1p(mu * magnitude) / Math.log1p(mu);
+    const quantized = Math.round(encoded * 2047) / 2047;
+    return sign * Math.expm1(quantized * Math.log1p(mu)) / mu;
+  }
+
   onePole(value, cutoff, state, index) {
     const safeCutoff = Math.max(60, Math.min(sampleRate * 0.46, cutoff));
     const coefficient = 1 - Math.exp(-2 * Math.PI * safeCutoff / sampleRate);
@@ -190,9 +202,6 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       targetRate = pitch <= 0.005 ? 32000 : 10000 + pitch * 23000;
       bitDepth = 8;
       inputDrive = 0.8 + density * 1.45;
-    } else if (pitch > 0.005) {
-      // SP-1200 clock coloration extension: unity at Pitch=0, increasingly abusive clocking above it.
-      targetRate = 26040 * (0.72 + pitch * 0.56);
     }
 
     this.hardwarePhase += targetRate / sampleRate;
@@ -201,8 +210,8 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       const headroom = mode === 7 ? 0.98 - ((bitsControl - 4) / 12) * 0.12 : 1;
       const shapedL = Math.tanh((dryL / headroom) * inputDrive) / Math.max(1, inputDrive * 0.72);
       const shapedR = Math.tanh((dryR / headroom) * inputDrive) / Math.max(1, inputDrive * 0.72);
-      this.hardwareHeldL = this.quantize(shapedL, bitDepth);
-      this.hardwareHeldR = this.quantize(shapedR, bitDepth);
+      this.hardwareHeldL = mode === 7 ? this.quantizeNonlinear12(shapedL) : this.quantize(shapedL, bitDepth);
+      this.hardwareHeldR = mode === 7 ? this.quantizeNonlinear12(shapedR) : this.quantize(shapedR, bitDepth);
     }
 
     let outL = this.hardwareHeldL;
