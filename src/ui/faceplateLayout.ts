@@ -47,15 +47,15 @@ const listeners = new Set<() => void>();
 export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
   version: 2,
   custom: true,
-  viewportHeight: 192,
+  viewportHeight: 264,
   stageHeight: 526,
   knobs: [
-    { x: 0.15929910480312698, y: 364 },
-    { x: 0.5, y: 364 },
-    { x: 0.85451197053407, y: 364 },
-    { x: 0.15929910480312698, y: 468 },
-    { x: 0.5, y: 468 },
-    { x: 0.85451197053407, y: 468 },
+    { x: 0.15929910480312698, y: 348 },
+    { x: 0.5, y: 348 },
+    { x: 0.85451197053407, y: 348 },
+    { x: 0.15929910480312698, y: 452 },
+    { x: 0.5, y: 452 },
+    { x: 0.85451197053407, y: 452 },
   ],
   snap: 8,
 };
