@@ -1,8 +1,8 @@
 import { clampParameter } from '../Parameter';
 import { BaseEffect } from './Effect';
 
-export type MediaMode = 'cassette' | 'reel' | 'vinyl' | 'vhs' | 'radio' | 'wax' | 'broken' | 'archive';
-export const MEDIA_MODE_ORDER: MediaMode[] = ['cassette','reel','vinyl','vhs','radio','wax','broken','archive'];
+export type MediaMode = 'cassette' | 'reel' | 'vinyl' | 'vhs' | 'radio' | 'wax' | 'broken' | 'archive' | 'tascam424';
+export const MEDIA_MODE_ORDER: MediaMode[] = ['cassette','reel','vinyl','vhs','radio','wax','broken','archive','tascam424'];
 
 const MODE = { id: 'mode', label: 'Mode', min: 0, max: MEDIA_MODE_ORDER.length - 1, defaultValue: 0, step: 1 };
 const WEAR = { id: 'wear', label: 'Wear', min: 0, max: 1, defaultValue: 0.162, step: 0.01 };
@@ -11,11 +11,16 @@ const NOISE = { id: 'noise', label: 'Noise', min: 0, max: 1, defaultValue: 0.1, 
 const TONE = { id: 'tone', label: 'Tone', min: 0, max: 1, defaultValue: 0.62, step: 0.01 };
 const MIX = { id: 'mix', label: 'Mix', min: 0, max: 1, defaultValue: 0.26, step: 0.01 };
 
-/** Cassette/vinyl coloration with mode-specific bandwidth, noise and transport motion. */
+/** Recording-media coloration plus selected topology-informed vintage hardware models. */
 export class MediaEffect extends BaseEffect {
   public readonly id = 'media';
   public readonly name = 'Media';
 
+  private readonly modelInputGain: GainNode;
+  private readonly preampStage: WaveShaperNode;
+  private readonly lowShelf: BiquadFilterNode;
+  private readonly highShelf: BiquadFilterNode;
+  private readonly modelOutputGain: GainNode;
   private readonly highpass: BiquadFilterNode;
   private readonly lowpass: BiquadFilterNode;
   private readonly saturator: WaveShaperNode;
@@ -41,6 +46,11 @@ export class MediaEffect extends BaseEffect {
   public constructor(context: AudioContext) {
     super(context);
 
+    this.modelInputGain = context.createGain();
+    this.preampStage = context.createWaveShaper();
+    this.lowShelf = context.createBiquadFilter();
+    this.highShelf = context.createBiquadFilter();
+    this.modelOutputGain = context.createGain();
     this.highpass = context.createBiquadFilter();
     this.lowpass = context.createBiquadFilter();
     this.saturator = context.createWaveShaper();
@@ -57,17 +67,27 @@ export class MediaEffect extends BaseEffect {
     this.cassetteNoise = this.createNoiseSource('cassette');
     this.vinylNoise = this.createNoiseSource('vinyl');
 
+    this.preampStage.oversample = '2x';
+    this.saturator.oversample = '2x';
+    this.lowShelf.type = 'lowshelf';
+    this.lowShelf.frequency.value = 100;
+    this.highShelf.type = 'highshelf';
+    this.highShelf.frequency.value = 10_000;
     this.highpass.type = 'highpass';
     this.lowpass.type = 'lowpass';
     this.highpass.Q.value = 0.55;
     this.lowpass.Q.value = 0.55;
-    this.saturator.oversample = '2x';
     this.leftDelay.delayTime.value = 0.008;
     this.rightDelay.delayTime.value = 0.0093;
     this.wowLfo.type = 'sine';
     this.flutterLfo.type = 'triangle';
 
-    this.input.connect(this.highpass);
+    this.input.connect(this.modelInputGain);
+    this.modelInputGain.connect(this.preampStage);
+    this.preampStage.connect(this.lowShelf);
+    this.lowShelf.connect(this.highShelf);
+    this.highShelf.connect(this.modelOutputGain);
+    this.modelOutputGain.connect(this.highpass);
     this.highpass.connect(this.lowpass);
     this.lowpass.connect(this.saturator);
     this.saturator.connect(this.splitter);
@@ -146,6 +166,11 @@ export class MediaEffect extends BaseEffect {
     this.flutterLfo.stop();
     this.cassetteNoise.stop();
     this.vinylNoise.stop();
+    this.modelInputGain.disconnect();
+    this.preampStage.disconnect();
+    this.lowShelf.disconnect();
+    this.highShelf.disconnect();
+    this.modelOutputGain.disconnect();
     this.highpass.disconnect();
     this.lowpass.disconnect();
     this.saturator.disconnect();
@@ -166,6 +191,43 @@ export class MediaEffect extends BaseEffect {
 
   private applyCharacter(): void {
     const now = this.context.currentTime;
+
+    if (this.mode === 'tascam424') {
+      // Circuit-informed 424 MkI dry-channel model. The exact calibration is intentionally
+      // kept separate from the generic cassette path so later measurements can refine it.
+      const trimDrive = this.wear;
+      const channelDrive = this.tone;
+      const lowDb = bipolarAroundDefault(this.wow, WOW.defaultValue) * 10;
+      const highDb = bipolarAroundDefault(this.noise, NOISE.defaultValue) * 10;
+
+      this.modelInputGain.gain.setTargetAtTime(0.82 + trimDrive * 2.9, now, 0.025);
+      this.preampStage.curve = makeOpAmpCurve(1.05 + trimDrive * 4.4, 0.045);
+      this.lowShelf.gain.setTargetAtTime(lowDb, now, 0.04);
+      this.highShelf.gain.setTargetAtTime(highDb, now, 0.04);
+      this.modelOutputGain.gain.setTargetAtTime(1 / (0.92 + trimDrive * 0.36 + channelDrive * 0.46), now, 0.035);
+
+      this.highpass.frequency.setTargetAtTime(28, now, 0.04);
+      this.lowpass.frequency.setTargetAtTime(19_000, now, 0.04);
+      this.saturator.curve = makeOpAmpCurve(1 + Math.pow(channelDrive, 1.55) * 7.6, 0.032 + trimDrive * 0.025);
+
+      // This mode is the dry 424 preamp path: transport modulation and media noise are off.
+      this.leftDepth.gain.setTargetAtTime(0, now, 0.03);
+      this.rightDepth.gain.setTargetAtTime(0, now, 0.03);
+      this.leftDelay.delayTime.setTargetAtTime(0, now, 0.03);
+      this.rightDelay.delayTime.setTargetAtTime(0, now, 0.03);
+      this.cassetteNoiseGain.gain.setTargetAtTime(0, now, 0.03);
+      this.vinylNoiseGain.gain.setTargetAtTime(0, now, 0.03);
+      return;
+    }
+
+    this.modelInputGain.gain.setTargetAtTime(1, now, 0.03);
+    this.preampStage.curve = makeIdentityCurve();
+    this.lowShelf.gain.setTargetAtTime(0, now, 0.03);
+    this.highShelf.gain.setTargetAtTime(0, now, 0.03);
+    this.modelOutputGain.gain.setTargetAtTime(1, now, 0.03);
+    this.leftDelay.delayTime.setTargetAtTime(0.008, now, 0.03);
+    this.rightDelay.delayTime.setTargetAtTime(0.0093, now, 0.03);
+
     const cassette = this.mode === 'cassette' || this.mode === 'reel' || this.mode === 'vhs';
     const vinyl = this.mode === 'vinyl' || this.mode === 'wax';
     const narrow = this.mode === 'radio' || this.mode === 'archive';
@@ -208,6 +270,31 @@ export class MediaEffect extends BaseEffect {
     source.loop = true;
     return source;
   }
+}
+
+function bipolarAroundDefault(value: number, center: number): number {
+  if (value >= center) return (value - center) / Math.max(1e-6, 1 - center);
+  return (value - center) / Math.max(1e-6, center);
+}
+
+function makeIdentityCurve(): Float32Array<ArrayBuffer> {
+  const samples = 1024;
+  const curve = new Float32Array(samples);
+  for (let index = 0; index < samples; index += 1) curve[index] = (index / (samples - 1)) * 2 - 1;
+  return curve;
+}
+
+function makeOpAmpCurve(drive: number, asymmetry: number): Float32Array<ArrayBuffer> {
+  const samples = 4096;
+  const curve = new Float32Array(samples);
+  const safeDrive = Math.max(1, drive);
+  for (let index = 0; index < samples; index += 1) {
+    const x = (index / (samples - 1)) * 2 - 1;
+    const sideDrive = safeDrive * (x >= 0 ? 1 + asymmetry : 1 - asymmetry * 0.62);
+    const normal = Math.max(1e-6, Math.tanh(sideDrive));
+    curve[index] = Math.tanh(x * sideDrive) / normal;
+  }
+  return curve;
 }
 
 function makeSaturationCurve(amount: number): Float32Array<ArrayBuffer> {
