@@ -1,0 +1,240 @@
+/* Hardware-mode identity layer. Uses the selected option so the React component can stay generic. */
+.effect-module .viewport-glass::before,
+.effect-module .viewport-glass::after {
+  content: none;
+}
+
+/* Replace generic knob names with machine-language controls. */
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-patch-target="delay.time"]) .knob-label,
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-patch-target="delay.time"]) .knob-label { font-size: 0; }
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-patch-target="delay.time"]) .knob-label::after { content: "ECHO DELAY"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-patch-target="delay.time"]) .knob-label::after { content: "DRUM RATE"; font-size: .68rem; }
+
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-patch-target="delay.feedback"]) .knob-label,
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-patch-target="delay.feedback"]) .knob-label { font-size: 0; }
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-patch-target="delay.feedback"]) .knob-label::after { content: "SUSTAIN"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-patch-target="delay.feedback"]) .knob-label::after { content: "SWELLS"; font-size: .68rem; }
+
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-patch-target="delay.character"]) .knob-label,
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-patch-target="delay.character"]) .knob-label,
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-patch-target="delay.character"]) .knob-label,
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-patch-target="delay.character"]) .knob-label { font-size: 0; }
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-patch-target="delay.character"]) .knob-label::after { content: "TAPE AGE"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-patch-target="delay.character"]) .knob-label::after { content: "DRUM AGE"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-patch-target="delay.character"]) .knob-label::after { content: "MOD DEPTH"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-patch-target="delay.character"]) .knob-label::after { content: "PITCH SHIFT"; font-size: .68rem; }
+
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-patch-target="delay.color"]) .knob-label,
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-patch-target="delay.color"]) .knob-label { font-size: 0; }
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-patch-target="delay.color"]) .knob-label::after { content: "BRIGHTNESS"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-patch-target="delay.color"]) .knob-label::after { content: "FILTER"; font-size: .68rem; }
+
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-patch-target="delay.width"]) .knob-label,
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-patch-target="delay.width"]) .knob-label { font-size: 0; }
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-patch-target="delay.width"]) .knob-label::after { content: "MOD / WIDTH"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-patch-target="delay.width"]) .knob-label::after { content: "STEREO"; font-size: .68rem; }
+
+/* Artifact consoles share the five physical controls but expose console/tape terminology. */
+.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label,
+.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label,
+.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label,
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label { font-size: 0; }
+.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label::after,
+.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label::after,
+.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label::after { content: "INPUT DRIVE"; font-size: .68rem; }
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label::after { content: "RECORD"; font-size: .68rem; }
+
+.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label,
+.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label,
+.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label,
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label { font-size: 0; }
+.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label::after,
+.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label::after { content: "BODY"; font-size: .68rem; }
+.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label::after { content: "PUNCH"; font-size: .68rem; }
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label::after { content: "TAPE SPEED"; font-size: .68rem; }
+
+.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label,
+.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label,
+.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label,
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label { font-size: 0; }
+.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label::after { content: "AIR"; font-size: .68rem; }
+.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label::after,
+.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label::after { content: "PRESENCE"; font-size: .68rem; }
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label::after { content: "HISS"; font-size: .68rem; }
+
+.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label,
+.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label,
+.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label,
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label { font-size: 0; }
+.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label::after { content: "OUTPUT DRIVE"; font-size: .68rem; }
+.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label::after { content: "VCA DRIVE"; font-size: .68rem; }
+.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label::after { content: "OUTPUT"; font-size: .68rem; }
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label::after { content: "BIAS"; font-size: .68rem; }
+
+/* Machine names inside the viewport. */
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .viewport-caption,
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .viewport-caption,
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .viewport-caption,
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .viewport-caption,
+.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .viewport-caption,
+.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .viewport-caption,
+.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .viewport-caption,
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .viewport-caption { font-size: 0; }
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .viewport-caption::after { content: "EP-3 · TAPE LOOP"; font-size: 9px; }
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .viewport-caption::after { content: "ECHOREC · MAGNETIC DRUM"; font-size: 9px; }
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .viewport-caption::after { content: "MEMORY MAN · BBD"; font-size: 9px; }
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .viewport-caption::after { content: "DMX 15-80 S · 15 BIT"; font-size: 9px; }
+.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .viewport-caption::after { content: "1073 · CLASS A / TRANSFORMER"; font-size: 9px; }
+.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .viewport-caption::after { content: "4000 E · VCA BUS"; font-size: 9px; }
+.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .viewport-caption::after { content: "1608 · 2520 / TRANSFORMER"; font-size: 9px; }
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .viewport-caption::after { content: "ATR-102 · MASTERING TAPE"; font-size: 9px; }
+
+/* Hardware animation overlays. The canvas remains the signal world underneath. */
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .viewport-glass::before,
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .viewport-glass::before,
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .viewport-glass::before,
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .viewport-glass::before,
+.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .viewport-glass::before,
+.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .viewport-glass::before,
+.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .viewport-glass::before,
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .viewport-glass::before,
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .viewport-glass::after,
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .viewport-glass::after,
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .viewport-glass::after,
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .viewport-glass::after,
+.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .viewport-glass::after,
+.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .viewport-glass::after,
+.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .viewport-glass::after,
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .viewport-glass::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+/* EP-3: two reel hubs, glowing tape path and a wandering playback head. */
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .viewport-glass::before {
+  left: 13%; right: 13%; top: 17%; bottom: 24%;
+  opacity: .45;
+  background:
+    radial-gradient(circle at 23% 46%, transparent 0 12px, rgba(252,182,101,.68) 13px 14px, transparent 15px 20px, rgba(164,130,255,.28) 21px 22px, transparent 23px),
+    radial-gradient(circle at 77% 46%, transparent 0 12px, rgba(252,182,101,.68) 13px 14px, transparent 15px 20px, rgba(78,218,223,.28) 21px 22px, transparent 23px),
+    linear-gradient(8deg, transparent 48%, rgba(252,182,101,.30) 49% 50%, transparent 51%);
+  animation: ep3-breathe 2.8s ease-in-out infinite alternate;
+}
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .viewport-glass::after {
+  top: 29%; left: 22%; width: 8px; height: 35%;
+  border: 1px solid rgba(232,239,233,.35);
+  border-radius: 2px;
+  box-shadow: 0 0 10px rgba(252,182,101,.18);
+  animation: ep3-head 4.6s ease-in-out infinite alternate;
+}
+
+/* Binson: rotating magnetic drum with four fixed pickup heads. */
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .viewport-glass::before {
+  width: 96px; height: 96px; left: calc(50% - 48px); top: calc(48% - 48px);
+  border-radius: 50%; opacity: .42;
+  border: 1px solid rgba(252,182,101,.40);
+  background: repeating-conic-gradient(from 0deg, rgba(252,182,101,.26) 0 5deg, transparent 5deg 18deg), radial-gradient(circle, transparent 0 27%, rgba(78,218,223,.18) 28% 30%, transparent 31% 57%, rgba(164,130,255,.18) 58% 60%, transparent 61%);
+  animation: hardware-spin 7.4s linear infinite;
+}
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .viewport-glass::after {
+  width: 112px; height: 112px; left: calc(50% - 56px); top: calc(48% - 56px);
+  border-radius: 50%; opacity: .7;
+  background: radial-gradient(circle at 50% 2%, rgba(236,242,240,.8) 0 2px, transparent 3px), radial-gradient(circle at 98% 50%, rgba(236,242,240,.8) 0 2px, transparent 3px), radial-gradient(circle at 50% 98%, rgba(236,242,240,.8) 0 2px, transparent 3px), radial-gradient(circle at 2% 50%, rgba(236,242,240,.8) 0 2px, transparent 3px);
+}
+
+/* Memory Man: a bucket-brigade rail with clock motion. */
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .viewport-glass::before {
+  left: 10%; right: 10%; top: 30%; height: 42%; opacity: .42;
+  background: repeating-linear-gradient(90deg, rgba(78,218,223,.48) 0 2px, transparent 2px 9px), linear-gradient(180deg, transparent 46%, rgba(164,130,255,.35) 48% 51%, transparent 53%);
+  background-size: 72px 100%, 100% 100%;
+  animation: bbd-clock 1.5s linear infinite;
+}
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .viewport-glass::after {
+  left: 12%; right: 12%; top: 47%; height: 1px; opacity: .62;
+  background: linear-gradient(90deg, transparent, rgba(236,242,240,.75), transparent);
+  box-shadow: 0 0 9px rgba(78,218,223,.30);
+  animation: memory-sweep 2.9s ease-in-out infinite alternate;
+}
+
+/* AMS: two digital lanes, 15-bit cell matrix and a scan cursor. */
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .viewport-glass::before {
+  inset: 18% 11% 25%; opacity: .34;
+  background: repeating-linear-gradient(90deg, rgba(78,218,223,.28) 0 1px, transparent 1px 13px), repeating-linear-gradient(0deg, rgba(164,130,255,.22) 0 1px, transparent 1px 12px);
+}
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .viewport-glass::after {
+  top: 19%; bottom: 25%; width: 2px; left: 12%; opacity: .78;
+  background: rgba(236,242,240,.65);
+  box-shadow: 0 0 10px rgba(78,218,223,.42);
+  animation: digital-scan 3.2s linear infinite;
+}
+
+/* Neve: transformer field / Class-A rails. */
+.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .viewport-glass::before {
+  inset: 20% 13% 24%; opacity: .38;
+  background: repeating-radial-gradient(ellipse at 28% 50%, transparent 0 7px, rgba(213,154,93,.48) 8px 9px, transparent 10px 14px), repeating-radial-gradient(ellipse at 72% 50%, transparent 0 7px, rgba(80,210,214,.28) 8px 9px, transparent 10px 14px);
+  animation: transformer-field 3.5s ease-in-out infinite alternate;
+}
+.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .viewport-glass::after {
+  left: 17%; right: 17%; top: 49%; height: 1px; opacity: .55;
+  background: linear-gradient(90deg, rgba(213,154,93,.7), transparent 44% 56%, rgba(213,154,93,.7));
+  box-shadow: 0 0 9px rgba(213,154,93,.25);
+}
+
+/* SSL: console bus matrix with VCA meter movement. */
+.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .viewport-glass::before {
+  inset: 18% 12% 24%; opacity: .34;
+  background: repeating-linear-gradient(90deg, rgba(80,210,214,.24) 0 1px, transparent 1px 18px), repeating-linear-gradient(0deg, rgba(239,232,215,.20) 0 1px, transparent 1px 13px);
+}
+.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .viewport-glass::after {
+  left: 18%; bottom: 29%; width: 64%; height: 7px; opacity: .72;
+  background: repeating-linear-gradient(90deg, rgba(239,232,215,.7) 0 5px, transparent 5px 9px);
+  transform-origin: left center;
+  animation: vca-meter 1.8s ease-in-out infinite alternate;
+}
+
+/* API: 2520-style modular blocks feeding an output transformer. */
+.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .viewport-glass::before {
+  inset: 21% 13% 27%; opacity: .40;
+  background: repeating-linear-gradient(90deg, rgba(213,154,93,.46) 0 18px, transparent 18px 25px), repeating-linear-gradient(0deg, transparent 0 15px, rgba(80,210,214,.20) 16px 17px, transparent 18px 30px);
+  clip-path: polygon(0 18%, 80% 18%, 80% 0, 100% 50%, 80% 100%, 80% 82%, 0 82%);
+  animation: api-pulse 2.2s ease-in-out infinite alternate;
+}
+.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .viewport-glass::after {
+  right: 12%; top: 31%; width: 34px; height: 34px; border-radius: 50%; opacity: .48;
+  border: 1px solid rgba(213,154,93,.65);
+  box-shadow: inset 0 0 0 7px rgba(80,210,214,.08), 0 0 10px rgba(213,154,93,.18);
+}
+
+/* ATR-102: twin-reel mastering transport and moving tape line. */
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .viewport-glass::before {
+  inset: 17% 10% 24%; opacity: .48;
+  background:
+    radial-gradient(circle at 24% 45%, transparent 0 14px, rgba(239,232,215,.64) 15px 16px, transparent 17px 23px, rgba(213,154,93,.25) 24px 25px, transparent 26px),
+    radial-gradient(circle at 76% 45%, transparent 0 14px, rgba(239,232,215,.64) 15px 16px, transparent 17px 23px, rgba(213,154,93,.25) 24px 25px, transparent 26px),
+    linear-gradient(7deg, transparent 48%, rgba(213,154,93,.48) 49% 50%, transparent 51%);
+  animation: tape-transport 1.9s linear infinite;
+}
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .viewport-glass::after {
+  left: 44%; top: 43%; width: 12%; height: 22%; opacity: .58;
+  border: 1px solid rgba(80,210,214,.42);
+  border-radius: 2px;
+  background: repeating-linear-gradient(90deg, rgba(239,232,215,.28) 0 1px, transparent 1px 4px);
+  box-shadow: 0 0 10px rgba(80,210,214,.18);
+}
+
+@keyframes hardware-spin { to { transform: rotate(360deg); } }
+@keyframes ep3-breathe { from { filter: brightness(.82); transform: scale(.985); } to { filter: brightness(1.18); transform: scale(1.015); } }
+@keyframes ep3-head { from { transform: translateX(0); } to { transform: translateX(150px); } }
+@keyframes bbd-clock { to { background-position: 72px 0, 0 0; } }
+@keyframes memory-sweep { from { transform: translateX(-7px) scaleX(.75); } to { transform: translateX(7px) scaleX(1); } }
+@keyframes digital-scan { from { transform: translateX(0); } to { transform: translateX(245px); } }
+@keyframes transformer-field { from { transform: scaleX(.97); filter: brightness(.88); } to { transform: scaleX(1.03); filter: brightness(1.18); } }
+@keyframes vca-meter { from { transform: scaleX(.28); } to { transform: scaleX(.96); } }
+@keyframes api-pulse { from { filter: brightness(.8); transform: translateX(-2px); } to { filter: brightness(1.18); transform: translateX(2px); } }
+@keyframes tape-transport { from { filter: brightness(.86); background-position: 0 0; } to { filter: brightness(1.12); background-position: 18px 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .effect-module .viewport-glass::before,
+  .effect-module .viewport-glass::after { animation: none !important; }
+}
