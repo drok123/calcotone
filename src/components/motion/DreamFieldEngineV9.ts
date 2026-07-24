@@ -26,23 +26,140 @@ type PatchField = {
   yStrength: number;
 };
 
-type SceneState = {
-  takeover: number;
-  reveal: number;
+type SceneProfile = {
+  horizon: number;
+  heroX: number;
+  heroLift: number;
+  portalScale: number;
+  portalSquash: number;
+  archScale: number;
+  archSpacing: number;
+  archCount: number;
+  archLift: number;
+  symmetry: number;
   mirror: number;
   foreground: number;
   mass: number;
   orbitSweep: number;
+  foregroundOrb: number;
+  corridor: number;
+  basinFull: number;
+  warm: number;
+  cool: number;
+};
+
+type SceneState = SceneProfile & {
+  chapterA: number;
+  chapterB: number;
+  transition: number;
+  takeover: number;
+  reveal: number;
 };
 
 const RASTER_W = 112;
 const RASTER_H = 64;
 const ACTIVE_INTERVAL = 1 / 30;
 const IDLE_INTERVAL = 1 / 24;
+const CHAPTER_SECONDS = 13.5;
+const TRANSITION_START = 0.67;
 const ENERGY_KEYS: (keyof Energy)[] = ['ember', 'drift', 'halo', 'atmos', 'grain', 'artifact'];
+
+// These are not separate renderers. They are four compositions made from the same
+// horizon / arch / portal / silhouette / reflection / basin primitives.
+const SCENES: SceneProfile[] = [
+  // Asymmetric cosmic landscape: closest to the first reference sequence.
+  {
+    horizon: 0.58,
+    heroX: 0.07,
+    heroLift: 0.24,
+    portalScale: 0.13,
+    portalSquash: 0.92,
+    archScale: 0.82,
+    archSpacing: 0.10,
+    archCount: 2.2,
+    archLift: 0.18,
+    symmetry: 0.18,
+    mirror: 0.18,
+    foreground: 0.28,
+    mass: 0.42,
+    orbitSweep: 0.92,
+    foregroundOrb: 0,
+    corridor: 0.18,
+    basinFull: 0.08,
+    warm: 0.62,
+    cool: 0.72,
+  },
+  // Nested forest tunnel with a strong central axis and concentric foreground.
+  {
+    horizon: 0.58,
+    heroX: 0,
+    heroLift: 0.14,
+    portalScale: 0.105,
+    portalSquash: 1.02,
+    archScale: 0.78,
+    archSpacing: 0.095,
+    archCount: 3.5,
+    archLift: 0.21,
+    symmetry: 0.96,
+    mirror: 0.54,
+    foreground: 0.92,
+    mass: 0.82,
+    orbitSweep: 0.66,
+    foregroundOrb: 0.18,
+    corridor: 0.94,
+    basinFull: 0.86,
+    warm: 0.78,
+    cool: 0.78,
+  },
+  // Giant horizon arch with a small distant sun / portal and wide basin.
+  {
+    horizon: 0.51,
+    heroX: 0,
+    heroLift: 0.015,
+    portalScale: 0.072,
+    portalSquash: 0.98,
+    archScale: 1.08,
+    archSpacing: 0.11,
+    archCount: 2.4,
+    archLift: 0.12,
+    symmetry: 0.88,
+    mirror: 0.72,
+    foreground: 1,
+    mass: 0.46,
+    orbitSweep: 0.46,
+    foregroundOrb: 0.08,
+    corridor: 0.54,
+    basinFull: 0.58,
+    warm: 0.68,
+    cool: 0.88,
+  },
+  // Mirror world: restrained sky portal plus a dominant black foreground orb.
+  {
+    horizon: 0.51,
+    heroX: 0,
+    heroLift: 0.16,
+    portalScale: 0.065,
+    portalSquash: 1,
+    archScale: 1.04,
+    archSpacing: 0.12,
+    archCount: 1.8,
+    archLift: 0.16,
+    symmetry: 1,
+    mirror: 1,
+    foreground: 0.84,
+    mass: 0.76,
+    orbitSweep: 0.72,
+    foregroundOrb: 0.92,
+    corridor: 0.70,
+    basinFull: 0.28,
+    warm: 0.82,
+    cool: 0.78,
+  },
+];
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const fract = (v: number) => v - Math.floor(v);
 const followAmount = (rate: number, dt: number) => 1 - Math.exp(-rate * Math.max(0, Math.min(0.1, dt)));
 const smoothstep = (a: number, b: number, v: number) => {
   const t = clamp01((v - a) / Math.max(1e-6, b - a));
@@ -69,6 +186,30 @@ const noise = (x: number, y: number) => {
 };
 const fbm = (x: number, y: number) =>
   noise(x, y) * 0.62 + noise(x * 2.03 + 7.1, y * 2.03 - 3.6) * 0.28 + noise(x * 4.11 - 2.4, y * 4.11 + 5.8) * 0.10;
+
+function mixProfile(a: SceneProfile, b: SceneProfile, t: number): SceneProfile {
+  return {
+    horizon: lerp(a.horizon, b.horizon, t),
+    heroX: lerp(a.heroX, b.heroX, t),
+    heroLift: lerp(a.heroLift, b.heroLift, t),
+    portalScale: lerp(a.portalScale, b.portalScale, t),
+    portalSquash: lerp(a.portalSquash, b.portalSquash, t),
+    archScale: lerp(a.archScale, b.archScale, t),
+    archSpacing: lerp(a.archSpacing, b.archSpacing, t),
+    archCount: lerp(a.archCount, b.archCount, t),
+    archLift: lerp(a.archLift, b.archLift, t),
+    symmetry: lerp(a.symmetry, b.symmetry, t),
+    mirror: lerp(a.mirror, b.mirror, t),
+    foreground: lerp(a.foreground, b.foreground, t),
+    mass: lerp(a.mass, b.mass, t),
+    orbitSweep: lerp(a.orbitSweep, b.orbitSweep, t),
+    foregroundOrb: lerp(a.foregroundOrb, b.foregroundOrb, t),
+    corridor: lerp(a.corridor, b.corridor, t),
+    basinFull: lerp(a.basinFull, b.basinFull, t),
+    warm: lerp(a.warm, b.warm, t),
+    cool: lerp(a.cool, b.cool, t),
+  };
+}
 
 export class DreamFieldEngine {
   private width = 1;
@@ -184,23 +325,36 @@ export class DreamFieldEngine {
   }
 
   private sceneState(time: number, e: Energy, patch: PatchField): SceneState {
-    // Reference-inspired pacing: long recognizable holds, then a shorter compositional crest.
-    // Two very slow waves keep the crest from reading as a simple repeating LFO.
-    const slowA = Math.sin(time * 0.073 + this.x * 1.9 - this.y * 1.2) * 0.5 + 0.5;
-    const slowB = Math.sin(time * 0.041 + 2.37 + this.y * 0.8) * 0.5 + 0.5;
-    const combined = clamp01(slowA * 0.72 + slowB * 0.28);
-    const crest = Math.pow(combined, 3.4);
-    const patchDrive = clamp01((patch.xStrength + patch.yStrength) * 0.36 + patch.total * 0.035);
-    const takeover = clamp01(crest * 0.58 + patchDrive * 0.24 + this.gesture * 0.18 + e.halo * 0.07);
-    const reveal = smoothstep(0.46, 0.82, takeover);
+    const journey = time / CHAPTER_SECONDS;
+    const chapterFloor = Math.floor(journey);
+    const chapterA = ((chapterFloor % SCENES.length) + SCENES.length) % SCENES.length;
+    const chapterB = (chapterA + 1) % SCENES.length;
+    const local = fract(journey);
+
+    // Hold a readable composition for about two thirds of each chapter. Only the last
+    // third transforms, which is much closer to the reference than a permanent LFO soup.
+    const transition = smoothstep(TRANSITION_START, 1, local);
+    const profile = mixProfile(SCENES[chapterA], SCENES[chapterB], transition);
+    const transitionPulse = Math.sin(transition * Math.PI);
+    const patchDrive = clamp01((patch.xStrength + patch.yStrength) * 0.34 + patch.total * 0.032);
+    const takeover = clamp01(transitionPulse * 0.72 + this.gesture * 0.22 + patchDrive * 0.16);
+    const reveal = clamp01(Math.pow(takeover, 1.45) + e.halo * 0.04 + e.atmos * 0.025);
+    const breath = Math.sin(time * 0.047 + chapterA * 1.31) * 0.5 + 0.5;
 
     return {
+      ...profile,
+      chapterA,
+      chapterB,
+      transition,
       takeover,
       reveal,
-      mirror: clamp01((1 - this.y) * 0.30 + e.drift * 0.28 + patch.yStrength * 0.18 + takeover * 0.38),
-      foreground: clamp01((1 - this.y) * 0.42 + patch.yStrength * 0.20 + takeover * 0.46),
-      mass: clamp01(e.atmos * 0.48 + patch.xStrength * 0.10 + takeover * 0.48),
-      orbitSweep: clamp01(e.halo * 0.42 + patch.xStrength * 0.18 + takeover * 0.50),
+      portalScale: profile.portalScale * (1 + breath * 0.025 + takeover * 0.10),
+      archScale: profile.archScale * (1 + takeover * 0.09),
+      mirror: clamp01(profile.mirror + e.drift * 0.13 + patch.yStrength * 0.10 + takeover * 0.12),
+      foreground: clamp01(profile.foreground + (1 - this.y) * 0.08 + patch.yStrength * 0.10 + takeover * 0.14),
+      mass: clamp01(profile.mass + e.atmos * 0.16 + patch.xStrength * 0.05 + takeover * 0.10),
+      orbitSweep: clamp01(profile.orbitSweep + e.halo * 0.12 + patch.xStrength * 0.08 + takeover * 0.10),
+      foregroundOrb: clamp01(profile.foregroundOrb + takeover * profile.foregroundOrb * 0.12),
     };
   }
 
@@ -210,12 +364,14 @@ export class DreamFieldEngine {
     const data = this.imageData.data;
     const aspect = this.width / Math.max(1, this.height);
     const xSteer = this.x - 0.5;
-    const horizon = -0.10 + (0.5 - this.y) * 0.38 + scene.takeover * 0.035 + Math.sin(time * 0.021) * 0.014;
-    const heroX = xSteer * aspect * (0.48 + scene.takeover * 0.10);
-    const heroY = horizon - (0.34 + this.y * 0.12 + scene.takeover * 0.06);
-    const warmBias = clamp01(0.40 + xSteer * 0.85 + e.ember * 0.30);
-    const coolBias = clamp01(0.48 - xSteer * 0.72 + e.drift * 0.28);
-    const patchEnergy = clamp01((patch.xStrength + patch.yStrength) * 0.42 + patch.total * 0.045);
+    const horizon = scene.horizon * 2 - 1 + (0.5 - this.y) * 0.10 + scene.takeover * 0.018;
+    const heroX = (scene.heroX + xSteer * (0.18 + patch.xStrength * 0.07)) * aspect;
+    const heroY = horizon - scene.heroLift * 2 - this.y * 0.025;
+    const warmBias = clamp01(scene.warm + xSteer * 0.34 + e.ember * 0.20);
+    const coolBias = clamp01(scene.cool - xSteer * 0.24 + e.drift * 0.18);
+    const patchEnergy = clamp01((patch.xStrength + patch.yStrength) * 0.40 + patch.total * 0.04);
+    const archRadius = 0.30 + scene.archScale * 0.25 + e.halo * 0.045;
+    const portalRadius = 0.018 + scene.portalScale * 0.46;
 
     for (let py = 0; py < RASTER_H; py += 1) {
       const ny = py / (RASTER_H - 1) * 2 - 1;
@@ -223,14 +379,13 @@ export class DreamFieldEngine {
         const nx = (px / (RASTER_W - 1) * 2 - 1) * aspect;
         const sky = ny < horizon;
 
-        const fieldWarp = fbm(
-          nx * 0.86 + time * (0.008 + xSteer * 0.006),
-          ny * 0.86 - time * 0.007
-        ) - 0.5;
-        const warpAmount = 0.06 + e.atmos * 0.055 + patch.xStrength * 0.035 + scene.takeover * 0.025;
-        const localX = nx + fieldWarp * warpAmount + ny * xSteer * (0.035 + scene.takeover * 0.025);
-        const nebula = fbm(localX * 1.34 + time * 0.010, ny * 1.18 - time * 0.009);
-        const detail = noise(localX * 3.0 - time * 0.014, ny * 2.7 + time * 0.010);
+        const fieldWarp = fbm(nx * 0.86 + time * (0.007 + xSteer * 0.004), ny * 0.86 - time * 0.006) - 0.5;
+        const warpAmount = 0.05 + e.atmos * 0.045 + patch.xStrength * 0.025 + scene.takeover * 0.020;
+        const localX = nx + fieldWarp * warpAmount + ny * xSteer * (0.025 + scene.takeover * 0.020);
+        const mirroredX = Math.abs(localX - heroX) + heroX;
+        const textureX = lerp(localX, mirroredX, scene.symmetry * 0.62);
+        const nebula = fbm(textureX * 1.30 + time * 0.009, ny * 1.16 - time * 0.008);
+        const detail = noise(textureX * 3.0 - time * 0.012, ny * 2.7 + time * 0.009);
 
         let r = 4;
         let g = 8;
@@ -238,78 +393,74 @@ export class DreamFieldEngine {
 
         if (sky) {
           const altitude = clamp01((horizon - ny + 0.12) / 1.20);
-          const magenta = smoothstep(0.47, 0.82, nebula + fieldWarp * 0.26);
-          const cyan = smoothstep(0.43, 0.80, detail - fieldWarp * 0.20);
-          r += 10 + altitude * 17 + magenta * (24 + warmBias * 31 + e.grain * 10);
-          g += 14 + altitude * 23 + cyan * (29 + coolBias * 31 + e.drift * 10);
-          b += 25 + altitude * 42 + magenta * 25 + cyan * 31;
+          const magenta = smoothstep(0.47, 0.82, nebula + fieldWarp * 0.25);
+          const cyan = smoothstep(0.43, 0.80, detail - fieldWarp * 0.18);
+          r += 9 + altitude * 17 + magenta * (23 + warmBias * 35 + e.grain * 10);
+          g += 13 + altitude * 23 + cyan * (28 + coolBias * 34 + e.drift * 10);
+          b += 24 + altitude * 43 + magenta * 26 + cyan * 33;
 
-          const ringRadius = 0.45 + this.y * 0.11 + e.halo * 0.075 + patch.yStrength * 0.025 + scene.takeover * 0.17;
-          const radial = Math.hypot((nx - heroX) * (0.86 - scene.takeover * 0.04), (ny - heroY) * 1.03);
-          const haloDist = Math.abs(radial - ringRadius);
-          const haloGlow = 1 - smoothstep(0.012, 0.095 + scene.takeover * 0.025, haloDist);
-          r += haloGlow * (53 + warmBias * 48 + e.ember * 40 + scene.takeover * 24);
-          g += haloGlow * (21 + coolBias * 28 + e.halo * 22 + scene.takeover * 12);
-          b += haloGlow * (42 + e.halo * 38 + scene.takeover * 18);
+          const archRadial = Math.hypot((nx - heroX) * 0.88, (ny - (heroY + scene.archLift * 0.35)) * 1.03);
+          const archGlow = 1 - smoothstep(0.010, 0.085 + scene.takeover * 0.020, Math.abs(archRadial - archRadius));
+          r += archGlow * (43 + warmBias * 54 + e.ember * 30 + scene.reveal * 20);
+          g += archGlow * (18 + coolBias * 31 + e.halo * 20);
+          b += archGlow * (38 + e.halo * 34 + scene.reveal * 14);
 
-          // A nested ring becomes visible only near the transformation crest. It reads as
-          // pupil / eclipse / cave opening without becoming a permanent decorative circle.
-          const innerRadius = ringRadius * (0.39 + scene.reveal * 0.10);
-          const innerGlow = (1 - smoothstep(0.008, 0.060, Math.abs(radial - innerRadius))) * scene.reveal;
-          r += innerGlow * (74 + e.ember * 34);
-          g += innerGlow * (34 + e.halo * 28);
-          b += innerGlow * (55 + e.halo * 34);
+          const portalRadial = Math.hypot((nx - heroX) / Math.max(0.75, scene.portalSquash), ny - heroY);
+          const portalEdge = 1 - smoothstep(0.006, 0.045, Math.abs(portalRadial - portalRadius));
+          r += portalEdge * (68 + e.ember * 38 + scene.reveal * 24);
+          g += portalEdge * (28 + e.halo * 26);
+          b += portalEdge * (50 + e.halo * 34);
 
-          const voidMask = (1 - smoothstep(innerRadius * 0.36, innerRadius * 0.72, radial)) * (0.22 + scene.reveal * 0.52);
-          r *= 1 - voidMask * 0.66;
-          g *= 1 - voidMask * 0.70;
-          b *= 1 - voidMask * 0.62;
+          const portalVoid = 1 - smoothstep(portalRadius * 0.40, portalRadius * 0.82, portalRadial);
+          r *= 1 - portalVoid * 0.72;
+          g *= 1 - portalVoid * 0.76;
+          b *= 1 - portalVoid * 0.68;
 
-          const star = hash(px * 1.77 + 13.1, py * 2.13 + 7.7);
-          const starGate = 0.992 - e.grain * 0.006 - patchEnergy * 0.002 - scene.reveal * 0.0015;
+          const star = hash(px * 1.77 + 13.1 + scene.chapterA * 4.7, py * 2.13 + 7.7);
+          const starGate = 0.993 - e.grain * 0.005 - patchEnergy * 0.0015 - scene.reveal * 0.001;
           if (star > starGate && ny < horizon - 0.05) {
             const sparkle = (star - starGate) / Math.max(0.001, 1 - starGate);
-            r += sparkle * 80;
-            g += sparkle * 88;
-            b += sparkle * 96;
+            r += sparkle * 72;
+            g += sparkle * 82;
+            b += sparkle * 94;
           }
         } else {
           const depth = clamp01((ny - horizon) / Math.max(0.01, 1 - horizon));
           const waterNoise = noise(
-            localX * (3.0 + e.grain * 0.7) + time * 0.020,
-            ny * 5.2 - time * (0.020 + e.drift * 0.042)
+            textureX * (2.8 + e.grain * 0.65) + time * 0.018,
+            ny * 5.0 - time * (0.018 + e.drift * 0.038)
           );
-          const reflectionWidth = 4.8 - e.drift * 1.1 - patch.xStrength * 0.65 - scene.mirror * 1.15;
-          const reflection = Math.exp(-Math.abs(nx - heroX) * Math.max(1.8, reflectionWidth)) * (1 - depth * (0.52 - scene.mirror * 0.16));
-          r += 5 + depth * 7 + reflection * (43 + warmBias * 35 + e.ember * 22 + scene.mirror * 25) + waterNoise * e.grain * 8;
-          g += 13 + depth * 12 + reflection * (50 + coolBias * 40 + e.drift * 28 + scene.mirror * 24);
-          b += 20 + depth * 22 + reflection * (62 + e.halo * 30 + scene.mirror * 28);
+          const reflectionWidth = Math.max(1.6, 4.6 - e.drift * 0.9 - patch.xStrength * 0.5 - scene.mirror * 1.45);
+          const reflection = Math.exp(-Math.abs(nx - heroX) * reflectionWidth) * (1 - depth * (0.54 - scene.mirror * 0.20));
+          r += 5 + depth * 7 + reflection * (39 + warmBias * 39 + e.ember * 20 + scene.mirror * 30) + waterNoise * e.grain * 7;
+          g += 13 + depth * 12 + reflection * (47 + coolBias * 43 + e.drift * 26 + scene.mirror * 27);
+          b += 20 + depth * 23 + reflection * (59 + e.halo * 28 + scene.mirror * 32);
 
-          const basinCenterY = 0.72 + (0.5 - this.y) * 0.10 - scene.foreground * 0.045;
+          const basinCenterY = 0.72 - scene.foreground * 0.055 + (0.5 - this.y) * 0.06;
           const rippleDistance = Math.hypot(
-            (nx - heroX) * (0.86 + patch.xStrength * 0.06 - scene.foreground * 0.08),
-            (ny - basinCenterY) * (1.72 - scene.foreground * 0.28)
+            (nx - heroX) * (0.88 - scene.foreground * 0.12 + patch.xStrength * 0.04),
+            (ny - basinCenterY) * (1.76 - scene.foreground * 0.36)
           );
           const ripple = Math.sin(
-            rippleDistance * (22 + e.grain * 8 + patch.yStrength * 4 - scene.foreground * 3.5) -
-            time * (0.42 + e.drift * 0.62)
+            rippleDistance * (23 + e.grain * 7 + patch.yStrength * 3 - scene.foreground * 4.5) -
+            time * (0.36 + e.drift * 0.55)
           );
-          const rippleGlow = Math.pow(clamp01(ripple * 0.5 + 0.5), 9) * smoothstep(horizon, 0.96, ny);
-          r += rippleGlow * (20 + warmBias * 19 + e.grain * 23 + scene.foreground * 14);
-          g += rippleGlow * (27 + coolBias * 21 + scene.foreground * 10);
-          b += rippleGlow * (39 + scene.foreground * 14);
+          const rippleGlow = Math.pow(clamp01(ripple * 0.5 + 0.5), 9) * smoothstep(horizon, 0.98, ny);
+          r += rippleGlow * (18 + warmBias * 20 + e.grain * 21 + scene.foreground * 18);
+          g += rippleGlow * (24 + coolBias * 22 + scene.foreground * 12);
+          b += rippleGlow * (35 + scene.foreground * 18);
         }
 
-        const horizonGlow = 1 - smoothstep(0.008, 0.095, Math.abs(ny - horizon));
-        r += horizonGlow * (35 + warmBias * 23 + e.ember * 22 + scene.mirror * 10);
-        g += horizonGlow * (33 + coolBias * 24 + e.drift * 17 + scene.mirror * 12);
-        b += horizonGlow * (40 + scene.mirror * 10);
+        const horizonGlow = 1 - smoothstep(0.006, 0.080, Math.abs(ny - horizon));
+        r += horizonGlow * (34 + warmBias * 28 + e.ember * 18 + scene.mirror * 13);
+        g += horizonGlow * (32 + coolBias * 27 + e.drift * 15 + scene.mirror * 15);
+        b += horizonGlow * (39 + scene.mirror * 12);
 
         if (e.artifact > 0.01) {
-          const tear = Math.sin(py * 0.39 + time * 6.7 + nx * 0.7) * e.artifact;
-          r += tear * 6;
-          g += tear * 1.5;
-          b -= tear * 4;
+          const tear = Math.sin(py * 0.39 + time * 6.2 + nx * 0.7) * e.artifact;
+          r += tear * 5;
+          g += tear * 1.2;
+          b -= tear * 3.5;
         }
 
         const index = (py * RASTER_W + px) * 4;
@@ -328,9 +479,9 @@ export class DreamFieldEngine {
     const h = this.height;
     const minDim = Math.min(w, h);
     const xSteer = this.x - 0.5;
-    const horizon = h * (0.61 - this.y * 0.21 + scene.takeover * 0.025 + Math.sin(time * 0.021) * 0.008);
-    const heroX = w * (0.5 + xSteer * (0.32 + scene.takeover * 0.07) + Math.sin(time * 0.018) * 0.008);
-    const heroY = horizon - h * (0.20 + this.y * 0.12 + scene.takeover * 0.045);
+    const horizon = h * (scene.horizon + (0.5 - this.y) * 0.055 + scene.takeover * 0.008);
+    const heroX = w * (0.5 + scene.heroX + xSteer * (0.20 + patch.xStrength * 0.05));
+    const heroY = horizon - h * (scene.heroLift + this.y * 0.018 + scene.takeover * 0.012);
     const activity = clamp01(patch.total / 6 + this.gesture * 0.22);
 
     this.drawArches(ctx, heroX, heroY, minDim, e, patch, scene, time);
@@ -339,6 +490,7 @@ export class DreamFieldEngine {
     this.drawReflectionBands(ctx, heroX, horizon, e, patch, scene, time);
     this.drawForegroundBasin(ctx, heroX, e, patch, scene, time);
     this.drawOrbitals(ctx, heroX, heroY, minDim, e, patch, scene, time);
+    this.drawForegroundOrb(ctx, heroX, heroY, horizon, minDim, e, scene, time);
     this.drawAmbiguousForms(ctx, horizon, minDim, e, patch, scene, time);
     this.drawArtifact(ctx, e, time);
   }
@@ -353,26 +505,30 @@ export class DreamFieldEngine {
     scene: SceneState,
     t: number
   ) {
-    const count = Math.min(5, 2 + Math.round(e.halo * 2 + patch.xStrength + scene.reveal));
-    const tilt = (this.x - 0.5) * (0.10 + scene.takeover * 0.08);
+    const count = Math.max(1, Math.min(5, Math.round(scene.archCount + e.halo * 1.2 + patch.xStrength * 0.5)));
+    const tilt = (this.x - 0.5) * (0.07 + (1 - scene.symmetry) * 0.12) + scene.takeover * (this.x - 0.5) * 0.05;
+    const centerY = cy + minDim * scene.archLift;
+
     ctx.save();
-    ctx.translate(cx, cy);
+    ctx.translate(cx, centerY);
     ctx.rotate(tilt);
-    ctx.translate(-cx, -cy);
+    ctx.translate(-cx, -centerY);
     ctx.globalCompositeOperation = 'screen';
 
     for (let i = 0; i < count; i += 1) {
-      const r = minDim * (0.43 + this.y * 0.055 + i * 0.115 + e.atmos * 0.025 + scene.takeover * (0.10 + i * 0.018));
-      const alpha = Math.max(0.024, 0.105 - i * 0.016 + e.halo * 0.018 + patch.xStrength * 0.008 + scene.reveal * 0.018);
-      const g = ctx.createLinearGradient(cx - r, cy, cx + r, cy);
-      g.addColorStop(0, `rgba(79,215,220,${alpha * (0.62 + (1 - this.x) * 0.18)})`);
-      g.addColorStop(0.46, `rgba(220,104,191,${alpha * 0.76})`);
-      g.addColorStop(0.72, `rgba(255,157,92,${alpha * (0.74 + this.x * 0.26)})`);
-      g.addColorStop(1, `rgba(81,210,219,${alpha * 0.38})`);
-      ctx.strokeStyle = g;
-      ctx.lineWidth = Math.max(1, minDim * (0.0046 - i * 0.00055 + scene.reveal * 0.00055));
+      const radius = minDim * (0.30 + scene.archScale * 0.22 + i * scene.archSpacing);
+      const rx = radius * (1.04 + scene.corridor * 0.14);
+      const ry = radius * (0.78 + scene.symmetry * 0.13);
+      const alpha = Math.max(0.022, 0.092 - i * 0.014 + e.halo * 0.018 + scene.reveal * 0.020);
+      const gradient = ctx.createLinearGradient(cx - rx, centerY, cx + rx, centerY);
+      gradient.addColorStop(0, `rgba(74,214,220,${alpha * (0.60 + (1 - this.x) * 0.18)})`);
+      gradient.addColorStop(0.46, `rgba(224,103,193,${alpha * 0.80})`);
+      gradient.addColorStop(0.72, `rgba(255,158,91,${alpha * (0.76 + this.x * 0.24)})`);
+      gradient.addColorStop(1, `rgba(81,211,219,${alpha * 0.42})`);
+      ctx.strokeStyle = gradient;
+      ctx.lineWidth = Math.max(1, minDim * (0.0043 - i * 0.00045 + scene.reveal * 0.0007));
       ctx.beginPath();
-      ctx.arc(cx, cy + minDim * (0.18 - scene.takeover * 0.025), r, Math.PI * 1.055, Math.PI * 1.945);
+      ctx.ellipse(cx, centerY, rx, ry, 0, Math.PI * 1.035, Math.PI * 1.965);
       ctx.stroke();
     }
     ctx.restore();
@@ -390,90 +546,117 @@ export class DreamFieldEngine {
     activity: number,
     t: number
   ) {
-    const base = minDim * (0.10 + this.y * 0.065 + e.halo * 0.020 + e.ember * 0.012 + scene.takeover * 0.095);
-    const squash = 0.90 + (this.x - 0.5) * 0.16 + patch.xStrength * 0.035 + scene.reveal * 0.06;
+    const base = minDim * scene.portalScale * (1 + e.halo * 0.10 + e.ember * 0.07 + scene.reveal * 0.12);
+    const squash = scene.portalSquash + (this.x - 0.5) * 0.10 + patch.xStrength * 0.025;
     const rx = base * squash;
-    const ry = base / Math.max(0.82, squash);
+    const ry = base / Math.max(0.78, squash);
 
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    const corona = ctx.createRadialGradient(cx, cy, base * 0.38, cx, cy, base * (1.82 + scene.takeover * 0.72));
+    const corona = ctx.createRadialGradient(cx, cy, base * 0.34, cx, cy, base * (1.85 + scene.reveal * 0.55));
     corona.addColorStop(0, 'rgba(0,0,0,0)');
-    corona.addColorStop(0.34, `rgba(255,148,83,${0.16 + e.ember * 0.11 + this.x * 0.025 + scene.reveal * 0.055})`);
-    corona.addColorStop(0.58, `rgba(232,96,187,${0.105 + e.halo * 0.07 + scene.reveal * 0.035})`);
-    corona.addColorStop(0.79, `rgba(82,216,222,${0.085 + e.drift * 0.055 + (1 - this.x) * 0.02 + scene.reveal * 0.028})`);
+    corona.addColorStop(0.33, `rgba(255,149,82,${0.17 + e.ember * 0.11 + scene.warm * 0.035 + scene.reveal * 0.055})`);
+    corona.addColorStop(0.58, `rgba(232,96,187,${0.10 + e.halo * 0.065 + scene.reveal * 0.032})`);
+    corona.addColorStop(0.80, `rgba(82,216,222,${0.085 + e.drift * 0.050 + scene.cool * 0.024})`);
     corona.addColorStop(1, 'rgba(82,216,222,0)');
     ctx.fillStyle = corona;
     ctx.beginPath();
-    ctx.arc(cx, cy, base * (1.82 + scene.takeover * 0.72), 0, Math.PI * 2);
+    ctx.arc(cx, cy, base * (1.85 + scene.reveal * 0.55), 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = `rgba(2,4,9,${0.985 - scene.reveal * 0.025})`;
+    ctx.fillStyle = 'rgba(2,4,9,0.988)';
     ctx.beginPath();
-    ctx.ellipse(cx, cy, rx * (0.69 + scene.reveal * 0.08), ry * (0.69 + scene.reveal * 0.08), (this.x - 0.5) * 0.08, 0, Math.PI * 2);
+    ctx.ellipse(cx, cy, rx * 0.69, ry * 0.69, (this.x - 0.5) * 0.055, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    ctx.strokeStyle = `rgba(255,190,121,${0.105 + e.ember * 0.065 + activity * 0.025 + scene.reveal * 0.055})`;
-    ctx.lineWidth = Math.max(1, minDim * (0.0038 + scene.reveal * 0.0012));
+    ctx.strokeStyle = `rgba(255,191,121,${0.11 + e.ember * 0.065 + activity * 0.02 + scene.reveal * 0.055})`;
+    ctx.lineWidth = Math.max(1, minDim * (0.0036 + scene.reveal * 0.0011));
     ctx.beginPath();
-    ctx.ellipse(cx, cy, rx * 0.80, ry * 0.80, (this.x - 0.5) * 0.08, 0, Math.PI * 2);
+    ctx.ellipse(cx, cy, rx * 0.81, ry * 0.81, (this.x - 0.5) * 0.055, 0, Math.PI * 2);
     ctx.stroke();
 
-    // During the crest the portal reveals nested structure, then it fades back into a single eclipse.
-    if (scene.reveal > 0.02) {
-      const innerAlpha = scene.reveal * (0.045 + e.halo * 0.025);
+    // Nested structure exists only during transformation, then resolves back to a single form.
+    if (scene.reveal > 0.06) {
+      const innerAlpha = scene.reveal * (0.040 + e.halo * 0.020);
       for (let i = 0; i < 2; i += 1) {
-        const scale = 1.12 + i * 0.25;
+        const scale = 1.16 + i * 0.27;
         ctx.strokeStyle = i === 0
-          ? `rgba(234,109,190,${innerAlpha})`
-          : `rgba(91,216,220,${innerAlpha * 0.78})`;
-        ctx.lineWidth = Math.max(1, minDim * 0.0018);
+          ? `rgba(235,108,191,${innerAlpha})`
+          : `rgba(92,216,220,${innerAlpha * 0.76})`;
+        ctx.lineWidth = Math.max(1, minDim * 0.0017);
         ctx.beginPath();
-        ctx.ellipse(cx, cy, rx * scale, ry * scale, (this.x - 0.5) * 0.06, 0, Math.PI * 2);
+        ctx.ellipse(cx, cy, rx * scale, ry * scale, 0, 0, Math.PI * 2);
         ctx.stroke();
       }
     }
 
-    const beam = ctx.createLinearGradient(cx, cy + ry * 0.4, cx, horizon);
+    const beamBottom = lerp(horizon, this.height * 0.84, scene.corridor * 0.82 + scene.foregroundOrb * 0.18);
+    const beam = ctx.createLinearGradient(cx, cy + ry * 0.4, cx, beamBottom);
     beam.addColorStop(0, 'rgba(255,180,110,0)');
-    beam.addColorStop(1, `rgba(242,248,237,${0.085 + patch.yStrength * 0.07 + this.gesture * 0.025 + scene.mirror * 0.055})`);
+    beam.addColorStop(1, `rgba(242,248,237,${0.060 + patch.yStrength * 0.055 + scene.corridor * 0.075 + scene.mirror * 0.025})`);
     ctx.strokeStyle = beam;
-    ctx.lineWidth = Math.max(1, minDim * (0.0028 + patch.yStrength * 0.0014 + scene.mirror * 0.0018));
+    ctx.lineWidth = Math.max(1, minDim * (0.0024 + patch.yStrength * 0.0012 + scene.corridor * 0.0012));
     ctx.beginPath();
     ctx.moveTo(cx, cy + ry * 0.52);
-    ctx.lineTo(cx + Math.sin(t * 0.11) * minDim * 0.006, horizon);
+    ctx.lineTo(cx + Math.sin(t * 0.09) * minDim * 0.004, beamBottom);
     ctx.stroke();
     ctx.restore();
   }
 
-  private drawSilhouettes(ctx: CanvasRenderingContext2D, horizon: number, e: Energy, scene: SceneState, t: number) {
+  private silhouetteShape(index: number, layer: number, chapter: number, symmetry: number): number {
+    const phase = chapter * 1.71 + layer * 2.13;
+    const asym = Math.sin(index * (0.73 + chapter * 0.035) + phase) * 0.42
+      + Math.sin(index * (1.53 + chapter * 0.041) - phase * 0.6) * 0.23;
+    const mirroredIndex = index <= 32 ? index : 64 - index;
+    const mirrored = Math.sin(mirroredIndex * (0.78 + chapter * 0.03) + phase) * 0.44
+      + Math.sin(mirroredIndex * (1.61 + chapter * 0.025) - phase * 0.55) * 0.21;
+    return lerp(asym, mirrored, symmetry);
+  }
+
+  private drawSilhouettes(ctx: CanvasRenderingContext2D, horizon: number, e: Energy, scene: SceneState, _t: number) {
     const w = this.width;
     const h = this.height;
+    const count = 64;
+
     for (let layer = 0; layer < 2; layer += 1) {
       ctx.save();
       ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = (layer === 0 ? 0.48 : 0.74) + e.atmos * 0.10 + scene.mass * 0.06;
-      ctx.fillStyle = layer === 0 ? 'rgba(9,19,25,0.84)' : 'rgba(3,8,13,0.95)';
+      ctx.globalAlpha = (layer === 0 ? 0.46 : 0.75) + e.atmos * 0.08 + scene.mass * 0.07;
+      ctx.fillStyle = layer === 0 ? 'rgba(9,19,25,0.86)' : 'rgba(3,8,13,0.96)';
       ctx.beginPath();
       ctx.moveTo(0, horizon);
-      const count = 58;
-      const peakExponent = Math.max(7, 18 - scene.mass * 9);
+
+      const peakExponent = Math.max(6, 18 - scene.mass * 10);
       for (let i = 0; i <= count; i += 1) {
         const p = i / count;
         const px = p * w;
-        const sideBias = 0.64 + Math.abs(p - 0.5 - (this.x - 0.5) * 0.08) * 1.02;
-        const n = Math.sin(i * 0.77 + t * 0.010 + layer * 2.1) * 0.38 + Math.sin(i * 1.71) * 0.22;
-        const spire = Math.pow(Math.abs(Math.sin(i * 2.43 + layer)), peakExponent) * (0.74 + e.atmos * 0.92 + scene.mass * 0.46);
-        const swell = Math.pow(Math.abs(Math.sin(i * 0.43 + layer * 1.7)), 4) * scene.mass * 0.045;
-        const height = h * (0.032 + Math.max(0, n) * 0.043 + spire * 0.11 + swell) * sideBias * (layer ? 1 : 0.72) * (1 + scene.takeover * 0.26);
+        const shapeA = this.silhouetteShape(i, layer, scene.chapterA, scene.symmetry);
+        const shapeB = this.silhouetteShape(i, layer, scene.chapterB, scene.symmetry);
+        const n = lerp(shapeA, shapeB, scene.transition);
+        const symmetricP = Math.min(p, 1 - p) * 2;
+        const corridorWall = Math.pow(1 - symmetricP, 1.6) * scene.corridor;
+        const sideBias = 0.62 + Math.abs(p - 0.5 - (this.x - 0.5) * (1 - scene.symmetry) * 0.10) * 0.94;
+        const spireSeedA = Math.abs(Math.sin(i * 2.37 + layer + scene.chapterA * 0.77));
+        const spireSeedB = Math.abs(Math.sin(i * 2.37 + layer + scene.chapterB * 0.77));
+        const spireSeed = lerp(spireSeedA, spireSeedB, scene.transition);
+        const spire = Math.pow(spireSeed, peakExponent) * (0.72 + e.atmos * 0.85 + scene.mass * 0.52);
+        const broadMass = Math.pow(Math.abs(Math.sin(i * 0.39 + scene.chapterA * 0.9)), 4) * scene.mass * 0.050;
+        const height = h * (
+          0.028 +
+          Math.max(0, n) * 0.042 +
+          spire * 0.105 +
+          broadMass +
+          corridorWall * (0.055 + layer * 0.018)
+        ) * sideBias * (layer ? 1 : 0.72) * (1 + scene.takeover * 0.18);
         ctx.lineTo(px, horizon - height);
       }
+
       ctx.lineTo(w, horizon);
       ctx.closePath();
       ctx.fill();
@@ -492,24 +675,26 @@ export class DreamFieldEngine {
   ) {
     const w = this.width;
     const h = this.height;
-    const count = 7 + Math.round(e.drift * 2 + patch.yStrength * 2 + scene.mirror * 3);
+    const count = Math.min(13, 6 + Math.round(e.drift * 2 + patch.yStrength * 2 + scene.mirror * 4));
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
+
     for (let i = 0; i < count; i += 1) {
-      const yy = horizon + h * (0.026 + i * (0.045 - scene.mirror * 0.0025));
-      const spread = w * (0.035 + i * (0.050 + patch.xStrength * 0.003 + scene.mirror * 0.003));
-      const alpha = Math.max(0.016, 0.054 - i * 0.004 + e.drift * 0.012 + scene.mirror * 0.012);
+      const yy = horizon + h * (0.022 + i * (0.043 - scene.mirror * 0.0024));
+      const spread = w * (0.032 + i * (0.048 + patch.xStrength * 0.0025 + scene.mirror * 0.003));
+      const alpha = Math.max(0.014, 0.052 - i * 0.0037 + e.drift * 0.011 + scene.mirror * 0.013);
       ctx.strokeStyle = i % 2
         ? `rgba(93,215,220,${alpha})`
-        : `rgba(232,112,188,${alpha * 0.72})`;
+        : `rgba(232,112,188,${alpha * 0.74})`;
       ctx.lineWidth = 1;
+      const wobble = (1 - scene.mirror * 0.72) * (1.0 + e.drift * 1.2);
       ctx.beginPath();
-      ctx.moveTo(heroX - spread, yy + Math.sin(t * 0.055 + i) * (1.2 + e.drift * 1.3));
+      ctx.moveTo(heroX - spread, yy + Math.sin(t * 0.050 + i) * wobble);
       ctx.quadraticCurveTo(
-        heroX + (this.x - 0.5) * w * 0.015,
-        yy - h * (0.008 + patch.yStrength * 0.005 + scene.mirror * 0.006),
+        heroX + (this.x - 0.5) * w * 0.012 * (1 - scene.symmetry),
+        yy - h * (0.007 + patch.yStrength * 0.004 + scene.mirror * 0.006),
         heroX + spread,
-        yy + Math.cos(t * 0.050 + i) * (1.2 + e.drift * 1.3)
+        yy + Math.cos(t * 0.046 + i) * wobble
       );
       ctx.stroke();
     }
@@ -526,23 +711,33 @@ export class DreamFieldEngine {
   ) {
     const w = this.width;
     const h = this.height;
-    const lowField = 1 - this.y;
-    const cy = h * (0.88 + lowField * 0.035 - scene.foreground * 0.026 + Math.sin(t * 0.018) * 0.002);
-    const count = 5 + Math.round(e.halo * 2 + patch.yStrength * 2 + scene.foreground * 2);
-    const rotation = (this.x - 0.5) * (0.08 + scene.takeover * 0.05);
+    const cy = h * (0.89 - scene.foreground * 0.035 + Math.sin(t * 0.015) * 0.0015);
+    const count = Math.min(11, 4 + Math.round(e.halo * 2 + patch.yStrength * 2 + scene.foreground * 4));
+    const rotation = (this.x - 0.5) * (1 - scene.symmetry) * 0.09;
+
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
     for (let i = 0; i < count; i += 1) {
       const p = i / Math.max(1, count - 1);
-      const rx = w * (0.07 + p * (0.35 + lowField * 0.08 + scene.foreground * 0.14));
-      const ry = h * (0.012 + p * (0.082 + lowField * 0.035 + scene.foreground * 0.060));
+      const rx = w * (0.055 + p * (0.30 + scene.foreground * 0.18));
+      const ry = h * (0.010 + p * (0.060 + scene.foreground * 0.075));
+      const alpha = 0.045 - p * 0.019 + scene.foreground * 0.012;
       ctx.strokeStyle = i % 2
-        ? `rgba(90,214,218,${0.054 - p * 0.022 + e.drift * 0.008 + scene.foreground * 0.008})`
-        : `rgba(226,104,187,${0.048 - p * 0.020 + e.grain * 0.009 + scene.foreground * 0.008})`;
-      ctx.lineWidth = 1 + scene.reveal * (1 - p) * 0.35;
+        ? `rgba(90,214,218,${alpha + e.drift * 0.006})`
+        : `rgba(226,104,187,${alpha * 0.92 + e.grain * 0.007})`;
+      ctx.lineWidth = 1 + scene.reveal * (1 - p) * 0.30;
+
       ctx.beginPath();
       ctx.ellipse(heroX, cy, rx, ry, rotation, Math.PI, Math.PI * 2);
       ctx.stroke();
+
+      if (scene.basinFull > 0.05) {
+        ctx.globalAlpha = scene.basinFull * (0.34 + (1 - p) * 0.24);
+        ctx.beginPath();
+        ctx.ellipse(heroX, cy, rx, ry, rotation, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
     }
     ctx.restore();
   }
@@ -557,29 +752,96 @@ export class DreamFieldEngine {
     scene: SceneState,
     t: number
   ) {
-    const count = Math.min(9, 3 + Math.round(e.halo * 4 + patch.xStrength + scene.orbitSweep * 2));
+    const count = Math.min(10, 3 + Math.round(e.halo * 3 + patch.xStrength + scene.orbitSweep * 4));
+    const centerY = cy + minDim * scene.archLift * 0.65;
     ctx.save();
+
     for (let i = 0; i < count; i += 1) {
-      const orbit = minDim * (0.24 + (i % 4) * 0.105 + this.y * 0.018 + scene.orbitSweep * 0.035);
-      const sweep = scene.orbitSweep * (i / Math.max(1, count - 1)) * 0.72;
-      const a = i * 1.37 + t * (0.008 + (i % 3) * 0.0025) + (this.x - 0.5) * 0.45 + sweep;
-      const px = cx + Math.cos(a) * orbit * (1.38 + patch.xStrength * 0.16 + scene.orbitSweep * 0.12);
-      const py = cy + Math.sin(a) * orbit * (0.67 + this.y * 0.09 + scene.orbitSweep * 0.04);
-      const r = minDim * (0.0075 + (i % 3) * 0.0042 + scene.reveal * 0.0015);
+      const p = count <= 1 ? 0.5 : i / (count - 1);
+      const arcAngle = Math.PI * (1.08 + p * 0.84);
+      const randomAngle = i * 1.37 + scene.chapterA * 0.61 + t * (0.006 + (i % 3) * 0.0017);
+      const organized = clamp01(scene.symmetry * 0.55 + scene.corridor * 0.30 + scene.orbitSweep * 0.15);
+      const angle = lerp(randomAngle, arcAngle + (this.x - 0.5) * 0.25, organized);
+      const orbit = minDim * (0.27 + (i % 4) * 0.075 + scene.archScale * 0.055 + scene.orbitSweep * 0.025);
+      const px = cx + Math.cos(angle) * orbit * (1.34 + patch.xStrength * 0.10);
+      const py = centerY + Math.sin(angle) * orbit * (0.70 + scene.symmetry * 0.06);
+      const r = minDim * (0.0065 + (i % 3) * 0.0038 + scene.reveal * 0.0014);
+
       ctx.globalCompositeOperation = 'screen';
-      const g = ctx.createRadialGradient(px, py, 0, px, py, r * 1.9);
-      g.addColorStop(0, `rgba(246,241,221,${0.20 + scene.reveal * 0.05})`);
-      g.addColorStop(0.46, i % 2 ? 'rgba(90,210,219,0.17)' : 'rgba(244,139,95,0.18)');
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g;
+      const glow = ctx.createRadialGradient(px, py, 0, px, py, r * 1.9);
+      glow.addColorStop(0, `rgba(246,241,221,${0.18 + scene.reveal * 0.045})`);
+      glow.addColorStop(0.46, i % 2 ? 'rgba(90,210,219,0.16)' : 'rgba(244,139,95,0.17)');
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glow;
       ctx.beginPath();
       ctx.arc(px, py, r * 1.9, 0, Math.PI * 2);
       ctx.fill();
+
       ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = 'rgba(3,6,12,0.91)';
+      ctx.fillStyle = 'rgba(3,6,12,0.93)';
       ctx.beginPath();
       ctx.arc(px, py, r * 0.64, 0, Math.PI * 2);
       ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  private drawForegroundOrb(
+    ctx: CanvasRenderingContext2D,
+    heroX: number,
+    heroY: number,
+    horizon: number,
+    minDim: number,
+    e: Energy,
+    scene: SceneState,
+    _t: number
+  ) {
+    if (scene.foregroundOrb < 0.03) return;
+
+    const h = this.height;
+    const amount = smoothstep(0.02, 0.88, scene.foregroundOrb);
+    const cy = h * lerp(0.84, 0.79, amount);
+    const radius = minDim * lerp(0.011, 0.060, amount);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const glow = ctx.createRadialGradient(heroX, cy, radius * 0.55, heroX, cy, radius * 2.4);
+    glow.addColorStop(0, 'rgba(0,0,0,0)');
+    glow.addColorStop(0.38, `rgba(238,102,191,${0.055 + amount * 0.065})`);
+    glow.addColorStop(0.66, `rgba(82,216,222,${0.050 + amount * 0.050 + e.drift * 0.018})`);
+    glow.addColorStop(1, 'rgba(82,216,222,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(heroX, cy, radius * 2.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(2,4,9,0.985)';
+    ctx.beginPath();
+    ctx.arc(heroX, cy, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.strokeStyle = `rgba(91,216,220,${0.05 + amount * 0.08})`;
+    ctx.lineWidth = Math.max(1, minDim * 0.0020);
+    ctx.beginPath();
+    ctx.ellipse(heroX, cy + radius * 0.72, radius * (1.5 + amount * 0.8), radius * 0.28, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    if (amount > 0.45) {
+      const beam = ctx.createLinearGradient(heroX, heroY, heroX, cy - radius);
+      beam.addColorStop(0, 'rgba(245,190,125,0.015)');
+      beam.addColorStop(0.48, `rgba(238,244,236,${0.035 + amount * 0.035})`);
+      beam.addColorStop(1, 'rgba(91,216,220,0.01)');
+      ctx.strokeStyle = beam;
+      ctx.lineWidth = Math.max(1, minDim * 0.0018);
+      ctx.beginPath();
+      ctx.moveTo(heroX, Math.max(horizon, heroY + radius));
+      ctx.lineTo(heroX, cy - radius);
+      ctx.stroke();
     }
     ctx.restore();
   }
@@ -593,29 +855,31 @@ export class DreamFieldEngine {
     scene: SceneState,
     t: number
   ) {
+    if (scene.reveal < 0.10) return;
+
     const w = this.width;
     const h = this.height;
-    const alpha = (0.014 + e.atmos * 0.012 + e.halo * 0.008 + (patch.xStrength + patch.yStrength) * 0.004) * (0.45 + scene.reveal * 1.35);
+    const alpha = (0.010 + e.atmos * 0.010 + e.halo * 0.007 + (patch.xStrength + patch.yStrength) * 0.003) * scene.reveal;
     const forms = [
-      [0.16 + (this.x - 0.5) * 0.03, -0.11, 1.0],
-      [0.84 + (this.x - 0.5) * 0.03, -0.09, 0.92],
+      [0.15 + (this.x - 0.5) * 0.025, -0.10, 1.0],
+      [0.85 + (this.x - 0.5) * 0.025, -0.09, 0.92],
     ];
 
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
     ctx.strokeStyle = `rgba(222,231,222,${alpha})`;
-    ctx.lineWidth = 1 + scene.reveal * 0.35;
+    ctx.lineWidth = 1 + scene.reveal * 0.30;
     for (let i = 0; i < forms.length; i += 1) {
       const [xf, yf, s] = forms[i];
       const x = w * xf;
-      const y = horizon + h * yf + Math.sin(t * 0.025 + i) * 1.5;
-      const r = minDim * 0.052 * s * (1 + scene.reveal * 0.32);
-      const open = 0.52 + this.y * 0.12 + scene.reveal * 0.15;
+      const y = horizon + h * yf + Math.sin(t * 0.022 + i) * 1.2;
+      const r = minDim * 0.050 * s * (1 + scene.reveal * 0.26);
+      const open = 0.50 + this.y * 0.10 + scene.reveal * 0.13;
       ctx.beginPath();
-      ctx.ellipse(x, y, r * 1.55, r * open, (i ? -1 : 1) * (this.x - 0.5) * 0.10, Math.PI * 1.05, Math.PI * 1.95);
+      ctx.ellipse(x, y, r * 1.55, r * open, (i ? -1 : 1) * (this.x - 0.5) * 0.08, Math.PI * 1.05, Math.PI * 1.95);
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(x + (this.x - 0.5) * r * 0.35, y, r * (0.13 + scene.reveal * 0.08), 0, Math.PI * 2);
+      ctx.arc(x + (this.x - 0.5) * r * 0.28, y, r * (0.12 + scene.reveal * 0.07), 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.restore();
@@ -629,12 +893,12 @@ export class DreamFieldEngine {
     ctx.globalCompositeOperation = 'screen';
     const count = 1 + Math.round(e.artifact * 3);
     for (let i = 0; i < count; i += 1) {
-      const y = (Math.sin(i * 4.13 + t * (0.55 + i * 0.15)) * 0.5 + 0.5) * h;
-      ctx.strokeStyle = `rgba(223,171,139,${0.012 + e.artifact * 0.024})`;
+      const y = (Math.sin(i * 4.13 + t * (0.52 + i * 0.13)) * 0.5 + 0.5) * h;
+      ctx.strokeStyle = `rgba(223,171,139,${0.010 + e.artifact * 0.022})`;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, y);
-      ctx.lineTo(w, y + Math.sin(t * 1.4 + i) * 2);
+      ctx.lineTo(w, y + Math.sin(t * 1.3 + i) * 1.8);
       ctx.stroke();
     }
     ctx.restore();
