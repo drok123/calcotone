@@ -25,9 +25,22 @@ jobs:
       - name: Install dependencies
         run: npm ci --silent
       - name: Build CALCOTONE
-        run: npm run build
+        id: build
+        continue-on-error: true
+        run: npm run build > faceplate-editor-build.log 2>&1
+      - name: Upload build diagnostics
+        if: steps.build.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: faceplate-editor-build-log
+          path: faceplate-editor-build.log
+      - name: Fail if build failed
+        if: steps.build.outcome == 'failure'
+        run: |
+          cat faceplate-editor-build.log
+          exit 1
       - name: Commit verified source
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.build.outcome == 'success'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
