@@ -1,1 +1,1 @@
-export { ModuleViewport } from './ModuleViewportMajestic';
+export { ModuleViewport } from './ModuleViewportSignature';
