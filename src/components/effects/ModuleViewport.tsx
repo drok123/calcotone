@@ -4,6 +4,41 @@ import type { VisualAudioState } from '../../visual/VisualEngine';
 import { formatAlgorithmName } from '../../ui/formatting';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from './viewportScheduler';
 
+const WORLD_WIDTH = 240;
+const WORLD_HEIGHT = 150;
+const TAU = Math.PI * 2;
+
+type RGB = readonly [number, number, number];
+type ModulePalette = {
+  primary: RGB;
+  secondary: RGB;
+  warm: RGB;
+  pale: RGB;
+};
+
+type DrawKit = {
+  ctx: CanvasRenderingContext2D;
+  width: number;
+  height: number;
+  cx: number;
+  cy: number;
+  time: number;
+  mix: number;
+  energy: number;
+  transient: number;
+  palette: ModulePalette;
+  rgba: (color: RGB, alpha: number, whiten?: boolean) => string;
+  stroke: (color: RGB, alpha?: number, lineWidth?: number, whiten?: boolean) => void;
+  glow: (x: number, y: number, radius?: number, alpha?: number, color?: RGB) => void;
+  orb: (x: number, y: number, radius: number, color: RGB, alpha: number) => void;
+};
+
+const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+const hash = (value: number) => {
+  const n = Math.sin(value * 127.1) * 43758.5453123;
+  return n - Math.floor(n);
+};
+
 export function ModuleViewport({
   module,
   visualState,
@@ -13,7 +48,9 @@ export function ModuleViewport({
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const moduleRef = useRef(module);
+  const visualRef = useRef(visualState);
   moduleRef.current = module;
+  visualRef.current = visualState;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -43,19 +80,16 @@ export function ModuleViewport({
     resizeObserver.observe(canvas);
 
     const render: ViewportRenderCallback = (time) => {
-      const currentModule = moduleRef.current;
-      if (!currentModule.enabled) return;
-
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      const currentModule = moduleRef.current;
       const currentParams: Record<string, number> = {};
       for (const parameter of currentModule.parameters) currentParams[parameter.id] = parameter.value;
-
       drawModuleViewport(
         context,
         cssWidth,
         cssHeight,
         currentModule,
-        visualState,
+        visualRef.current,
         currentParams,
         time / 1000
       );
@@ -66,7 +100,7 @@ export function ModuleViewport({
       unsubscribe();
       resizeObserver.disconnect();
     };
-  }, [module.id, module.mediaMode]);
+  }, [module.id]);
 
   return (
     <div className={`dsp-viewport viewport-${module.id} ${module.enabled ? 'active' : ''}`}>
@@ -78,68 +112,84 @@ export function ModuleViewport({
 }
 
 function getViewportCaption(module: ModuleState): string {
-  if (module.id === 'delay') return formatAlgorithmName(module.delayAlgorithm ?? 'tape');
-  if (module.id === 'reverb') return (module.algorithm ?? 'hall').toUpperCase();
-  if (module.id === 'media') return (module.mediaMode ?? 'cassette').toUpperCase();
-  if (module.id === 'bitcrusher') return (module.grainMode ?? 'reconstruct').toUpperCase();
-  if (module.id === 'chorus') return 'PHASE CURRENT';
-  if (module.id === 'saturation') return 'THERMAL REACTOR';
+  if (module.id === 'saturation') {
+    const mode = module.emberMode ?? 'velvet';
+    const captions: Record<string, string> = {
+      goldlion: 'B759 · GOLD LION FIELD',
+      mullard: 'ECC83 · MULLARD HEAT',
+      telefunken: 'ECC83 · TELEFUNKEN GRID',
+      bugleboy: '12AX7 · BUGLE BOY AIR',
+      rcablack: '12AX7 · RCA BLACK PLATE',
+    };
+    return captions[mode] ?? 'THERMAL REACTOR';
+  }
+  if (module.id === 'chorus') {
+    if (module.driftMode === 'ce1') return 'CE-1 · BBD CHORUS';
+    if (module.driftMode === 'dimensiond') return 'DIMENSION D · PHASE MATRIX';
+    return 'PHASE CURRENT';
+  }
+  if (module.id === 'delay') {
+    if (module.delayAlgorithm === 're201') return 'RE-201 · TAPE ECHO';
+    return formatAlgorithmName(module.delayAlgorithm ?? 'tape');
+  }
+  if (module.id === 'reverb') {
+    if (module.algorithm === 'emt140') return 'EMT 140 · PLATE FIELD';
+    if (module.algorithm === 'lexicon224') return '224 · DIGITAL SPACE';
+    return (module.algorithm ?? 'hall').toUpperCase();
+  }
+  if (module.id === 'bitcrusher') {
+    if (module.grainMode === 'sp1200') return 'SP-1200 · 26.04 KHZ';
+    if (module.grainMode === 'mpc60') return 'MPC60 · 40 KHZ';
+    if (module.grainMode === 'mirage') return 'MIRAGE · 8 BIT';
+    return (module.grainMode ?? 'reconstruct').toUpperCase();
+  }
+  if (module.id === 'media') {
+    if (module.mediaMode === 'tascam424') return 'PORTASTUDIO 424 · 4 TRACK';
+    return (module.mediaMode ?? 'cassette').toUpperCase();
+  }
   return 'SIGNAL WORLD';
 }
-
-type RGB = readonly [number, number, number];
-
-const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
-const hash = (value: number) => {
-  const n = Math.sin(value * 127.1) * 43758.5453123;
-  return n - Math.floor(n);
-};
 
 function drawModuleViewport(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   module: ModuleState,
-  _audio: VisualAudioState,
+  audio: VisualAudioState,
   params: Record<string, number>,
   time: number
-) {
-  ctx.clearRect(0, 0, width, height);
+): void {
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#010304';
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.restore();
+
   if (!module.enabled) {
-    ctx.fillStyle = '#000';
+    ctx.fillStyle = '#020405';
     ctx.fillRect(0, 0, width, height);
     return;
   }
 
-  // Intentionally non-audio-reactive. These worlds move continuously from time + module parameters only.
-  const cx = width / 2;
-  const cy = height / 2;
   const mix = clamp01(params.mix ?? 0.5);
-  const mode = module.id === 'saturation' ? (module.emberMode ?? 'velvet')
-    : module.id === 'chorus' ? (module.driftMode ?? 'chorus')
-    : module.id === 'delay' ? (module.delayAlgorithm ?? 'tape')
-    : module.id === 'reverb' ? (module.algorithm ?? 'hall')
-    : module.id === 'media' ? (module.mediaMode ?? 'cassette')
-    : module.id === 'bitcrusher' ? (module.grainMode ?? 'reconstruct')
-    : 'default';
+  const palette = paletteForModule(module.id);
+  const energy = clamp01(audio.level * 1.55 + audio.low * 0.25 + audio.mid * 0.2);
+  const transient = clamp01(audio.transient * 1.2);
+  drawCanvasBackdrop(ctx, width, height, palette, mix, energy, time);
 
-  const primary: RGB = module.id === 'saturation' ? [241, 153, 66]
-    : module.id === 'chorus' ? [88, 205, 220]
-    : module.id === 'delay' ? [161, 126, 255]
-    : module.id === 'reverb' ? [86, 145, 255]
-    : module.id === 'media' ? [202, 145, 91]
-    : [223, 105, 197];
+  const margin = 9;
+  const scale = Math.max(
+    0.01,
+    Math.min((width - margin * 2) / WORLD_WIDTH, (height - margin * 2) / WORLD_HEIGHT)
+  );
+  const offsetX = (width - WORLD_WIDTH * scale) / 2;
+  const offsetY = (height - WORLD_HEIGHT * scale) / 2;
 
-  const secondary: RGB = module.id === 'saturation' ? [214, 80, 160]
-    : module.id === 'chorus' ? [131, 116, 255]
-    : module.id === 'delay' ? [76, 212, 218]
-    : module.id === 'reverb' ? [96, 220, 206]
-    : module.id === 'media' ? [81, 205, 209]
-    : [80, 213, 211];
+  ctx.save();
+  ctx.translate(offsetX, offsetY);
+  ctx.scale(scale, scale);
 
-  const warm: RGB = [247, 176, 99];
-  const pale: RGB = [228, 239, 233];
-  const whiteMix = 0.08 + mix * 0.54;
+  const whiteMix = 0.12 + mix * 0.44 + energy * 0.08;
   const rgba = (color: RGB, alpha: number, whiten = false) => {
     const blend = whiten ? whiteMix : 0;
     const r = Math.round(color[0] + (255 - color[0]) * blend);
@@ -147,921 +197,952 @@ function drawModuleViewport(
     const b = Math.round(color[2] + (255 - color[2]) * blend);
     return `rgba(${r},${g},${b},${clamp01(alpha)})`;
   };
-
   const stroke = (color: RGB, alpha = 0.3, lineWidth = 1, whiten = true) => {
     ctx.strokeStyle = rgba(color, alpha, whiten);
     ctx.lineWidth = lineWidth;
   };
-
-  const glowDot = (x: number, y: number, radius = 1.4, alpha = 0.45, color = primary) => {
+  const glow = (x: number, y: number, radius = 1.4, alpha = 0.45, color = palette.primary) => {
     ctx.save();
     ctx.fillStyle = rgba(color, alpha, true);
-    ctx.shadowColor = rgba(color, Math.min(0.36, alpha));
-    ctx.shadowBlur = 3 + radius * 1.8;
+    ctx.shadowColor = rgba(color, Math.min(0.48, alpha));
+    ctx.shadowBlur = 3 + radius * 2.4;
     ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.arc(x, y, radius, 0, TAU);
     ctx.fill();
     ctx.restore();
   };
-
-  const softOrb = (x: number, y: number, radius: number, color: RGB, alpha: number) => {
+  const orb = (x: number, y: number, radius: number, color: RGB, alpha: number) => {
     const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
     gradient.addColorStop(0, rgba(color, alpha, true));
-    gradient.addColorStop(0.28, rgba(color, alpha * 0.35));
+    gradient.addColorStop(0.28, rgba(color, alpha * 0.32));
     gradient.addColorStop(1, rgba(color, 0));
     ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.arc(x, y, radius, 0, TAU);
     ctx.fill();
   };
 
-  const project = (x: number, y: number, z: number) => {
-    const depth = 1 + z * 0.30;
-    return [cx + x * depth, cy + y * depth - z * 7] as const;
+  const kit: DrawKit = {
+    ctx,
+    width: WORLD_WIDTH,
+    height: WORLD_HEIGHT,
+    cx: WORLD_WIDTH / 2,
+    cy: WORLD_HEIGHT / 2,
+    time,
+    mix,
+    energy,
+    transient,
+    palette,
+    rgba,
+    stroke,
+    glow,
+    orb,
   };
 
-  const chamber = (scale = 1, alpha = 0.16) => {
-    const points = [
-      [-55, -34, -1], [55, -34, -1], [55, 34, -1], [-55, 34, -1],
-      [-55, -34, 1], [55, -34, 1], [55, 34, 1], [-55, 34, 1],
-    ].map(([x, y, z]) => project(x * scale, y * scale, z));
-    const edges = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
-    stroke(primary, alpha, 1);
-    for (const [a, b] of edges) {
-      ctx.beginPath();
-      ctx.moveTo(...points[a]);
-      ctx.lineTo(...points[b]);
-      ctx.stroke();
-    }
-  };
+  drawWorldGrid(kit);
+  const mode = currentMode(module);
+  if (module.id === 'saturation') drawEmber(kit, mode, params);
+  else if (module.id === 'chorus') drawDrift(kit, mode, params);
+  else if (module.id === 'delay') drawHalo(kit, mode, params);
+  else if (module.id === 'reverb') drawAtmos(kit, mode, params);
+  else if (module.id === 'media') drawArtifact(kit, mode, params);
+  else drawGrain(kit, mode, params);
 
-  const depthPlane = (y: number, halfWidth: number, alpha: number, color = primary) => {
-    stroke(color, alpha, 1);
-    ctx.beginPath();
-    ctx.moveTo(cx - halfWidth, y);
-    ctx.quadraticCurveTo(cx, y - 4, cx + halfWidth, y);
-    ctx.stroke();
-  };
-
-  drawAmbientWorld(ctx, width, height, primary, secondary, rgba, time, mix);
-
-  if (module.id === 'saturation') {
-    drawEmber(ctx, cx, cy, mode, params, time, primary, secondary, warm, rgba, stroke, glowDot, softOrb, chamber);
-  } else if (module.id === 'chorus') {
-    drawDrift(ctx, cx, cy, mode, params, time, primary, secondary, pale, rgba, stroke, glowDot, softOrb, chamber);
-  } else if (module.id === 'delay') {
-    drawHalo(ctx, cx, cy, mode, params, time, primary, secondary, warm, stroke, glowDot, softOrb, depthPlane);
-  } else if (module.id === 'reverb') {
-    drawAtmos(ctx, cx, cy, mode, params, time, primary, secondary, pale, rgba, stroke, glowDot, softOrb, chamber, depthPlane);
-  } else if (module.id === 'media') {
-    drawArtifact(ctx, cx, cy, mode, params, time, primary, secondary, warm, rgba, stroke, glowDot, softOrb, chamber);
-  } else {
-    drawGrain(ctx, cx, cy, mode, params, time, primary, secondary, pale, rgba, stroke, glowDot, softOrb, chamber, project);
-  }
-
-  drawOpticalFinish(ctx, width, height, primary, secondary, rgba, time);
+  ctx.restore();
+  drawOpticalFinish(ctx, width, height, palette, time);
 }
 
-function drawAmbientWorld(
+function currentMode(module: ModuleState): string {
+  if (module.id === 'saturation') return module.emberMode ?? 'velvet';
+  if (module.id === 'chorus') return module.driftMode ?? 'chorus';
+  if (module.id === 'delay') return module.delayAlgorithm ?? 'tape';
+  if (module.id === 'reverb') return module.algorithm ?? 'hall';
+  if (module.id === 'media') return module.mediaMode ?? 'cassette';
+  return module.grainMode ?? 'reconstruct';
+}
+
+function paletteForModule(moduleId: string): ModulePalette {
+  if (moduleId === 'saturation') return { primary: [244, 152, 67], secondary: [219, 76, 151], warm: [255, 194, 104], pale: [244, 236, 220] };
+  if (moduleId === 'chorus') return { primary: [87, 208, 226], secondary: [132, 121, 255], warm: [233, 210, 130], pale: [226, 246, 246] };
+  if (moduleId === 'delay') return { primary: [164, 130, 255], secondary: [78, 218, 223], warm: [252, 182, 101], pale: [234, 236, 250] };
+  if (moduleId === 'reverb') return { primary: [90, 151, 255], secondary: [97, 224, 209], warm: [240, 187, 116], pale: [229, 242, 240] };
+  if (moduleId === 'media') return { primary: [213, 154, 93], secondary: [80, 210, 214], warm: [250, 190, 108], pale: [239, 232, 215] };
+  return { primary: [226, 108, 202], secondary: [83, 218, 216], warm: [245, 184, 105], pale: [234, 241, 237] };
+}
+
+function drawCanvasBackdrop(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  primary: RGB,
-  secondary: RGB,
-  rgba: (color: RGB, alpha: number, whiten?: boolean) => string,
-  time: number,
-  mix: number
-) {
+  palette: ModulePalette,
+  mix: number,
+  energy: number,
+  time: number
+): void {
+  const rgba = (color: RGB, alpha: number) => `rgba(${color[0]},${color[1]},${color[2]},${clamp01(alpha)})`;
   const cx = width / 2;
   const cy = height / 2;
-  const background = ctx.createRadialGradient(cx, cy * 0.86, 5, cx, cy, width * 0.72);
-  background.addColorStop(0, rgba(primary, 0.055 + mix * 0.025));
-  background.addColorStop(0.38, rgba(secondary, 0.025));
-  background.addColorStop(0.70, 'rgba(3,7,10,.985)');
-  background.addColorStop(1, 'rgba(0,0,0,1)');
-  ctx.fillStyle = background;
+  const radial = ctx.createRadialGradient(cx, cy * 0.92, 4, cx, cy, Math.max(width, height) * 0.7);
+  radial.addColorStop(0, rgba(palette.primary, 0.09 + mix * 0.035 + energy * 0.035));
+  radial.addColorStop(0.35, rgba(palette.secondary, 0.035 + energy * 0.02));
+  radial.addColorStop(0.72, 'rgba(4,8,11,.985)');
+  radial.addColorStop(1, '#010203');
+  ctx.fillStyle = radial;
   ctx.fillRect(0, 0, width, height);
 
-  const horizonY = height * 0.68;
-  const horizon = ctx.createLinearGradient(0, horizonY - 18, 0, horizonY + 28);
-  horizon.addColorStop(0, rgba(primary, 0));
-  horizon.addColorStop(0.46, rgba(primary, 0.025));
-  horizon.addColorStop(0.52, rgba(secondary, 0.035));
+  const horizon = ctx.createLinearGradient(0, height * 0.42, 0, height * 0.82);
+  horizon.addColorStop(0, 'rgba(0,0,0,0)');
+  horizon.addColorStop(0.52, rgba(palette.primary, 0.025 + energy * 0.015));
+  horizon.addColorStop(0.58, rgba(palette.secondary, 0.035 + mix * 0.015));
   horizon.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = horizon;
-  ctx.fillRect(0, horizonY - 20, width, 50);
+  ctx.fillRect(0, 0, width, height);
 
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
-  for (let i = 0; i < 6; i += 1) {
-    const seed = hash(i * 9.17 + primary[0]);
-    const x = width * (0.08 + seed * 0.84) + Math.sin(time * 0.018 + i) * 2;
-    const y = height * (0.14 + hash(i * 4.71 + primary[1]) * 0.48);
-    const alpha = 0.035 + hash(i * 7.23) * 0.045;
-    ctx.fillStyle = i % 2 ? rgba(primary, alpha, true) : rgba(secondary, alpha, true);
+  for (let i = 0; i < 9; i += 1) {
+    const seed = hash(i * 7.17 + palette.primary[0]);
+    const x = width * (0.05 + seed * 0.9) + Math.sin(time * 0.02 + i) * 2;
+    const y = height * (0.08 + hash(i * 3.31 + palette.secondary[1]) * 0.72);
+    const radius = 0.4 + hash(i * 4.7) * 1.2;
+    ctx.fillStyle = i % 2 ? rgba(palette.primary, 0.04 + energy * 0.03) : rgba(palette.secondary, 0.035 + mix * 0.025);
     ctx.beginPath();
-    ctx.arc(x, y, 0.65 + (i % 3) * 0.35, 0, Math.PI * 2);
+    ctx.arc(x, y, radius, 0, TAU);
     ctx.fill();
   }
   ctx.restore();
 }
 
-function drawEmber(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  mode: string,
-  params: Record<string, number>,
-  time: number,
-  primary: RGB,
-  secondary: RGB,
-  warm: RGB,
-  rgba: (color: RGB, alpha: number, whiten?: boolean) => string,
-  stroke: (color: RGB, alpha?: number, lineWidth?: number, whiten?: boolean) => void,
-  glowDot: (x: number, y: number, radius?: number, alpha?: number, color?: RGB) => void,
-  softOrb: (x: number, y: number, radius: number, color: RGB, alpha: number) => void,
-  chamber: (scale?: number, alpha?: number) => void
-) {
-  const heat = clamp01(params.heat ?? 0.25);
-  const drive = clamp01(params.drive ?? 0.2);
-  const character = clamp01(params.character ?? 0.3);
-  const pulse = 0.5 + Math.sin(time * 0.32) * 0.5;
-  const coreR = 13 + drive * 9 + heat * 4;
-
-  chamber(1, 0.12 + drive * 0.06);
-  softOrb(cx, cy + 2, 44 + heat * 12, secondary, 0.055 + heat * 0.035);
-  softOrb(cx, cy, 30 + drive * 10, primary, 0.075 + drive * 0.045);
-
-  const core = ctx.createRadialGradient(cx - coreR * 0.2, cy - coreR * 0.25, 1, cx, cy, coreR);
-  core.addColorStop(0, rgba(warm, 0.28 + heat * 0.18, true));
-  core.addColorStop(0.36, rgba(primary, 0.17 + drive * 0.12));
-  core.addColorStop(0.75, rgba(secondary, 0.055 + character * 0.055));
-  core.addColorStop(1, rgba(primary, 0));
-  ctx.fillStyle = core;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy + 2, coreR * 1.15, coreR * 0.72, Math.sin(time * 0.05) * 0.06, 0, Math.PI * 2);
-  ctx.fill();
-
-  for (let i = 0; i < 4; i += 1) {
-    const p = (time * (0.022 + heat * 0.014) + i / 4) % 1;
-    const rx = 17 + p * 34;
-    const ry = 7 + p * 19;
-    stroke(i % 2 ? secondary : primary, (1 - p) * (0.12 + heat * 0.08), 1.05);
+function drawWorldGrid(kit: DrawKit): void {
+  const { ctx, width, height, cx, cy, stroke, palette, time, energy } = kit;
+  stroke(palette.primary, 0.055 + energy * 0.025, 0.55, false);
+  for (let row = 0; row < 5; row += 1) {
+    const p = row / 4;
+    const y = cy + 18 + p * 46;
+    const half = 92 - p * 24;
     ctx.beginPath();
-    ctx.ellipse(cx, cy + 2, rx, ry, (character - 0.5) * 0.12, Math.PI * 1.04, Math.PI * 1.96);
+    ctx.moveTo(cx - half, y);
+    ctx.quadraticCurveTo(cx, y - 2 - Math.sin(time * 0.08 + row) * 0.8, cx + half, y);
     ctx.stroke();
   }
+  for (let col = -4; col <= 4; col += 1) {
+    const topX = cx + col * 15;
+    const bottomX = cx + col * 22;
+    ctx.beginPath();
+    ctx.moveTo(topX, cy + 18);
+    ctx.lineTo(bottomX, height + 2);
+    ctx.stroke();
+  }
+}
+
+function drawEmber(kit: DrawKit, mode: string, params: Record<string, number>): void {
+  const { ctx, cx, cy, palette, stroke, glow, orb, rgba, time, energy, transient } = kit;
+  const drive = clamp01(params.drive ?? 0.2);
+  const heat = clamp01(params.heat ?? 0.2);
+  const character = clamp01(params.character ?? 0.3);
+  const hardware = ['goldlion', 'mullard', 'telefunken', 'bugleboy', 'rcablack'].includes(mode);
+  if (hardware) {
+    drawTubeHardware(kit, mode, drive, heat, character);
+    return;
+  }
+
+  orb(cx, cy - 4, 49 + heat * 12, palette.secondary, 0.055 + heat * 0.035 + energy * 0.025);
+  orb(cx, cy - 8, 34 + drive * 12, palette.primary, 0.08 + drive * 0.06 + transient * 0.03);
+  const coreR = 15 + drive * 10 + heat * 5;
+  const core = ctx.createRadialGradient(cx - 4, cy - 15, 1, cx, cy - 7, coreR);
+  core.addColorStop(0, rgba(palette.warm, 0.48 + heat * 0.18, true));
+  core.addColorStop(0.34, rgba(palette.primary, 0.28 + drive * 0.12));
+  core.addColorStop(0.76, rgba(palette.secondary, 0.07 + character * 0.07));
+  core.addColorStop(1, rgba(palette.primary, 0));
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - 6, coreR * 1.25, coreR * 0.78, Math.sin(time * 0.08) * 0.05, 0, TAU);
+  ctx.fill();
 
   if (mode === 'tube') {
     for (let i = -1; i <= 1; i += 1) {
-      const x = cx + i * 31;
-      const glowY = cy - 16 + ((time * (6 + heat * 3) + i * 13) % 32);
-      stroke(primary, 0.30, 1.1);
-      ctx.beginPath();
-      ctx.roundRect(x - 8, cy - 23, 16, 46, 7);
-      ctx.stroke();
-      stroke(warm, 0.17 + heat * 0.08, 1);
-      for (let row = -1; row <= 1; row += 1) {
-        ctx.beginPath();
-        ctx.moveTo(x - 5, cy + row * 10);
-        ctx.lineTo(x + 5, cy + row * 10);
-        ctx.stroke();
-      }
-      glowDot(x, glowY, 1.2 + drive * 0.5, 0.38 + heat * 0.18, warm);
+      const x = cx + i * 43;
+      drawTubeEnvelope(kit, x, cy - 7, 13, 48, 0.32, palette.warm);
+      const heaterY = cy - 24 + ((time * (8 + heat * 4) + i * 17) % 38);
+      glow(x, heaterY, 1.6 + drive, 0.45 + heat * 0.22, palette.warm);
     }
   } else if (mode === 'transformer') {
     for (const side of [-1, 1]) {
-      for (let band = -1; band <= 1; band += 1) {
-        stroke(primary, 0.18 + (band + 1) * 0.05, 1);
+      for (let band = -2; band <= 2; band += 1) {
+        stroke(side < 0 ? palette.primary : palette.secondary, 0.16 + (2 - Math.abs(band)) * 0.04, 1.1);
         ctx.beginPath();
-        for (let i = 0; i <= 42; i += 1) {
-          const p = i / 42;
-          const x = cx + side * 25 - 18 + p * 36;
-          const y = cy + band * 9 + Math.sin(p * Math.PI * 10 + time * 0.10 * side) * 2.8;
-          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        for (let step = 0; step <= 46; step += 1) {
+          const p = step / 46;
+          const x = cx + side * 39 - 28 + p * 56;
+          const y = cy - 5 + band * 10 + Math.sin(p * Math.PI * 12 + time * 0.15 * side) * 3.5;
+          step === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
         }
         ctx.stroke();
       }
     }
-    stroke(secondary, 0.18 + drive * 0.11, 1.2);
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - 28);
-    ctx.bezierCurveTo(cx - 7 - pulse * 4, cy - 10, cx + 7 + pulse * 4, cy + 10, cx, cy + 28);
-    ctx.stroke();
+    glow(cx, cy - 5, 2.4, 0.48 + transient * 0.22, palette.warm);
   } else if (mode === 'console') {
-    for (let row = -3; row <= 3; row += 1) {
-      const y = cy + row * 8;
-      const bend = Math.sin(time * 0.08 + row) * (1 + character * 2);
-      stroke(row % 2 ? secondary : primary, 0.16 + Math.abs(row) * 0.018, 1);
+    for (let row = -4; row <= 4; row += 1) {
+      const y = cy - 7 + row * 9;
+      const bend = Math.sin(time * 0.12 + row) * (1.2 + character * 3);
+      stroke(row % 2 ? palette.secondary : palette.primary, 0.16 + (4 - Math.abs(row)) * 0.015, 1);
       ctx.beginPath();
-      ctx.moveTo(cx - 49, y);
-      ctx.lineTo(cx - 22, y);
-      ctx.quadraticCurveTo(cx, y + bend, cx + 21, y);
-      ctx.lineTo(cx + 38, y);
-      ctx.lineTo(cx + 38, cy);
+      ctx.moveTo(cx - 92, y);
+      ctx.lineTo(cx - 42, y);
+      ctx.quadraticCurveTo(cx, y + bend, cx + 36, y);
+      ctx.lineTo(cx + 74, y);
+      ctx.lineTo(cx + 74, cy + 33);
       ctx.stroke();
-      glowDot(cx - 22, y, 0.9, 0.26, primary);
+      glow(cx - 42, y, 0.9, 0.24 + energy * 0.08, palette.primary);
     }
   } else if (mode === 'furnace') {
-    for (let i = -3; i <= 3; i += 1) {
-      const x = cx + i * 14;
-      const bend = Math.sin(time * 0.30 + i) * heat * 3;
-      stroke(i % 2 ? secondary : primary, 0.19 + drive * 0.09, 1.1);
+    for (let i = -5; i <= 5; i += 1) {
+      const x = cx + i * 16;
+      const bend = Math.sin(time * 0.34 + i) * heat * 5;
+      stroke(i % 2 ? palette.secondary : palette.primary, 0.19 + drive * 0.1, 1.15);
       ctx.beginPath();
-      ctx.moveTo(x, cy - 28);
-      ctx.lineTo(x - 6, cy - 10 + bend);
-      ctx.lineTo(x, cy);
-      ctx.lineTo(x + 6, cy + 10 - bend);
-      ctx.lineTo(x, cy + 28);
+      ctx.moveTo(x, cy - 42);
+      ctx.lineTo(x - 7, cy - 15 + bend);
+      ctx.lineTo(x, cy - 2);
+      ctx.lineTo(x + 7, cy + 14 - bend);
+      ctx.lineTo(x, cy + 37);
       ctx.stroke();
-      glowDot(x, cy, 1.1 + heat * 0.55, 0.33 + heat * 0.16, warm);
+      if (i % 2 === 0) glow(x, cy - 2, 1.3 + heat, 0.3 + heat * 0.2, palette.warm);
     }
   } else if (mode === 'exciter') {
-    for (let branch = -4; branch <= 4; branch += 1) {
-      const y = cy + branch * 7;
-      const shimmer = Math.sin(time * 0.34 + branch) * character * 3;
-      stroke(branch % 2 ? secondary : primary, 0.14 + Math.abs(branch) * 0.018, 1);
+    for (let branch = -6; branch <= 6; branch += 1) {
+      const y = cy - 7 + branch * 7;
+      stroke(branch % 2 ? palette.secondary : palette.primary, 0.11 + (6 - Math.abs(branch)) * 0.014, 1);
       ctx.beginPath();
-      ctx.moveTo(cx - 47, cy);
-      ctx.quadraticCurveTo(cx - 18, y, cx + 11, y + shimmer);
-      ctx.quadraticCurveTo(cx + 29, y, cx + 47, cy);
+      ctx.moveTo(cx - 92, cy - 4);
+      ctx.quadraticCurveTo(cx - 36, y, cx + 16, y + Math.sin(time * 0.42 + branch) * 4 * character);
+      ctx.quadraticCurveTo(cx + 54, y, cx + 92, cy - 4);
       ctx.stroke();
     }
   } else if (mode === 'broken') {
-    for (let i = 0; i < 12; i += 1) {
-      const y = cy - 26 + (i % 6) * 10;
-      const gap = 8 + (i * 7) % 13;
-      stroke(i % 3 ? primary : secondary, 0.13 + (i % 4) * 0.035, 1);
+    for (let i = 0; i < 18; i += 1) {
+      const row = i % 9;
+      const y = cy - 41 + row * 10;
+      const gap = 12 + (i * 7) % 25;
+      stroke(i % 3 ? palette.primary : palette.secondary, 0.12 + (i % 4) * 0.035, 1);
       ctx.beginPath();
-      ctx.moveTo(cx - 49, y);
+      ctx.moveTo(cx - 94, y);
       ctx.lineTo(cx - gap, y);
-      ctx.moveTo(cx + gap, y + (i % 2 ? 4 : -4));
-      ctx.lineTo(cx + 47, y + (i % 2 ? 4 : -4));
+      ctx.moveTo(cx + gap, y + (i % 2 ? 5 : -5));
+      ctx.lineTo(cx + 92, y + (i % 2 ? 5 : -5));
       ctx.stroke();
-      if (Math.sin(time * 0.28 + i * 2.7) > 0.68) glowDot(cx - gap, y, 1, 0.30, secondary);
+      if (Math.sin(time * 0.45 + i * 2.7) > 0.72) glow(cx - gap, y, 1.2, 0.33, palette.secondary);
     }
   } else {
-    for (let row = -2; row <= 2; row += 1) {
-      const y = cy + row * 11;
-      const breathe = Math.sin(time * 0.22 + row) * heat * 2.2;
-      stroke(row % 2 ? secondary : primary, 0.16 + drive * 0.055, 1);
+    for (let row = -4; row <= 4; row += 1) {
+      const y = cy - 7 + row * 10;
+      const breathe = Math.sin(time * 0.24 + row) * (2 + heat * 3.4);
+      stroke(row % 2 ? palette.secondary : palette.primary, 0.14 + drive * 0.07, 1);
       ctx.beginPath();
-      ctx.moveTo(cx - 48, y);
-      ctx.bezierCurveTo(cx - 24, y, cx - 14, y + breathe, cx, y + breathe);
-      ctx.bezierCurveTo(cx + 16, y + breathe, cx + 25, y, cx + 46, y);
+      ctx.moveTo(cx - 91, y);
+      ctx.bezierCurveTo(cx - 44, y, cx - 26, y + breathe, cx, y + breathe);
+      ctx.bezierCurveTo(cx + 28, y + breathe, cx + 48, y, cx + 91, y);
       ctx.stroke();
     }
-  }
-
-  for (let i = 0; i < 7; i += 1) {
-    const seed = hash(i * 11.31 + 2.7);
-    const life = (time * (0.026 + heat * 0.022) + seed) % 1;
-    const x = cx + (hash(i * 17.7) - 0.5) * 76 + Math.sin(time * 0.12 + i) * 2;
-    const y = cy + 33 - life * 72;
-    glowDot(x, y, 0.55 + seed * 0.55, (1 - life) * 0.14, i % 2 ? warm : secondary);
   }
 }
 
-function drawDrift(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  mode: string,
-  params: Record<string, number>,
-  time: number,
-  primary: RGB,
-  secondary: RGB,
-  pale: RGB,
-  rgba: (color: RGB, alpha: number, whiten?: boolean) => string,
-  stroke: (color: RGB, alpha?: number, lineWidth?: number, whiten?: boolean) => void,
-  glowDot: (x: number, y: number, radius?: number, alpha?: number, color?: RGB) => void,
-  softOrb: (x: number, y: number, radius: number, color: RGB, alpha: number) => void,
-  chamber: (scale?: number, alpha?: number) => void
-) {
+function drawTubeHardware(kit: DrawKit, mode: string, drive: number, heat: number, character: number): void {
+  const { ctx, cx, cy, palette, stroke, glow, orb, time, energy, transient } = kit;
+  const profiles: Record<string, { plate: RGB; heater: RGB; spacing: number; tilt: number }> = {
+    goldlion: { plate: [246, 196, 92], heater: [255, 211, 118], spacing: 45, tilt: 0.02 },
+    mullard: { plate: [225, 117, 73], heater: [255, 174, 95], spacing: 40, tilt: -0.035 },
+    telefunken: { plate: [183, 218, 228], heater: [255, 202, 120], spacing: 43, tilt: 0 },
+    bugleboy: { plate: [241, 181, 96], heater: [255, 228, 153], spacing: 48, tilt: 0.045 },
+    rcablack: { plate: [177, 112, 91], heater: [255, 126, 66], spacing: 38, tilt: -0.02 },
+  };
+  const profile = profiles[mode] ?? profiles.goldlion;
+  orb(cx, cy - 6, 62, profile.plate, 0.055 + heat * 0.045 + energy * 0.03);
+  orb(cx, cy + 4, 44, palette.secondary, 0.025 + character * 0.025);
+
+  for (let tube = -1; tube <= 1; tube += 1) {
+    const x = cx + tube * profile.spacing;
+    drawTubeEnvelope(kit, x, cy - 7, 15, 55, 0.24 + drive * 0.11, profile.plate);
+    stroke(profile.plate, 0.19 + heat * 0.1, 0.9);
+    for (let grid = -2; grid <= 2; grid += 1) {
+      const yy = cy - 7 + grid * 10;
+      ctx.beginPath();
+      ctx.moveTo(x - 8, yy);
+      ctx.lineTo(x + 8, yy + Math.sin(time * 0.12 + tube + grid) * character * 1.4);
+      ctx.stroke();
+    }
+    const heaterPhase = (time * (0.35 + heat * 0.25) + tube * 0.17) % 1;
+    const heaterY = cy + 17 - heaterPhase * 42;
+    glow(x, heaterY, 1.5 + drive * 0.7, 0.46 + heat * 0.24 + transient * 0.13, profile.heater);
+  }
+
+  if (mode === 'goldlion') {
+    stroke(profile.plate, 0.22, 1.2);
+    for (let i = 0; i < 4; i += 1) {
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - 8, 34 + i * 14, 16 + i * 6, time * 0.012 * (i % 2 ? -1 : 1), 0, TAU);
+      ctx.stroke();
+    }
+  } else if (mode === 'mullard') {
+    for (let i = -5; i <= 5; i += 1) {
+      stroke(i % 2 ? palette.secondary : profile.plate, 0.105 + (5 - Math.abs(i)) * 0.014, 0.9);
+      ctx.beginPath();
+      ctx.moveTo(cx - 86, cy + i * 7);
+      ctx.bezierCurveTo(cx - 32, cy + i * 8 + Math.sin(time * 0.15 + i) * 3, cx + 32, cy + i * 5, cx + 86, cy + i * 7);
+      ctx.stroke();
+    }
+  } else if (mode === 'telefunken') {
+    stroke(profile.plate, 0.3, 1.1);
+    ctx.save();
+    ctx.translate(cx, cy - 7);
+    ctx.rotate(Math.PI / 4 + Math.sin(time * 0.05) * 0.02);
+    for (let i = 0; i < 4; i += 1) ctx.strokeRect(-14 - i * 8, -14 - i * 8, 28 + i * 16, 28 + i * 16);
+    ctx.restore();
+  } else if (mode === 'bugleboy') {
+    for (let i = 0; i < 18; i += 1) {
+      const a = i * 2.399 + time * 0.045;
+      const r = 18 + (i % 6) * 12;
+      glow(cx + Math.cos(a) * r, cy - 7 + Math.sin(a * 1.13) * r * 0.45, 0.8 + (i % 3) * 0.3, 0.17 + energy * 0.08, i % 2 ? profile.plate : palette.secondary);
+    }
+  } else if (mode === 'rcablack') {
+    ctx.save();
+    ctx.fillStyle = 'rgba(2,2,2,.28)';
+    for (const x of [cx - 34, cx + 34]) ctx.fillRect(x - 11, cy - 39, 22, 66);
+    ctx.restore();
+    stroke(profile.heater, 0.22 + heat * 0.1, 1.15);
+    ctx.beginPath();
+    ctx.moveTo(cx - 78, cy + 31);
+    ctx.quadraticCurveTo(cx, cy + 45 + Math.sin(time * 0.18) * 2, cx + 78, cy + 31);
+    ctx.stroke();
+  }
+}
+
+function drawTubeEnvelope(kit: DrawKit, x: number, y: number, radius: number, height: number, alpha: number, color: RGB): void {
+  const { ctx, stroke } = kit;
+  stroke(color, alpha, 1.1);
+  ctx.beginPath();
+  ctx.roundRect(x - radius, y - height / 2, radius * 2, height, radius * 0.72);
+  ctx.stroke();
+  stroke(color, alpha * 0.45, 0.75, false);
+  ctx.beginPath();
+  ctx.moveTo(x - radius * 0.65, y + height / 2);
+  ctx.lineTo(x - radius * 0.45, y + height / 2 + 7);
+  ctx.moveTo(x + radius * 0.65, y + height / 2);
+  ctx.lineTo(x + radius * 0.45, y + height / 2 + 7);
+  ctx.stroke();
+}
+
+function drawDrift(kit: DrawKit, mode: string, params: Record<string, number>): void {
+  const { ctx, cx, cy, palette, stroke, glow, orb, time, energy } = kit;
   const depth = clamp01((params.depth ?? 0.3) * 110);
-  const rate = 0.22 + clamp01((params.rate ?? 0.2) / 2.5) * 0.55;
+  const rate = 0.22 + clamp01((params.rate ?? 0.2) / 2.5) * 0.75;
   const spread = clamp01(params.spread ?? 0.5);
   const motion = clamp01(params.motion ?? 0.3);
 
-  chamber(1, 0.10 + spread * 0.04);
-  softOrb(cx - 23 - spread * 8, cy, 34, primary, 0.045 + depth * 0.025);
-  softOrb(cx + 25 + spread * 8, cy + 2, 34, secondary, 0.045 + motion * 0.025);
-
-  for (let ribbon = 0; ribbon < 3; ribbon += 1) {
-    const offset = (ribbon - 1) * 13;
-    const phase = time * rate * (0.42 + ribbon * 0.04) + ribbon * 1.7;
-    const gradient = ctx.createLinearGradient(cx - 55, cy, cx + 55, cy);
-    gradient.addColorStop(0, rgba(primary, 0));
-    gradient.addColorStop(0.34, rgba(primary, 0.025 + depth * 0.02));
-    gradient.addColorStop(0.65, rgba(secondary, 0.025 + motion * 0.02));
-    gradient.addColorStop(1, rgba(secondary, 0));
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    for (let step = 0; step <= 28; step += 1) {
-      const p = step / 28;
-      const x = cx - 58 + p * 116;
-      const y = cy + offset + Math.sin(p * Math.PI * 2.0 + phase) * (5 + depth * 6);
-      step === 0 ? ctx.moveTo(x, y - 4) : ctx.lineTo(x, y - 4);
-    }
-    for (let step = 28; step >= 0; step -= 1) {
-      const p = step / 28;
-      const x = cx - 58 + p * 116;
-      const y = cy + offset + Math.sin(p * Math.PI * 2.0 + phase) * (5 + depth * 6);
-      ctx.lineTo(x, y + 4);
-    }
-    ctx.closePath();
-    ctx.fill();
+  if (mode === 'ce1') {
+    drawCE1(kit, rate, clamp01(params.shape ?? 0.35), motion);
+    return;
+  }
+  if (mode === 'dimensiond') {
+    drawDimensionD(kit, clamp01(params.shape ?? 0.35));
+    return;
   }
 
-  for (let i = 0; i < 9; i += 1) {
+  orb(cx - 41, cy - 7, 45, palette.primary, 0.04 + depth * 0.035 + energy * 0.02);
+  orb(cx + 43, cy - 4, 45, palette.secondary, 0.04 + motion * 0.03);
+  for (let ribbon = 0; ribbon < 4; ribbon += 1) {
+    const phase = time * rate * (0.5 + ribbon * 0.05) + ribbon * 1.5;
     ctx.beginPath();
-    for (let step = 0; step <= 30; step += 1) {
-      const p = step / 30;
-      const x = cx - 56 + p * 112;
-      let y = cy + (i - 4) * 7;
-      y += Math.sin(p * Math.PI * 2.35 + time * rate + i * 0.55) * (2.5 + depth * 6);
-      if (mode === 'liquid') y += Math.sin(p * Math.PI * 5 - time * 0.18 + i) * 4.5 * motion;
-      if (mode === 'dimension') y += (p - 0.5) * (i - 4) * 4 * spread;
-      if (mode === 'vibrato') y += Math.sin(p * Math.PI * 6 + time * rate * 2) * (2 + depth * 4);
+    for (let step = 0; step <= 54; step += 1) {
+      const p = step / 54;
+      const x = cx - 99 + p * 198;
+      let y = cy - 7 + (ribbon - 1.5) * 18;
+      y += Math.sin(p * Math.PI * 2.4 + phase) * (6 + depth * 9);
+      if (mode === 'liquid') y += Math.sin(p * Math.PI * 6 - time * 0.2 + ribbon) * 6 * motion;
+      if (mode === 'dimension') y += (p - 0.5) * (ribbon - 1.5) * 13 * spread;
+      if (mode === 'vibrato') y += Math.sin(p * Math.PI * 8 + time * rate * 2) * (3 + depth * 5);
       step === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
-    stroke(i % 2 ? secondary : primary, 0.13 + i * 0.018, 1.05);
+    stroke(ribbon % 2 ? palette.secondary : palette.primary, 0.18 + ribbon * 0.025 + energy * 0.04, 1.15);
     ctx.stroke();
   }
 
   if (mode === 'rotary' || mode === 'orbit') {
-    const rings = mode === 'orbit' ? 5 : 3;
+    const rings = mode === 'orbit' ? 6 : 4;
     for (let i = 0; i < rings; i += 1) {
-      const angle = time * rate * (i % 2 ? -0.12 : 0.10);
-      stroke(i % 2 ? secondary : primary, 0.20 + i * 0.025, 1.1);
+      const angle = time * rate * (i % 2 ? -0.16 : 0.13);
+      stroke(i % 2 ? palette.secondary : palette.primary, 0.18 + i * 0.02, 1);
       ctx.beginPath();
-      ctx.ellipse(cx, cy, 18 + i * 8, 8 + i * 4, angle, 0, Math.PI * 2);
+      ctx.ellipse(cx, cy - 7, 24 + i * 12, 10 + i * 6, angle, 0, TAU);
       ctx.stroke();
-      const particleAngle = time * rate * 1.7 + i * 1.25;
-      glowDot(cx + Math.cos(particleAngle) * (18 + i * 8), cy + Math.sin(particleAngle) * (8 + i * 4), 1.1, 0.35, i % 2 ? pale : primary);
+      const a = time * rate * 1.8 + i * 1.3;
+      glow(cx + Math.cos(a) * (24 + i * 12), cy - 7 + Math.sin(a) * (10 + i * 6), 1.1, 0.34, i % 2 ? palette.pale : palette.primary);
     }
   } else if (mode === 'doppler') {
-    const sourceX = cx + Math.sin(time * rate * 0.75) * 35;
-    softOrb(sourceX, cy, 18, primary, 0.05);
-    glowDot(sourceX, cy, 2.2, 0.50, pale);
-    for (let i = 0; i < 6; i += 1) {
-      const rr = 8 + i * 10 + (time * rate * 8) % 10;
-      stroke(i % 2 ? secondary : primary, 0.18 - i * 0.015, 1);
+    const sourceX = cx + Math.sin(time * rate * 0.85) * 62;
+    glow(sourceX, cy - 7, 2.4, 0.54, palette.pale);
+    for (let i = 0; i < 8; i += 1) {
+      const rr = 10 + i * 13 + (time * rate * 10) % 13;
+      stroke(i % 2 ? palette.secondary : palette.primary, Math.max(0.05, 0.2 - i * 0.018), 1);
       ctx.beginPath();
-      ctx.arc(sourceX, cy, rr, Math.PI * 0.72, Math.PI * 1.28);
+      ctx.arc(sourceX, cy - 7, rr, Math.PI * 0.68, Math.PI * 1.32);
       ctx.stroke();
     }
   } else if (mode === 'ensemble') {
-    for (let i = 0; i < 7; i += 1) {
-      const angle = time * (0.10 + i * 0.004) + i * 0.94;
-      glowDot(cx + Math.cos(angle) * (20 + i * 4), cy + Math.sin(angle * 0.93) * (9 + i * 2), 1.05 + (i % 2) * 0.3, 0.24 + i * 0.02, i % 2 ? secondary : primary);
+    for (let i = 0; i < 12; i += 1) {
+      const angle = time * (0.11 + i * 0.004) + i * 0.72;
+      glow(cx + Math.cos(angle) * (25 + i * 5), cy - 7 + Math.sin(angle * 0.91) * (11 + i * 2.6), 0.8 + (i % 3) * 0.25, 0.19 + i * 0.012, i % 2 ? palette.secondary : palette.primary);
     }
   }
+}
 
-  for (let i = 0; i < 4; i += 1) {
-    const y = cy + 27 + i * 3;
-    stroke(i % 2 ? secondary : primary, 0.055, 0.8, false);
+function drawCE1(kit: DrawKit, rate: number, intensity: number, preamp: number): void {
+  const { ctx, cx, cy, palette, stroke, glow, orb, time, transient } = kit;
+  orb(cx, cy - 8, 58, palette.primary, 0.05 + intensity * 0.035);
+  const scan = (Math.sin(time * rate * 1.6) + 1) * 0.5;
+  for (let lane = 0; lane < 2; lane += 1) {
+    const y = cy - 25 + lane * 35;
+    stroke(lane ? palette.secondary : palette.primary, 0.28, 1.2);
     ctx.beginPath();
-    ctx.moveTo(cx - 50, y);
-    ctx.bezierCurveTo(cx - 20, y - 5 - Math.sin(time * 0.11 + i) * 3, cx + 19, y + 4, cx + 50, y - 1);
+    ctx.moveTo(cx - 91, y);
+    for (let step = 1; step <= 48; step += 1) {
+      const p = step / 48;
+      const x = cx - 91 + p * 182;
+      const wobble = Math.sin(p * Math.PI * 5 + time * rate + lane * Math.PI) * (3 + intensity * 10);
+      ctx.lineTo(x, y + wobble);
+    }
+    ctx.stroke();
+  }
+  stroke(palette.warm, 0.18 + preamp * 0.16, 1.1);
+  ctx.strokeRect(cx - 86, cy + 29, 172, 13);
+  const ledX = cx - 78 + scan * 156;
+  glow(ledX, cy + 35.5, 1.8 + transient, 0.48 + transient * 0.25, palette.warm);
+  for (let i = 0; i < 8; i += 1) {
+    const x = cx - 70 + i * 20;
+    stroke(i % 2 ? palette.secondary : palette.primary, 0.095, 0.8, false);
+    ctx.beginPath();
+    ctx.moveTo(x, cy - 46);
+    ctx.lineTo(x, cy + 20);
     ctx.stroke();
   }
 }
 
-function drawHalo(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  mode: string,
-  params: Record<string, number>,
-  time: number,
-  primary: RGB,
-  secondary: RGB,
-  warm: RGB,
-  stroke: (color: RGB, alpha?: number, lineWidth?: number, whiten?: boolean) => void,
-  glowDot: (x: number, y: number, radius?: number, alpha?: number, color?: RGB) => void,
-  softOrb: (x: number, y: number, radius: number, color: RGB, alpha: number) => void,
-  depthPlane: (y: number, halfWidth: number, alpha: number, color?: RGB) => void
-) {
+function drawDimensionD(kit: DrawKit, modeValue: number): void {
+  const { ctx, cx, cy, palette, stroke, glow, time } = kit;
+  const active = Math.max(0, Math.min(6, Math.floor(modeValue * 7)));
+  const lanes = 4;
+  for (let lane = 0; lane < lanes; lane += 1) {
+    const y = cy - 42 + lane * 25;
+    const phase = lane * Math.PI * 0.5;
+    stroke(lane % 2 ? palette.secondary : palette.primary, 0.18 + lane * 0.03, 1.1);
+    ctx.beginPath();
+    for (let step = 0; step <= 60; step += 1) {
+      const p = step / 60;
+      const x = cx - 96 + p * 192;
+      const yy = y + Math.sin(p * Math.PI * 2 + time * 0.24 + phase) * 5.5;
+      step === 0 ? ctx.moveTo(x, yy) : ctx.lineTo(x, yy);
+    }
+    ctx.stroke();
+    glow(cx - 86, y, 1.1, lane === active % 4 ? 0.52 : 0.18, lane % 2 ? palette.secondary : palette.primary);
+  }
+  stroke(palette.pale, 0.16, 1);
+  for (let button = 0; button < 4; button += 1) {
+    const x = cx - 46 + button * 31;
+    ctx.strokeRect(x - 9, cy + 37, 18, 9);
+    if (button === active % 4 || (active > 3 && button === 3)) glow(x, cy + 41.5, 1.8, 0.5, palette.pale);
+  }
+}
+
+function drawHalo(kit: DrawKit, mode: string, params: Record<string, number>): void {
+  const { ctx, cx, cy, palette, stroke, glow, orb, time, energy } = kit;
   const feedback = clamp01(params.feedback ?? 0.3);
   const character = clamp01(params.character ?? 0.2);
   const widthParam = clamp01(params.width ?? 0.5);
-  const tunnelDepth = 5 + Math.round(feedback * 4);
-
-  softOrb(cx, cy - 2, 42, primary, 0.045 + feedback * 0.025);
-  softOrb(cx + 8, cy + 8, 36, secondary, 0.030 + character * 0.025);
-
-  for (let i = tunnelDepth - 1; i >= 0; i -= 1) {
-    const k = i / Math.max(1, tunnelDepth - 1);
-    const scale = 0.28 + (1 - k) * 0.78;
-    const w = 90 * scale * (0.92 + widthParam * 0.12);
-    const h = 50 * scale;
-    const x = cx + Math.sin(time * 0.028 + i * 0.7) * character * 2.2;
-    const y = cy + (k - 0.5) * 5;
-    stroke(i % 2 ? secondary : primary, 0.08 + (1 - k) * 0.16, 1);
-    ctx.beginPath();
-    if (mode === 'diffuse' || mode === 'constellation') ctx.ellipse(x, y, w / 2, h / 2, 0, 0, Math.PI * 2);
-    else ctx.roundRect(x - w / 2, y - h / 2, w, h, 3 + scale * 5);
-    ctx.stroke();
+  if (mode === 're201') {
+    drawRE201(kit, feedback, character, widthParam);
+    return;
   }
 
-  for (let i = 0; i < 5; i += 1) depthPlane(cy + 19 + i * 8, 48 - i * 6, 0.055 + (4 - i) * 0.012, i % 2 ? secondary : primary);
-  glowDot(cx, cy - 2, 2.1, 0.48, warm);
+  orb(cx, cy - 9, 62, palette.primary, 0.045 + feedback * 0.04 + energy * 0.02);
+  const depth = 7 + Math.round(feedback * 5);
+  for (let i = depth - 1; i >= 0; i -= 1) {
+    const k = i / Math.max(1, depth - 1);
+    const scale = 0.24 + (1 - k) * 0.88;
+    const w = 170 * scale * (0.9 + widthParam * 0.14);
+    const h = 92 * scale;
+    const x = cx + Math.sin(time * 0.04 + i * 0.7) * character * 4;
+    const y = cy - 8 + (k - 0.5) * 8;
+    stroke(i % 2 ? palette.secondary : palette.primary, 0.08 + (1 - k) * 0.17, 1);
+    ctx.beginPath();
+    if (mode === 'diffuse' || mode === 'constellation') ctx.ellipse(x, y, w / 2, h / 2, 0, 0, TAU);
+    else ctx.roundRect(x - w / 2, y - h / 2, w, h, 5 + scale * 5);
+    ctx.stroke();
+  }
+  glow(cx, cy - 8, 2.4, 0.5, palette.warm);
 
   if (mode === 'pingpong') {
-    let x = cx - 42;
-    let y = cy - 21;
-    for (let i = 0; i < 8; i += 1) {
-      const nx = i % 2 ? cx - 34 + i * 3 : cx + 34 - i * 3;
-      const ny = cy - 21 + i * 6.1;
-      stroke(i % 2 ? secondary : primary, 0.30 - i * 0.018, 1.15);
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(nx, ny);
-      ctx.stroke();
-      glowDot(nx, ny, 1.0, 0.34 - i * 0.02, i % 2 ? secondary : primary);
-      x = nx;
-      y = ny;
+    let x = cx - 82;
+    let y = cy - 48;
+    for (let i = 0; i < 10; i += 1) {
+      const nx = i % 2 ? cx - 66 + i * 4 : cx + 66 - i * 4;
+      const ny = cy - 45 + i * 10;
+      stroke(i % 2 ? palette.secondary : palette.primary, 0.31 - i * 0.02, 1.1);
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(nx, ny); ctx.stroke();
+      glow(nx, ny, 1.1, 0.34 - i * 0.02, i % 2 ? palette.secondary : palette.primary);
+      x = nx; y = ny;
     }
   } else if (mode === 'scatter') {
-    for (let i = 0; i < 14; i += 1) {
-      const angle = i * 4.13 + time * 0.055;
-      const length = 20 + (i % 5) * 7;
-      stroke(i % 2 ? secondary : primary, 0.09 + (i % 4) * 0.025, 0.9);
+    for (let i = 0; i < 22; i += 1) {
+      const angle = i * 4.13 + time * 0.08;
+      const length = 30 + (i % 7) * 9;
+      stroke(i % 2 ? palette.secondary : palette.primary, 0.08 + (i % 5) * 0.024, 0.9);
       ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + Math.sin(angle * 1.7) * length, cy + Math.cos(angle * 0.83) * length * 0.65);
+      ctx.moveTo(cx, cy - 7);
+      ctx.lineTo(cx + Math.sin(angle * 1.7) * length, cy - 7 + Math.cos(angle * 0.83) * length * 0.62);
       ctx.stroke();
     }
   } else if (mode === 'constellation' || mode === 'diffuse') {
-    const count = mode === 'constellation' ? 14 : 10;
+    const count = mode === 'constellation' ? 24 : 16;
     const points: Array<readonly [number, number]> = [];
     for (let i = 0; i < count; i += 1) {
-      const angle = i * 2.399 + time * 0.028;
-      const radius = 10 + (i % 6) * 7;
-      const point = [cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius * 0.5] as const;
+      const angle = i * 2.399 + time * 0.035;
+      const radius = 14 + (i % 8) * 10;
+      const point = [cx + Math.cos(angle) * radius, cy - 7 + Math.sin(angle) * radius * 0.48] as const;
       points.push(point);
-      glowDot(point[0], point[1], 0.9 + (i % 3) * 0.25, 0.22 + (i % 4) * 0.025, i % 2 ? secondary : primary);
+      glow(point[0], point[1], 0.8 + (i % 3) * 0.25, 0.18 + (i % 5) * 0.025, i % 2 ? palette.secondary : palette.primary);
     }
     if (mode === 'constellation') {
-      stroke(primary, 0.08, 0.8, false);
+      stroke(palette.primary, 0.085, 0.75, false);
       ctx.beginPath();
-      points.forEach(([px, py], i) => i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py));
+      points.forEach(([px, py], index) => index === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py));
       ctx.stroke();
     }
-  } else {
-    const count = 5 + Math.round(feedback * 5);
-    for (let i = 0; i < count; i += 1) {
-      const phase = (time * 0.055 + i / count) % 1;
-      const w = 11 + phase * 88;
-      const h = 6 + phase * 49;
-      stroke(i % 2 ? secondary : primary, (1 - phase) * 0.28, 1);
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, w / 2, h / 2, 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    if (mode === 'bbd') {
-      stroke(secondary, 0.08, 0.8, false);
-      for (let x = cx - 42; x <= cx + 42; x += 12) {
-        ctx.beginPath();
-        ctx.moveTo(x, cy - 25);
-        ctx.lineTo(x, cy + 25);
-        ctx.stroke();
-      }
+  } else if (mode === 'bbd') {
+    stroke(palette.secondary, 0.11, 0.8, false);
+    for (let x = cx - 88; x <= cx + 88; x += 15) {
+      ctx.beginPath(); ctx.moveTo(x, cy - 49); ctx.lineTo(x, cy + 38); ctx.stroke();
     }
   }
 }
 
-function drawAtmos(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  mode: string,
-  params: Record<string, number>,
-  time: number,
-  primary: RGB,
-  secondary: RGB,
-  pale: RGB,
-  rgba: (color: RGB, alpha: number, whiten?: boolean) => string,
-  stroke: (color: RGB, alpha?: number, lineWidth?: number, whiten?: boolean) => void,
-  glowDot: (x: number, y: number, radius?: number, alpha?: number, color?: RGB) => void,
-  softOrb: (x: number, y: number, radius: number, color: RGB, alpha: number) => void,
-  chamber: (scale?: number, alpha?: number) => void,
-  depthPlane: (y: number, halfWidth: number, alpha: number, color?: RGB) => void
-) {
-  const size = 0.55 + clamp01(params.size ?? 0.5) * 0.45;
+function drawRE201(kit: DrawKit, feedback: number, age: number, modeValue: number): void {
+  const { ctx, cx, cy, palette, stroke, glow, orb, time, energy } = kit;
+  orb(cx, cy - 6, 68, palette.warm, 0.04 + feedback * 0.04 + energy * 0.02);
+  const left = [cx - 66, cy - 18] as const;
+  const right = [cx + 66, cy - 18] as const;
+  const bottom = [cx, cy + 40] as const;
+  stroke(palette.warm, 0.34, 1.4);
+  ctx.beginPath();
+  ctx.moveTo(left[0], left[1]);
+  ctx.lineTo(right[0], right[1]);
+  ctx.lineTo(bottom[0], bottom[1]);
+  ctx.closePath();
+  ctx.stroke();
+
+  const spin = time * (0.8 + feedback * 0.55);
+  for (const [x, y] of [left, right]) {
+    stroke(palette.primary, 0.32, 1.15);
+    ctx.beginPath(); ctx.arc(x, y, 22, 0, TAU); ctx.stroke();
+    for (let spoke = 0; spoke < 6; spoke += 1) {
+      const a = spin + spoke * TAU / 6;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * 17, y + Math.sin(a) * 17); ctx.stroke();
+    }
+  }
+  stroke(palette.secondary, 0.24 + age * 0.1, 1.1);
+  const heads = 3 + Math.round(modeValue * 4);
+  for (let i = 0; i < heads; i += 1) {
+    const p = i / Math.max(1, heads - 1);
+    const x = cx - 54 + p * 108;
+    const y = cy + 13 + Math.sin(p * Math.PI) * 17;
+    ctx.strokeRect(x - 5, y - 4, 10, 8);
+    if ((Math.floor(time * 2 + i) % heads) === i) glow(x, y, 1.4, 0.48, palette.secondary);
+  }
+  for (let i = 0; i < 5; i += 1) {
+    const p = (time * (0.07 + feedback * 0.04) + i / 5) % 1;
+    const x = cx - 66 + p * 132;
+    const y = cy - 18 + Math.sin(p * Math.PI) * (58 + age * 4);
+    glow(x, y, 0.8, (1 - Math.abs(p - 0.5)) * 0.18, palette.warm);
+  }
+}
+
+function drawAtmos(kit: DrawKit, mode: string, params: Record<string, number>): void {
+  const { ctx, cx, cy, palette, stroke, glow, orb, time, energy } = kit;
+  const size = 0.58 + clamp01(params.size ?? 0.5) * 0.42;
   const motion = clamp01(params.motion ?? 0.2);
   const diffusion = clamp01(params.diffusion ?? 0.5);
+  if (mode === 'emt140') {
+    drawEMT140(kit, size, diffusion);
+    return;
+  }
+  if (mode === 'lexicon224') {
+    drawLexicon224(kit, size, motion, diffusion);
+    return;
+  }
 
-  softOrb(cx - 20, cy - 10, 50 * size, primary, 0.035 + diffusion * 0.025);
-  softOrb(cx + 24, cy + 4, 46 * size, secondary, 0.030 + motion * 0.022);
-
-  for (let i = 0; i < 6; i += 1) depthPlane(cy + 10 + i * 8, 53 - i * 5, 0.045 + (5 - i) * 0.008, i % 2 ? secondary : primary);
-
+  orb(cx - 36, cy - 14, 65 * size, palette.primary, 0.035 + diffusion * 0.03 + energy * 0.02);
+  orb(cx + 42, cy - 5, 58 * size, palette.secondary, 0.03 + motion * 0.025);
   if (mode === 'room' || mode === 'hall' || mode === 'cinema') {
-    chamber(1, 0.10);
-    const columns = mode === 'cinema' ? 7 : mode === 'hall' ? 5 : 3;
-    const scale = (mode === 'room' ? 0.68 : mode === 'hall' ? 0.82 : 0.94) * size;
+    const columns = mode === 'cinema' ? 9 : mode === 'hall' ? 7 : 5;
+    const roomScale = (mode === 'room' ? 0.72 : mode === 'hall' ? 0.88 : 1) * size;
+    stroke(palette.primary, 0.13, 1);
+    ctx.strokeRect(cx - 94 * roomScale, cy - 52 * roomScale, 188 * roomScale, 92 * roomScale);
     for (let i = 0; i < columns; i += 1) {
-      const x = cx + (-45 + i * (90 / Math.max(1, columns - 1))) * scale;
-      const top = cy - 31 * scale;
-      const bottom = cy + 29 * scale;
-      const shaft = ctx.createLinearGradient(x - 4, top, x + 4, bottom);
-      shaft.addColorStop(0, rgba(i % 2 ? secondary : primary, 0.055));
-      shaft.addColorStop(1, rgba(primary, 0));
-      ctx.fillStyle = shaft;
-      ctx.fillRect(x - 3, top, 6, bottom - top);
-      stroke(i % 2 ? secondary : primary, 0.15 + diffusion * 0.06, 1);
-      ctx.beginPath();
-      ctx.moveTo(x, top);
-      ctx.lineTo(x, bottom);
-      ctx.stroke();
+      const x = cx + (-82 + i * (164 / Math.max(1, columns - 1))) * roomScale;
+      stroke(i % 2 ? palette.secondary : palette.primary, 0.14 + diffusion * 0.06, 1);
+      ctx.beginPath(); ctx.moveTo(x, cy - 48 * roomScale); ctx.lineTo(x, cy + 36 * roomScale); ctx.stroke();
     }
   } else if (mode === 'plate') {
-    stroke(primary, 0.32, 1.25);
-    ctx.strokeRect(cx - 48 * size, cy - 27 * size, 96 * size, 54 * size);
-    for (let i = 0; i < 8; i += 1) {
+    stroke(palette.primary, 0.34, 1.3);
+    ctx.strokeRect(cx - 92 * size, cy - 49 * size, 184 * size, 91 * size);
+    for (let i = 0; i < 10; i += 1) {
       ctx.beginPath();
-      for (let step = 0; step <= 32; step += 1) {
-        const p = step / 32;
-        const x = cx - 48 * size + p * 96 * size;
-        const y = cy + (i - 3.5) * 6 + Math.sin(p * Math.PI * 4 + time * 0.18 + i) * (1.5 + motion * 4.5);
+      for (let step = 0; step <= 48; step += 1) {
+        const p = step / 48;
+        const x = cx - 92 * size + p * 184 * size;
+        const y = cy - 4 + (i - 4.5) * 8 + Math.sin(p * Math.PI * 5 + time * 0.2 + i) * (2 + motion * 6);
         step === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
       }
-      stroke(i % 2 ? secondary : primary, 0.10 + i * 0.014, 0.9);
+      stroke(i % 2 ? palette.secondary : palette.primary, 0.1 + i * 0.012, 0.9);
       ctx.stroke();
     }
   } else if (mode === 'cloud' || mode === 'nebula') {
-    const count = mode === 'nebula' ? 30 : 20;
+    const count = mode === 'nebula' ? 42 : 28;
     for (let i = 0; i < count; i += 1) {
-      const angle = i * 2.399 + time * (0.018 + motion * 0.022);
-      const radius = 7 + (i % 8) * 6.2 * size;
-      glowDot(cx + Math.cos(angle) * radius, cy + Math.sin(angle * 1.13) * radius * 0.46, 0.7 + (i % 3) * 0.32, 0.10 + (i % 6) * 0.018, i % 3 ? primary : secondary);
+      const angle = i * 2.399 + time * (0.02 + motion * 0.025);
+      const radius = 10 + (i % 10) * 8 * size;
+      glow(cx + Math.cos(angle) * radius, cy - 7 + Math.sin(angle * 1.13) * radius * 0.48, 0.7 + (i % 3) * 0.3, 0.09 + (i % 6) * 0.018, i % 3 ? palette.primary : palette.secondary);
     }
   } else if (mode === 'freeze') {
-    chamber(1, 0.08);
-    for (let i = 0; i < 9; i += 1) {
-      stroke(i % 2 ? secondary : primary, 0.11 + i * 0.018, 1);
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, 8 + i * 6, 4 + i * 3, Math.sin(i) * 0.15, 0, Math.PI * 2);
-      ctx.stroke();
+    for (let i = 0; i < 12; i += 1) {
+      stroke(i % 2 ? palette.secondary : palette.primary, 0.1 + i * 0.016, 1);
+      ctx.beginPath(); ctx.ellipse(cx, cy - 7, 10 + i * 8, 5 + i * 4.2, Math.sin(i) * 0.15, 0, TAU); ctx.stroke();
     }
-    softOrb(cx, cy, 22, pale, 0.035);
+    glow(cx, cy - 7, 2.6, 0.48, palette.pale);
   } else if (mode === 'celestial') {
-    chamber(1, 0.07);
-    softOrb(cx, cy - 4, 25, pale, 0.05);
-    glowDot(cx, cy - 4, 2.6, 0.50, pale);
-    for (let i = -3; i <= 3; i += 1) {
-      const yy = cy + i * 9 + Math.sin(time * 0.10 + i) * 2.5;
-      stroke(i % 2 ? secondary : primary, 0.12 + Math.abs(i) * 0.018, 1);
-      ctx.beginPath();
-      ctx.moveTo(cx - 50, yy);
-      ctx.lineTo(cx + 50, yy - 9 * Math.sin(i));
-      ctx.stroke();
+    glow(cx, cy - 12, 3, 0.52, palette.pale);
+    for (let i = -5; i <= 5; i += 1) {
+      const yy = cy + i * 10 + Math.sin(time * 0.11 + i) * 3;
+      stroke(i % 2 ? palette.secondary : palette.primary, 0.11 + (5 - Math.abs(i)) * 0.012, 1);
+      ctx.beginPath(); ctx.moveTo(cx - 95, yy); ctx.lineTo(cx + 95, yy - 12 * Math.sin(i)); ctx.stroke();
     }
   } else if (mode === 'aurora') {
-    chamber(1, 0.06);
-    for (let i = 0; i < 8; i += 1) {
-      const gradient = ctx.createLinearGradient(cx - 54, cy, cx + 54, cy);
-      gradient.addColorStop(0, rgba(primary, 0));
-      gradient.addColorStop(0.45, rgba(i % 2 ? secondary : primary, 0.045 + i * 0.004));
-      gradient.addColorStop(1, rgba(secondary, 0));
-      ctx.strokeStyle = gradient;
-      ctx.lineWidth = 1;
+    for (let i = 0; i < 10; i += 1) {
       ctx.beginPath();
-      for (let step = 0; step <= 36; step += 1) {
-        const x = cx - 54 + step * 3;
-        const y = cy + (i - 3.5) * 7 + Math.sin((x - cx) * 0.045 + time * 0.17 + i * 0.5) * (4 + motion * 7);
+      for (let step = 0; step <= 60; step += 1) {
+        const x = cx - 99 + step * 3.3;
+        const y = cy + (i - 4.5) * 9 + Math.sin((x - cx) * 0.04 + time * 0.19 + i * 0.5) * (5 + motion * 9);
         step === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
       }
+      stroke(i % 2 ? palette.secondary : palette.primary, 0.1 + i * 0.013, 1);
       ctx.stroke();
     }
   } else {
-    for (let i = 0; i < 8; i += 1) {
-      const k = i / 7;
-      const y = cy - 29 + k * 59;
-      const half = 52 * (1 - k * 0.72);
-      stroke(i % 2 ? secondary : primary, 0.18 - k * 0.11, 1);
-      ctx.beginPath();
-      ctx.moveTo(cx - half, y);
-      ctx.lineTo(cx + half, y);
-      ctx.stroke();
+    for (let i = 0; i < 11; i += 1) {
+      const k = i / 10;
+      const y = cy - 53 + k * 99;
+      const half = 100 * (1 - k * 0.7);
+      stroke(i % 2 ? palette.secondary : palette.primary, 0.18 - k * 0.1, 1);
+      ctx.beginPath(); ctx.moveTo(cx - half, y); ctx.lineTo(cx + half, y); ctx.stroke();
     }
-  }
-
-  for (let i = 0; i < 3; i += 1) {
-    const phase = (time * (0.035 + motion * 0.035) + i * 0.31) % 1;
-    stroke(i % 2 ? secondary : primary, (1 - phase) * 0.10, 0.9);
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, phase * 57 * size, phase * 29 * size, 0, 0, Math.PI * 2);
-    ctx.stroke();
   }
 }
 
-function drawGrain(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  mode: string,
-  params: Record<string, number>,
-  time: number,
-  primary: RGB,
-  secondary: RGB,
-  pale: RGB,
-  rgba: (color: RGB, alpha: number, whiten?: boolean) => string,
-  stroke: (color: RGB, alpha?: number, lineWidth?: number, whiten?: boolean) => void,
-  glowDot: (x: number, y: number, radius?: number, alpha?: number, color?: RGB) => void,
-  softOrb: (x: number, y: number, radius: number, color: RGB, alpha: number) => void,
-  chamber: (scale?: number, alpha?: number) => void,
-  project: (x: number, y: number, z: number) => readonly [number, number]
-) {
+function drawEMT140(kit: DrawKit, size: number, diffusion: number): void {
+  const { ctx, cx, cy, palette, stroke, glow, orb, time, energy } = kit;
+  orb(cx, cy - 6, 70, palette.primary, 0.045 + diffusion * 0.035 + energy * 0.02);
+  const w = 190 * size;
+  const h = 98 * size;
+  stroke(palette.primary, 0.36, 1.35);
+  ctx.strokeRect(cx - w / 2, cy - h / 2 - 5, w, h);
+  for (const [x, y] of [[cx - w / 2, cy - h / 2 - 5], [cx + w / 2, cy - h / 2 - 5], [cx - w / 2, cy + h / 2 - 5], [cx + w / 2, cy + h / 2 - 5]] as const) {
+    glow(x, y, 1.5, 0.42, palette.warm);
+  }
+  for (let row = 0; row < 13; row += 1) {
+    const baseY = cy - h / 2 + row * (h / 12) - 5;
+    ctx.beginPath();
+    for (let step = 0; step <= 64; step += 1) {
+      const p = step / 64;
+      const x = cx - w / 2 + p * w;
+      const y = baseY + Math.sin(p * Math.PI * 6 + time * 0.22 + row * 0.65) * (1.2 + diffusion * 4.8);
+      step === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    stroke(row % 2 ? palette.secondary : palette.primary, 0.075 + row * 0.007, 0.75);
+    ctx.stroke();
+  }
+  const sweep = (time * 0.08) % 1;
+  stroke(palette.pale, 0.18, 1);
+  ctx.beginPath();
+  ctx.moveTo(cx - w / 2 + sweep * w, cy - h / 2 - 5);
+  ctx.lineTo(cx - w / 2 + sweep * w, cy + h / 2 - 5);
+  ctx.stroke();
+}
+
+function drawLexicon224(kit: DrawKit, size: number, motion: number, diffusion: number): void {
+  const { ctx, cx, cy, palette, stroke, glow, orb, time } = kit;
+  orb(cx, cy - 8, 68, palette.secondary, 0.04 + motion * 0.03);
+  const cols = 12;
+  const rows = 7;
+  const cellW = 14 * size;
+  const cellH = 11 * size;
+  const startX = cx - (cols * cellW) / 2;
+  const startY = cy - (rows * cellH) / 2 - 8;
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const phase = Math.sin(time * 0.7 + row * 1.3 + col * 0.73);
+      const alpha = 0.055 + Math.max(0, phase) * (0.08 + diffusion * 0.08);
+      ctx.fillStyle = kit.rgba((row + col) % 3 ? palette.primary : palette.secondary, alpha, true);
+      ctx.fillRect(startX + col * cellW + 1, startY + row * cellH + 1, cellW - 2, cellH - 2);
+    }
+  }
+  stroke(palette.pale, 0.18, 1);
+  ctx.strokeRect(startX, startY, cols * cellW, rows * cellH);
+  const scanCol = Math.floor((time * (1.2 + motion)) % cols);
+  for (let row = 0; row < rows; row += 1) glow(startX + scanCol * cellW + cellW / 2, startY + row * cellH + cellH / 2, 0.9, 0.26, palette.pale);
+  for (let i = 0; i < 4; i += 1) {
+    const p = (time * 0.055 + i * 0.24) % 1;
+    stroke(i % 2 ? palette.secondary : palette.primary, (1 - p) * 0.18, 1);
+    ctx.beginPath(); ctx.ellipse(cx, cy - 8, 15 + p * 92, 8 + p * 44, 0, 0, TAU); ctx.stroke();
+  }
+}
+
+function drawGrain(kit: DrawKit, mode: string, params: Record<string, number>): void {
+  const { ctx, cx, cy, palette, stroke, glow, orb, time, energy } = kit;
   const density = clamp01(params.density ?? 0.4);
   const chaos = clamp01(params.chaos ?? 0.2);
   const bloom = clamp01(params.bloom ?? 0.3);
   const pitch = clamp01(params.pitch ?? 0.38);
-  const bits = clamp01(((params.bits ?? 13) - 4) / 12);
-
-  chamber(1, 0.08 + (1 - bits) * 0.05);
-  softOrb(cx, cy, 42, primary, 0.035 + bloom * 0.025);
-  softOrb(cx + 14, cy - 6, 34, secondary, 0.025 + chaos * 0.025);
-
-  const gridAlpha = 0.035 + (mode === 'reconstruct' ? 0.045 : 0) + (1 - bits) * 0.015;
-  stroke(secondary, gridAlpha, 0.75, false);
-  for (let i = -3; i <= 3; i += 1) {
-    ctx.beginPath();
-    ctx.moveTo(cx - 48, cy + i * 9);
-    ctx.lineTo(cx + 48, cy + i * 9);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(cx + i * 14, cy - 30);
-    ctx.lineTo(cx + i * 14, cy + 30);
-    ctx.stroke();
+  if (mode === 'sp1200') {
+    drawSP1200(kit, density, chaos);
+    return;
+  }
+  if (mode === 'mpc60') {
+    drawMPC60(kit, density, bloom);
+    return;
+  }
+  if (mode === 'mirage') {
+    drawMirage(kit, density, pitch, chaos);
+    return;
   }
 
-  const count = 14 + Math.round(density * 28);
+  orb(cx, cy - 7, 60, palette.primary, 0.04 + bloom * 0.035 + energy * 0.02);
+  stroke(palette.secondary, 0.06, 0.7, false);
+  for (let i = -5; i <= 5; i += 1) {
+    ctx.beginPath(); ctx.moveTo(cx - 95, cy + i * 9); ctx.lineTo(cx + 95, cy + i * 9); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx + i * 18, cy - 52); ctx.lineTo(cx + i * 18, cy + 45); ctx.stroke();
+  }
+  const count = 22 + Math.round(density * 34);
   for (let i = 0; i < count; i += 1) {
     const seed = i * 12.9898;
-    let orbit = time * (0.055 + chaos * 0.11) + seed;
-    let radiusX = 15 + (i % 7) * 5.2;
-    let radiusY = 8 + (i % 5) * 4.3;
-    if (mode === 'shatter') { radiusX *= 1.22; radiusY *= 1.15; }
-    if (mode === 'smear') radiusX *= 1.35;
+    let orbit = time * (0.07 + chaos * 0.12) + seed;
+    let radiusX = 22 + (i % 9) * 8;
+    let radiusY = 10 + (i % 7) * 5;
+    if (mode === 'shatter') { radiusX *= 1.18; radiusY *= 1.18; }
+    if (mode === 'smear') radiusX *= 1.32;
     if (mode === 'stutter') orbit = Math.floor(orbit * 4) / 4;
-    const x = Math.sin(seed * 1.7 + orbit) * radiusX;
-    const y = Math.cos(seed * 0.9 + orbit * 1.2) * radiusY;
-    const z = Math.sin(seed + orbit * 0.7);
-    const [px, py] = project(x, y, z);
-    const scale = 1 + ((i % 4) / 3) * (1 + bloom * 1.7);
-    const angle = seed + time * (0.03 + pitch * 0.05) * (i % 2 ? -1 : 1);
-    const color = mode === 'prism' ? (i % 3 === 0 ? pale : i % 2 ? secondary : primary) : i % 4 === 0 ? secondary : primary;
-    const alpha = 0.10 + (z + 1) * 0.035 + bloom * 0.035;
-
+    const x = cx + Math.sin(seed * 1.7 + orbit) * radiusX;
+    const y = cy - 7 + Math.cos(seed * 0.9 + orbit * 1.2) * radiusY;
+    const size = 1 + (i % 4) * 0.65 + bloom * 1.4;
+    const angle = seed + time * (0.05 + pitch * 0.08) * (i % 2 ? -1 : 1);
     ctx.save();
-    ctx.translate(px, py);
+    ctx.translate(x, y);
     ctx.rotate(angle);
-    ctx.fillStyle = rgba(color, alpha, true);
+    ctx.fillStyle = kit.rgba(mode === 'prism' && i % 3 === 0 ? palette.pale : i % 2 ? palette.secondary : palette.primary, 0.13 + bloom * 0.05, true);
     ctx.beginPath();
     if (mode === 'ruin') {
-      ctx.moveTo(-scale * 1.5, scale);
-      ctx.lineTo(scale * 0.2, -scale * 2);
-      ctx.lineTo(scale * 1.8, scale * 0.4);
+      ctx.moveTo(-size * 1.7, size);
+      ctx.lineTo(size * 0.2, -size * 2.2);
+      ctx.lineTo(size * 2, size * 0.4);
     } else {
-      ctx.moveTo(0, -scale * 2);
-      ctx.lineTo(scale * 1.4, 0);
-      ctx.lineTo(0, scale * 1.7);
-      ctx.lineTo(-scale * 1.4, 0);
+      ctx.moveTo(0, -size * 2);
+      ctx.lineTo(size * 1.5, 0);
+      ctx.lineTo(0, size * 1.8);
+      ctx.lineTo(-size * 1.5, 0);
     }
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
+    ctx.closePath(); ctx.fill(); ctx.restore();
   }
-
   if (mode === 'reconstruct') {
-    stroke(pale, 0.12, 1);
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, 21 + Math.sin(time * 0.06) * 2, 11, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  } else if (mode === 'smear') {
-    for (let i = -2; i <= 2; i += 1) {
-      stroke(i % 2 ? secondary : primary, 0.08, 1);
-      ctx.beginPath();
-      ctx.moveTo(cx - 47, cy + i * 10);
-      ctx.bezierCurveTo(cx - 8, cy + i * 11 + Math.sin(time * 0.10 + i) * 4, cx + 14, cy + i * 7, cx + 48, cy + i * 10);
-      ctx.stroke();
-    }
-  } else if (mode === 'shatter' || mode === 'ruin') {
-    for (let i = 0; i < 5; i += 1) {
-      const a = i * 1.31 + time * 0.02;
-      stroke(i % 2 ? secondary : primary, 0.07, 0.8, false);
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + Math.cos(a) * 50, cy + Math.sin(a) * 28);
-      ctx.stroke();
-    }
-  }
-
-  for (let i = 0; i < 4; i += 1) {
-    const p = (time * 0.025 + i * 0.24) % 1;
-    glowDot(cx + Math.sin(i * 2.1) * 32, cy + 30 - p * 62, 0.65, (1 - p) * 0.10, i % 2 ? secondary : pale);
+    stroke(palette.pale, 0.14, 1);
+    ctx.beginPath(); ctx.ellipse(cx, cy - 7, 35 + Math.sin(time * 0.08) * 3, 17, 0, 0, TAU); ctx.stroke();
   }
 }
 
-function drawArtifact(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  mode: string,
-  params: Record<string, number>,
-  time: number,
-  primary: RGB,
-  secondary: RGB,
-  warm: RGB,
-  rgba: (color: RGB, alpha: number, whiten?: boolean) => string,
-  stroke: (color: RGB, alpha?: number, lineWidth?: number, whiten?: boolean) => void,
-  glowDot: (x: number, y: number, radius?: number, alpha?: number, color?: RGB) => void,
-  softOrb: (x: number, y: number, radius: number, color: RGB, alpha: number) => void,
-  chamber: (scale?: number, alpha?: number) => void
-) {
+function drawSP1200(kit: DrawKit, density: number, filterEnv: number): void {
+  const { ctx, cx, cy, palette, stroke, glow, time, transient } = kit;
+  const blocks = 8;
+  const blockW = 20;
+  for (let i = 0; i < blocks; i += 1) {
+    const x = cx - 80 + i * 23;
+    const level = 12 + ((i * 17) % 29) + Math.sin(time * 0.9 + i) * (4 + density * 8);
+    stroke(i % 2 ? palette.secondary : palette.primary, 0.24, 1);
+    ctx.strokeRect(x, cy - 42, blockW, 70);
+    ctx.fillStyle = kit.rgba(i % 2 ? palette.secondary : palette.primary, 0.08 + density * 0.06, true);
+    ctx.fillRect(x + 3, cy + 24 - level, blockW - 6, level);
+    if ((Math.floor(time * 3.2) + i) % blocks === 0) glow(x + blockW / 2, cy + 34, 1.7 + transient, 0.55, palette.warm);
+  }
+  stroke(palette.warm, 0.16 + filterEnv * 0.1, 1);
+  ctx.beginPath();
+  for (let step = 0; step <= 64; step += 1) {
+    const p = step / 64;
+    const x = cx - 91 + p * 182;
+    const quant = Math.round(Math.sin(p * Math.PI * 4 + time * 0.35) * 6) / 2;
+    const y = cy + 48 + quant;
+    step === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+function drawMPC60(kit: DrawKit, density: number, bloom: number): void {
+  const { ctx, cx, cy, palette, stroke, glow, time, energy } = kit;
+  const size = 23;
+  const gap = 5;
+  const startX = cx - (4 * size + 3 * gap) / 2;
+  const startY = cy - 55;
+  const activePad = Math.floor(time * (2.2 + density * 1.5)) % 16;
+  for (let row = 0; row < 4; row += 1) {
+    for (let col = 0; col < 4; col += 1) {
+      const index = row * 4 + col;
+      const x = startX + col * (size + gap);
+      const y = startY + row * (size + gap);
+      stroke(index === activePad ? palette.pale : (index % 2 ? palette.secondary : palette.primary), index === activePad ? 0.44 : 0.16, index === activePad ? 1.4 : 1);
+      ctx.roundRect(x, y, size, size, 3);
+      ctx.stroke();
+      if (index === activePad) {
+        ctx.fillStyle = kit.rgba(palette.warm, 0.08 + bloom * 0.08 + energy * 0.04, true);
+        ctx.fill();
+        glow(x + size / 2, y + size / 2, 1.5, 0.5, palette.warm);
+      }
+    }
+  }
+  stroke(palette.secondary, 0.13, 0.9, false);
+  for (let i = 0; i < 5; i += 1) {
+    const y = cy + 47 + i * 4;
+    ctx.beginPath(); ctx.moveTo(cx - 80, y); ctx.lineTo(cx + 80, y + Math.sin(time * 0.17 + i) * 2); ctx.stroke();
+  }
+}
+
+function drawMirage(kit: DrawKit, drive: number, rate: number, resonance: number): void {
+  const { ctx, cx, cy, palette, stroke, glow, orb, time } = kit;
+  orb(cx, cy - 8, 58, palette.secondary, 0.035 + resonance * 0.03);
+  stroke(palette.primary, 0.24, 1.1);
+  ctx.strokeRect(cx - 96, cy - 50, 192, 88);
+  ctx.beginPath();
+  for (let step = 0; step <= 72; step += 1) {
+    const p = step / 72;
+    const x = cx - 91 + p * 182;
+    const raw = Math.sin(p * Math.PI * (3 + rate * 5) + time * (0.3 + rate * 0.45)) * (18 + drive * 18);
+    const quantized = Math.round(raw / 5) * 5;
+    const y = cy - 7 + quantized;
+    step === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  stroke(palette.pale, 0.26 + resonance * 0.1, 1.2);
+  ctx.stroke();
+  for (let i = 0; i < 8; i += 1) {
+    const x = cx - 78 + i * 22;
+    const lit = (Math.floor(time * 4) + i) % 8 === 0;
+    glow(x, cy + 48, lit ? 1.7 : 0.8, lit ? 0.52 : 0.12, lit ? palette.warm : palette.primary);
+  }
+}
+
+function drawArtifact(kit: DrawKit, mode: string, params: Record<string, number>): void {
+  const { ctx, cx, cy, palette, stroke, glow, orb, time, energy } = kit;
   const wear = clamp01(params.wear ?? 0.25);
   const wow = clamp01(params.wow ?? 0.16);
-  const noiseAmount = clamp01(params.noise ?? 0.1);
+  const noise = clamp01(params.noise ?? 0.1);
   const tone = clamp01(params.tone ?? 0.62);
-
-  chamber(0.96, 0.07 + wear * 0.035);
-  softOrb(cx - 17, cy, 40, primary, 0.035 + wear * 0.02);
-  softOrb(cx + 23, cy + 6, 36, secondary, 0.025 + wow * 0.025);
-
-  for (let i = 0; i < 3; i += 1) {
-    const offset = (i + 1) * (2 + wow * 2);
-    ctx.save();
-    ctx.translate(Math.sin(time * 0.05 + i) * offset, Math.cos(time * 0.043 + i) * offset * 0.35);
-    stroke(i % 2 ? secondary : primary, 0.025 + wear * 0.018, 0.8, false);
-    ctx.strokeRect(cx - 48, cy - 27, 96, 54);
-    ctx.restore();
+  if (mode === 'tascam424') {
+    drawTascam424(kit, wear, wow, noise, tone);
+    return;
   }
 
-  if (mode === 'cassette') {
-    const shellW = 104;
-    const shellH = 58;
-    const left = cx - shellW / 2;
-    const top = cy - shellH / 2;
-    const shellGradient = ctx.createLinearGradient(left, top, left, top + shellH);
-    shellGradient.addColorStop(0, rgba(primary, 0.065 + tone * 0.025));
-    shellGradient.addColorStop(1, 'rgba(3,5,7,.16)');
-    ctx.fillStyle = shellGradient;
-    ctx.fillRect(left, top, shellW, shellH);
-    stroke(primary, 0.34, 1.2);
-    ctx.strokeRect(left + 0.5, top + 0.5, shellW - 1, shellH - 1);
-    stroke(secondary, 0.12, 0.9);
-    ctx.strokeRect(cx - 38, cy - 17, 76, 27);
-    const spin = time * (0.55 + wear * 0.65);
-    for (const rx of [-24, 24]) {
-      stroke(primary, 0.30, 1.05);
-      ctx.beginPath();
-      ctx.arc(cx + rx, cy - 4, 11, 0, Math.PI * 2);
-      ctx.stroke();
-      for (let i = 0; i < 6; i += 1) {
-        const a = spin + i * Math.PI / 3;
-        ctx.beginPath();
-        ctx.moveTo(cx + rx + Math.cos(a) * 5, cy - 4 + Math.sin(a) * 5);
-        ctx.lineTo(cx + rx + Math.cos(a) * 9, cy - 4 + Math.sin(a) * 9);
-        ctx.stroke();
+  orb(cx - 30, cy - 7, 60, palette.primary, 0.035 + wear * 0.025 + energy * 0.02);
+  orb(cx + 38, cy, 54, palette.secondary, 0.025 + wow * 0.03);
+  if (mode === 'cassette' || mode === 'reel') {
+    const shellW = mode === 'cassette' ? 184 : 176;
+    const shellH = mode === 'cassette' ? 92 : 88;
+    stroke(palette.primary, 0.32, 1.2);
+    ctx.strokeRect(cx - shellW / 2, cy - shellH / 2 - 5, shellW, shellH);
+    const reelRadius = mode === 'cassette' ? 20 : 29;
+    const spin = time * (0.65 + wear * 0.7);
+    for (const x of [cx - 47, cx + 47]) {
+      stroke(palette.secondary, 0.27, 1.1);
+      ctx.beginPath(); ctx.arc(x, cy - 7, reelRadius, 0, TAU); ctx.stroke();
+      for (let spoke = 0; spoke < 6; spoke += 1) {
+        const a = spin + spoke * TAU / 6;
+        ctx.beginPath(); ctx.moveTo(x, cy - 7); ctx.lineTo(x + Math.cos(a) * (reelRadius - 4), cy - 7 + Math.sin(a) * (reelRadius - 4)); ctx.stroke();
       }
     }
-    stroke(warm, 0.18 + wear * 0.05, 1);
-    ctx.beginPath();
-    ctx.moveTo(cx - 32, cy + 19);
-    ctx.lineTo(cx - 24, cy + 27);
-    ctx.lineTo(cx + 24, cy + 27);
-    ctx.lineTo(cx + 32, cy + 19);
-    ctx.stroke();
+    stroke(palette.warm, 0.18 + wear * 0.08, 1);
+    ctx.beginPath(); ctx.moveTo(cx - 47, cy + 13); ctx.quadraticCurveTo(cx, cy + 39 + wow * 7, cx + 47, cy + 13); ctx.stroke();
   } else if (mode === 'vinyl' || mode === 'wax') {
-    const spin = time * (0.26 + wow * 0.18);
-    ctx.save();
-    ctx.translate(cx - 7, cy + 5);
-    ctx.scale(1, 0.48);
-    for (let r = 10; r <= 45; r += mode === 'wax' ? 4 : 5) {
-      stroke(r % 2 ? secondary : primary, 0.08 + r / 500, r === 45 ? 1.2 : 0.8);
-      ctx.beginPath();
-      ctx.arc(0, 0, r, 0, Math.PI * 2);
-      ctx.stroke();
+    const radius = mode === 'wax' ? 56 : 49;
+    stroke(palette.primary, 0.31, 1.2);
+    for (let ring = 0; ring < 8; ring += 1) {
+      ctx.beginPath(); ctx.arc(cx - 12, cy - 7, radius - ring * 5, 0, TAU); ctx.stroke();
     }
-    stroke(warm, 0.28, 1.1);
-    ctx.beginPath();
-    ctx.arc(0, 0, 10, 0, Math.PI * 2);
-    ctx.stroke();
-    for (let i = 0; i < 4; i += 1) {
-      const a = spin + i * Math.PI / 2;
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(a) * 4, Math.sin(a) * 4);
-      ctx.lineTo(Math.cos(a) * 9, Math.sin(a) * 9);
-      ctx.stroke();
+    const angle = time * (0.8 + wow * 0.4);
+    const needleX = cx - 12 + Math.cos(angle * 0.07) * 38;
+    const needleY = cy - 7 + Math.sin(angle * 0.07) * 38;
+    stroke(palette.warm, 0.34, 1.2);
+    ctx.beginPath(); ctx.moveTo(cx + 78, cy - 48); ctx.lineTo(needleX, needleY); ctx.stroke();
+    glow(needleX, needleY, 1.5, 0.5, palette.warm);
+  } else if (mode === 'vhs' || mode === 'radio' || mode === 'archive') {
+    const bands = mode === 'radio' ? 10 : 14;
+    for (let row = 0; row < bands; row += 1) {
+      const y = cy - 52 + row * (96 / Math.max(1, bands - 1));
+      const shift = Math.sin(time * (0.4 + wow) + row * 1.7) * (2 + wear * 8);
+      stroke(row % 2 ? palette.secondary : palette.primary, 0.09 + (row % 4) * 0.025, 0.9);
+      ctx.beginPath(); ctx.moveTo(cx - 96 + shift, y); ctx.lineTo(cx + 96 - shift * 0.4, y); ctx.stroke();
     }
-    ctx.restore();
-    if (mode === 'vinyl') {
-      const armPhase = 0.04 * Math.sin(time * 0.10);
-      stroke(primary, 0.30, 1.15);
-      ctx.beginPath();
-      ctx.arc(cx + 42, cy - 23, 6, 0, Math.PI * 2);
-      ctx.moveTo(cx + 40, cy - 19);
-      ctx.lineTo(cx + 18 + armPhase * 22, cy + 4);
-      ctx.lineTo(cx + 11 + armPhase * 18, cy + 10);
-      ctx.stroke();
-    }
-  } else if (mode === 'reel') {
-    for (const xOffset of [-28, 28]) {
-      stroke(primary, 0.30, 1.15);
-      ctx.beginPath();
-      ctx.arc(cx + xOffset, cy - 4, 18, 0, Math.PI * 2);
-      ctx.stroke();
-      for (let i = 0; i < 3; i += 1) {
-        const a = time * (0.22 + wear * 0.30) + i * Math.PI * 2 / 3;
-        ctx.beginPath();
-        ctx.moveTo(cx + xOffset, cy - 4);
-        ctx.lineTo(cx + xOffset + Math.cos(a) * 14, cy - 4 + Math.sin(a) * 14);
-        ctx.stroke();
-      }
-    }
-    stroke(secondary, 0.24, 1.1);
-    ctx.beginPath();
-    ctx.moveTo(cx - 28, cy + 14);
-    ctx.quadraticCurveTo(cx, cy + 28, cx + 28, cy + 14);
-    ctx.stroke();
-  } else if (mode === 'vhs') {
-    for (let row = -3; row <= 3; row += 1) {
-      const y = cy + row * 8;
-      const skew = Math.sin(time * 0.45 + row) * wear * 2.4;
-      stroke(row % 2 ? secondary : primary, 0.12 + (row + 3) * 0.018, 0.9);
-      ctx.beginPath();
-      ctx.moveTo(cx - 52, y + skew);
-      ctx.lineTo(cx + 52, y);
-      ctx.stroke();
-    }
-    const scan = ((time * 0.16) % 1) * 56 - 28;
-    stroke(warm, 0.34, 1.2);
-    ctx.beginPath();
-    ctx.moveTo(cx - 50, cy + scan);
-    ctx.lineTo(cx + 50, cy + scan);
-    ctx.stroke();
-  } else if (mode === 'radio') {
-    stroke(primary, 0.28, 1.1);
-    ctx.beginPath();
-    ctx.moveTo(cx - 50, cy + 12);
-    ctx.lineTo(cx + 50, cy + 12);
-    ctx.stroke();
-    for (let i = 0; i < 13; i += 1) {
-      const x = cx - 48 + i * 8;
-      const h = 5 + (i % 4) * 4;
-      stroke(i % 2 ? secondary : primary, 0.12 + (i % 3) * 0.035, 0.9);
-      ctx.beginPath();
-      ctx.moveTo(x, cy + 12);
-      ctx.lineTo(x, cy + 12 - h);
-      ctx.stroke();
-    }
-    const needle = cx - 45 + ((Math.sin(time * 0.10) + 1) / 2) * 90;
-    stroke(warm, 0.40, 1.2);
-    ctx.beginPath();
-    ctx.moveTo(needle, cy - 20);
-    ctx.lineTo(needle, cy + 18);
-    ctx.stroke();
-  } else if (mode === 'broken') {
-    let px = cx - 52;
-    let py = cy;
-    for (let i = 1; i <= 15; i += 1) {
-      const x = cx - 52 + i * (104 / 15);
-      const y = cy + Math.sin(i * 9.13 + time * 0.24) * 22 * wear + ((i % 4) - 2) * 4;
-      stroke(i % 2 ? secondary : primary, 0.15 + (i % 3) * 0.04, 1);
-      ctx.beginPath();
-      ctx.moveTo(px, py);
-      ctx.lineTo(x, y);
-      ctx.stroke();
-      px = x;
-      py = y;
+    if (mode === 'radio') {
+      const sweep = ((time * 0.08) % 1) * 184;
+      glow(cx - 92 + sweep, cy + 42, 1.8, 0.5, palette.warm);
     }
   } else {
-    stroke(primary, 0.28, 1.05);
-    ctx.beginPath();
-    for (let step = 0; step <= 52; step += 1) {
-      const x = cx - 52 + step * 2;
-      const y = cy + Math.sin(step * 0.23 + time * 0.055) * 6.5;
-      step === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-    for (let i = 0; i < 8; i += 1) {
-      const x = cx - 48 + i * 14 + Math.sin(i * 3.7) * 3;
-      stroke(i % 2 ? secondary : primary, 0.07 + wear * 0.10, 0.8, false);
-      ctx.beginPath();
-      ctx.moveTo(x, cy - 28);
-      ctx.lineTo(x, cy + 28);
-      ctx.stroke();
+    for (let i = 0; i < 22; i += 1) {
+      const y = cy - 48 + (i % 11) * 9;
+      const jitter = (hash(i * 5.7 + Math.floor(time * 2)) - 0.5) * (4 + wear * 16);
+      stroke(i % 3 ? palette.primary : palette.secondary, 0.09 + noise * 0.08, 0.9);
+      ctx.beginPath(); ctx.moveTo(cx - 96, y); ctx.lineTo(cx - 12 + jitter, y); ctx.moveTo(cx + 10 + jitter, y + (i % 2 ? 3 : -3)); ctx.lineTo(cx + 96, y + (i % 2 ? 3 : -3)); ctx.stroke();
     }
   }
+}
 
-  const flecks = 3 + Math.round(noiseAmount * 5);
-  for (let i = 0; i < flecks; i += 1) {
-    const x = cx - 50 + hash(i * 8.23 + 1.7) * 100;
-    const y = cy - 30 + hash(i * 6.19 + 3.1) * 60;
-    glowDot(x, y, 0.55, 0.06 + wear * 0.05, i % 2 ? secondary : warm);
+function drawTascam424(kit: DrawKit, trim: number, low: number, high: number, drive: number): void {
+  const { ctx, cx, cy, palette, stroke, glow, orb, time, energy } = kit;
+  orb(cx, cy - 3, 66, palette.warm, 0.04 + drive * 0.035 + energy * 0.02);
+  const channelW = 39;
+  const gap = 7;
+  const startX = cx - (4 * channelW + 3 * gap) / 2;
+  for (let channel = 0; channel < 4; channel += 1) {
+    const x = startX + channel * (channelW + gap);
+    stroke(channel % 2 ? palette.secondary : palette.primary, 0.2, 1.05);
+    ctx.roundRect(x, cy - 55, channelW, 92, 4);
+    ctx.stroke();
+    const meterLevel = clamp01(0.18 + trim * 0.46 + Math.sin(time * (0.7 + channel * 0.08) + channel) * 0.13 + energy * 0.3);
+    const segments = 8;
+    for (let segment = 0; segment < segments; segment += 1) {
+      const lit = segment / segments < meterLevel;
+      const y = cy - 47 + (segments - 1 - segment) * 6;
+      ctx.fillStyle = kit.rgba(segment > 5 ? palette.warm : channel % 2 ? palette.secondary : palette.primary, lit ? 0.42 : 0.055, true);
+      ctx.fillRect(x + 6, y, channelW - 12, 3);
+    }
+    const faderY = cy + 28 - drive * 27 + channel * 0.6;
+    stroke(palette.pale, 0.13, 0.8, false);
+    ctx.beginPath(); ctx.moveTo(x + channelW / 2, cy - 2); ctx.lineTo(x + channelW / 2, cy + 32); ctx.stroke();
+    ctx.fillStyle = kit.rgba(palette.pale, 0.24, true);
+    ctx.fillRect(x + channelW / 2 - 6, faderY - 2, 12, 4);
+  }
+  stroke(palette.warm, 0.16 + low * 0.08 + high * 0.08, 1);
+  ctx.beginPath();
+  for (let step = 0; step <= 60; step += 1) {
+    const p = step / 60;
+    const x = cx - 94 + p * 188;
+    const y = cy + 49 + Math.sin(p * Math.PI * 4 + time * (0.18 + low * 0.2)) * (2 + high * 4);
+    step === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  for (let channel = 0; channel < 4; channel += 1) {
+    if ((Math.floor(time * 2.5) + channel) % 4 === 0) glow(startX + channel * (channelW + gap) + channelW / 2, cy - 60, 1.2, 0.42, palette.warm);
   }
 }
 
@@ -1069,35 +1150,29 @@ function drawOpticalFinish(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  primary: RGB,
-  secondary: RGB,
-  rgba: (color: RGB, alpha: number, whiten?: boolean) => string,
+  palette: ModulePalette,
   time: number
-) {
+): void {
+  const rgba = (color: RGB, alpha: number) => `rgba(${color[0]},${color[1]},${color[2]},${clamp01(alpha)})`;
   ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-  const sheen = ctx.createLinearGradient(-width * 0.2, 0, width * 1.2, height);
-  const drift = (Math.sin(time * 0.035) + 1) * 0.5;
-  sheen.addColorStop(0, rgba(primary, 0));
-  sheen.addColorStop(0.28 + drift * 0.08, rgba(primary, 0.018));
-  sheen.addColorStop(0.50 + drift * 0.06, rgba(secondary, 0.012));
-  sheen.addColorStop(0.78, rgba(secondary, 0));
-  ctx.fillStyle = sheen;
-  ctx.fillRect(0, 0, width, height);
-  ctx.restore();
-
-  const vignette = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.28, width / 2, height / 2, width * 0.72);
+  const vignette = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.22, width / 2, height / 2, Math.max(width, height) * 0.67);
   vignette.addColorStop(0, 'rgba(0,0,0,0)');
-  vignette.addColorStop(1, 'rgba(0,0,0,.44)');
+  vignette.addColorStop(0.72, 'rgba(0,0,0,.08)');
+  vignette.addColorStop(1, 'rgba(0,0,0,.66)');
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, width, height);
 
-  ctx.strokeStyle = 'rgba(255,255,255,.020)';
-  ctx.lineWidth = 1;
-  for (let y = 6; y < height; y += 6) {
-    ctx.beginPath();
-    ctx.moveTo(0, y + 0.5);
-    ctx.lineTo(width, y + 0.5);
-    ctx.stroke();
-  }
+  const sheen = ctx.createLinearGradient(0, 0, width, height);
+  sheen.addColorStop(0, 'rgba(255,255,255,.035)');
+  sheen.addColorStop(0.25, 'rgba(255,255,255,0)');
+  sheen.addColorStop(0.72, rgba(palette.secondary, 0.015));
+  sheen.addColorStop(1, 'rgba(255,255,255,.012)');
+  ctx.fillStyle = sheen;
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.globalAlpha = 0.035;
+  ctx.fillStyle = rgba(palette.primary, 0.22);
+  const scanY = ((time * 7) % (height + 8)) - 4;
+  ctx.fillRect(0, scanY, width, 1);
+  ctx.restore();
 }
