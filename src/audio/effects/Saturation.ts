@@ -21,7 +21,11 @@ export class SaturationEffect extends BaseEffect {
   this.input.connect(this.preGain); this.preGain.connect(this.hp); this.hp.connect(this.shaper); this.shaper.connect(this.tone); this.tone.connect(this.presence); this.presence.connect(this.compressor); this.compressor.connect(this.post); this.post.connect(this.wetGain);
   this.initializeParameters([MODE,DRIVE,TONE,HEAT,CHARACTER,DYNAMICS,MIX]); for(const p of [MODE,DRIVE,TONE,HEAT,CHARACTER,DYNAMICS,MIX]) this.setParameter(p.id,p.defaultValue);
  }
- public setOversampling(v:OverSampleType){this.shaper.oversample=v;}
+ // Audio quality floor: the adaptive governor may request `none` in Live mode,
+ // but Ember's non-linear stage is exactly where aliasing becomes most audible.
+ // Keep a 2x minimum so visual/CPU pressure cannot make the signal suddenly
+ // sound coarse. Balanced/Studio requests still retain their intended 2x/4x quality.
+ public setOversampling(v:OverSampleType){this.shaper.oversample=v==='none'?'2x':v;}
  public setParameter(id:string,value:number){ const now=this.context.currentTime;
   if(id==='mode'){const v=clampParameter(value,MODE);this.parameterValues.set(id,v);this.mode=EMBER_MODE_ORDER[Math.round(v)]??'velvet';this.apply();return;}
   if(id==='drive')this.drive=clampParameter(value,DRIVE); else if(id==='tone')this.toneHz=clampParameter(value,TONE); else if(id==='heat')this.heat=clampParameter(value,HEAT); else if(id==='character')this.character=clampParameter(value,CHARACTER); else if(id==='dynamics')this.dynamics=clampParameter(value,DYNAMICS); else if(id==='mix'){const v=clampParameter(value,MIX);this.parameterValues.set(id,v);this.setWetDryMix(v);return;} else {console.warn(`Unknown parameter "${id}" for ${this.name}.`);return;}
