@@ -6,6 +6,7 @@ import './components/effects/ViewportOptics.css'
 import './components/effects/HardwareIdentity.css'
 import './components/layout/SignalRailBackplane.css'
 import './components/layout/PanelTheme.css'
+import './randomTransferBridge'
 import App from './App.tsx'
 
 createRoot(document.getElementById('root')!).render(
