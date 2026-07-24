@@ -7,8 +7,13 @@ import {
   drawViewportRoomBack,
   drawViewportRoomFront,
   getViewportSculptureTransform,
+  type ViewportSculptureTransform,
 } from './viewportRoom';
 import { drawViewportStageLight } from './viewportStageLight';
+import {
+  drawViewportSculptureFieldBack,
+  drawViewportSculptureFieldFront,
+} from './viewportSculptureField';
 
 const W = 240, H = 150, TAU = Math.PI * 2;
 type RGB = readonly [number, number, number];
@@ -72,6 +77,41 @@ export function ModuleViewport({module}:{module:ModuleState;visualState:VisualAu
   return <div className={`dsp-viewport viewport-${module.id} ${module.enabled?'active':''}`}><div className="viewport-glass" aria-hidden="true"/><canvas ref={canvasRef} aria-hidden="true"/><span className="viewport-caption">{caption(module)}</span></div>;
 }
 
+function applySculptureTransform(ctx:CanvasRenderingContext2D, sculpture:ViewportSculptureTransform){
+  ctx.translate(W/2+sculpture.x,H/2+sculpture.y);
+  ctx.rotate(sculpture.rotation);
+  ctx.transform(1,sculpture.shearY,sculpture.shearX,1,0,0);
+  ctx.scale(sculpture.scale,sculpture.scale);
+  ctx.translate(-W/2,-H/2);
+}
+
+function drawSculptureReflection(k:Kit,sculpture:ViewportSculptureTransform){
+  const {ctx,motion}=k;
+  const floorY=119;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(23,103,194,36);
+  ctx.clip();
+  ctx.globalCompositeOperation='screen';
+  ctx.globalAlpha=.035+motion.level*.018;
+  ctx.translate(0,floorY*1.35);
+  ctx.scale(1,-.35);
+  applySculptureTransform(ctx,sculpture);
+  art(k);
+  ctx.restore();
+
+  const shadow=ctx.createRadialGradient(W/2,floorY,0,W/2,floorY,53);
+  shadow.addColorStop(0,'rgba(0,0,0,.34)');
+  shadow.addColorStop(.5,'rgba(0,0,0,.16)');
+  shadow.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.save();
+  ctx.translate(W/2,floorY);
+  ctx.scale(1,.16);
+  ctx.fillStyle=shadow;
+  ctx.beginPath();ctx.arc(0,0,53,0,TAU);ctx.fill();
+  ctx.restore();
+}
+
 function draw(ctx:CanvasRenderingContext2D,cw:number,ch:number,k:Kit){
   ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#010203';ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);ctx.restore();if(!k.module.enabled)return;
   const s=Math.max(.01,Math.min((cw-8)/W,(ch-8)/H));
@@ -79,14 +119,14 @@ function draw(ctx:CanvasRenderingContext2D,cw:number,ch:number,k:Kit){
   background(k);
   drawViewportRoomBack(ctx,W,H,k.module.id,k.time,k.motion,k.p);
   drawViewportStageLight(ctx,W,H,k.module.id,k.time,k.motion,k.p);
+  drawViewportSculptureFieldBack(ctx,W,H,k.module.id,k.time,k.motion,k.p);
   const sculpture=getViewportSculptureTransform(k.module.id,k.time,k.motion);
+  drawSculptureReflection(k,sculpture);
   ctx.save();
-  ctx.translate(W/2+sculpture.x,H/2+sculpture.y);
-  ctx.rotate(sculpture.rotation);
-  ctx.scale(sculpture.scale,sculpture.scale);
-  ctx.translate(-W/2,-H/2);
+  applySculptureTransform(ctx,sculpture);
   art(k);
   ctx.restore();
+  drawViewportSculptureFieldFront(ctx,W,H,k.module.id,k.time,k.motion,k.p);
   drawViewportRoomFront(ctx,W,H,k.time,k.motion,k.p);
   finish(k);
   ctx.restore();
