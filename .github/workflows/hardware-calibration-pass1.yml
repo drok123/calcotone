@@ -22,11 +22,25 @@ jobs:
           cache: npm
       - name: Apply calibration patch
         run: python scripts/hardware_calibration_pass1.py
+      - name: Install dependencies
+        run: npm ci --silent
       - name: Build CALCOTONE
+        id: build
+        continue-on-error: true
+        run: npm run build > hardware-calibration-build.log 2>&1
+      - name: Upload build diagnostics
+        if: steps.build.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardware-calibration-build-log
+          path: hardware-calibration-build.log
+      - name: Fail if build failed
+        if: steps.build.outcome == 'failure'
         run: |
-          npm ci
-          npm run build
+          cat hardware-calibration-build.log
+          exit 1
       - name: Commit passing calibration
+        if: steps.build.outcome == 'success'
         run: |
           rm scripts/hardware_calibration_pass1.py
           rm .github/workflows/hardware-calibration-pass1.yml
