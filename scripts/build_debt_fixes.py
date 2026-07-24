@@ -40,8 +40,11 @@ replace_once(
     const ember = this.effects.get('saturation');
     const drift = this.effects.get('chorus');
     const artifact = this.effects.get('media');
+    const grainStats = grain && 'getProfilerStats' in grain
 """,
-    "    const grain = this.effects.get('bitcrusher');\n",
+    """    const grain = this.effects.get('bitcrusher');
+    const grainStats = grain && 'getProfilerStats' in grain
+""",
 )
 replace_once(
     'src/audio/AudioEngine.ts',
