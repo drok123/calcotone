@@ -52,15 +52,16 @@ export abstract class BaseEffect implements Effect {
     this.input.channelCountMode = 'max';
     this.output.channelCountMode = 'max';
 
-    // Mix stage: original dry + protected processed wet.
+    // Mix stage: original dry + protected processed wet. This is an emergency ceiling,
+    // not an always-on dynamics processor; musical compression belongs inside each model.
     this.wetDcBlock.type = 'highpass';
     this.wetDcBlock.frequency.value = 18;
     this.wetDcBlock.Q.value = 0.5;
-    this.wetLimiter.threshold.value = -8;
-    this.wetLimiter.knee.value = 10;
-    this.wetLimiter.ratio.value = 6;
-    this.wetLimiter.attack.value = 0.003;
-    this.wetLimiter.release.value = 0.12;
+    this.wetLimiter.threshold.value = -3;
+    this.wetLimiter.knee.value = 4;
+    this.wetLimiter.ratio.value = 4;
+    this.wetLimiter.attack.value = 0.002;
+    this.wetLimiter.release.value = 0.09;
     this.input.connect(this.dryGain);
     this.dryGain.connect(this.processedBus);
     this.wetGain.connect(this.wetDcBlock);
