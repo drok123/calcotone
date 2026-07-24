@@ -2,8 +2,21 @@ import { clampParameter, type ParameterDefinition } from '../Parameter';
 import type { PerformanceMode } from '../AudioEngine';
 import { BaseEffect } from './Effect';
 
-export type GrainMode = 'reconstruct' | 'shatter' | 'smear' | 'prism' | 'stutter' | 'ruin';
-export const GRAIN_MODE_ORDER: GrainMode[] = ['reconstruct','shatter','smear','prism','stutter','ruin'];
+export type GrainMode =
+  | 'reconstruct'
+  | 'shatter'
+  | 'smear'
+  | 'prism'
+  | 'stutter'
+  | 'ruin'
+  | 'sp1200'
+  | 'mpc60'
+  | 'mirage';
+
+// Existing creative-mode indices stay fixed for preset compatibility.
+export const GRAIN_MODE_ORDER: GrainMode[] = [
+  'reconstruct','shatter','smear','prism','stutter','ruin','sp1200','mpc60','mirage',
+];
 
 export interface GrainProfilerStats {
   averageCallbackMs: number;
@@ -26,10 +39,6 @@ const CHAOS: ParameterDefinition = { id: 'chaos', label: 'Chaos', min: 0, max: 1
 const BLOOM: ParameterDefinition = { id: 'bloom', label: 'Bloom', min: 0, max: 1, defaultValue: 0.36, step: 0.01 };
 const MIX: ParameterDefinition = { id: 'mix', label: 'Mix', min: 0, max: 1, defaultValue: 0.12, step: 0.01 };
 
-/**
- * Grain Dissector runs its reconstruction kernel in an AudioWorklet so the
- * browser main thread can render CALCOTONE's interface without interrupting audio.
- */
 export class BitcrusherEffect extends BaseEffect {
   public readonly id = 'bitcrusher';
   public readonly name = 'Grain Dissector';
@@ -41,11 +50,11 @@ export class BitcrusherEffect extends BaseEffect {
   private readonly bloomMerge: ChannelMergerNode;
   private readonly bloomGain: GainNode;
   private readonly directGain: GainNode;
+  private mode: GrainMode = 'reconstruct';
   private profilerStats: GrainProfilerStats = { averageCallbackMs: 0, worstCallbackMs: 0, callbackBudgetMs: 0, cpuLoad: 0, callbackJitterMs: 0, activeVoices: 0, maxVoices: 0, effectiveVoiceLimit: 0, overruns: 0, droppedSpawns: 0 };
 
   public constructor(context: AudioContext) {
     super(context);
-
     this.processor = new AudioWorkletNode(context, 'calcotone-grain-processor', {
       numberOfInputs: 1,
       numberOfOutputs: 1,
@@ -84,10 +93,7 @@ export class BitcrusherEffect extends BaseEffect {
         this.profilerStats = stats;
       }
     };
-
-    this.processor.onprocessorerror = () => {
-      console.error('CALCOTONE Grain AudioWorklet stopped unexpectedly.');
-    };
+    this.processor.onprocessorerror = () => console.error('CALCOTONE Grain AudioWorklet stopped unexpectedly.');
 
     this.initializeParameters([MODE, BITS, DENSITY, PITCH, CHAOS, BLOOM, MIX]);
     this.setParameter('mode', MODE.defaultValue);
@@ -99,14 +105,9 @@ export class BitcrusherEffect extends BaseEffect {
     this.setParameter('mix', MIX.defaultValue);
   }
 
-  public getProfilerStats(): GrainProfilerStats {
-    return { ...this.profilerStats };
-  }
+  public getProfilerStats(): GrainProfilerStats { return { ...this.profilerStats }; }
 
   public setQualityMode(mode: PerformanceMode): void {
-    // Keep enough simultaneous reconstruction voices that adaptive performance
-    // cannot make Grain suddenly sound sparse or low-resolution. Visual load is
-    // handled by the UI scheduler; DSP quality gets a higher floor.
     const maxVoices = mode === 'studio' ? 8 : mode === 'balanced' ? 7 : 6;
     this.processor.port.postMessage({ type: 'quality', maxVoices });
   }
@@ -117,6 +118,7 @@ export class BitcrusherEffect extends BaseEffect {
       case 'mode': {
         const next = Math.round(clampParameter(value, MODE));
         this.parameterValues.set(parameterId, next);
+        this.mode = GRAIN_MODE_ORDER[next] ?? 'reconstruct';
         this.setWorkletParameter('mode', next, now);
         this.updateWetBodyGain(now);
         break;
@@ -148,9 +150,9 @@ export class BitcrusherEffect extends BaseEffect {
       case 'bloom': {
         const next = clampParameter(value, BLOOM);
         this.parameterValues.set(parameterId, next);
-        this.bloomGain.gain.setTargetAtTime(next * 0.46, now, 0.04);
-        this.updateWetBodyGain(now);
+        this.setWorkletParameter('bloom', next, now);
         this.bloomFilter.frequency.setTargetAtTime(2800 + next * 7600, now, 0.05);
+        this.updateWetBodyGain(now);
         break;
       }
       case 'mix': {
@@ -164,21 +166,27 @@ export class BitcrusherEffect extends BaseEffect {
     }
   }
 
+  private isHardwareMode(): boolean {
+    return this.mode === 'sp1200' || this.mode === 'mpc60' || this.mode === 'mirage';
+  }
+
   private updateWetBodyGain(now: number): void {
     const bloom = this.parameterValues.get('bloom') ?? BLOOM.defaultValue;
-    const mode = Math.round(this.parameterValues.get('mode') ?? MODE.defaultValue);
-    // Grain-owned compensation only: survives HMR because it does not depend on
-    // a newly-added BaseEffect prototype method.
-    const modeGain = [1.10, 1.15, 1.12, 1.08, 1.13, 1.17][mode] ?? 1.10;
-    const direct = modeGain - bloom * 0.04;
-    this.directGain.gain.setTargetAtTime(direct, now, 0.04);
+    const modeIndex = GRAIN_MODE_ORDER.indexOf(this.mode);
+    if (this.isHardwareMode()) {
+      // Hardware sampler modes are direct conversion paths; the worklet owns their filters.
+      this.directGain.gain.setTargetAtTime(1.04, now, 0.04);
+      this.bloomGain.gain.setTargetAtTime(0, now, 0.04);
+      return;
+    }
+    const modeGain = [1.10, 1.15, 1.12, 1.08, 1.13, 1.17][modeIndex] ?? 1.10;
+    this.directGain.gain.setTargetAtTime(modeGain - bloom * 0.04, now, 0.04);
+    this.bloomGain.gain.setTargetAtTime(bloom * 0.46, now, 0.04);
   }
 
   private setWorkletParameter(name: string, value: number, now: number): void {
     const parameter = this.processor.parameters.get(name);
-    if (!parameter) {
-      throw new Error(`Grain processor parameter "${name}" is unavailable.`);
-    }
+    if (!parameter) throw new Error(`Grain processor parameter "${name}" is unavailable.`);
     parameter.cancelScheduledValues(now);
     parameter.setTargetAtTime(value, now, 0.012);
   }
