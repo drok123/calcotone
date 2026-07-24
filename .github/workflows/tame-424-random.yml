@@ -3,6 +3,8 @@ name: Tame 424 random sweet spots
 on:
   push:
     branches: [tame-424-random]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
@@ -25,6 +27,7 @@ jobs:
       - name: Build CALCOTONE
         run: npm run build
       - name: Commit verified App source only
+        if: github.event_name == 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
