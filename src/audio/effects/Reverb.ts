@@ -48,6 +48,17 @@ interface AlgorithmConfig {
   plateDispersion?: number;
 }
 
+interface EarlyProfile {
+  times: readonly number[];
+  earlyLevel: number;
+  lateLevel: number;
+  lowpass: number;
+  threshold: number;
+  ratio: number;
+  attack: number;
+  release: number;
+}
+
 const CONFIGS: Record<ReverbAlgorithm, AlgorithmConfig> = {
   room: { id:'room', lineTimes:[0.0137,0.0173,0.0199,0.0239,0.0293,0.0317], predelay:[0.004,0.006], sizeRange:[0.58,1.42], decayBias:0.72, dampingBias:1.08, diffusionBias:0.72, modulationDepth:0.00022, modulationRates:[0.19,0.27,0.31,0.37,0.43,0.53], crossAmount:0.035, outputTrim:0.42, inputTrim:0.82, highpass:150 },
   plate: { id:'plate', lineTimes:[0.0211,0.0263,0.0307,0.0349,0.0397,0.0451,0.0511,0.0577], predelay:[0.008,0.011], sizeRange:[0.72,1.72], decayBias:0.94, dampingBias:1.28, diffusionBias:1.16, modulationDepth:0.00052, modulationRates:[0.23,0.29,0.41,0.47,0.59,0.67,0.73,0.83], crossAmount:0.062, outputTrim:0.31, inputTrim:0.74, highpass:190 },
@@ -67,20 +78,47 @@ const CONFIGS: Record<ReverbAlgorithm, AlgorithmConfig> = {
   lexicon224: { id:'lexicon224', lineTimes:[0.0247,0.0311,0.0389,0.0473,0.0571,0.0683,0.0811,0.0953,0.1117,0.1301], predelay:[0.024,0.031], sizeRange:[0.78,2.2], decayBias:1.12, dampingBias:0.72, diffusionBias:1.24, modulationDepth:0.00082, modulationRates:[0.071,0.089,0.113,0.137,0.173,0.211,0.257,0.307,0.367,0.433], crossAmount:0.12, outputTrim:0.21, inputTrim:0.58, highpass:145, converterBits:12, converterLowpass:8800, splitDecay:0.34 },
 };
 
+// Early reflections are intentionally separated from the late field. They provide size/location cues
+// without needing the diffuse tail to be loud enough to swallow the source.
+const EARLY: Record<ReverbAlgorithm, EarlyProfile> = {
+  room:       { times:[0.0032,0.0068,0.0114,0.0179,0.0256], earlyLevel:0.76, lateLevel:0.63, lowpass:13200, threshold:-25, ratio:3.4, attack:0.002, release:0.13 },
+  plate:      { times:[0.0048,0.0097,0.0163,0.0248], earlyLevel:0.42, lateLevel:0.76, lowpass:11800, threshold:-21, ratio:2.6, attack:0.0015, release:0.16 },
+  hall:       { times:[0.0065,0.0138,0.0229,0.0344,0.0481], earlyLevel:0.58, lateLevel:0.67, lowpass:12400, threshold:-24, ratio:3.8, attack:0.0025, release:0.19 },
+  cinema:     { times:[0.009,0.019,0.032,0.049,0.071], earlyLevel:0.48, lateLevel:0.65, lowpass:11200, threshold:-23, ratio:4.2, attack:0.003, release:0.24 },
+  cloud:      { times:[0.008,0.017,0.029,0.045], earlyLevel:0.34, lateLevel:0.69, lowpass:10500, threshold:-25, ratio:4.4, attack:0.0025, release:0.27 },
+  freeze:     { times:[0.011,0.024,0.041], earlyLevel:0.18, lateLevel:0.80, lowpass:9200, threshold:-28, ratio:5.0, attack:0.004, release:0.34 },
+  celestial:  { times:[0.010,0.021,0.036,0.055], earlyLevel:0.30, lateLevel:0.68, lowpass:11600, threshold:-25, ratio:4.8, attack:0.003, release:0.29 },
+  aurora:     { times:[0.007,0.015,0.026,0.040,0.059], earlyLevel:0.38, lateLevel:0.68, lowpass:12800, threshold:-24, ratio:4.4, attack:0.0025, release:0.25 },
+  nebula:     { times:[0.012,0.026,0.044,0.067], earlyLevel:0.27, lateLevel:0.67, lowpass:9800, threshold:-26, ratio:5.1, attack:0.0035, release:0.31 },
+  abyss:      { times:[0.014,0.030,0.051,0.076], earlyLevel:0.24, lateLevel:0.66, lowpass:7600, threshold:-26, ratio:5.2, attack:0.004, release:0.33 },
+  emt140:     { times:[0.0037,0.0076,0.0128,0.0196], earlyLevel:0.31, lateLevel:0.79, lowpass:10600, threshold:-20, ratio:2.4, attack:0.0012, release:0.15 },
+  lexicon224: { times:[0.007,0.0148,0.0245,0.037,0.052], earlyLevel:0.45, lateLevel:0.72, lowpass:8400, threshold:-23, ratio:3.4, attack:0.002, release:0.22 },
+};
+
 class ReverbNetwork {
   public readonly input: GainNode;
   public readonly output: GainNode;
   private readonly context: AudioContext;
   private readonly config: AlgorithmConfig;
+  private readonly earlyProfile: EarlyProfile;
   private readonly inputConverter: WaveShaperNode;
   private readonly outputConverter: WaveShaperNode;
   private readonly converterLowpass: BiquadFilterNode;
   private readonly lexiconInput: AudioWorkletNode | null;
   private readonly lexiconOutput: AudioWorkletNode | null;
   private readonly splitter: ChannelSplitterNode;
-  private readonly merger: ChannelMergerNode;
+  private readonly lateMerger: ChannelMergerNode;
+  private readonly earlyMerger: ChannelMergerNode;
   private readonly predelays: [DelayNode, DelayNode];
+  private readonly lateCompressors: [DynamicsCompressorNode, DynamicsCompressorNode];
+  private readonly earlyBusFilter: BiquadFilterNode;
+  private readonly earlyBusGain: GainNode;
+  private readonly lateBusGain: GainNode;
+  private readonly sumBus: GainNode;
   private readonly inputFilters: BiquadFilterNode[] = [];
+  private readonly earlyDelays: DelayNode[] = [];
+  private readonly earlyFilters: BiquadFilterNode[] = [];
+  private readonly earlyGains: GainNode[] = [];
   private readonly diffusers: BiquadFilterNode[] = [];
   private readonly delays: DelayNode[] = [];
   private readonly damping: BiquadFilterNode[] = [];
@@ -96,6 +134,7 @@ class ReverbNetwork {
   public constructor(context: AudioContext, config: AlgorithmConfig) {
     this.context = context;
     this.config = config;
+    this.earlyProfile = EARLY[config.id];
     this.input = context.createGain();
     this.output = context.createGain();
     this.inputConverter = context.createWaveShaper();
@@ -116,8 +155,16 @@ class ReverbNetwork {
     this.converterLowpass.frequency.value = config.converterLowpass ?? 19_000;
     this.converterLowpass.Q.value = 0.45;
     this.splitter = context.createChannelSplitter(2);
-    this.merger = context.createChannelMerger(2);
+    this.lateMerger = context.createChannelMerger(2);
+    this.earlyMerger = context.createChannelMerger(2);
     this.predelays = [context.createDelay(0.3), context.createDelay(0.3)];
+    this.lateCompressors = [context.createDynamicsCompressor(), context.createDynamicsCompressor()];
+    this.earlyBusFilter = context.createBiquadFilter();
+    this.earlyBusFilter.type = 'lowpass';
+    this.earlyBusFilter.Q.value = 0.38;
+    this.earlyBusGain = context.createGain();
+    this.lateBusGain = context.createGain();
+    this.sumBus = context.createGain();
 
     this.input.gain.value = config.inputTrim;
     this.input.connect(this.inputConverter);
@@ -138,9 +185,33 @@ class ReverbNetwork {
         this.splitter.connect(hp, channel);
       }
       hp.connect(lp); lp.connect(this.predelays[channel]); this.inputFilters.push(hp, lp);
+
+      const compressor = this.lateCompressors[channel];
+      compressor.threshold.value = this.earlyProfile.threshold;
+      compressor.knee.value = 12;
+      compressor.ratio.value = this.earlyProfile.ratio;
+      compressor.attack.value = this.earlyProfile.attack;
+      compressor.release.value = this.earlyProfile.release;
+      this.predelays[channel].connect(compressor);
     }
     this.predelays[0].delayTime.value = config.predelay[0];
     this.predelays[1].delayTime.value = config.predelay[1];
+
+    this.earlyProfile.times.forEach((time, index) => {
+      const sourceChannel = index % 2;
+      const destinationChannel = index < 2 ? sourceChannel : 1 - sourceChannel;
+      const delay = context.createDelay(0.18);
+      delay.delayTime.value = time;
+      const filter = context.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = Math.max(3200, this.earlyProfile.lowpass * (1 - index * 0.07));
+      filter.Q.value = 0.32;
+      const gain = context.createGain();
+      gain.gain.value = (1 - index * 0.085) / Math.sqrt(this.earlyProfile.times.length);
+      this.predelays[sourceChannel].connect(delay);
+      delay.connect(filter); filter.connect(gain); gain.connect(this.earlyMerger, 0, destinationChannel);
+      this.earlyDelays.push(delay); this.earlyFilters.push(filter); this.earlyGains.push(gain);
+    });
 
     config.lineTimes.forEach((time, index) => {
       const diffuser = context.createBiquadFilter();
@@ -151,10 +222,10 @@ class ReverbNetwork {
       const damping = context.createBiquadFilter(); damping.type = 'lowpass'; damping.frequency.value = config.converterLowpass ?? 7200; damping.Q.value = 0.45;
       const loopHighpass = context.createBiquadFilter(); loopHighpass.type = 'highpass'; loopHighpass.frequency.value = config.highpass * 0.72 + 28; loopHighpass.Q.value = 0.45;
       const loopSaturator = context.createWaveShaper(); loopSaturator.curve = ATMOS_LOOP_CURVE; loopSaturator.oversample = '2x';
-      const feedback = context.createGain(); feedback.gain.value = 0.72;
+      const feedback = context.createGain(); feedback.gain.value = 0.68;
       const outputGain = context.createGain(); outputGain.gain.value = reverbOutputPolarity(index) * config.outputTrim / Math.sqrt(Math.max(1, config.lineTimes.length / 2));
-      const source = this.predelays[index % 2];
-      source.connect(diffuser); diffuser.connect(delay); delay.connect(damping); damping.connect(loopHighpass); loopHighpass.connect(loopSaturator); loopSaturator.connect(feedback); feedback.connect(delay); delay.connect(outputGain); outputGain.connect(this.merger, 0, index % 2);
+      const source = this.lateCompressors[index % 2];
+      source.connect(diffuser); diffuser.connect(delay); delay.connect(damping); damping.connect(loopHighpass); loopHighpass.connect(loopSaturator); loopSaturator.connect(feedback); feedback.connect(delay); delay.connect(outputGain); outputGain.connect(this.lateMerger, 0, index % 2);
       const lfo = context.createOscillator(); lfo.type = index % 3 === 0 ? 'sine' : 'triangle'; lfo.frequency.value = config.modulationRates[index % config.modulationRates.length];
       const depth = context.createGain(); depth.gain.value = 0; lfo.connect(depth); depth.connect(delay.delayTime); lfo.start();
       this.diffusers.push(diffuser); this.delays.push(delay); this.damping.push(damping); this.loopHighpasses.push(loopHighpass); this.loopSaturators.push(loopSaturator); this.feedback.push(feedback); this.outputGains.push(outputGain); this.lfos.push(lfo); this.lfoDepths.push(depth);
@@ -164,68 +235,105 @@ class ReverbNetwork {
       const cross = context.createGain(); cross.gain.value = 0;
       this.delays[i].connect(cross); cross.connect(this.delays[(i + Math.max(3, Math.floor(this.delays.length / 2))) % this.delays.length]); this.crossGains.push(cross);
     }
-    this.merger.connect(this.converterLowpass); this.converterLowpass.connect(this.outputConverter);
+
+    this.earlyMerger.connect(this.earlyBusFilter); this.earlyBusFilter.connect(this.earlyBusGain); this.earlyBusGain.connect(this.sumBus);
+    this.lateMerger.connect(this.converterLowpass); this.converterLowpass.connect(this.outputConverter);
     if (this.lexiconOutput) {
       this.outputConverter.connect(this.lexiconOutput);
-      this.lexiconOutput.connect(this.output);
+      this.lexiconOutput.connect(this.lateBusGain);
     } else {
-      this.outputConverter.connect(this.output);
+      this.outputConverter.connect(this.lateBusGain);
     }
+    this.lateBusGain.connect(this.sumBus); this.sumBus.connect(this.output);
   }
 
   public update(decay: number, size: number, color: number, diffusion: number, motion: number): void {
     if (this.disposed) return;
     const now = this.context.currentTime;
-    const sizeScale = this.config.sizeRange[0] + size * (this.config.sizeRange[1] - this.config.sizeRange[0]);
+    const shapedSize = Math.pow(Math.max(0, Math.min(1, size)), 1.35);
+    const sizeScale = this.config.sizeRange[0] + shapedSize * (this.config.sizeRange[1] - this.config.sizeRange[0]);
     const normalizedDecay = Math.max(0, Math.min(1, Math.log(Math.max(0.35, decay) / 0.35) / Math.log(16 / 0.35)));
     const effectiveDecay = this.config.id === 'emt140'
       ? 0.5 + normalizedDecay * 5.0
       : Math.max(0.25, decay * this.config.decayBias);
     const colorCutoff = 1700 * Math.pow(10.2, color) * this.config.dampingBias;
     const freeze = this.config.id === 'freeze';
-    const loopBudget = freeze ? 0.965 : 0.9;
-    const crossMagnitude = Math.min(freeze ? 0.018 : 0.045, this.config.crossAmount * (0.2 + diffusion * 0.28));
-    if (this.config.converterLowpass) this.converterLowpass.frequency.setTargetAtTime(this.config.converterLowpass * (0.82 + color * 0.18), now, 0.08);
+    const loopBudget = freeze ? 0.958 : 0.875;
+    const crossMagnitude = Math.min(freeze ? 0.016 : 0.034, this.config.crossAmount * (0.14 + diffusion * 0.22));
+    if (this.config.converterLowpass) this.converterLowpass.frequency.setTargetAtTime(this.config.converterLowpass * (0.80 + color * 0.20), now, 0.08);
+
+    // Loud/transient material is compressed before it excites the late field. The early taps stay
+    // untouched, so the source remains readable while the tail blooms in the gaps between events.
+    this.lateCompressors.forEach((compressor, channel) => {
+      compressor.threshold.setTargetAtTime(this.earlyProfile.threshold + diffusion * 2.5 - motion * 1.5 + channel * 0.35, now, 0.08);
+      compressor.ratio.setTargetAtTime(this.earlyProfile.ratio + diffusion * 1.15 + motion * 0.45, now, 0.08);
+      compressor.attack.setTargetAtTime(Math.max(0.001, this.earlyProfile.attack * (1.05 - motion * 0.35)), now, 0.08);
+      compressor.release.setTargetAtTime(this.earlyProfile.release * (0.82 + normalizedDecay * 0.52 + size * 0.18), now, 0.11);
+    });
+
+    const earlyPresence = this.earlyProfile.earlyLevel * (1.12 - size * 0.24) * (1.08 - diffusion * 0.18);
+    const latePresence = this.earlyProfile.lateLevel * (0.88 + diffusion * 0.16) / Math.sqrt(1 + normalizedDecay * 0.58 + size * 0.24);
+    this.earlyBusGain.gain.setTargetAtTime(earlyPresence, now, 0.055);
+    this.lateBusGain.gain.setTargetAtTime(latePresence, now, 0.075);
+    this.earlyBusFilter.frequency.setTargetAtTime(Math.min(18_000, Math.max(3400, this.earlyProfile.lowpass * (0.58 + color * 0.58))), now, 0.065);
+
+    this.earlyDelays.forEach((delay, index) => {
+      const base = this.earlyProfile.times[index] ?? 0.01;
+      delay.delayTime.setTargetAtTime(base * (0.72 + size * 0.82), now, 0.06);
+      const filter = this.earlyFilters[index];
+      filter.frequency.setTargetAtTime(Math.min(18_000, Math.max(2800, this.earlyProfile.lowpass * (0.52 + color * 0.62) * (1 - index * 0.045))), now, 0.06);
+      const contour = (1 - index * 0.085) * (0.92 + diffusion * 0.08) / Math.sqrt(this.earlyProfile.times.length);
+      this.earlyGains[index].gain.setTargetAtTime(contour, now, 0.06);
+    });
 
     this.delays.forEach((node, index) => {
-      const lineTime = this.config.lineTimes[index] * sizeScale;
+      const densityScale = 0.9 + diffusion * 0.1;
+      const lineTime = this.config.lineTimes[index] * sizeScale * densityScale;
       node.delayTime.setTargetAtTime(lineTime, now, 0.08);
       const split = this.config.splitDecay ?? 0;
       const spectralDecayScale = 1 + split * ((index / Math.max(1, this.delays.length - 1)) - 0.5) * (0.7 + (1 - color) * 0.6);
       const lineDecay = Math.pow(0.001, lineTime / Math.max(0.18, effectiveDecay * spectralDecayScale));
-      const spread = 0.992 - index * 0.0017;
-      const safeSelfFeedback = Math.min(loopBudget - crossMagnitude - 0.035, Math.max(0.2, lineDecay * spread));
+      const spread = 0.988 - index * 0.0019;
+      const safeSelfFeedback = Math.min(loopBudget - crossMagnitude - 0.042, Math.max(0.18, lineDecay * spread));
       this.feedback[index].gain.setTargetAtTime(safeSelfFeedback, now, 0.065);
       const polarity = index % 4 < 2 ? 1 : -1;
       this.crossGains[index]?.gain.setTargetAtTime(crossMagnitude * polarity, now, 0.075);
       const plateTilt = this.config.plateDispersion ? (1 - index / Math.max(1, this.delays.length - 1) * 0.18) : 1;
-      this.damping[index].frequency.setTargetAtTime(Math.min(this.config.converterLowpass ?? 19_000, Math.max(1100, colorCutoff * (1 - index * 0.012) * plateTilt)), now, 0.055);
-      this.loopHighpasses[index].frequency.setTargetAtTime(Math.min(310, Math.max(34, this.config.highpass * (0.42 + (1 - size) * 0.32) + index * 1.7)), now, 0.08);
-      const requestedMod = this.config.modulationDepth * motion * (0.62 + index * 0.045);
-      const modAmount = Math.min(requestedMod, Math.max(0.000025, lineTime * 0.018));
+      this.damping[index].frequency.setTargetAtTime(Math.min(this.config.converterLowpass ?? 19_000, Math.max(1000, colorCutoff * (1 - index * 0.014) * plateTilt)), now, 0.055);
+      this.loopHighpasses[index].frequency.setTargetAtTime(Math.min(340, Math.max(36, this.config.highpass * (0.48 + (1 - size) * 0.3) + index * 1.9)), now, 0.08);
+      const requestedMod = this.config.modulationDepth * motion * (0.56 + index * 0.04);
+      const modAmount = Math.min(requestedMod, Math.max(0.00002, lineTime * 0.015));
       this.lfoDepths[index].gain.setTargetAtTime(modAmount, now, 0.09);
       const baseRate = this.config.modulationRates[index % this.config.modulationRates.length];
-      this.lfos[index].frequency.setTargetAtTime(baseRate * (0.88 + size * 0.22) * (1 + motion * (0.035 + (index % 5) * 0.009)), now, 0.16);
+      this.lfos[index].frequency.setTargetAtTime(baseRate * (0.9 + size * 0.18) * (1 + motion * (0.028 + (index % 5) * 0.008)), now, 0.16);
       const baseOutput = this.config.outputTrim / Math.sqrt(Math.max(1, this.config.lineTimes.length / 2));
       const decayNorm = Math.min(1, Math.log2(1 + effectiveDecay) / Math.log2(17));
-      const energyTrim = 1 / Math.sqrt(1 + decayNorm * 0.34 + diffusion * 0.16);
+      const energyTrim = 1 / Math.sqrt(1 + decayNorm * 0.58 + diffusion * 0.25 + size * 0.18);
       this.outputGains[index].gain.setTargetAtTime(reverbOutputPolarity(index) * baseOutput * energyTrim, now, 0.09);
     });
 
     this.diffusers.forEach((node, index) => {
-      const amount = Math.min(1.6, diffusion * this.config.diffusionBias);
-      node.Q.setTargetAtTime((this.config.plateDispersion ? 0.52 : 0.28) + amount * (1.18 + index * 0.035), now, 0.06);
-      node.frequency.setTargetAtTime((this.config.plateDispersion ? 720 : 440) + amount * (this.config.plateDispersion ? 2300 : 1700) + index * (this.config.plateDispersion ? 113 : 87), now, 0.06);
+      const amount = Math.min(1.5, diffusion * this.config.diffusionBias);
+      node.Q.setTargetAtTime((this.config.plateDispersion ? 0.5 : 0.25) + amount * (1.02 + index * 0.03), now, 0.06);
+      node.frequency.setTargetAtTime((this.config.plateDispersion ? 720 : 460) + amount * (this.config.plateDispersion ? 2200 : 1550) + index * (this.config.plateDispersion ? 113 : 91), now, 0.06);
     });
-    this.predelays[0].delayTime.setTargetAtTime(this.config.predelay[0] + size * this.config.predelay[0] * 1.65, now, 0.07);
-    this.predelays[1].delayTime.setTargetAtTime(this.config.predelay[1] + size * this.config.predelay[1] * 1.65, now, 0.07);
+    this.predelays[0].delayTime.setTargetAtTime(this.config.predelay[0] * (1 + size * 0.72), now, 0.07);
+    this.predelays[1].delayTime.setTargetAtTime(this.config.predelay[1] * (1 + size * 0.72), now, 0.07);
   }
 
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     this.lfos.forEach((lfo) => { try { lfo.stop(); } catch { /* already stopped */ } lfo.disconnect(); });
-    [this.input,this.output,this.inputConverter,this.outputConverter,this.converterLowpass,...(this.lexiconInput ? [this.lexiconInput] : []),...(this.lexiconOutput ? [this.lexiconOutput] : []),this.splitter,this.merger,...this.predelays,...this.inputFilters,...this.diffusers,...this.delays,...this.damping,...this.loopHighpasses,...this.loopSaturators,...this.feedback,...this.outputGains,...this.crossGains,...this.lfoDepths].forEach((node) => node.disconnect());
+    [
+      this.input,this.output,this.inputConverter,this.outputConverter,this.converterLowpass,
+      ...(this.lexiconInput ? [this.lexiconInput] : []),...(this.lexiconOutput ? [this.lexiconOutput] : []),
+      this.splitter,this.lateMerger,this.earlyMerger,...this.predelays,...this.lateCompressors,
+      this.earlyBusFilter,this.earlyBusGain,this.lateBusGain,this.sumBus,
+      ...this.inputFilters,...this.earlyDelays,...this.earlyFilters,...this.earlyGains,
+      ...this.diffusers,...this.delays,...this.damping,...this.loopHighpasses,...this.loopSaturators,
+      ...this.feedback,...this.outputGains,...this.crossGains,...this.lfoDepths,
+    ].forEach((node) => node.disconnect());
   }
 }
 
