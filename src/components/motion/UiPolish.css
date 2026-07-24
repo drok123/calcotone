@@ -625,10 +625,19 @@
 .faceplate-editor-panel p { margin: 9px 2px 0; }
 .faceplate-editor-panel p b { color: #cbe5e5; }
 
-.faceplate-layout-custom .faceplate-viewport-shell {
+.faceplate-layout-stage {
   position: relative;
   width: 100%;
-  margin: 0 0 12px;
+  min-height: 1px;
+}
+
+.faceplate-layout-custom .faceplate-viewport-shell {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  width: 100%;
+  margin: 0;
 }
 
 .faceplate-layout-custom .faceplate-viewport-shell .dsp-viewport {
@@ -677,15 +686,18 @@
 }
 
 .knob-row.faceplate-control-surface {
-  position: relative;
+  position: absolute;
+  z-index: 5;
+  left: 0;
   display: block;
   width: 100%;
   min-height: 150px;
-  margin-top: 0;
+  margin: 0;
   padding: 0;
   overflow: visible;
-  border-top: 1px solid rgba(255,255,255,.045);
-  background: linear-gradient(180deg, rgba(255,255,255,.012), transparent 68%);
+  border-top: 0;
+  background: transparent;
+  pointer-events: none;
 }
 
 .faceplate-knob-slot {
@@ -698,7 +710,7 @@
   touch-action: none;
 }
 
-.faceplate-knob-slot > .knob-control { width: 100%; }
+.faceplate-knob-slot > .knob-control { width: 100%; pointer-events: auto; }
 
 .faceplate-layout-editing {
   outline: 1px solid rgba(91, 222, 231, .20);

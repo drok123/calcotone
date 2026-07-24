@@ -9,6 +9,7 @@ export interface FaceplateLayout {
   version: 1;
   custom: boolean;
   viewportHeight: number;
+  controlTop: number;
   controlAreaHeight: number;
   knobs: FaceplatePoint[];
   snap: number;
@@ -46,15 +47,16 @@ const listeners = new Set<() => void>();
 export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
   version: 1,
   custom: true,
-  viewportHeight: 300,
-  controlAreaHeight: 210,
+  viewportHeight: 192,
+  controlTop: 204,
+  controlAreaHeight: 322,
   knobs: [
-    { x: 0.17, y: 54 },
-    { x: 0.50, y: 54 },
-    { x: 0.83, y: 54 },
-    { x: 0.17, y: 154 },
-    { x: 0.50, y: 154 },
-    { x: 0.83, y: 154 },
+    { x: 0.15929910480312698, y: 160 },
+    { x: 0.5, y: 160 },
+    { x: 0.85451197053407, y: 160 },
+    { x: 0.15929910480312698, y: 264 },
+    { x: 0.5, y: 264 },
+    { x: 0.85451197053407, y: 264 },
   ],
   snap: 8,
 };
@@ -208,12 +210,14 @@ export function setFaceplateKnob(index: number, point: FaceplatePoint): void {
 
 export function setFaceplateViewportHeight(height: number): void {
   if (!state.editing) return;
+  const firstRowY = Math.min(...state.layout.knobs.map((point) => point.y));
+  const collisionSafeMaximum = Math.max(160, state.layout.controlTop + firstRowY - 52);
   state = {
     ...state,
     layout: {
       ...state.layout,
       custom: true,
-      viewportHeight: clamp(height, 160, 520),
+      viewportHeight: clamp(height, 120, Math.min(520, collisionSafeMaximum)),
     },
   };
   emit();
@@ -308,6 +312,7 @@ function captureCurrentFaceplateLayout(): FaceplateLayout | null {
     version: 1,
     custom: true,
     viewportHeight: viewport.offsetHeight || FACTORY_FACEPLATE_LAYOUT.viewportHeight,
+    controlTop: (viewport.offsetHeight || FACTORY_FACEPLATE_LAYOUT.viewportHeight) + 12,
     controlAreaHeight: Math.max(controlSurface.offsetHeight, Math.max(...knobs.map((point) => point.y)) + 54),
     knobs,
     snap: 8,
@@ -333,8 +338,9 @@ function loadSavedLayout(): FaceplateLayout {
     return {
       version: 1,
       custom: true,
-      viewportHeight: clamp(Number(parsed.viewportHeight) || 300, 160, 520),
-      controlAreaHeight: clamp(Number(parsed.controlAreaHeight) || 210, 150, 360),
+      viewportHeight: clamp(Number(parsed.viewportHeight) || 300, 120, 520),
+      controlTop: clamp(Number(parsed.controlTop) || (Number(parsed.viewportHeight) || 300) + 12, 120, 560),
+      controlAreaHeight: clamp(Number(parsed.controlAreaHeight) || 210, 150, 420),
       knobs: parsed.knobs.map((point) => ({
         x: clamp(Number(point.x) || 0.5, 0.07, 0.93),
         y: clamp(Number(point.y) || 54, 46, 314),
