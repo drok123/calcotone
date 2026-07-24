@@ -7,6 +7,7 @@ import './components/layout/SignalRailBackplane.css'
 import App from './App.tsx'
 import './components/layout/FaceplateResizeFix.css'
 import './components/layout/PanelContrastRefresh.css'
+import './components/effects/ViewportAccentRing.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

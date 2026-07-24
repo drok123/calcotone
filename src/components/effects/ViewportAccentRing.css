@@ -1,0 +1,13 @@
+/* Viewport edge-lighting shares the exact module accent used by the power jewel/toggle. */
+.effect-module .dsp-viewport.active .viewport-glass {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--module-accent) 30%, transparent),
+    inset 0 0 20px color-mix(in srgb, var(--module-accent) 14%, transparent),
+    inset 0 0 52px color-mix(in srgb, var(--module-accent) 8%, transparent),
+    0 0 11px color-mix(in srgb, var(--module-accent) 5%, transparent);
+}
+
+/* Keep the ring readable without turning the screen into a neon panel. */
+.effect-module:not(.enabled) .dsp-viewport .viewport-glass {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--module-accent) 7%, transparent);
+}

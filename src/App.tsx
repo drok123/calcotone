@@ -287,6 +287,22 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
     { name: 'MODE 3 SYNCOPATED', parameters: { time:[0.20,0.36], feedback:[0.24,0.40], color:[0.45,0.62], character:[0.14,0.30], width:[0.31,0.39], mix:[0.18,0.30] } },
     { name: 'MODE 6 DUB', parameters: { time:[0.14,0.28], feedback:[0.38,0.56], color:[0.38,0.55], character:[0.22,0.38], width:[0.74,0.82], mix:[0.20,0.34] } },
   ],
+  'delay:EP-3 Echoplex': [
+    { name: 'TAPE SLAP', parameters: { time:[0.055,0.095], feedback:[0.10,0.22], color:[0.48,0.68], character:[0.12,0.28], width:[0.38,0.58], mix:[0.16,0.28] } },
+    { name: 'WARM LEAD ECHO', parameters: { time:[0.14,0.25], feedback:[0.28,0.44], color:[0.38,0.58], character:[0.20,0.36], width:[0.44,0.66], mix:[0.18,0.32] } },
+  ],
+  'delay:Binson Echorec': [
+    { name: 'DRUM RHYTHM', parameters: { time:[0.11,0.22], feedback:[0.24,0.40], color:[0.52,0.72], character:[0.08,0.22], width:[0.48,0.68], mix:[0.16,0.28] } },
+    { name: 'SWELLS', parameters: { time:[0.18,0.30], feedback:[0.38,0.52], color:[0.42,0.62], character:[0.18,0.32], width:[0.62,0.82], mix:[0.20,0.34] } },
+  ],
+  'delay:Deluxe Memory Man': [
+    { name: 'CHORUS ECHO', parameters: { time:[0.10,0.20], feedback:[0.22,0.38], color:[0.34,0.52], character:[0.25,0.42], width:[0.58,0.78], mix:[0.18,0.30] } },
+    { name: 'DARK BBD', parameters: { time:[0.16,0.28], feedback:[0.30,0.48], color:[0.20,0.38], character:[0.16,0.30], width:[0.45,0.66], mix:[0.20,0.34] } },
+  ],
+  'delay:AMS DMX 15-80 S': [
+    { name: 'DIGITAL DOUBLE', parameters: { time:[0.06,0.12], feedback:[0.12,0.24], color:[0.58,0.78], character:[0.10,0.22], width:[0.68,0.88], mix:[0.14,0.26] } },
+    { name: 'PITCH SPACE', parameters: { time:[0.18,0.34], feedback:[0.24,0.42], color:[0.52,0.72], character:[0.30,0.50], width:[0.72,0.92], mix:[0.18,0.30] } },
+  ],
 
   'reverb:emt140': [
     { name: 'PLATE A · 3.0 S', parameters: { decay:[0.48,0.52], size:[0.49,0.51], color:[0.52,0.68], diffusion:[0.68,0.84], motion:[0.00,0.00], mix:[0.18,0.30] } },
@@ -309,6 +325,23 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
   'media:tascam424': [
     { name: 'ELASTIC DI', parameters: { wear:[0.28,0.42], wow:[0.14,0.19], noise:[0.09,0.13], tone:[0.30,0.44], mix:[0.22,0.36] } },
     { name: 'PUSHED PREAMP', parameters: { wear:[0.40,0.54], wow:[0.13,0.18], noise:[0.08,0.13], tone:[0.46,0.58], mix:[0.24,0.38] } },
+  ],
+  'media:Neve 1073': [
+    { name: 'IRON THICKENER', parameters: { wear:[0.22,0.36], wow:[0.16,0.23], noise:[0.10,0.16], tone:[0.22,0.38], mix:[0.22,0.38] } },
+    { name: 'PUSHED CHANNEL', parameters: { wear:[0.35,0.50], wow:[0.17,0.26], noise:[0.10,0.18], tone:[0.34,0.50], mix:[0.20,0.34] } },
+  ],
+  'media:SSL 4000E': [
+    { name: 'BUS EDGE', parameters: { wear:[0.16,0.28], wow:[0.14,0.20], noise:[0.12,0.20], tone:[0.22,0.38], mix:[0.18,0.32] } },
+    { name: 'VCA PUSH', parameters: { wear:[0.28,0.42], wow:[0.14,0.20], noise:[0.14,0.22], tone:[0.38,0.54], mix:[0.20,0.34] } },
+  ],
+  'media:API 1608': [
+    { name: 'PUNCH BUS', parameters: { wear:[0.20,0.34], wow:[0.18,0.26], noise:[0.12,0.20], tone:[0.24,0.40], mix:[0.20,0.34] } },
+    { name: 'OUTPUT IRON', parameters: { wear:[0.28,0.42], wow:[0.17,0.24], noise:[0.11,0.18], tone:[0.40,0.56], mix:[0.20,0.34] } },
+  ],
+  'media:Ampex ATR-102': [
+    { name: '7.5 IPS THICK', parameters: { wear:[0.24,0.40], wow:[0.10,0.13], noise:[0.04,0.12], tone:[0.42,0.54], mix:[0.24,0.42] } },
+    { name: '15 IPS GLUE', parameters: { wear:[0.22,0.38], wow:[0.24,0.56], noise:[0.02,0.10], tone:[0.46,0.58], mix:[0.24,0.42] } },
+    { name: '30 IPS CLEAN', parameters: { wear:[0.16,0.30], wow:[0.68,0.84], noise:[0.00,0.06], tone:[0.48,0.56], mix:[0.20,0.36] } },
   ],
 };
 
