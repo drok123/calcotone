@@ -6,7 +6,6 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ChangeEvent as ReactChangeEvent,
-  type DragEvent as ReactDragEvent,
 } from 'react';
 
 import './App.css';
@@ -18,7 +17,7 @@ import {
 } from './audio/AudioEngine';
 import { DEFAULT_PRESET } from './audio/Preset';
 import type { InputMode } from './audio/InputMatrix';
-import type { ReverbAlgorithm } from './audio/effects/Reverb';
+import { REVERB_ALGORITHM_ORDER, type ReverbAlgorithm } from './audio/effects/Reverb';
 import { MEDIA_MODE_ORDER, type MediaMode } from './audio/effects/Media';
 import { EMBER_MODE_ORDER, type EmberMode } from './audio/effects/Saturation';
 import { DRIFT_MODE_ORDER, type DriftMode } from './audio/effects/Chorus';
@@ -27,34 +26,23 @@ import {
   DELAY_ALGORITHM_ORDER,
   type DelayAlgorithm,
 } from './audio/effects/Delay';
-import { useVisualEngine, type VisualAudioState } from './visual/VisualEngine';
+import { useVisualEngine } from './visual/VisualEngine';
 import { EffectModule } from './components/effects/EffectModule';
 import { MotionPad } from './components/motion/MotionPad';
 import { LinearControl } from './components/controls/LinearControl';
 import { LevelMeter } from './components/meters/LevelMeter';
 import { SpectrumWaterfall } from './components/meters/SpectrumWaterfall';
 import { RecorderPanel, type RecordedTake } from './components/recorder/RecorderPanel';
-import type { ModuleState, MotionCurve, MotionSmoothing, XYAssignment, XYAxis } from './ui/types';
+import type { ModuleState, XYAssignment, XYAxis } from './ui/types';
 import { clamp } from './ui/math';
-import { shapeMotionSource, getEffectiveMotionValue } from './ui/motion';
+import { shapeMotionSource } from './ui/motion';
 
 const APP_NAME = 'CALCOTONE';
 const DESIGN_WIDTH = 2560;
 const DESIGN_HEIGHT = 1440;
 const DELAY_ALGORITHMS: DelayAlgorithm[] = [...DELAY_ALGORITHM_ORDER];
 
-const REVERB_ALGORITHMS: ReverbAlgorithm[] = [
-  'room',
-  'plate',
-  'hall',
-  'cinema',
-  'cloud',
-  'freeze',
-  'celestial',
-  'aurora',
-  'nebula',
-  'abyss',
-];
+const REVERB_ALGORITHMS: ReverbAlgorithm[] = [...REVERB_ALGORITHM_ORDER];
 
 const DEFAULT_RAIL_A_ORDER = ['saturation', 'chorus', 'delay'] as const;
 const DEFAULT_RAIL_B_ORDER = ['reverb', 'bitcrusher', 'media'] as const;
@@ -265,7 +253,7 @@ const MUSICAL_EMBER_MODES: readonly EmberMode[] = ['velvet','tube','console','tr
 const MUSICAL_DRIFT_MODES: readonly DriftMode[] = ['chorus','ensemble','dimension','vibrato','rotary','doppler','liquid','orbit'];
 const MUSICAL_HALO_MODES: readonly DelayAlgorithm[] = ['clean','tape','bbd','pingpong','diffuse','scatter','constellation'];
 const MUSICAL_ATMOS_MODES: readonly ReverbAlgorithm[] = ['room','plate','hall','cinema','cloud','freeze','celestial','aurora','nebula','abyss'];
-const MUSICAL_GRAIN_MODES: readonly GrainMode[] = [...GRAIN_MODE_ORDER];
+const MUSICAL_GRAIN_MODES: readonly GrainMode[] = ['reconstruct','shatter','smear','prism','stutter','ruin'];
 const MUSICAL_MEDIA_MODES: readonly MediaMode[] = ['cassette','reel','vinyl','vhs','radio','wax','broken','archive'];
 
 export default function App() {

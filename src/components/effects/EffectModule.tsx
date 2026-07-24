@@ -269,24 +269,31 @@ function parameterPresentation(module: ModuleState, parameterId: string, label: 
     if (parameterId === 'feedback') return { label: 'Intensity', display };
     if (parameterId === 'color') return { label: 'Tone', display };
     if (parameterId === 'character') return { label: 'Tape Age', display };
-    if (parameterId === 'width') return { label: 'Head Mix', display };
+    if (parameterId === 'width') return { label: 'Mode', display: `MODE ${re201Mode(value)}` };
   }
 
   if (module.id === 'chorus' && module.driftMode === 'ce1') {
+    if (parameterId === 'rate') return { label: 'Rate', display: 'INTENSITY', disabled: true };
+    if (parameterId === 'depth') return { label: 'Depth', display: 'INTENSITY', disabled: true };
     if (parameterId === 'shape') return { label: 'Intensity', display: `${Math.round(value * 100)}%` };
+    if (parameterId === 'spread') return { label: 'Stereo', display: 'CLASSIC', disabled: true };
     if (parameterId === 'motion') return { label: 'Preamp', display: `${Math.round(value * 100)}%` };
   }
 
   if (module.id === 'chorus' && module.driftMode === 'dimensiond') {
-    if (parameterId === 'shape') return { label: 'Mode', display: `${Math.max(1, Math.min(4, 1 + Math.floor(value * 3.999)))}` };
-    if (parameterId === 'motion') return { label: 'Circuit', display: `${Math.round(value * 100)}%` };
+    if (parameterId === 'rate') return { label: 'Rate', display: 'FIXED', disabled: true };
+    if (parameterId === 'depth') return { label: 'Depth', display: 'FIXED', disabled: true };
+    if (parameterId === 'shape') return { label: 'Mode', display: dimensionDMode(value) };
+    if (parameterId === 'spread') return { label: 'Stereo', display: 'FIXED', disabled: true };
+    if (parameterId === 'motion') return { label: 'Circuit', display: 'FIXED', disabled: true };
   }
 
   if (module.id === 'reverb' && module.algorithm === 'emt140') {
-    if (parameterId === 'size') return { label: 'Plate', display };
+    if (parameterId === 'decay') return { label: 'Damper', display: `${emt140Decay(value).toFixed(1)} s` };
+    if (parameterId === 'size') return { label: 'Plate', display: '140', disabled: true };
     if (parameterId === 'color') return { label: 'Damping', display };
     if (parameterId === 'diffusion') return { label: 'Tension', display };
-    if (parameterId === 'motion') return { label: 'Pickup', display };
+    if (parameterId === 'motion') return { label: 'Mod', display: 'NONE', disabled: true };
   }
 
   if (module.id === 'reverb' && module.algorithm === 'lexicon224') {
@@ -299,7 +306,7 @@ function parameterPresentation(module: ModuleState, parameterId: string, label: 
   if (module.id === 'bitcrusher' && module.grainMode === 'sp1200') {
     if (parameterId === 'bits') return { label: 'Output', display: sp1200OutputPair(value) };
     if (parameterId === 'density') return { label: 'Input', display: `${Math.round(value * 100)}%` };
-    if (parameterId === 'pitch') return { label: 'Clock', display: `${sp1200ClockKhz(value).toFixed(2)} kHz` };
+    if (parameterId === 'pitch') return { label: 'Clock', display: '26.04 kHz FIXED', disabled: true };
     if (parameterId === 'chaos') return { label: 'Filter Env', display: `${Math.round(value * 100)}%` };
     if (parameterId === 'bloom') return { label: 'Tone', display: `${Math.round(value * 100)}%` };
   }
@@ -334,8 +341,17 @@ function sp1200OutputPair(value: number): string {
   return ['1 / 2', '3 / 4', '5 / 6', '7 / 8'][pair] ?? '1 / 2';
 }
 
-function sp1200ClockKhz(value: number): number {
-  return value <= 0.005 ? 26.04 : 26.04 * (0.72 + value * 0.56);
+function re201Mode(value: number): number {
+  return Math.max(1, Math.min(7, 1 + Math.floor(value * 7)));
+}
+
+function dimensionDMode(value: number): string {
+  const index = Math.max(0, Math.min(6, Math.floor(value * 7)));
+  return ['1', '2', '3', '4', '1+4', '2+4', '3+4'][index] ?? '1';
+}
+
+function emt140Decay(value: number): number {
+  return 0.5 + Math.max(0, Math.min(1, value)) * 5;
 }
 
 function mirageRateKhz(value: number): number {

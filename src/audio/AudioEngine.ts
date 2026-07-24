@@ -17,7 +17,7 @@ export type AudioEngineState =
 
 export type PerformanceMode = 'live' | 'balanced' | 'studio';
 
-const WORKLET_BUILD_VERSION = '8.4.30-ui-polish-b';
+const WORKLET_BUILD_VERSION = '8.4.31-hardware-calibration-a';
 export type EngineHealth = 'offline' | 'healthy' | 'warm' | 'critical';
 
 
@@ -93,9 +93,6 @@ export class AudioEngine {
 
   public getProfilerSnapshot(): DspProfilerSnapshot {
     const grain = this.effects.get('bitcrusher');
-    const ember = this.effects.get('saturation');
-    const drift = this.effects.get('chorus');
-    const artifact = this.effects.get('media');
     const grainStats = grain && 'getProfilerStats' in grain
       ? (grain as Effect & { getProfilerStats(): GrainProfilerStats }).getProfilerStats()
       : { averageCallbackMs: 0, worstCallbackMs: 0, callbackBudgetMs: 0, cpuLoad: 0, callbackJitterMs: 0, activeVoices: 0, maxVoices: 0, effectiveVoiceLimit: 0, overruns: 0, droppedSpawns: 0 };
@@ -344,9 +341,6 @@ export class AudioEngine {
     this.configureQualityMode();
 
     const grain = this.effects.get('bitcrusher');
-    const ember = this.effects.get('saturation');
-    const drift = this.effects.get('chorus');
-    const artifact = this.effects.get('media');
     if (grain && 'setQualityMode' in grain) {
       (grain as Effect & { setQualityMode(value: PerformanceMode): void }).setQualityMode(mode);
     }
@@ -711,9 +705,7 @@ export class AudioEngine {
       this.safetyClipper.oversample =
         this.performanceMode === 'studio'
           ? '4x'
-          : this.performanceMode === 'balanced'
-          ? '2x'
-          : 'none';
+          : '2x';
     }
     this.analyser.fftSize =
       this.performanceMode === 'studio'
@@ -747,7 +739,8 @@ export class AudioEngine {
       throw new Error('This browser does not support AudioWorklet, which CALCOTONE requires for realtime Dream Engine DSP.');
     }
     const modules = [
-      ['Grain', `grain-processor.js?v=8.4.27-grain-engine`],
+      ['Grain', `grain-processor.js?v=${WORKLET_BUILD_VERSION}`],
+      ['Lexicon 224', `lexicon-224-converter.js?v=${WORKLET_BUILD_VERSION}`],
       ['Dream Buffer', `dream-buffer-processor.js?v=${WORKLET_BUILD_VERSION}`],
       ['Recorder', `recorder-processor.js?v=${WORKLET_BUILD_VERSION}`],
     ] as const;
@@ -903,7 +896,7 @@ function normalizeAudioError(error: unknown): Error {
   return new Error('An unknown audio error occurred.');
 }
 
-function createSafetyCurve(): Float32Array {
+function createSafetyCurve(): Float32Array<ArrayBuffer> {
   const length = 4096;
   const curve = new Float32Array(length);
   for (let i = 0; i < length; i += 1) {

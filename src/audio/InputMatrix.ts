@@ -33,8 +33,10 @@ export class InputMatrix {
   private width = 1;
   private invertLeft = false;
   private invertRight = false;
+  private readonly context: AudioContext;
 
-  public constructor(private readonly context: AudioContext) {
+  public constructor(context: AudioContext) {
+    this.context = context;
     this.input = context.createGain();
     this.output = context.createGain();
     this.splitter = context.createChannelSplitter(2);

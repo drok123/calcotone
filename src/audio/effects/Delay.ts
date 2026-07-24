@@ -62,7 +62,7 @@ const CONFIGS: Record<Exclude<DelayAlgorithm, 're201'>, DelayAlgorithmConfig> = 
   constellation: { id:'constellation', timeRatios:[1,1.333], crossFeedback:0.68, sameFeedback:0.32, highpass:145, lowpassRange:[2100,16500], saturation:0.24, quantization:0.035, flutterDepth:0.0017, flutterRates:[0.071,0.109], diffusionStages:3, diffusionBase:640, outputTrim:0.48, inputTrim:0.62, scatter:0.12, pitchScatter:0.82, reverseChance:0.28, orbitDepth:0.72 },
 };
 
-const PITCH_GRAIN_ENVELOPE = new Float32Array([0, 0.18, 0.72, 1, 0.72, 0.18, 0]);
+const PITCH_GRAIN_ENVELOPE: Float32Array<ArrayBuffer> = new Float32Array([0, 0.18, 0.72, 1, 0.72, 0.18, 0]);
 
 class DualGrainPitchShifter {
   public readonly input: GainNode;
@@ -157,7 +157,7 @@ class DelayNetwork implements DelayNetworkLike {
   private time = TIME.defaultValue;
   private character = CHARACTER.defaultValue;
   private width = WIDTH.defaultValue;
-  private lastCharacterCurve: Float32Array | null = null;
+  private lastCharacterCurve: Float32Array<ArrayBuffer> | null = null;
   private disposed = false;
 
   public constructor(context: AudioContext, config: DelayAlgorithmConfig) {
@@ -298,7 +298,7 @@ class SpaceEchoNetwork implements DelayNetworkLike {
   private readonly flutterLfo: OscillatorNode;
   private readonly wowDepths: GainNode[] = [];
   private readonly flutterDepths: GainNode[] = [];
-  private lastCurve: Float32Array | null = null;
+  private lastCurve: Float32Array<ArrayBuffer> | null = null;
   private disposed = false;
 
   public constructor(context: AudioContext) {
@@ -351,7 +351,7 @@ class SpaceEchoNetwork implements DelayNetworkLike {
     const timeNorm = clamp01(Math.log(Math.max(TIME.min, time) / TIME.min) / Math.log(TIME.max / TIME.min));
     const head1 = 0.069 + timeNorm * (0.177 - 0.069);
     const ratios = [1, 1.90, 2.76];
-    const tone = 2600 * Math.pow(4.5, color);
+    const tone = 2100 * Math.pow(4.4, color);
     const age = character;
     const curve = getSpaceEchoCurve(age);
     if (curve !== this.lastCurve) {
@@ -360,7 +360,7 @@ class SpaceEchoNetwork implements DelayNetworkLike {
       this.feedbackSaturator.curve = curve;
       this.headSaturators.forEach((node) => { node.curve = curve; });
     }
-    this.inputLowpass.frequency.setTargetAtTime(10_500 + color * 5_500 - age * 2_400, now, 0.06);
+    this.inputLowpass.frequency.setTargetAtTime(8_900 + color * 3_600 - age * 1_600, now, 0.06);
     this.feedbackHighpass.frequency.setTargetAtTime(65 + (1 - color) * 105, now, 0.06);
     this.feedbackLowpass.frequency.setTargetAtTime(Math.max(1800, tone * (1 - age * 0.22)), now, 0.06);
     const feedbackNorm = clamp01(feedback / FEEDBACK.max);
@@ -368,17 +368,21 @@ class SpaceEchoNetwork implements DelayNetworkLike {
     this.wowLfo.frequency.setTargetAtTime(0.22 + age * 0.30, now, 0.1);
     this.flutterLfo.frequency.setTargetAtTime(4.2 + age * 3.8, now, 0.1);
 
-    const headBase = [0.74 - width * 0.16, 0.44 + width * 0.22, 0.28 + width * 0.42];
-    const panSpread = width * 0.72;
+    const modeIndex = Math.max(0, Math.min(6, Math.floor(width * 7)));
+    const modeHeads = [
+      [1,0,0], [0,1,0], [0,0,1], [1,1,0], [0,1,1], [1,0,1], [1,1,1],
+    ][modeIndex];
+    const headBase = [0.72, 0.62, 0.54];
     this.heads.forEach((head, i) => {
+      const active = modeHeads[i];
       head.delayTime.setTargetAtTime(head1 * ratios[i], now, 0.065);
       this.headHighpasses[i].frequency.setTargetAtTime(62 + age * 45 + i * 8, now, 0.06);
-      this.headLowpasses[i].frequency.setTargetAtTime(Math.max(1800, tone * (1 - i * 0.055) * (1 - age * 0.12)), now, 0.06);
-      this.headGains[i].gain.setTargetAtTime(headBase[i] * 0.72, now, 0.06);
-      this.headPans[i].pan.setTargetAtTime(i === 0 ? -panSpread : i === 2 ? panSpread : 0, now, 0.07);
-      this.feedbackTaps[i].gain.setTargetAtTime([0.38,0.34,0.28][i] * (0.78 + width * 0.22), now, 0.06);
-      const wowDepth = (0.00008 + age * age * 0.0019) * (1 + i * 0.17);
-      const flutterDepth = (0.000025 + age * age * 0.00042) * (1 + i * 0.12);
+      this.headLowpasses[i].frequency.setTargetAtTime(Math.max(1700, tone * (1 - i * 0.055) * (1 - age * 0.12)), now, 0.06);
+      this.headGains[i].gain.setTargetAtTime(active * headBase[i], now, 0.06);
+      this.headPans[i].pan.setTargetAtTime(0, now, 0.07);
+      this.feedbackTaps[i].gain.setTargetAtTime(active * [0.38,0.34,0.28][i], now, 0.06);
+      const wowDepth = (0.00006 + age * age * 0.00165) * (1 + i * 0.17);
+      const flutterDepth = (0.00002 + age * age * 0.00036) * (1 + i * 0.12);
       this.wowDepths[i].gain.setTargetAtTime(wowDepth, now, 0.08);
       this.flutterDepths[i].gain.setTargetAtTime(i % 2 ? -flutterDepth : flutterDepth, now, 0.08);
     });
@@ -470,12 +474,12 @@ export class DelayEffect extends BaseEffect {
 
 const EQUAL_POWER_FADE_IN = createEqualPowerFade(true);
 const EQUAL_POWER_FADE_OUT = createEqualPowerFade(false);
-function createEqualPowerFade(fadeIn: boolean): Float32Array { const curve = new Float32Array(64); for (let i = 0; i < curve.length; i += 1) { const t = i / (curve.length - 1); curve[i] = fadeIn ? Math.sin(t * Math.PI * 0.5) : Math.cos(t * Math.PI * 0.5); } return curve; }
-const CHARACTER_CURVE_CACHE = new Map<string, Float32Array>();
-function getCharacterCurve(character: number, config: DelayAlgorithmConfig): Float32Array { const quantized = Math.round(character * 96) / 96; const key = `${config.id}:${quantized}`; const cached = CHARACTER_CURVE_CACHE.get(key); if (cached) return cached; const curve = createCharacterCurve(quantized, config); CHARACTER_CURVE_CACHE.set(key, curve); return curve; }
-function createCharacterCurve(character: number, config: DelayAlgorithmConfig): Float32Array { const length = 8192; const curve = new Float32Array(length); const drive = 1 + character * config.saturation * 2.2; const quantizationMix = character * config.quantization; const levels = Math.max(48, Math.round(65536 / (1 + character * character * 240))); for (let index = 0; index < length; index += 1) { const x = (index / (length - 1)) * 2 - 1; const saturated = Math.tanh(x * drive) / drive; const quantized = Math.round(saturated * levels) / levels; curve[index] = saturated * (1 - quantizationMix) + quantized * quantizationMix; } return curve; }
-const SPACE_ECHO_CURVE_CACHE = new Map<number, Float32Array>();
-function getSpaceEchoCurve(age: number): Float32Array { const bucket = Math.round(clamp01(age) * 64); const cached = SPACE_ECHO_CURVE_CACHE.get(bucket); if (cached) return cached; const normalized = bucket / 64; const length = 8192; const curve = new Float32Array(length); const drive = 1.08 + normalized * 3.1; for (let i = 0; i < length; i += 1) { const x = (i / (length - 1)) * 2 - 1; const asymmetric = x + Math.max(0, x) * (0.025 + normalized * 0.055); const compressed = Math.tanh(asymmetric * drive) / Math.tanh(drive); curve[i] = compressed * (0.99 - normalized * 0.035); } SPACE_ECHO_CURVE_CACHE.set(bucket, curve); return curve; }
+function createEqualPowerFade(fadeIn: boolean): Float32Array<ArrayBuffer> { const curve = new Float32Array(64); for (let i = 0; i < curve.length; i += 1) { const t = i / (curve.length - 1); curve[i] = fadeIn ? Math.sin(t * Math.PI * 0.5) : Math.cos(t * Math.PI * 0.5); } return curve; }
+const CHARACTER_CURVE_CACHE = new Map<string, Float32Array<ArrayBuffer>>();
+function getCharacterCurve(character: number, config: DelayAlgorithmConfig): Float32Array<ArrayBuffer> { const quantized = Math.round(character * 96) / 96; const key = `${config.id}:${quantized}`; const cached = CHARACTER_CURVE_CACHE.get(key); if (cached) return cached; const curve = createCharacterCurve(quantized, config); CHARACTER_CURVE_CACHE.set(key, curve); return curve; }
+function createCharacterCurve(character: number, config: DelayAlgorithmConfig): Float32Array<ArrayBuffer> { const length = 8192; const curve = new Float32Array(length); const drive = 1 + character * config.saturation * 2.2; const quantizationMix = character * config.quantization; const levels = Math.max(48, Math.round(65536 / (1 + character * character * 240))); for (let index = 0; index < length; index += 1) { const x = (index / (length - 1)) * 2 - 1; const saturated = Math.tanh(x * drive) / drive; const quantized = Math.round(saturated * levels) / levels; curve[index] = saturated * (1 - quantizationMix) + quantized * quantizationMix; } return curve; }
+const SPACE_ECHO_CURVE_CACHE = new Map<number, Float32Array<ArrayBuffer>>();
+function getSpaceEchoCurve(age: number): Float32Array<ArrayBuffer> { const bucket = Math.round(clamp01(age) * 64); const cached = SPACE_ECHO_CURVE_CACHE.get(bucket); if (cached) return cached; const normalized = bucket / 64; const length = 8192; const curve = new Float32Array(length); const drive = 1.08 + normalized * 3.1; for (let i = 0; i < length; i += 1) { const x = (i / (length - 1)) * 2 - 1; const asymmetric = x + Math.max(0, x) * (0.025 + normalized * 0.055); const compressed = Math.tanh(asymmetric * drive) / Math.tanh(drive); curve[i] = compressed * (0.99 - normalized * 0.035); } SPACE_ECHO_CURVE_CACHE.set(bucket, curve); return curve; }
 function chooseConstellationPitch(random: number, character: number): number { if (character < 0.12) return 0; const spread = Math.pow(character, 1.4); if (random < 0.24 + (1 - spread) * 0.36) return 0; if (random < 0.49) return 7; if (random < 0.69) return 12; if (random < 0.84) return -5; return -12; }
 function seededNoise(seed: number): number { const value = Math.sin(seed * 12.9898) * 43758.5453; return value - Math.floor(value); }
 function clamp01(value: number): number { return Math.max(0, Math.min(1, value)); }
