@@ -104,7 +104,10 @@ export class BitcrusherEffect extends BaseEffect {
   }
 
   public setQualityMode(mode: PerformanceMode): void {
-    const maxVoices = mode === 'studio' ? 8 : mode === 'balanced' ? 6 : 4;
+    // Keep enough simultaneous reconstruction voices that adaptive performance
+    // cannot make Grain suddenly sound sparse or low-resolution. Visual load is
+    // handled by the UI scheduler; DSP quality gets a higher floor.
+    const maxVoices = mode === 'studio' ? 8 : mode === 'balanced' ? 7 : 6;
     this.processor.port.postMessage({ type: 'quality', maxVoices });
   }
 
