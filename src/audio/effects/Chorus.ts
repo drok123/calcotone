@@ -147,43 +147,48 @@ export class ChorusEffect extends BaseEffect {
     const now = this.context.currentTime;
 
     if (this.mode === 'ce1') {
-      // CE-1 study: BBD-style short delay, restricted bandwidth and the characterful input preamp.
-      const intensity = 0.45 + this.shape * 0.75;
-      this.preamp.curve = makePreampCurve(0.18 + this.motion * 0.36, 0.045);
-      this.inputTone.frequency.setTargetAtTime(10_500 - this.motion * 2_400, now, 0.05);
-      this.sum.gain.setTargetAtTime(0.72, now, 0.04);
+      // CE-1 Chorus study: hardware Chorus mode has one Intensity control that changes
+      // both modulation rate and depth. The generic Rate/Depth controls are ignored here.
+      // Preamp remains a CALCOTONE access point to the CE-1 input-stage coloration.
+      const intensity = this.shape;
+      const chorusRate = 0.19 + intensity * 0.63;
+      const chorusDepth = 0.00055 + intensity * 0.00245;
+      this.preamp.curve = makePreampCurve(0.018 + this.motion * 0.09, 0.018);
+      this.inputTone.frequency.setTargetAtTime(9_600 - this.motion * 1_900, now, 0.05);
+      this.sum.gain.setTargetAtTime(0.82, now, 0.04);
       for (let i = 0; i < 4; i += 1) {
         const active = i < 2;
-        const phaseRate = this.rate * (i === 0 ? 1 : 0.93);
-        const base = 0.0152 + i * 0.00125;
-        this.voiceGains[i].gain.setTargetAtTime(active ? (i === 0 ? 0.78 : 0.62) : 0, now, 0.04);
-        this.lfos[i].frequency.setTargetAtTime(phaseRate, now, 0.05);
-        this.depths[i].gain.setTargetAtTime(active ? this.depth * intensity * (i ? -0.78 : 1) : 0, now, 0.05);
-        this.delays[i].delayTime.setTargetAtTime(base, now, 0.05);
-        this.highpasses[i].frequency.setTargetAtTime(80, now, 0.05);
-        this.tones[i].frequency.setTargetAtTime(7_200 + (1 - this.motion) * 1_800, now, 0.06);
-        this.pans[i].pan.setTargetAtTime(i === 0 ? -0.82 * this.spread : 0.82 * this.spread, now, 0.05);
+        this.voiceGains[i].gain.setTargetAtTime(active ? 0.72 : 0, now, 0.04);
+        this.lfos[i].frequency.setTargetAtTime(chorusRate * (i === 0 ? 1 : 0.97), now, 0.05);
+        this.depths[i].gain.setTargetAtTime(active ? chorusDepth * (i ? -0.92 : 1) : 0, now, 0.05);
+        this.delays[i].delayTime.setTargetAtTime(0.0148 + i * 0.00115, now, 0.05);
+        this.highpasses[i].frequency.setTargetAtTime(82, now, 0.05);
+        this.tones[i].frequency.setTargetAtTime(7_100 + (1 - this.motion) * 1_500, now, 0.06);
+        this.pans[i].pan.setTargetAtTime(i === 0 ? -0.68 : 0.68, now, 0.05);
       }
       return;
     }
 
     if (this.mode === 'dimensiond') {
-      // Dimension D study: four low-depth, decorrelated BBD taps. Shape selects the familiar 1-4 intensity family.
-      const dimensionMode = Math.max(1, Math.min(4, 1 + Math.floor(this.shape * 3.999)));
-      const modeDepth = [0, 0.42, 0.58, 0.74, 0.92][dimensionMode];
-      const baseByVoice = [0.0082, 0.0116, 0.0158, 0.0206];
-      const phaseSigns = [1, -1, -0.72, 0.72];
-      this.preamp.curve = makePreampCurve(0.06 + this.motion * 0.12, 0.012);
-      this.inputTone.frequency.setTargetAtTime(13_200 - this.motion * 1_900, now, 0.05);
-      this.sum.gain.setTargetAtTime(0.54, now, 0.04);
+      // SDD-320 study: the original user-facing modulation choices are button modes,
+      // including the three +4 combinations. Rate/Depth/Spread/Motion are fixed inside
+      // the hardware study rather than behaving like a generic chorus.
+      const modeIndex = Math.max(0, Math.min(6, Math.floor(this.shape * 7)));
+      const modeDepth = [0.34, 0.46, 0.60, 0.76, 0.84, 0.91, 0.98][modeIndex];
+      const modeRate = [0.165, 0.185, 0.215, 0.245, 0.178, 0.205, 0.232][modeIndex];
+      const baseByVoice = [0.0084, 0.0118, 0.0159, 0.0204];
+      const phaseSigns = [1, -1, -0.74, 0.74];
+      this.preamp.curve = makePreampCurve(0.018, 0.006);
+      this.inputTone.frequency.setTargetAtTime(13_800, now, 0.05);
+      this.sum.gain.setTargetAtTime(0.52, now, 0.04);
       for (let i = 0; i < 4; i += 1) {
-        this.voiceGains[i].gain.setTargetAtTime(0.55 + (i % 2) * 0.04, now, 0.05);
-        this.lfos[i].frequency.setTargetAtTime((0.18 + this.rate * 0.32) * (1 + i * 0.037), now, 0.06);
-        this.depths[i].gain.setTargetAtTime(this.depth * 0.34 * modeDepth * phaseSigns[i], now, 0.06);
+        this.voiceGains[i].gain.setTargetAtTime(0.55 + (i % 2) * 0.035, now, 0.05);
+        this.lfos[i].frequency.setTargetAtTime(modeRate * (1 + i * 0.031), now, 0.06);
+        this.depths[i].gain.setTargetAtTime(0.00092 * modeDepth * phaseSigns[i], now, 0.06);
         this.delays[i].delayTime.setTargetAtTime(baseByVoice[i], now, 0.06);
-        this.highpasses[i].frequency.setTargetAtTime(95, now, 0.05);
-        this.tones[i].frequency.setTargetAtTime(9_500 + this.spread * 2_200 - i * 310, now, 0.06);
-        this.pans[i].pan.setTargetAtTime((i % 2 ? 1 : -1) * (0.58 + this.spread * 0.36), now, 0.05);
+        this.highpasses[i].frequency.setTargetAtTime(92, now, 0.05);
+        this.tones[i].frequency.setTargetAtTime(10_800 - i * 260, now, 0.06);
+        this.pans[i].pan.setTargetAtTime(i % 2 ? 0.92 : -0.92, now, 0.05);
       }
       return;
     }
