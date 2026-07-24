@@ -311,8 +311,8 @@
 .dsp-viewport {
   position: relative;
   width: 100%;
-  height: clamp(220px, 16vw, 270px);
-  min-height: 220px;
+  height: clamp(300px, 20vw, 340px);
+  min-height: 300px;
   margin: 0 0 12px;
   overflow: hidden;
   isolation: isolate;
@@ -493,16 +493,16 @@
 
 @media (min-width: 1500px) {
   .dsp-viewport {
-    height: 270px;
-    min-height: 270px;
+    height: 340px;
+    min-height: 340px;
   }
 }
 
 @media (max-width: 1180px) {
   .effect-module { min-height: 338px; }
   .dsp-viewport {
-    height: 205px;
-    min-height: 205px;
+    height: 300px;
+    min-height: 300px;
   }
   .knob-row {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -515,8 +515,8 @@
   .module-grid { grid-template-columns: 1fr; }
   .effect-module { min-height: 344px; }
   .dsp-viewport {
-    height: 220px;
-    min-height: 220px;
+    height: 260px;
+    min-height: 260px;
   }
   .module-header-control { max-width: 46%; }
 }
