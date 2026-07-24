@@ -1,60 +1,57 @@
 :root {
-  --case: #222629;
-  --case-2: #2e3336;
-  --panel: #202427;
-  --panel-raised: #303538;
-  --panel-inset: #111416;
-  --edge: #596064;
-  --edge-soft: rgba(255, 255, 255, 0.085);
-  --muted: #b5bdc1;
-  --faint: #858e93;
+  --case: #15191d;
+  --case-2: #1e2328;
+  --panel: #171b20;
+  --panel-raised: #252b30;
+  --panel-inset: #0c1013;
+  --edge: #505960;
+  --edge-soft: rgba(255, 255, 255, 0.09);
+  --muted: #aab4b9;
+  --faint: #8e989e;
 }
 
 .io-panel,
 .performance-panel {
-  border-color: #5a6064;
+  border-color: #616a70;
+  border-top-color: #7b858b;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.035), transparent 30%),
-    linear-gradient(180deg, #303538, #202427);
+    linear-gradient(145deg, rgba(255, 255, 255, 0.07), transparent 20%),
+    linear-gradient(180deg, #353b40, #282d31 52%, #212529);
   box-shadow:
-    0 12px 28px rgba(0, 0, 0, 0.24),
-    inset 0 1px rgba(255, 255, 255, 0.065),
-    inset 0 -1px rgba(0, 0, 0, 0.78);
-}
-
-.modules-section {
-  border-color: #565d61;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.028), transparent 22%),
-    #1e2225;
-  box-shadow:
-    inset 0 1px rgba(255, 255, 255, 0.05),
-    inset 0 0 35px rgba(0, 0, 0, 0.24);
+    0 10px 22px rgba(0, 0, 0, 0.29),
+    inset 0 1px rgba(255, 255, 255, 0.11),
+    inset 0 -1px rgba(0, 0, 0, 0.88);
 }
 
 .effect-module {
-  border-color: #5d6468;
+  border-color: #515a61;
+  border-top-color: #68737a;
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.06), transparent 24%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.01) 0 1px, transparent 1px 4px),
-    linear-gradient(180deg, #363b3f, #25292c);
+    linear-gradient(145deg, rgba(255, 255, 255, 0.068), transparent 18%),
+    linear-gradient(180deg, #2d3338, #1e2328 68%, #181c20);
   box-shadow:
-    0 9px 18px rgba(0, 0, 0, 0.27),
-    inset 0 1px rgba(255, 255, 255, 0.075),
-    inset 0 -1px rgba(0, 0, 0, 0.86);
+    0 9px 21px rgba(0, 0, 0, 0.35),
+    inset 0 1px rgba(255, 255, 255, 0.11),
+    inset 0 -1px rgba(0, 0, 0, 0.84);
+}
+
+.effect-module.enabled {
+  border-color: #657078;
+  border-top-color: #7b878e;
 }
 
 .effect-module:not(.enabled) {
-  filter: saturate(0.62) brightness(0.86);
+  filter: none;
+  opacity: 0.84;
 }
 
 .input-matrix,
 .meter-pair,
 .signal-lamps {
-  border-color: #343b3f;
+  border-color: #3b444a;
 }
 
 .panel-heading,
 .section-header {
-  border-bottom-color: #3b4245;
+  border-bottom-color: #4a5258;
 }
