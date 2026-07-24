@@ -1,8 +1,8 @@
 .dsp-viewport {
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.025), transparent 58%),
-    #020405;
+    linear-gradient(148deg, rgba(255, 255, 255, 0.018), transparent 24%),
+    linear-gradient(180deg, #05080a 0%, #020405 58%, #010203 100%);
 }
 
 .dsp-viewport canvas {
