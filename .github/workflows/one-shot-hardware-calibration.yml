@@ -1,0 +1,458 @@
+name: One-shot hardware calibration
+
+on:
+  push:
+    paths:
+      - .github/workflows/one-shot-hardware-calibration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply hardware calibration fixes
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}: {old[:90]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          # App integration: hardware modes must address the same ordered tables as the DSP.
+          replace_once(
+              'src/App.tsx',
+              "import type { ReverbAlgorithm } from './audio/effects/Reverb';",
+              "import { REVERB_ALGORITHM_ORDER, type ReverbAlgorithm } from './audio/effects/Reverb';",
+          )
+          replace_once(
+              'src/App.tsx',
+              """const REVERB_ALGORITHMS: ReverbAlgorithm[] = [
+            'room',
+            'plate',
+            'hall',
+            'cinema',
+            'cloud',
+            'freeze',
+            'celestial',
+            'aurora',
+            'nebula',
+            'abyss',
+          ];""",
+              "const REVERB_ALGORITHMS: ReverbAlgorithm[] = [...REVERB_ALGORITHM_ORDER];",
+          )
+          replace_once(
+              'src/App.tsx',
+              "const MUSICAL_GRAIN_MODES: readonly GrainMode[] = [...GRAIN_MODE_ORDER];",
+              "const MUSICAL_GRAIN_MODES: readonly GrainMode[] = ['reconstruct','shatter','smear','prism','stutter','ruin'];",
+          )
+
+          # Audio quality floor and worklet cache/versioning.
+          replace_once(
+              'src/audio/AudioEngine.ts',
+              "const WORKLET_BUILD_VERSION = '8.4.30-ui-polish-b';",
+              "const WORKLET_BUILD_VERSION = '8.4.31-hardware-calibration-a';",
+          )
+          replace_once(
+              'src/audio/AudioEngine.ts',
+              "['Grain', `grain-processor.js?v=8.4.27-grain-engine`],",
+              "['Grain', `grain-processor.js?v=${WORKLET_BUILD_VERSION}`],\n      ['Lexicon 224', `lexicon-224-converter.js?v=${WORKLET_BUILD_VERSION}`],",
+          )
+          replace_once(
+              'src/audio/AudioEngine.ts',
+              """this.safetyClipper.oversample =
+        this.performanceMode === 'studio'
+          ? '4x'
+          : this.performanceMode === 'balanced'
+          ? '2x'
+          : 'none';""",
+              """this.safetyClipper.oversample =
+        this.performanceMode === 'studio'
+          ? '4x'
+          : '2x';""",
+          )
+
+          # CE-1: Chorus Intensity is the hardware control; generic rate/depth no longer steer it.
+          old_ce1 = """if (this.mode === 'ce1') {
+      // CE-1 study: BBD-style short delay, restricted bandwidth and the characterful input preamp.
+      const intensity = 0.45 + this.shape * 0.75;
+      this.preamp.curve = makePreampCurve(0.18 + this.motion * 0.36, 0.045);
+      this.inputTone.frequency.setTargetAtTime(10_500 - this.motion * 2_400, now, 0.05);
+      this.sum.gain.setTargetAtTime(0.72, now, 0.04);
+      for (let i = 0; i < 4; i += 1) {
+        const active = i < 2;
+        const phaseRate = this.rate * (i === 0 ? 1 : 0.93);
+        const base = 0.0152 + i * 0.00125;
+        this.voiceGains[i].gain.setTargetAtTime(active ? (i === 0 ? 0.78 : 0.62) : 0, now, 0.04);
+        this.lfos[i].frequency.setTargetAtTime(phaseRate, now, 0.05);
+        this.depths[i].gain.setTargetAtTime(active ? this.depth * intensity * (i ? -0.78 : 1) : 0, now, 0.05);
+        this.delays[i].delayTime.setTargetAtTime(base, now, 0.05);
+        this.highpasses[i].frequency.setTargetAtTime(80, now, 0.05);
+        this.tones[i].frequency.setTargetAtTime(7_200 + (1 - this.motion) * 1_800, now, 0.06);
+        this.pans[i].pan.setTargetAtTime(i === 0 ? -0.82 * this.spread : 0.82 * this.spread, now, 0.05);
+      }
+      return;
+    }"""
+          new_ce1 = """if (this.mode === 'ce1') {
+      // CE-1 Chorus study: the original Chorus mode is driven by a single Intensity
+      // control that changes both rate and depth. The generic Rate/Depth controls are
+      // intentionally ignored here; Preamp remains a CALCOTONE access point to the
+      // famously characterful input stage.
+      const intensity = this.shape;
+      const chorusRate = 0.19 + intensity * 0.63;
+      const chorusDepth = 0.00055 + intensity * 0.00245;
+      this.preamp.curve = makePreampCurve(0.018 + this.motion * 0.09, 0.018);
+      this.inputTone.frequency.setTargetAtTime(9_600 - this.motion * 1_900, now, 0.05);
+      this.sum.gain.setTargetAtTime(0.82, now, 0.04);
+      for (let i = 0; i < 4; i += 1) {
+        const active = i < 2;
+        this.voiceGains[i].gain.setTargetAtTime(active ? 0.72 : 0, now, 0.04);
+        this.lfos[i].frequency.setTargetAtTime(chorusRate * (i === 0 ? 1 : 0.97), now, 0.05);
+        this.depths[i].gain.setTargetAtTime(active ? chorusDepth * (i ? -0.92 : 1) : 0, now, 0.05);
+        this.delays[i].delayTime.setTargetAtTime(0.0148 + i * 0.00115, now, 0.05);
+        this.highpasses[i].frequency.setTargetAtTime(82, now, 0.05);
+        this.tones[i].frequency.setTargetAtTime(7_100 + (1 - this.motion) * 1_500, now, 0.06);
+        this.pans[i].pan.setTargetAtTime(i === 0 ? -0.68 : 0.68, now, 0.05);
+      }
+      return;
+    }"""
+          replace_once('src/audio/effects/Chorus.ts', old_ce1, new_ce1)
+
+          # Dimension D: seven authentic button combinations and fixed internal modulation.
+          old_dimension = """if (this.mode === 'dimensiond') {
+      // Dimension D study: four low-depth, decorrelated BBD taps. Shape selects the familiar 1-4 intensity family.
+      const dimensionMode = Math.max(1, Math.min(4, 1 + Math.floor(this.shape * 3.999)));
+      const modeDepth = [0, 0.42, 0.58, 0.74, 0.92][dimensionMode];
+      const baseByVoice = [0.0082, 0.0116, 0.0158, 0.0206];
+      const phaseSigns = [1, -1, -0.72, 0.72];
+      this.preamp.curve = makePreampCurve(0.06 + this.motion * 0.12, 0.012);
+      this.inputTone.frequency.setTargetAtTime(13_200 - this.motion * 1_900, now, 0.05);
+      this.sum.gain.setTargetAtTime(0.54, now, 0.04);
+      for (let i = 0; i < 4; i += 1) {
+        this.voiceGains[i].gain.setTargetAtTime(0.55 + (i % 2) * 0.04, now, 0.05);
+        this.lfos[i].frequency.setTargetAtTime((0.18 + this.rate * 0.32) * (1 + i * 0.037), now, 0.06);
+        this.depths[i].gain.setTargetAtTime(this.depth * 0.34 * modeDepth * phaseSigns[i], now, 0.06);
+        this.delays[i].delayTime.setTargetAtTime(baseByVoice[i], now, 0.06);
+        this.highpasses[i].frequency.setTargetAtTime(95, now, 0.05);
+        this.tones[i].frequency.setTargetAtTime(9_500 + this.spread * 2_200 - i * 310, now, 0.06);
+        this.pans[i].pan.setTargetAtTime((i % 2 ? 1 : -1) * (0.58 + this.spread * 0.36), now, 0.05);
+      }
+      return;
+    }"""
+          new_dimension = """if (this.mode === 'dimensiond') {
+      // SDD-320 study: the original user-facing modulation choices are button modes,
+      // including the three +4 combinations. Rate/Depth/Spread/Motion are fixed inside
+      // the hardware study rather than behaving like a generic chorus.
+      const modeIndex = Math.max(0, Math.min(6, Math.floor(this.shape * 7)));
+      const modeDepth = [0.34, 0.46, 0.60, 0.76, 0.84, 0.91, 0.98][modeIndex];
+      const modeRate = [0.165, 0.185, 0.215, 0.245, 0.178, 0.205, 0.232][modeIndex];
+      const baseByVoice = [0.0084, 0.0118, 0.0159, 0.0204];
+      const phaseSigns = [1, -1, -0.74, 0.74];
+      this.preamp.curve = makePreampCurve(0.018, 0.006);
+      this.inputTone.frequency.setTargetAtTime(13_800, now, 0.05);
+      this.sum.gain.setTargetAtTime(0.52, now, 0.04);
+      for (let i = 0; i < 4; i += 1) {
+        this.voiceGains[i].gain.setTargetAtTime(0.55 + (i % 2) * 0.035, now, 0.05);
+        this.lfos[i].frequency.setTargetAtTime(modeRate * (1 + i * 0.031), now, 0.06);
+        this.depths[i].gain.setTargetAtTime(0.00092 * modeDepth * phaseSigns[i], now, 0.06);
+        this.delays[i].delayTime.setTargetAtTime(baseByVoice[i], now, 0.06);
+        this.highpasses[i].frequency.setTargetAtTime(92, now, 0.05);
+        this.tones[i].frequency.setTargetAtTime(10_800 - i * 260, now, 0.06);
+        this.pans[i].pan.setTargetAtTime(i % 2 ? 0.92 : -0.92, now, 0.05);
+      }
+      return;
+    }"""
+          replace_once('src/audio/effects/Chorus.ts', old_dimension, new_dimension)
+
+          # RE-201: Width becomes the seven original three-head combinations. Original
+          # hardware is mono; keep every head centered and let Mode choose the active taps.
+          replace_once(
+              'src/audio/effects/Delay.ts',
+              "const tone = 2600 * Math.pow(4.5, color);",
+              "const tone = 2100 * Math.pow(4.4, color);",
+          )
+          replace_once(
+              'src/audio/effects/Delay.ts',
+              "this.inputLowpass.frequency.setTargetAtTime(10_500 + color * 5_500 - age * 2_400, now, 0.06);",
+              "this.inputLowpass.frequency.setTargetAtTime(8_900 + color * 3_600 - age * 1_600, now, 0.06);",
+          )
+          old_heads = """const headBase = [0.74 - width * 0.16, 0.44 + width * 0.22, 0.28 + width * 0.42];
+    const panSpread = width * 0.72;
+    this.heads.forEach((head, i) => {
+      head.delayTime.setTargetAtTime(head1 * ratios[i], now, 0.065);
+      this.headHighpasses[i].frequency.setTargetAtTime(62 + age * 45 + i * 8, now, 0.06);
+      this.headLowpasses[i].frequency.setTargetAtTime(Math.max(1800, tone * (1 - i * 0.055) * (1 - age * 0.12)), now, 0.06);
+      this.headGains[i].gain.setTargetAtTime(headBase[i] * 0.72, now, 0.06);
+      this.headPans[i].pan.setTargetAtTime(i === 0 ? -panSpread : i === 2 ? panSpread : 0, now, 0.07);
+      this.feedbackTaps[i].gain.setTargetAtTime([0.38,0.34,0.28][i] * (0.78 + width * 0.22), now, 0.06);
+      const wowDepth = (0.00008 + age * age * 0.0019) * (1 + i * 0.17);
+      const flutterDepth = (0.000025 + age * age * 0.00042) * (1 + i * 0.12);
+      this.wowDepths[i].gain.setTargetAtTime(wowDepth, now, 0.08);
+      this.flutterDepths[i].gain.setTargetAtTime(i % 2 ? -flutterDepth : flutterDepth, now, 0.08);
+    });"""
+          new_heads = """const modeIndex = Math.max(0, Math.min(6, Math.floor(width * 7)));
+    const modeHeads = [
+      [1,0,0], [0,1,0], [0,0,1], [1,1,0], [0,1,1], [1,0,1], [1,1,1],
+    ][modeIndex];
+    const headBase = [0.72, 0.62, 0.54];
+    this.heads.forEach((head, i) => {
+      const active = modeHeads[i];
+      head.delayTime.setTargetAtTime(head1 * ratios[i], now, 0.065);
+      this.headHighpasses[i].frequency.setTargetAtTime(62 + age * 45 + i * 8, now, 0.06);
+      this.headLowpasses[i].frequency.setTargetAtTime(Math.max(1700, tone * (1 - i * 0.055) * (1 - age * 0.12)), now, 0.06);
+      this.headGains[i].gain.setTargetAtTime(active * headBase[i], now, 0.06);
+      this.headPans[i].pan.setTargetAtTime(0, now, 0.07);
+      this.feedbackTaps[i].gain.setTargetAtTime(active * [0.38,0.34,0.28][i], now, 0.06);
+      const wowDepth = (0.00006 + age * age * 0.00165) * (1 + i * 0.17);
+      const flutterDepth = (0.00002 + age * age * 0.00036) * (1 + i * 0.12);
+      this.wowDepths[i].gain.setTargetAtTime(wowDepth, now, 0.08);
+      this.flutterDepths[i].gain.setTargetAtTime(i % 2 ? -flutterDepth : flutterDepth, now, 0.08);
+    });"""
+          replace_once('src/audio/effects/Delay.ts', old_heads, new_heads)
+
+          # EMT 140: original plate is mono excitation with stereo pickups; its mechanical
+          # damper range is finite and the physical hardware does not have LFO modulation.
+          replace_once(
+              'src/audio/effects/Reverb.ts',
+              "emt140: { id:'emt140', lineTimes:[0.0119,0.0157,0.0193,0.0233,0.0277,0.0329,0.0383,0.0449,0.0521,0.0601,0.0691,0.0793], predelay:[0.0035,0.0052], sizeRange:[0.88,1.34], decayBias:1.0, dampingBias:1.34, diffusionBias:1.55, modulationDepth:0.000035, modulationRates:[0.031,0.037,0.043,0.047,0.053,0.059,0.067,0.071,0.079,0.083,0.089,0.097], crossAmount:0.105, outputTrim:0.19, inputTrim:0.62, highpass:115, splitDecay:0.16, plateDispersion:1.0 },",
+              "emt140: { id:'emt140', lineTimes:[0.0119,0.0157,0.0193,0.0233,0.0277,0.0329,0.0383,0.0449,0.0521,0.0601,0.0691,0.0793], predelay:[0.0035,0.0052], sizeRange:[0.94,1.08], decayBias:1.0, dampingBias:1.34, diffusionBias:1.62, modulationDepth:0, modulationRates:[0.031,0.037,0.043,0.047,0.053,0.059,0.067,0.071,0.079,0.083,0.089,0.097], crossAmount:0.105, outputTrim:0.19, inputTrim:0.31, highpass:115, splitDecay:0.16, plateDispersion:1.0 },",
+          )
+          replace_once(
+              'src/audio/effects/Reverb.ts',
+              "lexicon224: { id:'lexicon224', lineTimes:[0.0247,0.0311,0.0389,0.0473,0.0571,0.0683,0.0811,0.0953,0.1117,0.1301], predelay:[0.024,0.031], sizeRange:[0.78,2.2], decayBias:1.12, dampingBias:0.72, diffusionBias:1.24, modulationDepth:0.00082, modulationRates:[0.071,0.089,0.113,0.137,0.173,0.211,0.257,0.307,0.367,0.433], crossAmount:0.12, outputTrim:0.21, inputTrim:0.58, highpass:145, converterBits:12, converterLowpass:9800, splitDecay:0.34 },",
+              "lexicon224: { id:'lexicon224', lineTimes:[0.0247,0.0311,0.0389,0.0473,0.0571,0.0683,0.0811,0.0953,0.1117,0.1301], predelay:[0.024,0.031], sizeRange:[0.78,2.2], decayBias:1.12, dampingBias:0.72, diffusionBias:1.24, modulationDepth:0.00082, modulationRates:[0.071,0.089,0.113,0.137,0.173,0.211,0.257,0.307,0.367,0.433], crossAmount:0.12, outputTrim:0.21, inputTrim:0.58, highpass:145, converterBits:12, converterLowpass:8800, splitDecay:0.34 },",
+          )
+          replace_once(
+              'src/audio/effects/Reverb.ts',
+              "private readonly converterLowpass: BiquadFilterNode;\n  private readonly splitter: ChannelSplitterNode;",
+              "private readonly converterLowpass: BiquadFilterNode;\n  private readonly lexiconInput: AudioWorkletNode | null;\n  private readonly lexiconOutput: AudioWorkletNode | null;\n  private readonly splitter: ChannelSplitterNode;",
+          )
+          replace_once(
+              'src/audio/effects/Reverb.ts',
+              """this.inputConverter.oversample = '2x';
+    this.outputConverter.oversample = '2x';
+    const converterCurve = config.converterBits ? createConverterCurve(config.converterBits) : IDENTITY_CURVE;
+    this.inputConverter.curve = converterCurve;
+    this.outputConverter.curve = converterCurve;
+    this.converterLowpass = context.createBiquadFilter();""",
+              """this.inputConverter.oversample = '2x';
+    this.outputConverter.oversample = '2x';
+    const converterCurve = config.converterBits && config.id !== 'lexicon224' ? createConverterCurve(config.converterBits) : IDENTITY_CURVE;
+    this.inputConverter.curve = converterCurve;
+    this.outputConverter.curve = converterCurve;
+    this.lexiconInput = config.id === 'lexicon224'
+      ? new AudioWorkletNode(context, 'calcotone-lexicon224-converter', { processorOptions: { role: 'input' }, numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] })
+      : null;
+    this.lexiconOutput = config.id === 'lexicon224'
+      ? new AudioWorkletNode(context, 'calcotone-lexicon224-converter', { processorOptions: { role: 'output' }, numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] })
+      : null;
+    this.converterLowpass = context.createBiquadFilter();""",
+          )
+          replace_once(
+              'src/audio/effects/Reverb.ts',
+              """this.input.gain.value = config.inputTrim;
+    this.input.connect(this.inputConverter);
+    this.inputConverter.connect(this.splitter);
+
+    for (let channel = 0; channel < 2; channel += 1) {
+      const hp = context.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = config.highpass; hp.Q.value = 0.55;
+      const lp = context.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = config.converterLowpass ?? 16_000; lp.Q.value = 0.4;
+      this.splitter.connect(hp, channel); hp.connect(lp); lp.connect(this.predelays[channel]); this.inputFilters.push(hp, lp);
+    }""",
+              """this.input.gain.value = config.inputTrim;
+    this.input.connect(this.inputConverter);
+    if (this.lexiconInput) {
+      this.inputConverter.connect(this.lexiconInput);
+      this.lexiconInput.connect(this.splitter);
+    } else {
+      this.inputConverter.connect(this.splitter);
+    }
+
+    for (let channel = 0; channel < 2; channel += 1) {
+      const hp = context.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = config.highpass; hp.Q.value = 0.55;
+      const lp = context.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = config.converterLowpass ?? 16_000; lp.Q.value = 0.4;
+      if (config.id === 'emt140') {
+        this.splitter.connect(hp, 0);
+        this.splitter.connect(hp, 1);
+      } else {
+        this.splitter.connect(hp, channel);
+      }
+      hp.connect(lp); lp.connect(this.predelays[channel]); this.inputFilters.push(hp, lp);
+    }""",
+          )
+          replace_once(
+              'src/audio/effects/Reverb.ts',
+              "this.merger.connect(this.converterLowpass); this.converterLowpass.connect(this.outputConverter); this.outputConverter.connect(this.output);",
+              """this.merger.connect(this.converterLowpass); this.converterLowpass.connect(this.outputConverter);
+    if (this.lexiconOutput) {
+      this.outputConverter.connect(this.lexiconOutput);
+      this.lexiconOutput.connect(this.output);
+    } else {
+      this.outputConverter.connect(this.output);
+    }""",
+          )
+          replace_once(
+              'src/audio/effects/Reverb.ts',
+              "const effectiveDecay = Math.max(0.25, decay * this.config.decayBias);",
+              """const normalizedDecay = Math.max(0, Math.min(1, Math.log(Math.max(0.35, decay) / 0.35) / Math.log(16 / 0.35)));
+    const effectiveDecay = this.config.id === 'emt140'
+      ? 0.5 + normalizedDecay * 5.0
+      : Math.max(0.25, decay * this.config.decayBias);""",
+          )
+          replace_once(
+              'src/audio/effects/Reverb.ts',
+              "[this.input,this.output,this.inputConverter,this.outputConverter,this.converterLowpass,this.splitter,this.merger,...this.predelays,...this.inputFilters,...this.diffusers,...this.delays,...this.damping,...this.loopHighpasses,...this.loopSaturators,...this.feedback,...this.outputGains,...this.crossGains,...this.lfoDepths].forEach((node) => node.disconnect());",
+              "[this.input,this.output,this.inputConverter,this.outputConverter,this.converterLowpass,...(this.lexiconInput ? [this.lexiconInput] : []),...(this.lexiconOutput ? [this.lexiconOutput] : []),this.splitter,this.merger,...this.predelays,...this.inputFilters,...this.diffusers,...this.delays,...this.damping,...this.loopHighpasses,...this.loopSaturators,...this.feedback,...this.outputGains,...this.crossGains,...this.lfoDepths].forEach((node) => node.disconnect());",
+          )
+
+          # Grain hardware paths: preserve authentic fixed clock/depth where the original
+          # machine was fixed. MPC60 uses a nonlinear 12-bit storage representation.
+          replace_once(
+              'public/grain-processor.js',
+              """  quantize(value, bits) {
+    const levels = Math.pow(2, bits - 1);
+    return Math.round(Math.max(-1, Math.min(1, value)) * levels) / levels;
+  }
+""",
+              """  quantize(value, bits) {
+    const levels = Math.pow(2, bits - 1);
+    return Math.round(Math.max(-1, Math.min(1, value)) * levels) / levels;
+  }
+
+  quantizeNonlinear12(value) {
+    // MPC60 stores a proprietary nonlinear 12-bit representation after its input A/D.
+    // The exact companding law is not public, so use a conservative reversible log law
+    // rather than pretending ordinary linear 12-bit truncation is the original machine.
+    const sign = value < 0 ? -1 : 1;
+    const magnitude = Math.min(1, Math.abs(value));
+    const mu = 7.5;
+    const encoded = Math.log1p(mu * magnitude) / Math.log1p(mu);
+    const quantized = Math.round(encoded * 2047) / 2047;
+    return sign * Math.expm1(quantized * Math.log1p(mu)) / mu;
+  }
+""",
+          )
+          replace_once(
+              'public/grain-processor.js',
+              """    } else if (pitch > 0.005) {
+      // SP-1200 clock coloration extension: unity at Pitch=0, increasingly abusive clocking above it.
+      targetRate = 26040 * (0.72 + pitch * 0.56);
+    }
+""",
+              """    }
+""",
+          )
+          replace_once(
+              'public/grain-processor.js',
+              """      this.hardwareHeldL = this.quantize(shapedL, bitDepth);
+      this.hardwareHeldR = this.quantize(shapedR, bitDepth);""",
+              """      this.hardwareHeldL = mode === 7 ? this.quantizeNonlinear12(shapedL) : this.quantize(shapedL, bitDepth);
+      this.hardwareHeldR = mode === 7 ? this.quantizeNonlinear12(shapedR) : this.quantize(shapedR, bitDepth);""",
+          )
+
+          # Truthful hardware UI: lock controls that do not exist on the originals.
+          replace_once(
+              'src/components/effects/EffectModule.tsx',
+              "if (parameterId === 'width') return { label: 'Head Mix', display };",
+              "if (parameterId === 'width') return { label: 'Mode', display: `MODE ${re201Mode(value)}` };",
+          )
+          replace_once(
+              'src/components/effects/EffectModule.tsx',
+              """if (module.id === 'chorus' && module.driftMode === 'ce1') {
+    if (parameterId === 'shape') return { label: 'Intensity', display: `${Math.round(value * 100)}%` };
+    if (parameterId === 'motion') return { label: 'Preamp', display: `${Math.round(value * 100)}%` };
+  }""",
+              """if (module.id === 'chorus' && module.driftMode === 'ce1') {
+    if (parameterId === 'rate') return { label: 'Rate', display: 'INTENSITY', disabled: true };
+    if (parameterId === 'depth') return { label: 'Depth', display: 'INTENSITY', disabled: true };
+    if (parameterId === 'shape') return { label: 'Intensity', display: `${Math.round(value * 100)}%` };
+    if (parameterId === 'spread') return { label: 'Stereo', display: 'CLASSIC', disabled: true };
+    if (parameterId === 'motion') return { label: 'Preamp', display: `${Math.round(value * 100)}%` };
+  }""",
+          )
+          replace_once(
+              'src/components/effects/EffectModule.tsx',
+              """if (module.id === 'chorus' && module.driftMode === 'dimensiond') {
+    if (parameterId === 'shape') return { label: 'Mode', display: `${Math.max(1, Math.min(4, 1 + Math.floor(value * 3.999)))}` };
+    if (parameterId === 'motion') return { label: 'Circuit', display: `${Math.round(value * 100)}%` };
+  }""",
+              """if (module.id === 'chorus' && module.driftMode === 'dimensiond') {
+    if (parameterId === 'rate') return { label: 'Rate', display: 'FIXED', disabled: true };
+    if (parameterId === 'depth') return { label: 'Depth', display: 'FIXED', disabled: true };
+    if (parameterId === 'shape') return { label: 'Mode', display: dimensionDMode(value) };
+    if (parameterId === 'spread') return { label: 'Stereo', display: 'FIXED', disabled: true };
+    if (parameterId === 'motion') return { label: 'Circuit', display: 'FIXED', disabled: true };
+  }""",
+          )
+          replace_once(
+              'src/components/effects/EffectModule.tsx',
+              """if (module.id === 'reverb' && module.algorithm === 'emt140') {
+    if (parameterId === 'size') return { label: 'Plate', display };
+    if (parameterId === 'color') return { label: 'Damping', display };
+    if (parameterId === 'diffusion') return { label: 'Tension', display };
+    if (parameterId === 'motion') return { label: 'Pickup', display };
+  }""",
+              """if (module.id === 'reverb' && module.algorithm === 'emt140') {
+    if (parameterId === 'decay') return { label: 'Damper', display: `${emt140Decay(value).toFixed(1)} s` };
+    if (parameterId === 'size') return { label: 'Plate', display: '140', disabled: true };
+    if (parameterId === 'color') return { label: 'Damping', display };
+    if (parameterId === 'diffusion') return { label: 'Tension', display };
+    if (parameterId === 'motion') return { label: 'Mod', display: 'NONE', disabled: true };
+  }""",
+          )
+          replace_once(
+              'src/components/effects/EffectModule.tsx',
+              "if (parameterId === 'pitch') return { label: 'Clock', display: `${sp1200ClockKhz(value).toFixed(2)} kHz` };",
+              "if (parameterId === 'pitch') return { label: 'Clock', display: '26.04 kHz FIXED', disabled: true };",
+          )
+          replace_once(
+              'src/components/effects/EffectModule.tsx',
+              """function sp1200ClockKhz(value: number): number {
+  return value <= 0.005 ? 26.04 : 26.04 * (0.72 + value * 0.56);
+}
+
+function mirageRateKhz""",
+              """function re201Mode(value: number): number {
+  return Math.max(1, Math.min(7, 1 + Math.floor(value * 7)));
+}
+
+function dimensionDMode(value: number): string {
+  const index = Math.max(0, Math.min(6, Math.floor(value * 7)));
+  return ['1', '2', '3', '4', '1+4', '2+4', '3+4'][index] ?? '1';
+}
+
+function emt140Decay(value: number): number {
+  return 0.5 + Math.max(0, Math.min(1, value)) * 5;
+}
+
+function mirageRateKhz""",
+          )
+          PY
+
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit calibrated implementation and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/one-shot-hardware-calibration.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.tsx src/audio/AudioEngine.ts src/audio/effects/Chorus.ts src/audio/effects/Delay.ts src/audio/effects/Reverb.ts src/components/effects/EffectModule.tsx public/grain-processor.js .github/workflows/one-shot-hardware-calibration.yml
+          git commit -m "Calibrate vintage hardware modes against original behavior"
+          git push
