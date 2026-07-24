@@ -54,7 +54,7 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     return (x >>> 0) / 4294967296;
   }
 
-  spawnVoice(density, pitch, chaos, mode) {
+  spawnVoice(density, pitch, chaos, mode, pitchLocked) {
     let voice = null;
     for (let i = 0; i < this.effectiveVoiceLimit; i += 1) {
       if (!this.voices[i].active) { voice = this.voices[i]; break; }
@@ -83,25 +83,30 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       [0,12,-12,7,-7,19,-19],
     ];
     const setIndex = Math.min(sets.length - 1, Math.floor(pitch * sets.length));
-    let intervals = sets[setIndex];
+    let intervals = pitchLocked ? [0] : sets[setIndex];
 
-    if (mode === 3) { // PRISM: chord-like interval families
-      const prismSets = [
-        [0,0,7,-5],
-        [0,4,7,-12],
-        [0,3,7,12],
-        [0,5,7,12,-12],
-        [0,7,12,19,-12],
-      ];
-      intervals = prismSets[setIndex];
-    } else if (mode === 4) {
-      intervals = [0,0,0,0, pitch > .55 ? 12 : 0, pitch > .75 ? -12 : 0];
-    } else if (mode === 5) {
-      intervals = [0,-12,12,-7,7,-19,19];
+    // At Pitch = 0 the grain engine becomes a true unity-pitch reconstruction processor.
+    // Temporal scatter, reverse playback, density, chaos, mode destruction, bit depth and
+    // bloom all remain active; only interval/fine-pitch transposition is removed.
+    if (!pitchLocked) {
+      if (mode === 3) { // PRISM: chord-like interval families
+        const prismSets = [
+          [0,0,7,-5],
+          [0,4,7,-12],
+          [0,3,7,12],
+          [0,5,7,12,-12],
+          [0,7,12,19,-12],
+        ];
+        intervals = prismSets[setIndex];
+      } else if (mode === 4) {
+        intervals = [0,0,0,0, pitch > .55 ? 12 : 0, pitch > .75 ? -12 : 0];
+      } else if (mode === 5) {
+        intervals = [0,-12,12,-7,7,-19,19];
+      }
     }
 
     let semitones = intervals[(this.random() * intervals.length) | 0];
-    const fineSpread = mode === 3 ? pitch * 0.18 : pitch * (0.16 + chaos * 1.45);
+    const fineSpread = pitchLocked ? 0 : mode === 3 ? pitch * 0.18 : pitch * (0.16 + chaos * 1.45);
     semitones += (this.random() * 2 - 1) * fineSpread;
 
     let step = Math.pow(2, semitones / 12);
@@ -178,11 +183,12 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     const targetDensity = Math.max(0, Math.min(1, parameters.density[0]));
     const targetPitch = Math.max(0, Math.min(1, parameters.pitch[0]));
     const targetChaos = Math.max(0, Math.min(1, parameters.chaos[0]));
+    const pitchLocked = targetPitch <= 0.005;
     this.smoothedDensity += (targetDensity - this.smoothedDensity) * 0.08;
     this.smoothedPitch += (targetPitch - this.smoothedPitch) * 0.06;
     this.smoothedChaos += (targetChaos - this.smoothedChaos) * 0.06;
     const density = this.smoothedDensity;
-    const pitch = this.smoothedPitch;
+    const pitch = pitchLocked ? 0 : this.smoothedPitch;
     const chaos = this.smoothedChaos;
     const spawnRateScale = mode === 2 ? 0.72 : mode === 1 ? 1.35 : mode === 4 ? 1.55 : mode === 5 ? 1.18 : 1;
     const spawnInterval = Math.max(24, Math.floor(sampleRate / ((14 + density * 104) * spawnRateScale)));
@@ -198,7 +204,7 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
 
       this.spawnCounter -= 1;
       if (this.spawnCounter <= 0) {
-        const spawned = this.spawnVoice(density, pitch, chaos, mode);
+        const spawned = this.spawnVoice(density, pitch, chaos, mode, pitchLocked);
         this.spawnCounter = spawned
           ? Math.max(16, spawnInterval + (((this.random() - 0.5) * spawnInterval * chaos) | 0))
           : 32;
