@@ -131,6 +131,49 @@ Wow/flutter, cassette hiss and vinyl noise are disabled in this mode. Those belo
 
 The current implementation is **topology-informed, not measurement-certified**. Do not label it calibrated or exact until it has been compared against real 424 MkI captures or trustworthy bench measurements.
 
+## Ember Tube Lab
+
+Ember is the home for both CALCOTONE's original saturation processes and serious models of analog gain stages.
+
+The generic **Tube** mode remains an original creative processor. Named tube modes are different: they are built on a stateful nonlinear tube-stage engine rather than static brand-themed EQ or a renamed waveshaper.
+
+### First Tube Lab targets
+
+The initial premium small-signal tube set is:
+
+- **Genalex Gold Lion B759 / ECC83**
+- **Mullard ECC83**
+- **Telefunken ECC83 smooth plate**
+- **Amperex Bugle Boy ECC83 / 12AX7**
+- **RCA 12AX7 black plate**
+
+All five share the 12AX7 / ECC83 electrical family as their starting point. The current processor models:
+
+- triode-style plate / grid nonlinearity using an ECC83-like load-line core
+- asymmetric clipping from operating point rather than an arbitrary even-harmonic knob
+- stateful bias / cathode memory
+- dynamic sag and recovery
+- drive-dependent compression
+- per-model operating-profile differences
+- internal 2x minimum processing, with higher quality in Studio mode
+
+### Tube Lab honesty rule
+
+Datasheets can justify the tube family and a realistic operating region, but they do not prove the exact audible differences between individual vintage manufacturers or specimens.
+
+Therefore Tube Lab has two maturity levels:
+
+1. **Topology/data-informed** — the tube family, operating point and nonlinear circuit behavior are modeled from technical data. Brand-profile deltas remain conservative.
+2. **Specimen-calibrated** — the model has been compared against trustworthy measurements or captures of real tubes at controlled operating points.
+
+Do not call a named vintage tube measurement-matched until stage 2 is complete.
+
+The brand-profile differences in the current first-pass Tube Lab are intentionally small. Future measurements should refine transfer curves, harmonic spectra, headroom, bias memory and dynamic recovery without changing the public Ember control layout.
+
+### Future power-tube stage
+
+**Western Electric 300B** is a high-priority future Ember model, but it should not be treated as another ECC83 preset. A proper 300B model needs the single-ended power-stage operating point plus output transformer / load interaction. Build it as its own power-stage topology.
+
 ## Retro hardware target selection
 
 CALCOTONE should prioritize culturally important, widely recognized retro hardware **when enough technical information exists to model it honestly**. Popularity alone is not enough; documentation and measurable behavior matter.
@@ -173,7 +216,7 @@ For digital samplers, model the actual sample rate / bit depth / converter and r
 
 ### Ember
 
-Research classic console and preamp stages by exact revision. Do not add a famous name until the relevant gain stage, EQ/filter path and nonlinear behavior can be justified technically.
+Research classic console and preamp stages by exact revision alongside Tube Lab. Do not add a famous console name until the relevant gain stage, EQ/filter path and nonlinear behavior can be justified technically.
 
 ## Artifact: hardware-media laboratory
 
