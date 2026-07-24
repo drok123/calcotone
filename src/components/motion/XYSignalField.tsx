@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { ModuleState, XYAssignment } from '../../ui/types';
+import { getEffectiveMotionValue } from '../../ui/motion';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
 import { DreamFieldEngine } from './DreamFieldEngine';
 import './DreamField.css';
@@ -34,18 +35,38 @@ function visualEnergy(module: ModuleState): number {
       break;
   }
 
-  // Wet level gates the visual contribution, while meaningful module controls decide
-  // how expressive it becomes. sqrt keeps low-but-audible mixes visually readable.
   return clamp01(Math.sqrt(mix) * (0.52 + clamp01(character) * 0.48));
 }
 
-function modulesForDreamEngine(modules: ModuleState[]): ModuleState[] {
+function modulesForDreamEngine(
+  modules: ModuleState[],
+  assignments: XYAssignment[],
+  position: { x: number; y: number }
+): ModuleState[] {
+  const assignmentByTarget = new Map(assignments.map((assignment) => [assignment.target, assignment]));
+
   return modules.map((module) => {
-    if (!module.enabled || !module.available) return module;
-    const energy = visualEnergy(module);
-    return {
+    const effectiveParameters = module.parameters.map((parameter) => {
+      const assignment = assignmentByTarget.get(`${module.id}.${parameter.id}`);
+      if (!assignment) return parameter;
+
+      return {
+        ...parameter,
+        value: getEffectiveMotionValue(parameter.value, assignment, position),
+      };
+    });
+
+    const effectiveModule: ModuleState = {
       ...module,
-      parameters: module.parameters.map((parameter) =>
+      parameters: effectiveParameters,
+    };
+
+    if (!module.enabled || !module.available) return effectiveModule;
+
+    const energy = visualEnergy(effectiveModule);
+    return {
+      ...effectiveModule,
+      parameters: effectiveParameters.map((parameter) =>
         parameter.id === 'mix' ? { ...parameter, value: energy } : parameter
       ),
     };
@@ -90,12 +111,32 @@ export function XYSignalField({
     let dpr = Math.min(1.5, window.devicePixelRatio || 1);
     let faulted = false;
     let visualModuleSource: ModuleState[] | null = null;
-    let visualModules: ModuleState[] = modulesForDreamEngine(modulesRef.current);
+    let visualAssignmentSource: XYAssignment[] | null = null;
+    let visualX = Number.NaN;
+    let visualY = Number.NaN;
+    let visualModules: ModuleState[] = modulesForDreamEngine(
+      modulesRef.current,
+      assignmentsRef.current,
+      positionRef.current
+    );
 
     const getVisualModules = () => {
-      if (visualModuleSource !== modulesRef.current) {
+      const nextPosition = positionRef.current;
+      if (
+        visualModuleSource !== modulesRef.current ||
+        visualAssignmentSource !== assignmentsRef.current ||
+        visualX !== nextPosition.x ||
+        visualY !== nextPosition.y
+      ) {
         visualModuleSource = modulesRef.current;
-        visualModules = modulesForDreamEngine(modulesRef.current);
+        visualAssignmentSource = assignmentsRef.current;
+        visualX = nextPosition.x;
+        visualY = nextPosition.y;
+        visualModules = modulesForDreamEngine(
+          modulesRef.current,
+          assignmentsRef.current,
+          nextPosition
+        );
       }
       return visualModules;
     };
@@ -145,7 +186,6 @@ export function XYSignalField({
           modules: getVisualModules(),
           assignments: assignmentsRef.current,
           x: positionRef.current.x / 100,
-          // Keep the engine contract conventional: bottom = 0, top = 1.
           y: positionRef.current.y / 100,
           dragging: draggingRef.current,
           time: stamp / 1000,
