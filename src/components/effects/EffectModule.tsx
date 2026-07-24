@@ -309,7 +309,7 @@ export function EffectModule({
       {customFaceplate ? (
         <div
           className="faceplate-layout-stage"
-          style={{ height: `${Math.max(faceplateEditor.layout.viewportHeight + 12, faceplateEditor.layout.controlTop + faceplateEditor.layout.controlAreaHeight)}px` }}
+          style={{ height: `${faceplateEditor.layout.stageHeight}px` }}
         >
           <div
             className={`faceplate-viewport-shell ${faceplateEditor.editing ? 'is-editing' : ''}`}
@@ -331,7 +331,7 @@ export function EffectModule({
 
           <div
             className={`knob-row faceplate-control-surface ${faceplateEditor.editing ? 'is-editing' : ''}`}
-            style={{ top: `${faceplateEditor.layout.controlTop}px`, height: `${faceplateEditor.layout.controlAreaHeight}px` }}
+            style={{ top: 0, height: `${faceplateEditor.layout.stageHeight}px` }}
           >
             {faceplateEditor.editing && faceplateEditor.guides.x !== null && (
               <span className="faceplate-guide faceplate-guide-x" style={{ left: `${faceplateEditor.guides.x * 100}%` }} aria-hidden="true" />
@@ -340,7 +340,7 @@ export function EffectModule({
               <span className="faceplate-guide faceplate-guide-y" style={{ top: `${faceplateEditor.guides.y}px` }} aria-hidden="true" />
             )}
             {module.parameters.map((parameter, index) => {
-              const point = faceplateEditor.layout.knobs[index] ?? { x: ((index % 3) + 0.5) / 3, y: index < 3 ? 160 : 264 };
+              const point = faceplateEditor.layout.knobs[index] ?? { x: ((index % 3) + 0.5) / 3, y: index < 3 ? 364 : 468 };
               return (
                 <div
                   key={parameter.id}
