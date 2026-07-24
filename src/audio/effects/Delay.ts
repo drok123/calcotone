@@ -9,15 +9,20 @@ export type DelayAlgorithm =
   | 'diffuse'
   | 'scatter'
   | 'constellation'
-  | 're201';
+  | 're201'
+  | 'EP-3 Echoplex'
+  | 'Binson Echorec'
+  | 'Deluxe Memory Man'
+  | 'AMS DMX 15-80 S';
 
 // Existing indices stay fixed so saved presets keep their original sound.
 export const DELAY_ALGORITHM_ORDER: DelayAlgorithm[] = [
   'clean','tape','bbd','pingpong','diffuse','scatter','constellation','re201',
+  'EP-3 Echoplex','Binson Echorec','Deluxe Memory Man','AMS DMX 15-80 S',
 ];
 
 const ALGORITHM: ParameterDefinition = { id: 'algorithm', label: 'Algorithm', min: 0, max: DELAY_ALGORITHM_ORDER.length - 1, defaultValue: 1, smoothingTime: 0.08 };
-const TIME: ParameterDefinition = { id: 'time', label: 'Time', min: 0.03, max: 4, defaultValue: 0.36, unit: 's', taper: 'logarithmic', smoothingTime: 0.05 };
+const TIME: ParameterDefinition = { id: 'time', label: 'Time', min: 0.03, max: 6.2, defaultValue: 0.36, unit: 's', taper: 'logarithmic', smoothingTime: 0.05 };
 const FEEDBACK: ParameterDefinition = { id: 'feedback', label: 'Feedback', min: 0, max: 0.9, defaultValue: 0.22, smoothingTime: 0.045 };
 const COLOR: ParameterDefinition = { id: 'color', label: 'Color', min: 0, max: 1, defaultValue: 0.42, smoothingTime: 0.06 };
 const CHARACTER: ParameterDefinition = { id: 'character', label: 'Character', min: 0, max: 1, defaultValue: 0.14, smoothingTime: 0.08 };
@@ -60,6 +65,10 @@ const CONFIGS: Record<Exclude<DelayAlgorithm, 're201'>, DelayAlgorithmConfig> = 
   diffuse: { id:'diffuse', timeRatios:[1,1.271], crossFeedback:0.42, sameFeedback:0.58, highpass:130, lowpassRange:[1900,13500], saturation:0.28, quantization:0.01, flutterDepth:0.0014, flutterRates:[0.09,0.151], diffusionStages:4, diffusionBase:510, outputTrim:0.56, inputTrim:0.72, scatter:0.055, pitchScatter:0, reverseChance:0, orbitDepth:0 },
   scatter: { id:'scatter', timeRatios:[1,0.754], crossFeedback:0.55, sameFeedback:0.45, highpass:170, lowpassRange:[1500,11800], saturation:0.38, quantization:0.16, flutterDepth:0.0022, flutterRates:[0.07,0.113], diffusionStages:2, diffusionBase:670, outputTrim:0.52, inputTrim:0.68, scatter:0.22, pitchScatter:0, reverseChance:0, orbitDepth:0 },
   constellation: { id:'constellation', timeRatios:[1,1.333], crossFeedback:0.68, sameFeedback:0.32, highpass:145, lowpassRange:[2100,16500], saturation:0.24, quantization:0.035, flutterDepth:0.0017, flutterRates:[0.071,0.109], diffusionStages:3, diffusionBase:640, outputTrim:0.48, inputTrim:0.62, scatter:0.12, pitchScatter:0.82, reverseChance:0.28, orbitDepth:0.72 },
+  'EP-3 Echoplex': { id:'EP-3 Echoplex', timeRatios:[1,1.003], crossFeedback:0.04, sameFeedback:0.96, highpass:72, lowpassRange:[2100,11800], saturation:0.92, quantization:0.015, flutterDepth:0.0033, flutterRates:[0.23,0.31], diffusionStages:0, diffusionBase:760, outputTrim:0.71, inputTrim:0.91, scatter:0.024, pitchScatter:0, reverseChance:0, orbitDepth:0 },
+  'Binson Echorec': { id:'Binson Echorec', timeRatios:[1,1.47], crossFeedback:0.31, sameFeedback:0.69, highpass:88, lowpassRange:[2450,14200], saturation:0.44, quantization:0.025, flutterDepth:0.00095, flutterRates:[0.13,0.171], diffusionStages:1, diffusionBase:970, outputTrim:0.67, inputTrim:0.87, scatter:0.038, pitchScatter:0, reverseChance:0, orbitDepth:0.18 },
+  'Deluxe Memory Man': { id:'Deluxe Memory Man', timeRatios:[1,0.992], crossFeedback:0.16, sameFeedback:0.84, highpass:118, lowpassRange:[780,6200], saturation:0.62, quantization:0.29, flutterDepth:0.0022, flutterRates:[0.42,0.53], diffusionStages:1, diffusionBase:1080, outputTrim:0.66, inputTrim:0.86, scatter:0.02, pitchScatter:0, reverseChance:0, orbitDepth:0 },
+  'AMS DMX 15-80 S': { id:'AMS DMX 15-80 S', timeRatios:[1,1.031], crossFeedback:0.34, sameFeedback:0.66, highpass:42, lowpassRange:[5900,16500], saturation:0.12, quantization:0.085, flutterDepth:0.00022, flutterRates:[0.31,0.37], diffusionStages:0, diffusionBase:1200, outputTrim:0.72, inputTrim:0.9, scatter:0.012, pitchScatter:0.42, reverseChance:0, orbitDepth:0.1 },
 };
 
 const PITCH_GRAIN_ENVELOPE: Float32Array<ArrayBuffer> = new Float32Array([0, 0.18, 0.72, 1, 0.72, 0.18, 0]);
@@ -204,7 +213,8 @@ class DelayNetwork implements DelayNetworkLike {
       this.directOutputs[channel].connect(this.merger, 0, channel); this.crossOutputs[channel].connect(this.merger, 0, 1 - channel);
       const lfo = this.lfos[channel];
       lfo.type = channel === 0 ? 'sine' : 'triangle'; lfo.frequency.value = config.flutterRates[channel];
-      this.lfoDepths[channel].gain.value = 0; lfo.connect(this.lfoDepths[channel]); this.lfoDepths[channel].connect(this.delays[channel].delayTime); lfo.start(context.currentTime + channel * 0.19);
+      this.lfoDepths[channel].gain.value = 0; lfo.connect(this.lfoDepths[channel]); this.lfoDepths[channel].connect(this.delays[channel].delayTime);
+      lfo.start(context.currentTime + channel * 0.041);
     }
     this.merger.connect(this.output);
     if (config.scatter > 0) this.startScatterClock();
@@ -216,7 +226,14 @@ class DelayNetwork implements DelayNetworkLike {
     const now = this.context.currentTime;
     const cutoff = this.config.lowpassRange[0] * Math.pow(this.config.lowpassRange[1] / this.config.lowpassRange[0], color);
     const normalizedFeedback = Math.min(1, Math.max(0, feedback / FEEDBACK.max));
-    const algorithmCeiling = this.config.id === 'clean' ? 0.86 : this.config.id === 'pingpong' ? 0.82 : this.config.id === 'constellation' ? 0.68 : 0.79;
+    const algorithmCeiling = this.config.id === 'clean' ? 0.86
+      : this.config.id === 'pingpong' ? 0.82
+      : this.config.id === 'constellation' ? 0.68
+      : this.config.id === 'EP-3 Echoplex' ? 0.88
+      : this.config.id === 'Binson Echorec' ? 0.86
+      : this.config.id === 'Deluxe Memory Man' ? 0.82
+      : this.config.id === 'AMS DMX 15-80 S' ? 0.80
+      : 0.79;
     const loop = algorithmCeiling * Math.pow(normalizedFeedback, 1.45);
     const directWidth = 0.52 + width * 0.46;
     const crossWidth = (1 - width) * 0.34;
@@ -233,9 +250,11 @@ class DelayNetwork implements DelayNetworkLike {
       this.crossFeedback[channel].gain.setTargetAtTime(loop * this.config.crossFeedback, now, 0.05);
       this.directOutputs[channel].gain.setTargetAtTime(directWidth * this.config.outputTrim, now, 0.05);
       this.crossOutputs[channel].gain.setTargetAtTime(crossWidth * this.config.outputTrim, now, 0.05);
-      this.lfoDepths[channel].gain.setTargetAtTime(this.config.flutterDepth * Math.pow(character, 1.55) * (channel ? -0.82 : 1), now, 0.09);
+      const hardwareMod = this.config.id === 'Deluxe Memory Man' ? 0.35 + width * 0.95 : 1;
+      this.lfoDepths[channel].gain.setTargetAtTime(this.config.flutterDepth * hardwareMod * Math.pow(character, 1.55) * (channel ? -0.82 : 1), now, 0.09);
       if (curveChanged) this.colors[channel].curve = characterCurve;
-      this.pitchShifters[channel]?.setPitch(channel === 0 ? 7 : -5, this.config.pitchScatter * Math.pow(character, 1.35));
+      const pitchBase = this.config.id === 'AMS DMX 15-80 S' ? (channel === 0 ? 5 : -5) : (channel === 0 ? 7 : -5);
+      this.pitchShifters[channel]?.setPitch(pitchBase, this.config.pitchScatter * Math.pow(character, 1.35));
       this.diffusers[channel].forEach((node, index) => {
         node.Q.setTargetAtTime(0.45 + character * (0.8 + index * 0.13), now, 0.07);
         node.frequency.setTargetAtTime(this.config.diffusionBase + index * 390 + character * 1450 + channel * 83, now, 0.07);
@@ -477,7 +496,7 @@ const EQUAL_POWER_FADE_OUT = createEqualPowerFade(false);
 function createEqualPowerFade(fadeIn: boolean): Float32Array<ArrayBuffer> { const curve = new Float32Array(64); for (let i = 0; i < curve.length; i += 1) { const t = i / (curve.length - 1); curve[i] = fadeIn ? Math.sin(t * Math.PI * 0.5) : Math.cos(t * Math.PI * 0.5); } return curve; }
 const CHARACTER_CURVE_CACHE = new Map<string, Float32Array<ArrayBuffer>>();
 function getCharacterCurve(character: number, config: DelayAlgorithmConfig): Float32Array<ArrayBuffer> { const quantized = Math.round(character * 96) / 96; const key = `${config.id}:${quantized}`; const cached = CHARACTER_CURVE_CACHE.get(key); if (cached) return cached; const curve = createCharacterCurve(quantized, config); CHARACTER_CURVE_CACHE.set(key, curve); return curve; }
-function createCharacterCurve(character: number, config: DelayAlgorithmConfig): Float32Array<ArrayBuffer> { const length = 8192; const curve = new Float32Array(length); const drive = 1 + character * config.saturation * 2.2; const quantizationMix = character * config.quantization; const levels = Math.max(48, Math.round(65536 / (1 + character * character * 240))); for (let index = 0; index < length; index += 1) { const x = (index / (length - 1)) * 2 - 1; const saturated = Math.tanh(x * drive) / drive; const quantized = Math.round(saturated * levels) / levels; curve[index] = saturated * (1 - quantizationMix) + quantized * quantizationMix; } return curve; }
+function createCharacterCurve(character: number, config: DelayAlgorithmConfig): Float32Array<ArrayBuffer> { const length = 8192; const curve = new Float32Array(length); const drive = 1 + character * config.saturation * 2.2; const quantizationMix = character * config.quantization; const levels = config.id === 'AMS DMX 15-80 S' ? 32767 : Math.max(48, Math.round(65536 / (1 + character * character * 240))); for (let index = 0; index < length; index += 1) { const x = (index / (length - 1)) * 2 - 1; const saturated = Math.tanh(x * drive) / drive; const quantized = Math.round(saturated * levels) / levels; curve[index] = saturated * (1 - quantizationMix) + quantized * quantizationMix; } return curve; }
 const SPACE_ECHO_CURVE_CACHE = new Map<number, Float32Array<ArrayBuffer>>();
 function getSpaceEchoCurve(age: number): Float32Array<ArrayBuffer> { const bucket = Math.round(clamp01(age) * 64); const cached = SPACE_ECHO_CURVE_CACHE.get(bucket); if (cached) return cached; const normalized = bucket / 64; const length = 8192; const curve = new Float32Array(length); const drive = 1.08 + normalized * 3.1; for (let i = 0; i < length; i += 1) { const x = (i / (length - 1)) * 2 - 1; const asymmetric = x + Math.max(0, x) * (0.025 + normalized * 0.055); const compressed = Math.tanh(asymmetric * drive) / Math.tanh(drive); curve[i] = compressed * (0.99 - normalized * 0.035); } SPACE_ECHO_CURVE_CACHE.set(bucket, curve); return curve; }
 function chooseConstellationPitch(random: number, character: number): number { if (character < 0.12) return 0; const spread = Math.pow(character, 1.4); if (random < 0.24 + (1 - spread) * 0.36) return 0; if (random < 0.49) return 7; if (random < 0.69) return 12; if (random < 0.84) return -5; return -12; }
