@@ -47,10 +47,26 @@ interface ActiveProfile {
   rafId: number | null;
 }
 
-let active: ActiveProfile | null = null;
-let lastSnapshot: RandomProfileSnapshot | null = null;
-let hud: HTMLDivElement | null = null;
-let hudStyleInstalled = false;
+interface ProfilerStore {
+  active: ActiveProfile | null;
+  lastSnapshot: RandomProfileSnapshot | null;
+  hud: HTMLDivElement | null;
+  hudStyleInstalled: boolean;
+}
+
+interface ProfilerPatchGlobal extends Window {
+  __calcotoneRandomProfilerPatched?: boolean;
+  __calcotoneRandomProfilerStore?: ProfilerStore;
+}
+
+const globalState = window as ProfilerPatchGlobal;
+const store: ProfilerStore = globalState.__calcotoneRandomProfilerStore ?? {
+  active: null,
+  lastSnapshot: null,
+  hud: null,
+  hudStyleInstalled: false,
+};
+globalState.__calcotoneRandomProfilerStore = store;
 
 const MODULE_NAMES: Record<string, string> = {
   saturation: 'Ember',
@@ -66,7 +82,7 @@ function now(): number {
 }
 
 function ensureHud(): HTMLDivElement {
-  if (!hudStyleInstalled) {
+  if (!store.hudStyleInstalled) {
     const style = document.createElement('style');
     style.textContent = `
       .calcotone-random-profiler {
@@ -99,17 +115,17 @@ function ensureHud(): HTMLDivElement {
       .calcotone-random-profiler .rp-bad { color:#ff967f !important; }
     `;
     document.head.append(style);
-    hudStyleInstalled = true;
+    store.hudStyleInstalled = true;
   }
 
-  if (!hud) {
-    hud = document.createElement('div');
-    hud.className = 'calcotone-random-profiler';
-    hud.setAttribute('role', 'status');
-    hud.setAttribute('aria-live', 'polite');
-    document.body.append(hud);
+  if (!store.hud || !store.hud.isConnected) {
+    store.hud = document.createElement('div');
+    store.hud.className = 'calcotone-random-profiler';
+    store.hud.setAttribute('role', 'status');
+    store.hud.setAttribute('aria-live', 'polite');
+    document.body.append(store.hud);
   }
-  return hud;
+  return store.hud;
 }
 
 function metricClass(frameGapMs: number): string {
@@ -145,7 +161,7 @@ function renderSnapshot(snapshot: RandomProfileSnapshot): void {
 
 function trackFrames(profile: ActiveProfile): void {
   profile.rafId = window.requestAnimationFrame((stamp) => {
-    if (active !== profile) return;
+    if (store.active !== profile) return;
     const gap = Math.max(0, stamp - profile.lastFrameAt);
     profile.maxFrameGapMs = Math.max(profile.maxFrameGapMs, gap);
     profile.lastFrameAt = stamp;
@@ -168,9 +184,10 @@ function recordHottest(profile: ActiveProfile, label: string, elapsedMs: number)
 }
 
 export function beginRandomProfile(kind: RandomProfileKind): void {
-  if (active?.rafId !== null && active?.rafId !== undefined) window.cancelAnimationFrame(active.rafId);
+  const previous = store.active;
+  if (previous?.rafId !== null && previous?.rafId !== undefined) window.cancelAnimationFrame(previous.rafId);
   const startedAt = now();
-  active = {
+  const profile: ActiveProfile = {
     kind,
     startedAt,
     mutationWallMs: 0,
@@ -188,17 +205,19 @@ export function beginRandomProfile(kind: RandomProfileKind): void {
     modules: new Map(),
     rafId: null,
   };
+  store.active = profile;
   renderMeasuring(kind);
-  trackFrames(active);
+  trackFrames(profile);
 }
 
 export function noteRandomMutationWall(elapsedMs: number): void {
-  if (active?.kind === 'musical') active.mutationWallMs = Math.max(active.mutationWallMs, elapsedMs);
+  if (store.active?.kind === 'musical') store.active.mutationWallMs = Math.max(store.active.mutationWallMs, elapsedMs);
 }
 
 export function abortRandomProfile(): void {
-  if (active?.rafId !== null && active?.rafId !== undefined) window.cancelAnimationFrame(active.rafId);
-  active = null;
+  const profile = store.active;
+  if (profile?.rafId !== null && profile?.rafId !== undefined) window.cancelAnimationFrame(profile.rafId);
+  store.active = null;
 }
 
 function finalize(profile: ActiveProfile): RandomProfileSnapshot {
@@ -227,8 +246,8 @@ function finalize(profile: ActiveProfile): RandomProfileSnapshot {
     hottestMs: profile.hottestMs,
     modules,
   };
-  lastSnapshot = snapshot;
-  active = null;
+  store.lastSnapshot = snapshot;
+  store.active = null;
   renderSnapshot(snapshot);
   console.groupCollapsed(`[CALCOTONE] ${snapshot.kind.toUpperCase()} random profile · frame ${snapshot.maxFrameGapMs.toFixed(1)} ms`);
   console.table(snapshot.modules);
@@ -238,26 +257,21 @@ function finalize(profile: ActiveProfile): RandomProfileSnapshot {
 }
 
 export function finishMusicalRandomProfile(): void {
-  const profile = active;
+  const profile = store.active;
   if (!profile || profile.kind !== 'musical') return;
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => {
-      if (active === profile) finalize(profile);
+      if (store.active === profile) finalize(profile);
     });
   });
 }
 
 export function getLastRandomProfile(): RandomProfileSnapshot | null {
-  return lastSnapshot;
+  return store.lastSnapshot;
 }
 
-interface ProfilerPatchGlobal extends Window {
-  __calcotoneRandomProfilerPatched?: boolean;
-}
-
-const patchGlobal = window as ProfilerPatchGlobal;
-if (!patchGlobal.__calcotoneRandomProfilerPatched) {
-  patchGlobal.__calcotoneRandomProfilerPatched = true;
+if (!globalState.__calcotoneRandomProfilerPatched) {
+  globalState.__calcotoneRandomProfilerPatched = true;
 
   const originalSetEffectParameter = AudioEngine.prototype.setEffectParameter;
   AudioEngine.prototype.setEffectParameter = function (
@@ -268,24 +282,25 @@ if (!patchGlobal.__calcotoneRandomProfilerPatched) {
   ): void {
     const started = now();
     try {
-      return originalSetEffectParameter.call(this, effectId, parameterId, value);
+      originalSetEffectParameter.call(this, effectId, parameterId, value);
     } finally {
-      const profile = active;
-      if (!profile || profile.kind !== 'musical') return;
-      const elapsed = now() - started;
-      const isModeWrite = parameterId === 'mode' || parameterId === 'algorithm';
-      const timing = moduleTiming(profile, effectId);
-      if (isModeWrite) {
-        timing.modeMs += elapsed;
-        profile.modeWriteMs += elapsed;
-      } else {
-        timing.parameterMs += elapsed;
-        profile.parameterWriteMs += elapsed;
+      const profile = store.active;
+      if (profile?.kind === 'musical') {
+        const elapsed = now() - started;
+        const isModeWrite = parameterId === 'mode' || parameterId === 'algorithm';
+        const timing = moduleTiming(profile, effectId);
+        if (isModeWrite) {
+          timing.modeMs += elapsed;
+          profile.modeWriteMs += elapsed;
+        } else {
+          timing.parameterMs += elapsed;
+          profile.parameterWriteMs += elapsed;
+        }
+        timing.writes += 1;
+        profile.dspWriteMs += elapsed;
+        profile.writeCount += 1;
+        recordHottest(profile, `${MODULE_NAMES[effectId] ?? effectId}.${parameterId}`, elapsed);
       }
-      timing.writes += 1;
-      profile.dspWriteMs += elapsed;
-      profile.writeCount += 1;
-      recordHottest(profile, `${MODULE_NAMES[effectId] ?? effectId}.${parameterId}`, elapsed);
     }
   };
 
@@ -293,15 +308,16 @@ if (!patchGlobal.__calcotoneRandomProfilerPatched) {
   AudioEngine.prototype.setEffectBypassed = function (this: AudioEngine, effectId: string, bypassed: boolean): void {
     const started = now();
     try {
-      return originalSetEffectBypassed.call(this, effectId, bypassed);
+      originalSetEffectBypassed.call(this, effectId, bypassed);
     } finally {
-      const profile = active;
-      if (!profile || profile.kind !== 'musical') return;
-      const elapsed = now() - started;
-      const timing = moduleTiming(profile, effectId);
-      timing.bypassMs += elapsed;
-      profile.bypassMs += elapsed;
-      recordHottest(profile, `${MODULE_NAMES[effectId] ?? effectId}.bypass`, elapsed);
+      const profile = store.active;
+      if (profile?.kind === 'musical') {
+        const elapsed = now() - started;
+        const timing = moduleTiming(profile, effectId);
+        timing.bypassMs += elapsed;
+        profile.bypassMs += elapsed;
+        recordHottest(profile, `${MODULE_NAMES[effectId] ?? effectId}.bypass`, elapsed);
+      }
     }
   };
 
@@ -309,28 +325,29 @@ if (!patchGlobal.__calcotoneRandomProfilerPatched) {
   AudioGraph.prototype.reorderEffects = function (this: AudioGraph, effectIds: string[]): void {
     const started = now();
     try {
-      return originalGraphReorder.call(this, effectIds);
+      originalGraphReorder.call(this, effectIds);
     } finally {
-      const profile = active;
-      if (!profile || profile.kind !== 'signal') return;
-      const elapsed = now() - started;
-      profile.routeCpuMs += elapsed;
-      profile.writeCount += 1;
-      recordHottest(profile, 'AudioGraph.reorderEffects', elapsed);
+      const profile = store.active;
+      if (profile?.kind === 'signal') {
+        const elapsed = now() - started;
+        profile.routeCpuMs += elapsed;
+        profile.writeCount += 1;
+        recordHottest(profile, 'AudioGraph.reorderEffects', elapsed);
+      }
     }
   };
 
   const originalClickSafeReorder = AudioEngine.prototype.reorderEffectsClickSafe;
   AudioEngine.prototype.reorderEffectsClickSafe = function (this: AudioEngine, effectIds: string[]): Promise<void> {
-    const profile = active;
+    const profile = store.active;
     const started = now();
     const result = originalClickSafeReorder.call(this, effectIds);
     if (!profile || profile.kind !== 'signal') return result;
     return result.finally(() => {
-      if (active !== profile) return;
+      if (store.active !== profile) return;
       profile.routeTotalMs += now() - started;
       window.requestAnimationFrame(() => {
-        if (active === profile) finalize(profile);
+        if (store.active === profile) finalize(profile);
       });
     });
   };
