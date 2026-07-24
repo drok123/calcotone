@@ -1,0 +1,23 @@
+/* Faceplate editor: the resizable shell is the single source of truth for screen height.
+   The display is pinned to that shell so legacy viewport height/min-height/flex rules
+   cannot prevent a live resize from becoming visible. */
+.faceplate-layout-custom .faceplate-viewport-shell {
+  position: absolute;
+  overflow: visible;
+}
+
+.faceplate-layout-custom .faceplate-viewport-shell > .dsp-viewport {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin: 0 !important;
+  flex: none !important;
+}
+
+.faceplate-layout-custom .faceplate-viewport-shell > .faceplate-viewport-resize {
+  z-index: 100;
+  pointer-events: auto;
+}
