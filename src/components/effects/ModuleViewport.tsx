@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { ModuleState } from '../../ui/types';
-import type { VisualAudioState } from '../../visual/VisualEngine';
+import { getLatestVisualAudioState, type VisualAudioState } from '../../visual/VisualEngine';
 import { formatAlgorithmName } from '../../ui/formatting';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from './viewportScheduler';
 import {
@@ -56,16 +56,16 @@ function caption(m:ModuleState){
 function spring(s:Spring,target:number,k:number,d:number,dt:number){s.velocity+=(target-s.value)*k*dt;s.velocity*=Math.exp(-d*dt);s.value+=s.velocity*dt;return c01(s.value)}
 function physics(s:Record<keyof Physics,Spring>,a:VisualAudioState,dt:number):Physics{return{level:spring(s.level,c01(a.level),42,10,dt),low:spring(s.low,c01(a.low),28,7,dt),mid:spring(s.mid,c01(a.mid),43,9,dt),high:spring(s.high,c01(a.high),58,11,dt),transient:spring(s.transient,c01(a.transient),86,12,dt)}}
 
-export function ModuleViewport({module,visualState}:{module:ModuleState;visualState:VisualAudioState}){
-  const canvasRef=useRef<HTMLCanvasElement|null>(null), moduleRef=useRef(module), visualRef=useRef(visualState), last=useRef(0);
+export function ModuleViewport({module}:{module:ModuleState;visualState:VisualAudioState}){
+  const canvasRef=useRef<HTMLCanvasElement|null>(null), moduleRef=useRef(module), last=useRef(0);
   const springs=useRef<Record<keyof Physics,Spring>>({level:{value:0,velocity:0},low:{value:0,velocity:0},mid:{value:0,velocity:0},high:{value:0,velocity:0},transient:{value:0,velocity:0}});
-  moduleRef.current=module; visualRef.current=visualState;
+  moduleRef.current=module;
   useEffect(()=>{
     const canvas=canvasRef.current;if(!canvas)return;const ctx=canvas.getContext('2d',{alpha:false});if(!ctx)return;
     let cw=1,ch=1,dpr=Math.min(1.5,window.devicePixelRatio||1);
     const resize=()=>{const r=canvas.getBoundingClientRect();cw=Math.max(1,r.width);ch=Math.max(1,r.height);dpr=Math.min(1.5,window.devicePixelRatio||1);const w=Math.round(cw*dpr),h=Math.round(ch*dpr);if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h}};
     resize();const ro=new ResizeObserver(resize);ro.observe(canvas);
-    const render:ViewportRenderCallback=(stamp)=>{const t=stamp/1000,dt=last.current?clamp(t-last.current,.001,.08):1/60;last.current=t;const m=moduleRef.current,p:Params={};for(const x of m.parameters)p[x.id]=x.value;ctx.setTransform(dpr,0,0,dpr,0,0);draw(ctx,cw,ch,{ctx,module:m,params:p,time:t,motion:physics(springs.current,visualRef.current,dt),p:palette(m.id)})};
+    const render:ViewportRenderCallback=(stamp)=>{const t=stamp/1000,dt=last.current?clamp(t-last.current,.001,.08):1/60;last.current=t;const m=moduleRef.current,p:Params={};for(const x of m.parameters)p[x.id]=x.value;ctx.setTransform(dpr,0,0,dpr,0,0);draw(ctx,cw,ch,{ctx,module:m,params:p,time:t,motion:physics(springs.current,getLatestVisualAudioState(),dt),p:palette(m.id)})};
     const off=subscribeViewportAnimation(render);return()=>{off();ro.disconnect()};
   },[module.id]);
   return <div className={`dsp-viewport viewport-${module.id} ${module.enabled?'active':''}`}><div className="viewport-glass" aria-hidden="true"/><canvas ref={canvasRef} aria-hidden="true"/><span className="viewport-caption">{caption(module)}</span></div>;
