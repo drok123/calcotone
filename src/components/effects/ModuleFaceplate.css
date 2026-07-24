@@ -1,42 +1,93 @@
-/* CALCOTONE module faceplate — big display, compact hardware bank. */
+/* CALCOTONE module faceplate — large display, dense 3x2 hardware control bank.
+   Geometry follows the painted layout reference: screen dominates the faceplate,
+   two compact rows of three knobs live at the bottom, and patch jacks hug the knob rim. */
 
 .effect-module {
-  min-height: 414px;
+  min-height: 438px;
 }
 
-/* Let the display absorb the vertical room instead of leaving it in the control deck. */
+/* Extend the existing screen downward instead of growing it sideways. The viewport keeps
+   the same card margins/header relationship while taking the vertical space recovered
+   from the compact control bank below. */
 .dsp-viewport {
-  flex: 1 1 248px;
+  flex: 1 1 320px;
   width: 100%;
   height: auto;
-  min-height: 224px;
-  margin-bottom: 5px;
+  min-height: 304px;
+  margin: 0 0 6px;
 }
 
-/* Keep the knob diameter from the beauty pass, but stop the grid from stretching each
-   control. Fixed hardware slots make the bank feel like one physical control cluster. */
+/* Exactly three controls per row. Fixed slots prevent the browser from stretching the
+   knobs across the whole module and make every six-control module read as a 3 x 2 bank. */
 .knob-row {
   flex: 0 0 auto;
-  grid-template-columns: repeat(auto-fit, 62px);
+  grid-template-columns: repeat(3, 66px);
+  grid-auto-rows: 68px;
   justify-content: center;
-  align-items: end;
-  gap: 3px;
-  margin-top: auto;
-  padding: 6px 2px 0;
+  align-content: end;
+  align-items: start;
+  column-gap: clamp(24px, 3vw, 48px);
+  row-gap: 3px;
+  margin: 0;
+  padding: 5px 6px 1px;
 }
 
+/* Collapse each control vertically around the 56px knob. The readout floats instead of
+   reserving a permanent row, so the second knob row can sit close under the first. */
 .knob-control {
-  width: 62px;
-  min-width: 62px;
+  position: relative;
+  display: block;
+  width: 66px;
+  min-width: 66px;
+  height: 68px;
 }
 
-/* Tuck patch sockets into the outside edge of each knob instead of reserving a wide
-   invisible lane between controls. */
+.knob-shell {
+  position: absolute;
+  top: 0;
+  left: 5px;
+}
+
+.knob-label {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  max-width: 66px;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+.knob-control:hover .knob-label {
+  transform: translateX(-50%) translateY(-1px);
+}
+
+.knob-value {
+  position: absolute;
+  z-index: 12;
+  top: -12px;
+  left: 50%;
+  min-width: 46px;
+  max-width: 66px;
+  opacity: .28;
+  pointer-events: none;
+  transform: translateX(-50%);
+  transition: opacity 120ms ease, transform 120ms ease, border-color 140ms ease;
+}
+
+.knob-control:hover .knob-value,
+.knob-control:focus-within .knob-value,
+.knob-control.is-adjusting .knob-value {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-2px);
+}
+
+/* Painted yellow-jack position: immediately outside the knob's right rim and centered
+   vertically on the control, not parked in the empty space between columns. */
 .knob-patch-jack {
-  top: 38px;
-  left: calc(50% + 20px);
-  width: 18px;
-  height: 18px;
+  top: 20px;
+  left: calc(50% + 25px);
+  width: 16px;
+  height: 16px;
 }
 
 .knob-patch-jack > span {
@@ -45,48 +96,58 @@
 }
 
 .knob-patch-jack b {
-  font-size: .43rem;
+  font-size: .40rem;
 }
 
+/* On the large desktop layout, match the painted blue rectangle aggressively: almost
+   all available module depth above the control bank belongs to the animation screen. */
 @media (min-width: 1500px) {
   .effect-module {
-    min-height: 438px;
+    min-height: 468px;
   }
 
   .dsp-viewport {
-    flex-basis: 274px;
-    min-height: 250px;
+    flex-basis: 372px;
+    min-height: 352px;
+  }
+
+  .knob-row {
+    column-gap: 46px;
   }
 }
 
 @media (max-width: 1180px) {
   .effect-module {
-    min-height: 390px;
+    min-height: 418px;
   }
 
   .dsp-viewport {
-    flex-basis: 224px;
-    min-height: 208px;
+    flex-basis: 286px;
+    min-height: 270px;
   }
 
   .knob-row {
-    grid-template-columns: repeat(auto-fit, 60px);
-    gap: 2px;
+    grid-template-columns: repeat(3, 64px);
+    column-gap: clamp(14px, 2.2vw, 28px);
   }
 
   .knob-control {
-    width: 60px;
-    min-width: 60px;
+    width: 64px;
+    min-width: 64px;
   }
 }
 
 @media (max-width: 760px) {
   .effect-module {
-    min-height: 400px;
+    min-height: 430px;
   }
 
   .dsp-viewport {
-    flex-basis: 238px;
-    min-height: 220px;
+    flex-basis: 292px;
+    min-height: 278px;
+  }
+
+  .knob-row {
+    column-gap: clamp(20px, 7vw, 44px);
   }
 }
