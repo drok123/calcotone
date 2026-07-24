@@ -1,0 +1,35 @@
+name: Bigger module viewports
+
+on:
+  push:
+    branches: [bigger-module-viewports]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: bigger-module-viewports
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Apply viewport-only layout change
+        run: python scripts/enlarge_module_viewports.py
+      - name: Install dependencies
+        run: npm ci --silent
+      - name: Build CALCOTONE
+        run: npm run build
+      - name: Commit verified viewport change
+        run: |
+          rm scripts/enlarge_module_viewports.py
+          rm .github/workflows/bigger-module-viewports.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/motion/UiPolish.css scripts/enlarge_module_viewports.py .github/workflows/bigger-module-viewports.yml
+          git commit -m "Enlarge module animation viewports"
+          git push origin bigger-module-viewports
