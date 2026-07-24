@@ -131,8 +131,8 @@
 }
 
 .dsp-viewport.active canvas {
-  filter: brightness(1.38) contrast(1.14) saturate(1.38)
-    drop-shadow(0 0 5px color-mix(in srgb, var(--view-a) 20%, transparent));
+  filter: brightness(1.22) contrast(1.10) saturate(1.24)
+    drop-shadow(0 0 4px color-mix(in srgb, var(--view-a) 15%, transparent));
 }
 
 .dsp-viewport::before {
@@ -145,10 +145,10 @@
 }
 
 .dsp-viewport.active .viewport-glass {
-  opacity: .86;
+  opacity: .72;
   background:
-    linear-gradient(180deg, rgba(218,239,236,.045), transparent 38%),
-    linear-gradient(120deg, transparent 18%, color-mix(in srgb, var(--view-a) 6%, transparent) 36%, transparent 50%, color-mix(in srgb, var(--view-b) 5%, transparent) 72%, transparent 86%);
+    linear-gradient(180deg, rgba(218,239,236,.035), transparent 38%),
+    linear-gradient(120deg, transparent 18%, color-mix(in srgb, var(--view-a) 5%, transparent) 36%, transparent 50%, color-mix(in srgb, var(--view-b) 4%, transparent) 72%, transparent 86%);
   background-size: 100% 100%, 180% 100%;
   animation: module-glass-color-drift 9s ease-in-out infinite alternate;
 }
@@ -204,6 +204,320 @@
 .motion-route header strong { color: #eef2ef; }
 .motion-route header span { color: #a9dcbc; }
 .motion-route.axis-y header span { color: #acd8ec; }
+
+/* --------------------------------------------------------------------------
+   ART-FIRST MODULE BEAUTY PASS
+   The screen is the hero. Controls become a compact lower deck.
+   -------------------------------------------------------------------------- */
+
+.effect-module {
+  min-height: 356px;
+  padding: 11px 11px 10px;
+  border-color: rgba(83, 91, 96, .68);
+  border-radius: 12px;
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.030), transparent 22%),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.005) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, #25292c 0%, #191c1f 54%, #141719 100%);
+  box-shadow:
+    0 11px 24px rgba(0,0,0,.36),
+    inset 0 1px rgba(255,255,255,.045),
+    inset 0 -1px rgba(0,0,0,.94),
+    inset 0 0 0 1px rgba(0,0,0,.18);
+}
+
+.effect-module.enabled {
+  border-color: color-mix(in srgb, var(--module-accent) 18%, #596167);
+  box-shadow:
+    0 12px 26px rgba(0,0,0,.42),
+    0 0 15px color-mix(in srgb, var(--module-accent) 4%, transparent),
+    inset 0 1px rgba(255,255,255,.06),
+    inset 0 -1px rgba(0,0,0,.94),
+    inset 0 0 0 1px rgba(0,0,0,.20);
+}
+
+.effect-module:hover {
+  transform: translateY(-1px);
+  border-color: rgba(111, 120, 125, .72);
+}
+
+.effect-module::after {
+  left: 11px;
+  right: 11px;
+  top: 43px;
+  opacity: .14;
+}
+
+.module-header {
+  min-height: 32px;
+  gap: 9px;
+  margin-bottom: 8px;
+}
+
+.module-title { gap: 7px; }
+.module-header h3 {
+  font-size: .91rem;
+  letter-spacing: .145em;
+}
+.module-number {
+  font-size: .50rem;
+  opacity: .82;
+}
+.module-jewel {
+  width: 7px;
+  height: 7px;
+}
+
+.module-header-control {
+  min-width: 0;
+  max-width: min(44%, 210px);
+  margin-left: auto;
+}
+
+.module-header-control .algorithm-selector {
+  display: block;
+  margin: 0;
+}
+
+.module-header-control .algorithm-selector select {
+  height: 29px;
+  min-height: 29px;
+  padding: 0 28px 0 9px;
+  border-color: rgba(92, 101, 106, .58);
+  border-radius: 6px;
+  color: #d6dddf;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.035), transparent 40%),
+    #111518;
+  box-shadow: inset 0 1px 5px rgba(0,0,0,.72), 0 1px rgba(255,255,255,.018);
+  font: 800 .59rem/1 var(--mono);
+  letter-spacing: .045em;
+}
+
+.module-toggle {
+  width: 34px;
+  height: 20px;
+  flex: 0 0 34px;
+}
+.module-toggle span {
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+}
+.effect-module.enabled .module-toggle span { transform: translateX(14px); }
+
+/* Make every animation a real full-width piece of glass, not a 300px canvas sitting
+   inside a wider card. ResizeObserver in ModuleViewport automatically follows this. */
+.dsp-viewport {
+  position: relative;
+  width: 100%;
+  height: clamp(178px, 13vw, 214px);
+  min-height: 178px;
+  margin: 0 0 8px;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid rgba(73, 84, 90, .80);
+  border-top-color: rgba(116, 127, 132, .68);
+  border-bottom-color: rgba(34, 40, 43, .95);
+  border-radius: 9px;
+  background: #020407;
+  box-shadow:
+    0 5px 12px rgba(0,0,0,.34),
+    inset 0 0 0 1px rgba(0,0,0,.70),
+    inset 0 12px 24px rgba(0,0,0,.35),
+    inset 0 -18px 28px rgba(0,0,0,.34);
+}
+
+.dsp-viewport canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: scale(1.025);
+  transform-origin: 50% 50%;
+}
+
+.dsp-viewport::before,
+.dsp-viewport::after,
+.dsp-viewport .viewport-glass {
+  position: absolute;
+  pointer-events: none;
+}
+
+.dsp-viewport::before {
+  content: "";
+  inset: 0;
+  z-index: 2;
+  opacity: .56;
+}
+
+.dsp-viewport::after {
+  content: "";
+  z-index: 4;
+  inset: 4px;
+  border: 1px solid rgba(224, 234, 236, .045);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 0 1px rgba(0,0,0,.38),
+    inset 0 -20px 28px rgba(0,0,0,.18);
+}
+
+.dsp-viewport .viewport-glass {
+  z-index: 3;
+  inset: 3px 5px;
+  border-radius: 6px;
+}
+
+.viewport-caption {
+  position: absolute;
+  z-index: 5;
+  left: 9px;
+  bottom: 7px;
+  max-width: calc(100% - 18px);
+  padding: 4px 6px 3px;
+  overflow: hidden;
+  border: 1px solid rgba(222, 231, 233, .065);
+  border-radius: 4px;
+  color: rgba(235, 241, 242, .68);
+  background: rgba(2, 5, 7, .54);
+  box-shadow: inset 0 1px rgba(255,255,255,.018);
+  font: 800 .50rem/1 var(--mono);
+  letter-spacing: .13em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  backdrop-filter: blur(2px);
+}
+
+/* Compact control deck: roughly 25% smaller knobs and much less dead vertical space. */
+.knob-row {
+  position: relative;
+  grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+  align-items: start;
+  gap: 6px 5px;
+  margin-top: 0;
+  padding: 8px 3px 1px;
+  border-top: 1px solid rgba(255,255,255,.045);
+  background: linear-gradient(180deg, rgba(255,255,255,.012), transparent 68%);
+}
+
+.knob-control {
+  grid-template-rows: 18px 58px 16px;
+  gap: 2px;
+}
+
+.knob-value {
+  min-width: 48px;
+  max-width: 66px;
+  padding: 3px 5px 2px;
+  border-color: rgba(96, 108, 105, .42);
+  border-radius: 4px;
+  color: #dce3e1;
+  background: #090d0f;
+  box-shadow: inset 0 1px 4px rgba(0,0,0,.88), 0 1px rgba(255,255,255,.012);
+  font: 800 .54rem/1 var(--mono);
+  letter-spacing: .015em;
+  text-shadow: none;
+}
+
+.knob-control:hover .knob-value,
+.knob-control:focus-within .knob-value {
+  color: #f2f5f4;
+  border-color: color-mix(in srgb, var(--module-accent) 24%, #596267);
+  box-shadow: inset 0 1px 4px rgba(0,0,0,.88), 0 0 8px color-mix(in srgb, var(--module-accent) 5%, transparent);
+}
+
+.knob-shell {
+  width: 56px;
+  height: 56px;
+}
+
+.knob-shell::before {
+  inset: 1px;
+  box-shadow:
+    0 5px 8px rgba(0,0,0,.56),
+    inset 0 1px rgba(255,255,255,.10),
+    inset 0 -2px 4px rgba(0,0,0,.72);
+}
+
+.knob-shell::after { inset: 6px; }
+
+.knob-face {
+  width: 42px;
+  height: 42px;
+}
+
+.knob-indicator {
+  top: 3px;
+  width: 1.5px;
+  height: 12px;
+  background: #e8ecea;
+  box-shadow: 0 0 3px rgba(255,255,255,.24);
+}
+
+.knob-modulation-ring {
+  mask: radial-gradient(circle, transparent 60%, #000 62% 69%, transparent 71%);
+}
+
+.knob-effective-marker { inset: 0; }
+.knob-effective-marker::after {
+  top: 0;
+  width: 4px;
+  height: 4px;
+}
+
+.knob-label {
+  max-width: 100%;
+  overflow: hidden;
+  color: #c8cfcd;
+  font: 900 .60rem/1 var(--mono);
+  letter-spacing: .075em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.knob-patch-jack {
+  top: 37px;
+  left: calc(50% + 34px);
+  width: 20px;
+  height: 20px;
+  border-color: rgba(154, 129, 72, .74);
+  box-shadow: 0 2px 3px #000, inset 0 1px rgba(255,255,255,.28);
+}
+.knob-patch-jack > span {
+  width: 6px;
+  height: 6px;
+}
+.knob-patch-jack b { font-size: .46rem; }
+
+/* The artwork gets a little more room on large monitors without making the rack giant. */
+@media (min-width: 1500px) {
+  .dsp-viewport {
+    height: 214px;
+    min-height: 214px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .effect-module { min-height: 338px; }
+  .dsp-viewport {
+    height: 170px;
+    min-height: 170px;
+  }
+  .knob-row { grid-template-columns: repeat(auto-fit, minmax(64px, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .module-grid { grid-template-columns: 1fr; }
+  .effect-module { min-height: 344px; }
+  .dsp-viewport {
+    height: 184px;
+    min-height: 184px;
+  }
+  .module-header-control { max-width: 46%; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .dsp-viewport.active .viewport-glass { animation: none !important; }
