@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import './components/effects/ModuleViewport.css'
 import App from './App.tsx'
+import './components/effects/ModuleFaceplate.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
