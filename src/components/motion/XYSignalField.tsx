@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { ModuleState, XYAssignment } from '../../ui/types';
 import { getEffectiveMotionValue } from '../../ui/motion';
+import { getLatestVisualAudioState } from '../../visual/VisualEngine';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
 import { DreamFieldEngine } from './DreamFieldEngine';
 import './DreamField.css';
@@ -108,7 +109,7 @@ export function XYSignalField({
 
     let width = 1;
     let height = 1;
-    let dpr = Math.min(1.5, window.devicePixelRatio || 1);
+    let dpr = Math.min(1.75, window.devicePixelRatio || 1);
     let faulted = false;
     let visualModuleSource: ModuleState[] | null = null;
     let visualAssignmentSource: XYAssignment[] | null = null;
@@ -145,7 +146,7 @@ export function XYSignalField({
       const bounds = canvas.getBoundingClientRect();
       width = Math.max(1, bounds.width);
       height = Math.max(1, bounds.height);
-      dpr = Math.min(1.5, window.devicePixelRatio || 1);
+      dpr = Math.min(1.75, window.devicePixelRatio || 1);
 
       const pixelWidth = Math.max(1, Math.round(width * dpr));
       const pixelHeight = Math.max(1, Math.round(height * dpr));
@@ -189,6 +190,7 @@ export function XYSignalField({
           y: positionRef.current.y / 100,
           dragging: draggingRef.current,
           time: stamp / 1000,
+          audio: getLatestVisualAudioState(),
         });
       } catch (error) {
         faulted = true;
