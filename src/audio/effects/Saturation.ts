@@ -1,4 +1,5 @@
 import { clampParameter } from '../Parameter';
+import { TubeColorStage, type TubeColorModel } from '../models/TubeColorStage';
 import { BaseEffect } from './Effect';
 
 export type EmberMode =
@@ -40,33 +41,14 @@ const DYNAMICS = { id: 'dynamics', label: 'Dynamics', min: 0, max: 1, defaultVal
 const MIX = { id: 'mix', label: 'Mix', min: 0, max: 1, defaultValue: 0.22, step: 0.01 };
 
 const curveCache = new Map<string, Float32Array<ArrayBuffer>>();
-const tubeWorkletLoads = new WeakMap<AudioContext, Promise<void>>();
-const TUBE_WORKLET_VERSION = '9.0.0-tube-lab-a';
 
-const NAMED_TUBE_MODEL: Partial<Record<EmberMode, number>> = {
-  goldlion: 1,
-  mullard: 2,
-  telefunken: 3,
-  bugleboy: 4,
-  rcablack: 5,
+const NAMED_TUBE_MODEL: Partial<Record<EmberMode, TubeColorModel>> = {
+  goldlion: 'goldlion',
+  mullard: 'mullard',
+  telefunken: 'telefunken',
+  bugleboy: 'bugleboy',
+  rcablack: 'rcablack',
 };
-
-function ensureTubeWorklet(context: AudioContext): Promise<void> {
-  const existing = tubeWorkletLoads.get(context);
-  if (existing) return existing;
-  const promise = (async () => {
-    if (!context.audioWorklet || typeof window === 'undefined') {
-      throw new Error('AudioWorklet is unavailable for Ember Tube Lab.');
-    }
-    const moduleUrl = new URL(
-      `${import.meta.env.BASE_URL}ember-tube-processor.js?v=${TUBE_WORKLET_VERSION}`,
-      window.location.origin,
-    ).toString();
-    await context.audioWorklet.addModule(moduleUrl);
-  })();
-  tubeWorkletLoads.set(context, promise);
-  return promise;
-}
 
 export class SaturationEffect extends BaseEffect {
   public readonly id = 'saturation';
@@ -76,14 +58,12 @@ export class SaturationEffect extends BaseEffect {
   private readonly hp: BiquadFilterNode;
   private readonly shaper: WaveShaperNode;
   private readonly genericGain: GainNode;
+  private readonly tubeStage: TubeColorStage;
   private readonly tubeGain: GainNode;
   private readonly tone: BiquadFilterNode;
   private readonly presence: BiquadFilterNode;
   private readonly compressor: DynamicsCompressorNode;
   private readonly post: GainNode;
-  private tubeProcessor: AudioWorkletNode | null = null;
-  private disposed = false;
-  private tubeQuality = 2;
 
   private mode: EmberMode = 'velvet';
   private drive = 0.14;
@@ -98,6 +78,7 @@ export class SaturationEffect extends BaseEffect {
     this.hp = context.createBiquadFilter();
     this.shaper = context.createWaveShaper();
     this.genericGain = context.createGain();
+    this.tubeStage = new TubeColorStage(context);
     this.tubeGain = context.createGain();
     this.tone = context.createBiquadFilter();
     this.presence = context.createBiquadFilter();
@@ -118,14 +99,19 @@ export class SaturationEffect extends BaseEffect {
     this.genericGain.gain.value = 1;
     this.tubeGain.gain.value = 0;
 
-    // Original Ember path remains intact and becomes the safe fallback while the
-    // stateful tube worklet is loading. The two branches rejoin before Tone/Dynamics.
     this.input.connect(this.preGain);
     this.preGain.connect(this.hp);
+
+    // Generic Ember branch: creative saturation modes.
     this.hp.connect(this.shaper);
     this.shaper.connect(this.genericGain);
     this.genericGain.connect(this.tone);
+
+    // Reusable small-signal tube branch: named Tube Lab modes and future hardware preamps.
+    this.hp.connect(this.tubeStage.input);
+    this.tubeStage.connect(this.tubeGain);
     this.tubeGain.connect(this.tone);
+
     this.tone.connect(this.presence);
     this.presence.connect(this.compressor);
     this.compressor.connect(this.post);
@@ -135,41 +121,13 @@ export class SaturationEffect extends BaseEffect {
     for (const parameter of [MODE, DRIVE, TONE, HEAT, CHARACTER, DYNAMICS, MIX]) {
       this.setParameter(parameter.id, parameter.defaultValue);
     }
-
-    void this.initializeTubeProcessor();
-  }
-
-  private async initializeTubeProcessor(): Promise<void> {
-    try {
-      await ensureTubeWorklet(this.context);
-      if (this.disposed) return;
-      const processor = new AudioWorkletNode(this.context, 'calcotone-ember-tube-processor', {
-        numberOfInputs: 1,
-        numberOfOutputs: 1,
-        outputChannelCount: [2],
-        channelCount: 2,
-        channelCountMode: 'explicit',
-        channelInterpretation: 'speakers',
-      });
-      processor.onprocessorerror = () => {
-        console.error('CALCOTONE Ember Tube Lab AudioWorklet stopped unexpectedly.');
-      };
-      processor.port.postMessage({ type: 'quality', factor: this.tubeQuality });
-      this.hp.connect(processor);
-      processor.connect(this.tubeGain);
-      this.tubeProcessor = processor;
-      this.apply();
-    } catch (error) {
-      console.warn('CALCOTONE Ember Tube Lab could not initialize; generic Tube fallback remains active.', error);
-    }
   }
 
   // Audio quality floor: the adaptive governor may request `none` in Live mode,
   // but Ember's nonlinear stages are exactly where aliasing becomes most audible.
   public setOversampling(value: OverSampleType): void {
     this.shaper.oversample = value === 'none' ? '2x' : value;
-    this.tubeQuality = value === '4x' ? 4 : 2;
-    this.tubeProcessor?.port.postMessage({ type: 'quality', factor: this.tubeQuality });
+    this.tubeStage.setQuality(value === '4x' ? 4 : 2);
   }
 
   public setParameter(id: string, value: number): void {
@@ -212,78 +170,64 @@ export class SaturationEffect extends BaseEffect {
     this.apply(now);
   }
 
-  private setTubeParameter(name: string, value: number, now: number): void {
-    const parameter = this.tubeProcessor?.parameters.get(name);
-    if (!parameter) return;
-    parameter.cancelScheduledValues(now);
-    parameter.setTargetAtTime(value, now, 0.012);
-  }
-
   private apply(now = this.context.currentTime): void {
-    const tubeModel = NAMED_TUBE_MODEL[this.mode] ?? 0;
-    const namedTube = tubeModel > 0;
+    const tubeModel = NAMED_TUBE_MODEL[this.mode] ?? 'bypass';
+    const namedTube = tubeModel !== 'bypass';
 
-    this.setTubeParameter('model', tubeModel, now);
-    this.setTubeParameter('drive', this.drive, now);
-    this.setTubeParameter('heat', this.heat, now);
-    this.setTubeParameter('character', this.character, now);
-    this.setTubeParameter('dynamics', this.dynamics, now);
+    this.tubeStage.setModel(tubeModel);
+    this.tubeStage.setParameters(this.drive, this.heat, this.character, this.dynamics);
 
-    if (namedTube && this.tubeProcessor) {
+    if (namedTube) {
+      // Named Tube Lab models are rack coloration stages, not distortion effects.
+      // They retain unity-ish gain and let the reusable tube core supply only a
+      // restrained nonlinear residual, bias memory and gentle transient rounding.
       this.preGain.gain.setTargetAtTime(1, now, 0.012);
       this.genericGain.gain.setTargetAtTime(0, now, 0.018);
       this.tubeGain.gain.setTargetAtTime(1, now, 0.018);
       this.shaper.curve = getIdentityCurve();
-      this.tone.frequency.setTargetAtTime(Math.max(1800, this.toneHz * (1 - this.heat * 0.08)), now, 0.025);
-      this.presence.gain.setTargetAtTime((this.character - 0.5) * 1.4, now, 0.025);
-      this.presence.frequency.setTargetAtTime(2900 + this.character * 1900, now, 0.025);
-      // The worklet supplies most of the dynamic compression; the WebAudio compressor
-      // only catches extreme peaks and keeps mode changes civilized.
-      this.compressor.threshold.setTargetAtTime(-2 - this.dynamics * 4, now, 0.03);
-      this.compressor.ratio.setTargetAtTime(1.05 + this.dynamics * 0.8, now, 0.03);
-      this.post.gain.setTargetAtTime(0.94 - this.drive * 0.08, now, 0.02);
+      this.tone.frequency.setTargetAtTime(Math.max(2200, this.toneHz * (1 - this.heat * 0.055)), now, 0.025);
+      this.presence.gain.setTargetAtTime((this.character - 0.5) * 0.9, now, 0.025);
+      this.presence.frequency.setTargetAtTime(3000 + this.character * 1600, now, 0.025);
+      this.compressor.threshold.setTargetAtTime(-1.2 - this.dynamics * 2.8, now, 0.03);
+      this.compressor.ratio.setTargetAtTime(1.02 + this.dynamics * 0.42, now, 0.03);
+      this.post.gain.setTargetAtTime(0.99 - this.drive * 0.025, now, 0.02);
       return;
     }
 
-    // Named modes use the original generic Tube response until the worklet is ready.
-    const fallbackMode: EmberMode = namedTube ? 'tube' : this.mode;
     this.genericGain.gain.setTargetAtTime(1, now, 0.018);
     this.tubeGain.gain.setTargetAtTime(0, now, 0.018);
+    const fallbackMode = this.mode;
     const modeIndex = EMBER_MODE_ORDER.indexOf(fallbackMode);
     const aggressionByMode: Record<EmberMode, number> = {
       velvet: 0.7,
-      tube: 1,
+      tube: 0.42,
       console: 1.15,
       transformer: 1.3,
       furnace: 2.2,
       exciter: 1.05,
       broken: 2.8,
-      goldlion: 1,
-      mullard: 1,
-      telefunken: 1,
-      bugleboy: 1,
-      rcablack: 1,
+      goldlion: 0.42,
+      mullard: 0.42,
+      telefunken: 0.42,
+      bugleboy: 0.42,
+      rcablack: 0.42,
     };
     const aggression = aggressionByMode[fallbackMode] ?? (modeIndex >= 0 ? 1 : 1);
-    const input = 1 + Math.pow(this.drive, 1.35) * (4.2 * aggression) + this.heat * 1.4;
+    const input = fallbackMode === 'tube'
+      ? 1 + Math.pow(this.drive, 1.5) * 1.15 + this.heat * 0.24
+      : 1 + Math.pow(this.drive, 1.35) * (4.2 * aggression) + this.heat * 1.4;
     this.preGain.gain.setTargetAtTime(input, now, 0.012);
-    this.tone.frequency.setTargetAtTime(Math.max(1200, this.toneHz * (1 - this.heat * 0.18)), now, 0.025);
-    this.presence.gain.setTargetAtTime((fallbackMode === 'exciter' ? 5 : 2.2) * (this.character - 0.35), now, 0.025);
+    this.tone.frequency.setTargetAtTime(Math.max(1200, this.toneHz * (1 - this.heat * (fallbackMode === 'tube' ? 0.07 : 0.18))), now, 0.025);
+    this.presence.gain.setTargetAtTime((fallbackMode === 'exciter' ? 5 : fallbackMode === 'tube' ? 0.8 : 2.2) * (this.character - 0.35), now, 0.025);
     this.presence.frequency.setTargetAtTime(fallbackMode === 'transformer' ? 1700 : 3200 + this.character * 2600, now, 0.025);
-    this.compressor.threshold.setTargetAtTime(-4 - this.dynamics * 12, now, 0.03);
-    this.compressor.ratio.setTargetAtTime(1.2 + this.dynamics * 3.8, now, 0.03);
-    this.post.gain.setTargetAtTime(1 / Math.pow(input, 0.72), now, 0.02);
+    this.compressor.threshold.setTargetAtTime(fallbackMode === 'tube' ? -2 - this.dynamics * 4 : -4 - this.dynamics * 12, now, 0.03);
+    this.compressor.ratio.setTargetAtTime(fallbackMode === 'tube' ? 1.05 + this.dynamics * 0.65 : 1.2 + this.dynamics * 3.8, now, 0.03);
+    this.post.gain.setTargetAtTime(fallbackMode === 'tube' ? 0.98 / Math.pow(input, 0.22) : 1 / Math.pow(input, 0.72), now, 0.02);
     this.shaper.curve = getCurve(fallbackMode, this.drive, this.heat, this.character);
   }
 
   public override dispose(): void {
-    this.disposed = true;
-    if (this.tubeProcessor) {
-      this.tubeProcessor.onprocessorerror = null;
-      this.tubeProcessor.port.close();
-      this.tubeProcessor.disconnect();
-      this.tubeProcessor = null;
-    }
+    this.tubeStage.dispose();
     for (const node of [
       this.preGain,
       this.hp,
@@ -316,16 +260,21 @@ function getCurve(mode: EmberMode, drive: number, heat: number, character: numbe
 
   const samples = 8192;
   const curve = new Float32Array(samples);
-  const asymmetry = mode === 'tube' || mode === 'transformer'
-    ? 0.12 + 0.2 * character
-    : mode === 'broken'
-      ? 0.32 * character
-      : 0.04 * character;
-  const amount = 1.2 + drive * 7 + heat * 3 + (mode === 'furnace' ? 5 : 0);
+  const asymmetry = mode === 'tube'
+    ? 0.035 + 0.055 * character
+    : mode === 'transformer'
+      ? 0.12 + 0.2 * character
+      : mode === 'broken'
+        ? 0.32 * character
+        : 0.04 * character;
+  const amount = mode === 'tube'
+    ? 0.95 + drive * 1.55 + heat * 0.55
+    : 1.2 + drive * 7 + heat * 3 + (mode === 'furnace' ? 5 : 0);
 
   for (let index = 0; index < samples; index += 1) {
     const x = (index / (samples - 1)) * 2 - 1;
-    let y = Math.tanh((x + Math.max(0, x) * asymmetry) * amount) / Math.tanh(amount);
+    const shaped = Math.tanh((x + Math.max(0, x) * asymmetry) * amount) / Math.tanh(amount);
+    let y = mode === 'tube' ? x * 0.80 + shaped * 0.20 : shaped;
     if (mode === 'console') y = 0.72 * y + 0.28 * Math.atan(x * amount * 1.3) / Math.atan(amount * 1.3);
     if (mode === 'transformer') y += Math.sin(x * Math.PI) * 0.035 * heat;
     if (mode === 'exciter') y = 0.82 * y + 0.18 * Math.tanh(x * amount * 2.4);
