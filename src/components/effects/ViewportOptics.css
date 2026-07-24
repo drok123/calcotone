@@ -1,0 +1,72 @@
+/* CALCOTONE viewport optics.
+   Canvas owns scene depth, motion and module identity. CSS behaves like physical glass only. */
+
+.effect-module .dsp-viewport {
+  --glass-accent: var(--module-accent);
+  background:
+    linear-gradient(155deg, color-mix(in srgb, var(--glass-accent) 2.4%, transparent) 0%, transparent 28%),
+    linear-gradient(180deg, #071012 0%, #03070a 54%, #010304 100%) !important;
+}
+
+.effect-module .dsp-viewport.active {
+  background:
+    linear-gradient(154deg, color-mix(in srgb, var(--glass-accent) 3.2%, transparent) 0%, transparent 24%),
+    linear-gradient(180deg, rgba(255,255,255,.008), transparent 18%),
+    linear-gradient(180deg, #071012 0%, #03070a 54%, #010304 100%) !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.022),
+    inset 0 -18px 28px rgba(0,0,0,.22),
+    0 5px 13px rgba(0,0,0,.28) !important;
+}
+
+/* One asymmetric sheet reflection. The old module-specific stripe/grid overlays were
+   intentionally removed once those identities moved into the perspective room renderer. */
+.effect-module .dsp-viewport::before {
+  opacity: .46;
+  background:
+    linear-gradient(112deg, rgba(255,255,255,.052) 0%, rgba(255,255,255,.012) 10%, transparent 23%, transparent 73%, rgba(255,255,255,.010) 88%, transparent 100%),
+    linear-gradient(180deg, rgba(224,240,238,.012), transparent 24%),
+    linear-gradient(90deg, color-mix(in srgb, var(--glass-accent) 1.4%, transparent), transparent 19%, transparent 83%, color-mix(in srgb, var(--glass-accent) .8%, transparent)) !important;
+  mix-blend-mode: screen !important;
+}
+
+.effect-module .dsp-viewport.active .viewport-glass {
+  opacity: .40 !important;
+  background:
+    linear-gradient(116deg, transparent 7%, rgba(255,255,255,.022) 18%, transparent 30%, transparent 68%, rgba(255,255,255,.010) 76%, transparent 88%),
+    linear-gradient(180deg, rgba(224,240,238,.011), transparent 35%) !important;
+  background-size: 185% 100%, 100% 100% !important;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--glass-accent) 14%, rgba(255,255,255,.085)),
+    inset 1px 0 0 color-mix(in srgb, var(--glass-accent) 4%, transparent),
+    inset -1px 0 0 rgba(255,255,255,.012),
+    inset 0 -1px 0 rgba(0,0,0,.72) !important;
+  animation: viewport-glass-sheet 18s cubic-bezier(.45,0,.25,1) infinite alternate !important;
+}
+
+.effect-module:not(.enabled) .dsp-viewport .viewport-glass {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--glass-accent) 4%, rgba(255,255,255,.018)),
+    inset 0 -1px 0 rgba(0,0,0,.72) !important;
+}
+
+/* The canvas renderer is the only layer allowed to move the artwork. */
+.dsp-viewport.active canvas {
+  animation: none !important;
+  transform: none !important;
+  will-change: auto;
+}
+
+.viewport-delay.active .viewport-glass { animation-duration: 20s !important; }
+.viewport-reverb.active .viewport-glass { animation-duration: 24s !important; }
+.viewport-bitcrusher.active .viewport-glass { animation-duration: 13s !important; animation-timing-function: steps(13, end) !important; }
+.viewport-media.active .viewport-glass { animation-duration: 16s !important; }
+
+@keyframes viewport-glass-sheet {
+  from { background-position: 16% 0, 0 0; }
+  to { background-position: 84% 0, 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dsp-viewport.active .viewport-glass { animation: none !important; }
+}

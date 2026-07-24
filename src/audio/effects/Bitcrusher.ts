@@ -51,6 +51,7 @@ export class BitcrusherEffect extends BaseEffect {
   private readonly bloomGain: GainNode;
   private readonly directGain: GainNode;
   private mode: GrainMode = 'reconstruct';
+  private grainMix = MIX.defaultValue;
   private profilerStats: GrainProfilerStats = { averageCallbackMs: 0, worstCallbackMs: 0, callbackBudgetMs: 0, cpuLoad: 0, callbackJitterMs: 0, activeVoices: 0, maxVoices: 0, effectiveVoiceLimit: 0, overruns: 0, droppedSpawns: 0 };
 
   public constructor(context: AudioContext) {
@@ -121,6 +122,7 @@ export class BitcrusherEffect extends BaseEffect {
         this.mode = GRAIN_MODE_ORDER[next] ?? 'reconstruct';
         this.setWorkletParameter('mode', next, now);
         this.updateWetBodyGain(now);
+        this.applyMixRouting(now);
         break;
       }
       case 'bits': {
@@ -156,9 +158,9 @@ export class BitcrusherEffect extends BaseEffect {
         break;
       }
       case 'mix': {
-        const next = clampParameter(value, MIX);
-        this.parameterValues.set(parameterId, next);
-        this.setWetDryMix(next);
+        this.grainMix = clampParameter(value, MIX);
+        this.parameterValues.set(parameterId, this.grainMix);
+        this.applyMixRouting(now);
         break;
       }
       default:
@@ -170,12 +172,24 @@ export class BitcrusherEffect extends BaseEffect {
     return this.mode === 'sp1200' || this.mode === 'mpc60' || this.mode === 'mirage';
   }
 
+  private applyMixRouting(now = this.context.currentTime): void {
+    if (!this.isHardwareMode()) {
+      this.setWetDryMix(this.grainMix);
+      return;
+    }
+
+    // Hardware sampler studies are strongly correlated A/D -> memory clock -> D/A paths.
+    // A linear crossfade prevents the dry signal and its converted copy from adding gain.
+    this.dryGain.gain.setTargetAtTime(1 - this.grainMix, now, 0.025);
+    this.wetGain.gain.setTargetAtTime(this.grainMix, now, 0.025);
+  }
+
   private updateWetBodyGain(now: number): void {
     const bloom = this.parameterValues.get('bloom') ?? BLOOM.defaultValue;
     const modeIndex = GRAIN_MODE_ORDER.indexOf(this.mode);
     if (this.isHardwareMode()) {
       // Hardware sampler modes are direct conversion paths; the worklet owns their filters.
-      this.directGain.gain.setTargetAtTime(1.04, now, 0.04);
+      this.directGain.gain.setTargetAtTime(1, now, 0.04);
       this.bloomGain.gain.setTargetAtTime(0, now, 0.04);
       return;
     }

@@ -52,15 +52,18 @@ export abstract class BaseEffect implements Effect {
     this.input.channelCountMode = 'max';
     this.output.channelCountMode = 'max';
 
-    // Mix stage: original dry + protected processed wet.
+    // Mix stage: original dry + protected processed wet. The per-effect compressor is
+    // deliberately a near-ceiling guard, not a permanent dynamics processor; musical
+    // compression belongs to the effect model itself and final emergencies belong to
+    // the master safety chain.
     this.wetDcBlock.type = 'highpass';
     this.wetDcBlock.frequency.value = 18;
     this.wetDcBlock.Q.value = 0.5;
-    this.wetLimiter.threshold.value = -8;
-    this.wetLimiter.knee.value = 10;
-    this.wetLimiter.ratio.value = 6;
-    this.wetLimiter.attack.value = 0.003;
-    this.wetLimiter.release.value = 0.12;
+    this.wetLimiter.threshold.value = -3;
+    this.wetLimiter.knee.value = 4;
+    this.wetLimiter.ratio.value = 4;
+    this.wetLimiter.attack.value = 0.002;
+    this.wetLimiter.release.value = 0.09;
     this.input.connect(this.dryGain);
     this.dryGain.connect(this.processedBus);
     this.wetGain.connect(this.wetDcBlock);
@@ -145,7 +148,7 @@ export abstract class BaseEffect implements Effect {
   }
 
   protected setWetDryMix(mix: number): void {
-    this.mix = Math.min(1, Math.max(0, mix));
+    this.mix = Math.min(1, Math.max(0, Number.isFinite(mix) ? mix : 0));
     const now = this.context.currentTime;
     const dry = Math.cos(this.mix * 0.5 * Math.PI);
     const wet = Math.sin(this.mix * 0.5 * Math.PI);

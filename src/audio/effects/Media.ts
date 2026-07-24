@@ -18,8 +18,8 @@ export type MediaMode =
 
 // Existing indices stay fixed so old presets keep their original format.
 export const MEDIA_MODE_ORDER: MediaMode[] = [
-  'cassette','reel','vinyl','vhs','radio','wax','broken','archive','tascam424',
-  'Neve 1073','SSL 4000E','API 1608','Ampex ATR-102',
+  'cassette', 'reel', 'vinyl', 'vhs', 'radio', 'wax', 'broken', 'archive', 'tascam424',
+  'Neve 1073', 'SSL 4000E', 'API 1608', 'Ampex ATR-102',
 ];
 
 const MODE = { id: 'mode', label: 'Mode', min: 0, max: MEDIA_MODE_ORDER.length - 1, defaultValue: 0, step: 1 };
@@ -60,6 +60,7 @@ export class MediaEffect extends BaseEffect {
   private wow = WOW.defaultValue;
   private noise = NOISE.defaultValue;
   private tone = TONE.defaultValue;
+  private artifactMix = MIX.defaultValue;
 
   public constructor(context: AudioContext) {
     super(context);
@@ -145,6 +146,7 @@ export class MediaEffect extends BaseEffect {
         const next = clampParameter(value, MODE);
         this.parameterValues.set(parameterId, next);
         this.mode = MEDIA_MODE_ORDER[Math.round(next)] ?? 'cassette';
+        this.applyMixRouting();
         this.applyCharacter();
         break;
       }
@@ -169,9 +171,9 @@ export class MediaEffect extends BaseEffect {
         this.applyCharacter();
         break;
       case 'mix': {
-        const next = clampParameter(value, MIX);
-        this.parameterValues.set(parameterId, next);
-        this.setWetDryMix(next);
+        this.artifactMix = clampParameter(value, MIX);
+        this.parameterValues.set(parameterId, this.artifactMix);
+        this.applyMixRouting();
         break;
       }
       default:
@@ -207,28 +209,49 @@ export class MediaEffect extends BaseEffect {
     super.dispose();
   }
 
+  /**
+   * Console/preamp identities are strongly correlated with the dry signal, so an equal-power
+   * dry/wet blend adds their amplitudes and creates a false level jump. Treat those models as
+   * an insert baseline instead: a linear crossfade keeps unity when dry and processed paths
+   * are level matched. Transport/media effects keep the normal equal-power blend.
+   */
+  private applyMixRouting(): void {
+    if (!isConsoleBaselineMode(this.mode)) {
+      this.setWetDryMix(this.artifactMix);
+      return;
+    }
+
+    const now = this.context.currentTime;
+    this.dryGain.gain.setTargetAtTime(1 - this.artifactMix, now, 0.025);
+    this.wetGain.gain.setTargetAtTime(this.artifactMix, now, 0.025);
+  }
+
   private applyCharacter(): void {
     const now = this.context.currentTime;
 
     if (this.mode === 'tascam424') {
-      // Circuit-informed 424 MkI dry-channel model. The exact calibration is intentionally
-      // kept separate from the generic cassette path so later measurements can refine it.
       const trimDrive = this.wear;
       const channelDrive = this.tone;
       const lowDb = bipolarAroundDefault(this.wow, WOW.defaultValue) * 10;
       const highDb = bipolarAroundDefault(this.noise, NOISE.defaultValue) * 10;
+      const inputGain = 0.82 + trimDrive * 2.9;
+      const preDrive = 1.05 + trimDrive * 4.4;
+      const postDrive = 1 + Math.pow(channelDrive, 1.55) * 7.6;
 
-      this.modelInputGain.gain.setTargetAtTime(0.82 + trimDrive * 2.9, now, 0.025);
-      this.preampStage.curve = makeOpAmpCurve(1.05 + trimDrive * 4.4, 0.045);
+      this.modelInputGain.gain.setTargetAtTime(inputGain, now, 0.025);
+      this.preampStage.curve = makeOpAmpCurve(preDrive, 0.045);
       this.lowShelf.frequency.setTargetAtTime(100, now, 0.04);
       this.lowShelf.gain.setTargetAtTime(lowDb, now, 0.04);
       this.highShelf.frequency.setTargetAtTime(10_000, now, 0.04);
       this.highShelf.gain.setTargetAtTime(highDb, now, 0.04);
-      this.modelOutputGain.gain.setTargetAtTime(1 / (0.92 + trimDrive * 0.36 + channelDrive * 0.46), now, 0.035);
-
+      this.modelOutputGain.gain.setTargetAtTime(
+        hardwareAutoTrim(inputGain, opAmpSlope(preDrive), opAmpSlope(postDrive)),
+        now,
+        0.035
+      );
       this.highpass.frequency.setTargetAtTime(28, now, 0.04);
       this.lowpass.frequency.setTargetAtTime(19_000, now, 0.04);
-      this.saturator.curve = makeOpAmpCurve(1 + Math.pow(channelDrive, 1.55) * 7.6, 0.032 + trimDrive * 0.025);
+      this.saturator.curve = makeOpAmpCurve(postDrive, 0.032 + trimDrive * 0.025);
       this.disableTransport(now);
       return;
     }
@@ -238,16 +261,24 @@ export class MediaEffect extends BaseEffect {
       const body = bipolarAroundDefault(this.wow, WOW.defaultValue);
       const air = bipolarAroundDefault(this.noise, NOISE.defaultValue);
       const outputDrive = this.tone;
-      this.modelInputGain.gain.setTargetAtTime(0.76 + inputDrive * 3.9, now, 0.025);
-      this.preampStage.curve = makeTransformerCurve(1.18 + inputDrive * 5.2, 0.075 + inputDrive * 0.035);
+      const inputGain = 0.76 + inputDrive * 3.9;
+      const preDrive = 1.18 + inputDrive * 5.2;
+      const postDrive = 1.05 + Math.pow(outputDrive, 1.4) * 6.4;
+
+      this.modelInputGain.gain.setTargetAtTime(inputGain, now, 0.025);
+      this.preampStage.curve = makeTransformerCurve(preDrive, 0.075 + inputDrive * 0.035);
       this.lowShelf.frequency.setTargetAtTime(110, now, 0.04);
       this.lowShelf.gain.setTargetAtTime(body * 5 + inputDrive * 1.35, now, 0.04);
       this.highShelf.frequency.setTargetAtTime(12_000, now, 0.04);
       this.highShelf.gain.setTargetAtTime(air * 4.5 - inputDrive * 0.55, now, 0.04);
-      this.modelOutputGain.gain.setTargetAtTime(1 / (0.9 + inputDrive * 0.5 + outputDrive * 0.38), now, 0.035);
+      this.modelOutputGain.gain.setTargetAtTime(
+        hardwareAutoTrim(inputGain, transformerSlope(preDrive), transformerSlope(postDrive)),
+        now,
+        0.035
+      );
       this.highpass.frequency.setTargetAtTime(24 + Math.max(0, -body) * 28, now, 0.04);
       this.lowpass.frequency.setTargetAtTime(20_000 - inputDrive * 1_800, now, 0.04);
-      this.saturator.curve = makeTransformerCurve(1.05 + Math.pow(outputDrive, 1.4) * 6.4, 0.055);
+      this.saturator.curve = makeTransformerCurve(postDrive, 0.055);
       this.disableTransport(now);
       return;
     }
@@ -257,16 +288,24 @@ export class MediaEffect extends BaseEffect {
       const body = bipolarAroundDefault(this.wow, WOW.defaultValue);
       const presence = bipolarAroundDefault(this.noise, NOISE.defaultValue);
       const vca = this.tone;
-      this.modelInputGain.gain.setTargetAtTime(0.86 + drive * 3.15, now, 0.025);
-      this.preampStage.curve = makeOpAmpCurve(1.02 + drive * 3.6, 0.022);
+      const inputGain = 0.86 + drive * 3.15;
+      const preDrive = 1.02 + drive * 3.6;
+      const postDrive = 1 + Math.pow(vca, 1.55) * 5.6;
+
+      this.modelInputGain.gain.setTargetAtTime(inputGain, now, 0.025);
+      this.preampStage.curve = makeOpAmpCurve(preDrive, 0.022);
       this.lowShelf.frequency.setTargetAtTime(90, now, 0.04);
       this.lowShelf.gain.setTargetAtTime(body * 3.6 - drive * 0.3, now, 0.04);
       this.highShelf.frequency.setTargetAtTime(8_500, now, 0.04);
       this.highShelf.gain.setTargetAtTime(presence * 5 + drive * 0.35, now, 0.04);
-      this.modelOutputGain.gain.setTargetAtTime(1 / (0.96 + drive * 0.28 + vca * 0.32), now, 0.035);
+      this.modelOutputGain.gain.setTargetAtTime(
+        hardwareAutoTrim(inputGain, opAmpSlope(preDrive), vcaSlope(postDrive)),
+        now,
+        0.035
+      );
       this.highpass.frequency.setTargetAtTime(31, now, 0.04);
       this.lowpass.frequency.setTargetAtTime(21_000, now, 0.04);
-      this.saturator.curve = makeVcaCurve(1 + Math.pow(vca, 1.55) * 5.6, 0.08 + drive * 0.08);
+      this.saturator.curve = makeVcaCurve(postDrive, 0.08 + drive * 0.08);
       this.disableTransport(now);
       return;
     }
@@ -276,16 +315,24 @@ export class MediaEffect extends BaseEffect {
       const low = bipolarAroundDefault(this.wow, WOW.defaultValue);
       const presence = bipolarAroundDefault(this.noise, NOISE.defaultValue);
       const output = this.tone;
-      this.modelInputGain.gain.setTargetAtTime(0.82 + drive * 3.5, now, 0.025);
-      this.preampStage.curve = makeOpAmpCurve(1.08 + drive * 4.6, 0.035);
+      const inputGain = 0.82 + drive * 3.5;
+      const preDrive = 1.08 + drive * 4.6;
+      const postDrive = 1.1 + Math.pow(output, 1.5) * 6.1;
+
+      this.modelInputGain.gain.setTargetAtTime(inputGain, now, 0.025);
+      this.preampStage.curve = makeOpAmpCurve(preDrive, 0.035);
       this.lowShelf.frequency.setTargetAtTime(100, now, 0.04);
       this.lowShelf.gain.setTargetAtTime(low * 4.4 + drive * 0.8, now, 0.04);
       this.highShelf.frequency.setTargetAtTime(10_500, now, 0.04);
       this.highShelf.gain.setTargetAtTime(presence * 4.2 + drive * 0.5, now, 0.04);
-      this.modelOutputGain.gain.setTargetAtTime(1 / (0.9 + drive * 0.42 + output * 0.36), now, 0.035);
+      this.modelOutputGain.gain.setTargetAtTime(
+        hardwareAutoTrim(inputGain, opAmpSlope(preDrive), transformerSlope(postDrive)),
+        now,
+        0.035
+      );
       this.highpass.frequency.setTargetAtTime(27, now, 0.04);
       this.lowpass.frequency.setTargetAtTime(20_500 - drive * 900, now, 0.04);
-      this.saturator.curve = makeTransformerCurve(1.1 + Math.pow(output, 1.5) * 6.1, 0.035 + drive * 0.025);
+      this.saturator.curve = makeTransformerCurve(postDrive, 0.035 + drive * 0.025);
       this.disableTransport(now);
       return;
     }
@@ -295,16 +342,24 @@ export class MediaEffect extends BaseEffect {
       const speedProfile = atr102Profile(speed);
       const record = this.wear;
       const bias = (this.tone - 0.5) * 2;
-      this.modelInputGain.gain.setTargetAtTime(0.9 + record * 2.8, now, 0.025);
-      this.preampStage.curve = makeTransformerCurve(1.02 + record * 2.6, 0.018);
+      const inputGain = 0.9 + record * 2.8;
+      const preDrive = 1.02 + record * 2.6;
+      const postDrive = 1.05 + record * speedProfile.driveScale * 5.4;
+
+      this.modelInputGain.gain.setTargetAtTime(inputGain, now, 0.025);
+      this.preampStage.curve = makeTransformerCurve(preDrive, 0.018);
       this.lowShelf.frequency.setTargetAtTime(speedProfile.bumpHz, now, 0.04);
       this.lowShelf.gain.setTargetAtTime(speedProfile.bumpDb + record * 0.65, now, 0.04);
       this.highShelf.frequency.setTargetAtTime(10_500, now, 0.04);
       this.highShelf.gain.setTargetAtTime(bias * 1.8 - record * 0.45, now, 0.04);
-      this.modelOutputGain.gain.setTargetAtTime(1 / (0.96 + record * 0.34), now, 0.035);
+      this.modelOutputGain.gain.setTargetAtTime(
+        hardwareAutoTrim(inputGain, transformerSlope(preDrive), tapeSlope(postDrive)),
+        now,
+        0.035
+      );
       this.highpass.frequency.setTargetAtTime(speedProfile.highpassHz, now, 0.04);
       this.lowpass.frequency.setTargetAtTime(speedProfile.lowpassHz - Math.max(0, bias) * 650, now, 0.04);
-      this.saturator.curve = makeTapeCurve(1.05 + record * speedProfile.driveScale * 5.4, bias);
+      this.saturator.curve = makeTapeCurve(postDrive, bias);
       this.wowLfo.frequency.setTargetAtTime(speedProfile.wowHz, now, 0.05);
       this.flutterLfo.frequency.setTargetAtTime(speedProfile.flutterHz, now, 0.05);
       const instability = speedProfile.modDepth * (0.35 + record * 0.65);
@@ -371,7 +426,9 @@ export class MediaEffect extends BaseEffect {
         const impulse = kind === 'vinyl' && Math.random() < 0.00035
           ? (Math.random() * 2 - 1) * (0.35 + Math.random() * 0.65)
           : 0;
-        data[index] = kind === 'cassette' ? white * 0.23 + brown * 0.7 : brown * 0.38 + impulse;
+        data[index] = kind === 'cassette'
+          ? white * 0.23 + brown * 0.7
+          : brown * 0.38 + impulse;
       }
     }
     const source = this.context.createBufferSource();
@@ -379,6 +436,13 @@ export class MediaEffect extends BaseEffect {
     source.loop = true;
     return source;
   }
+}
+
+function isConsoleBaselineMode(mode: MediaMode): boolean {
+  return mode === 'tascam424' ||
+    mode === 'Neve 1073' ||
+    mode === 'SSL 4000E' ||
+    mode === 'API 1608';
 }
 
 function bipolarAroundDefault(value: number, center: number): number {
@@ -393,17 +457,64 @@ export function atr102Speed(value: number): 3.75 | 7.5 | 15 | 30 {
   return 30;
 }
 
-function atr102Profile(speed: 3.75 | 7.5 | 15 | 30): { bumpHz: number; bumpDb: number; highpassHz: number; lowpassHz: number; wowHz: number; flutterHz: number; modDepth: number; noiseScale: number; driveScale: number } {
+function atr102Profile(speed: 3.75 | 7.5 | 15 | 30): {
+  bumpHz: number;
+  bumpDb: number;
+  highpassHz: number;
+  lowpassHz: number;
+  wowHz: number;
+  flutterHz: number;
+  modDepth: number;
+  noiseScale: number;
+  driveScale: number;
+} {
   if (speed === 3.75) return { bumpHz: 48, bumpDb: 3.8, highpassHz: 38, lowpassHz: 11_800, wowHz: 0.16, flutterHz: 2.7, modDepth: 0.0019, noiseScale: 1.7, driveScale: 1.28 };
   if (speed === 7.5) return { bumpHz: 62, bumpDb: 3.0, highpassHz: 31, lowpassHz: 15_200, wowHz: 0.18, flutterHz: 3.1, modDepth: 0.00125, noiseScale: 1.35, driveScale: 1.14 };
   if (speed === 15) return { bumpHz: 82, bumpDb: 2.15, highpassHz: 27, lowpassHz: 18_900, wowHz: 0.21, flutterHz: 3.6, modDepth: 0.00068, noiseScale: 1, driveScale: 1 };
   return { bumpHz: 108, bumpDb: 1.05, highpassHz: 24, lowpassHz: 21_500, wowHz: 0.25, flutterHz: 4.2, modDepth: 0.00034, noiseScale: 0.72, driveScale: 0.82 };
 }
 
+/** Approximate small-signal slope of tanh(drive*x)/tanh(drive). */
+function normalizedTanhSlope(drive: number): number {
+  const safeDrive = Math.max(1, drive);
+  return safeDrive / Math.max(1e-6, Math.tanh(safeDrive));
+}
+
+function opAmpSlope(drive: number): number {
+  return normalizedTanhSlope(drive);
+}
+
+function transformerSlope(drive: number): number {
+  return normalizedTanhSlope(drive) * 0.985;
+}
+
+function vcaSlope(drive: number): number {
+  return normalizedTanhSlope(drive);
+}
+
+function tapeSlope(drive: number): number {
+  return normalizedTanhSlope(drive);
+}
+
+/**
+ * Counter the gain already created by the explicit input stage and nonlinear transfer slopes.
+ * This keeps hardware identities near unity at small signal while allowing their saturation
+ * and compression to appear naturally as drive rises.
+ */
+function hardwareAutoTrim(inputGain: number, ...stageSlopes: number[]): number {
+  const transferGain = stageSlopes.reduce(
+    (gain, slope) => gain * Math.max(1e-6, slope),
+    Math.max(1e-6, inputGain)
+  );
+  return 1 / Math.max(1, transferGain);
+}
+
 function makeIdentityCurve(): Float32Array<ArrayBuffer> {
   const samples = 1024;
   const curve = new Float32Array(samples);
-  for (let index = 0; index < samples; index += 1) curve[index] = (index / (samples - 1)) * 2 - 1;
+  for (let index = 0; index < samples; index += 1) {
+    curve[index] = (index / (samples - 1)) * 2 - 1;
+  }
   return curve;
 }
 
@@ -427,7 +538,11 @@ function makeTransformerCurve(drive: number, asymmetry: number): Float32Array<Ar
   const norm = Math.max(1e-6, Math.tanh(safeDrive));
   for (let index = 0; index < samples; index += 1) {
     const x = (index / (samples - 1)) * 2 - 1;
-    const magnetized = x + asymmetry * (x * x - 0.33) * (x >= 0 ? 1 : -0.42);
+    // Continuous asymmetric curvature: x² creates the even-order bias while the two
+    // magnetic polarities saturate at different strengths. Both value and derivative
+    // converge to the unmodified transfer at x=0, avoiding a fake crossover edge.
+    const magneticCurvature = x * x * (x >= 0 ? 1 : -0.42);
+    const magnetized = x + asymmetry * magneticCurvature;
     const compressed = Math.tanh(magnetized * safeDrive) / norm;
     curve[index] = Math.max(-1, Math.min(1, compressed * 0.985));
   }
