@@ -68,7 +68,10 @@ const graph = file('src/audio/AudioGraph.ts');
 const faceplate = file('src/ui/faceplateLayout.ts');
 const viewport = file('src/components/effects/ModuleViewport.tsx');
 const viewportRoom = file('src/components/effects/viewportRoom.ts');
-const viewportCss = file('src/components/effects/ViewportAccentRing.css');
+const viewportCss = file('src/components/effects/ViewportOptics.css');
+const moduleViewportCss = file('src/components/effects/ModuleViewport.css');
+const visualEngine = file('src/visual/VisualEngine.ts');
+const entrypoint = file('src/main.tsx');
 const html = file('index.html');
 const readme = file('README.md');
 const packageJson = JSON.parse(file('package.json'));
@@ -138,16 +141,31 @@ expect(faceplate.includes('stageHeight: 526'), 'approved faceplate stage height 
 expect((faceplate.match(/y: 348/g) ?? []).length >= 3, 'approved first knob row changed');
 expect((faceplate.match(/y: 452/g) ?? []).length >= 3, 'approved second knob row changed');
 expect(faceplate.includes('snap: 8'), 'approved faceplate snap changed');
+expect(
+  moduleViewportCss.includes('.faceplate-layout-custom .faceplate-viewport-shell'),
+  'faceplate viewport sizing drifted out of ModuleViewport ownership',
+);
 
 expect(viewport.includes('drawViewportRoomBack'), 'module art lost the shared 3D room back pass');
 expect(viewport.includes('drawViewportRoomFront'), 'module art lost the shared 3D room front pass');
 expect(viewport.includes('getViewportSculptureTransform'), 'module artwork is no longer staged as a room sculpture');
+expect(viewport.includes('getLatestVisualAudioState'), 'module viewport no longer reads realtime canvas telemetry');
 expect(viewportRoom.includes('drawPerspectivePlane'), '3D room perspective renderer is missing');
 expect(viewportRoom.includes("moduleId === 'saturation'"), '3D room lost module-specific visual signatures');
 expect(
   viewportCss.includes('animation: none !important') && viewportCss.includes('transform: none !important'),
   'CSS is moving the whole viewport canvas again; canvas renderer must own artwork motion',
 );
+expect(
+  visualEngine.includes('const REACT_TELEMETRY_HZ = 10') &&
+    visualEngine.includes('latestVisualAudioState = next'),
+  'canvas telemetry is coupled back to full-rate React rendering',
+);
+expect(!entrypoint.includes('FaceplateResizeFix.css'), 'obsolete faceplate fix stylesheet is still imported');
+expect(!entrypoint.includes('PanelContrastRefresh.css'), 'obsolete panel refresh stylesheet is still imported');
+expect(!entrypoint.includes('ViewportAccentRing.css'), 'obsolete viewport ring stylesheet is still imported');
+expect(entrypoint.includes('PanelTheme.css'), 'PanelTheme is not loaded');
+expect(entrypoint.includes('ViewportOptics.css'), 'ViewportOptics is not loaded');
 
 if (problems.length > 0) {
   console.error('CALCOTONE audit FAILED');
