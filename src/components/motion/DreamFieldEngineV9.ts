@@ -46,6 +46,14 @@ type SceneProfile = {
   basinFull: number;
   warm: number;
   cool: number;
+  canopy: number;
+  shrine: number;
+  glyphs: number;
+  mask: number;
+  roots: number;
+  flora: number;
+  calligraphy: number;
+  constellation: number;
 };
 
 type SceneState = SceneProfile & {
@@ -64,10 +72,9 @@ const CHAPTER_SECONDS = 13.5;
 const TRANSITION_START = 0.67;
 const ENERGY_KEYS: (keyof Energy)[] = ['ember', 'drift', 'halo', 'atmos', 'grain', 'artifact'];
 
-// These are not separate renderers. They are four compositions made from the same
-// horizon / arch / portal / silhouette / reflection / basin primitives.
+// Four art-directed compositions built from the same V9 primitives.
+// The art fields crossfade with the scene, so motifs become one another instead of stacking forever.
 const SCENES: SceneProfile[] = [
-  // Asymmetric cosmic landscape: closest to the first reference sequence.
   {
     horizon: 0.58,
     heroX: 0.07,
@@ -88,8 +95,15 @@ const SCENES: SceneProfile[] = [
     basinFull: 0.08,
     warm: 0.62,
     cool: 0.72,
+    canopy: 0.82,
+    shrine: 0.12,
+    glyphs: 0.34,
+    mask: 0.22,
+    roots: 0.36,
+    flora: 0.78,
+    calligraphy: 0.24,
+    constellation: 0.96,
   },
-  // Nested forest tunnel with a strong central axis and concentric foreground.
   {
     horizon: 0.58,
     heroX: 0,
@@ -110,8 +124,15 @@ const SCENES: SceneProfile[] = [
     basinFull: 0.86,
     warm: 0.78,
     cool: 0.78,
+    canopy: 0.92,
+    shrine: 0.72,
+    glyphs: 0.88,
+    mask: 0.42,
+    roots: 0.94,
+    flora: 0.62,
+    calligraphy: 0.58,
+    constellation: 0.46,
   },
-  // Giant horizon arch with a small distant sun / portal and wide basin.
   {
     horizon: 0.51,
     heroX: 0,
@@ -132,8 +153,15 @@ const SCENES: SceneProfile[] = [
     basinFull: 0.58,
     warm: 0.68,
     cool: 0.88,
+    canopy: 0.28,
+    shrine: 0.96,
+    glyphs: 0.76,
+    mask: 0.24,
+    roots: 0.42,
+    flora: 0.20,
+    calligraphy: 0.96,
+    constellation: 0.40,
   },
-  // Mirror world: restrained sky portal plus a dominant black foreground orb.
   {
     horizon: 0.51,
     heroX: 0,
@@ -154,6 +182,14 @@ const SCENES: SceneProfile[] = [
     basinFull: 0.28,
     warm: 0.82,
     cool: 0.78,
+    canopy: 0.48,
+    shrine: 0.58,
+    glyphs: 0.92,
+    mask: 1,
+    roots: 0.60,
+    flora: 0.36,
+    calligraphy: 0.82,
+    constellation: 0.72,
   },
 ];
 
@@ -208,6 +244,14 @@ function mixProfile(a: SceneProfile, b: SceneProfile, t: number): SceneProfile {
     basinFull: lerp(a.basinFull, b.basinFull, t),
     warm: lerp(a.warm, b.warm, t),
     cool: lerp(a.cool, b.cool, t),
+    canopy: lerp(a.canopy, b.canopy, t),
+    shrine: lerp(a.shrine, b.shrine, t),
+    glyphs: lerp(a.glyphs, b.glyphs, t),
+    mask: lerp(a.mask, b.mask, t),
+    roots: lerp(a.roots, b.roots, t),
+    flora: lerp(a.flora, b.flora, t),
+    calligraphy: lerp(a.calligraphy, b.calligraphy, t),
+    constellation: lerp(a.constellation, b.constellation, t),
   };
 }
 
@@ -330,9 +374,6 @@ export class DreamFieldEngine {
     const chapterA = ((chapterFloor % SCENES.length) + SCENES.length) % SCENES.length;
     const chapterB = (chapterA + 1) % SCENES.length;
     const local = fract(journey);
-
-    // Hold a readable composition for about two thirds of each chapter. Only the last
-    // third transforms, which is much closer to the reference than a permanent LFO soup.
     const transition = smoothstep(TRANSITION_START, 1, local);
     const profile = mixProfile(SCENES[chapterA], SCENES[chapterB], transition);
     const transitionPulse = Math.sin(transition * Math.PI);
@@ -355,6 +396,14 @@ export class DreamFieldEngine {
       mass: clamp01(profile.mass + e.atmos * 0.16 + patch.xStrength * 0.05 + takeover * 0.10),
       orbitSweep: clamp01(profile.orbitSweep + e.halo * 0.12 + patch.xStrength * 0.08 + takeover * 0.10),
       foregroundOrb: clamp01(profile.foregroundOrb + takeover * profile.foregroundOrb * 0.12),
+      canopy: clamp01(profile.canopy + reveal * 0.10),
+      shrine: clamp01(profile.shrine + takeover * 0.09),
+      glyphs: clamp01(profile.glyphs + reveal * 0.13),
+      mask: clamp01(profile.mask + reveal * 0.17),
+      roots: clamp01(profile.roots + e.atmos * 0.08 + reveal * 0.06),
+      flora: clamp01(profile.flora + e.grain * 0.06 + reveal * 0.08),
+      calligraphy: clamp01(profile.calligraphy + e.drift * 0.08 + takeover * 0.07),
+      constellation: clamp01(profile.constellation + e.halo * 0.06),
     };
   }
 
@@ -485,12 +534,19 @@ export class DreamFieldEngine {
     const activity = clamp01(patch.total / 6 + this.gesture * 0.22);
 
     this.drawArches(ctx, heroX, heroY, minDim, e, patch, scene, time);
+    this.drawCelestialConstellation(ctx, heroX, heroY, minDim, e, scene, time);
     this.drawPortal(ctx, heroX, heroY, horizon, minDim, e, patch, scene, activity, time);
+    this.drawPortalGlyphs(ctx, heroX, heroY, minDim, e, scene, time);
     this.drawSilhouettes(ctx, horizon, e, scene, time);
+    this.drawSideCanopies(ctx, horizon, minDim, e, scene, time);
+    this.drawShrineSpines(ctx, horizon, minDim, e, scene, time);
+    this.drawRootVeins(ctx, horizon, e, scene, time);
     this.drawReflectionBands(ctx, heroX, horizon, e, patch, scene, time);
+    this.drawWaterCalligraphy(ctx, heroX, horizon, e, scene, time);
     this.drawForegroundBasin(ctx, heroX, e, patch, scene, time);
     this.drawOrbitals(ctx, heroX, heroY, minDim, e, patch, scene, time);
-    this.drawForegroundOrb(ctx, heroX, heroY, horizon, minDim, e, scene, time);
+    this.drawForegroundOrb(ctx, heroX, heroY, horizon, minDim, e, scene);
+    this.drawMaskHints(ctx, heroX, heroY, horizon, minDim, e, scene, time);
     this.drawAmbiguousForms(ctx, horizon, minDim, e, patch, scene, time);
     this.drawArtifact(ctx, e, time);
   }
@@ -503,7 +559,7 @@ export class DreamFieldEngine {
     e: Energy,
     patch: PatchField,
     scene: SceneState,
-    t: number
+    _t: number
   ) {
     const count = Math.max(1, Math.min(5, Math.round(scene.archCount + e.halo * 1.2 + patch.xStrength * 0.5)));
     const tilt = (this.x - 0.5) * (0.07 + (1 - scene.symmetry) * 0.12) + scene.takeover * (this.x - 0.5) * 0.05;
@@ -530,6 +586,51 @@ export class DreamFieldEngine {
       ctx.beginPath();
       ctx.ellipse(cx, centerY, rx, ry, 0, Math.PI * 1.035, Math.PI * 1.965);
       ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  private drawCelestialConstellation(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    minDim: number,
+    e: Energy,
+    scene: SceneState,
+    t: number
+  ) {
+    if (scene.constellation < 0.06) return;
+    const count = 5 + Math.round(scene.constellation * 5);
+    const points: [number, number][] = [];
+    const alpha = scene.constellation * (0.025 + e.halo * 0.018);
+
+    for (let i = 0; i < count; i += 1) {
+      const p = count <= 1 ? 0 : i / (count - 1);
+      const angle = Math.PI * (1.06 + p * 0.88) + Math.sin(t * 0.018 + i) * 0.015;
+      const radius = minDim * (0.30 + (i % 3) * 0.055 + scene.archScale * 0.055);
+      points.push([
+        cx + Math.cos(angle) * radius * 1.33,
+        cy + minDim * scene.archLift * 0.72 + Math.sin(angle) * radius * 0.72,
+      ]);
+    }
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.strokeStyle = `rgba(185,223,219,${alpha})`;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    points.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
+    ctx.stroke();
+
+    for (let i = 0; i < points.length; i += 1) {
+      const [x, y] = points[i];
+      const r = minDim * (0.0024 + (i % 3) * 0.0011);
+      ctx.fillStyle = i % 2
+        ? `rgba(91,215,220,${alpha * 2.7})`
+        : `rgba(247,171,112,${alpha * 2.5})`;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
   }
@@ -581,7 +682,6 @@ export class DreamFieldEngine {
     ctx.ellipse(cx, cy, rx * 0.81, ry * 0.81, (this.x - 0.5) * 0.055, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Nested structure exists only during transformation, then resolves back to a single form.
     if (scene.reveal > 0.06) {
       const innerAlpha = scene.reveal * (0.040 + e.halo * 0.020);
       for (let i = 0; i < 2; i += 1) {
@@ -609,14 +709,76 @@ export class DreamFieldEngine {
     ctx.restore();
   }
 
+  private drawPortalGlyphs(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    minDim: number,
+    e: Energy,
+    scene: SceneState,
+    t: number
+  ) {
+    const amount = scene.glyphs * (0.36 + scene.reveal * 0.64);
+    if (amount < 0.05) return;
+
+    const base = minDim * scene.portalScale * (1.50 + scene.reveal * 0.20);
+    const count = 7 + Math.round(scene.glyphs * 7);
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.lineCap = 'round';
+
+    for (let i = 0; i < count; i += 1) {
+      const a = (i / count) * Math.PI * 2 + t * 0.008 * (i % 2 ? 1 : -1);
+      const arc = 0.12 + (i % 3) * 0.045;
+      const radius = base * (1.02 + (i % 4) * 0.12);
+      const alpha = amount * (0.018 + e.halo * 0.012);
+      ctx.strokeStyle = i % 3 === 0
+        ? `rgba(247,177,112,${alpha})`
+        : i % 3 === 1
+          ? `rgba(91,215,220,${alpha})`
+          : `rgba(229,114,192,${alpha * 0.90})`;
+      ctx.lineWidth = Math.max(0.75, minDim * 0.0012);
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, a, a + arc);
+      ctx.stroke();
+
+      if (i % 2 === 0) {
+        const x1 = cx + Math.cos(a) * radius * 0.93;
+        const y1 = cy + Math.sin(a) * radius * 0.93;
+        const x2 = cx + Math.cos(a) * radius * 1.04;
+        const y2 = cy + Math.sin(a) * radius * 1.04;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   private silhouetteShape(index: number, layer: number, chapter: number, symmetry: number): number {
-    const phase = chapter * 1.71 + layer * 2.13;
-    const asym = Math.sin(index * (0.73 + chapter * 0.035) + phase) * 0.42
-      + Math.sin(index * (1.53 + chapter * 0.041) - phase * 0.6) * 0.23;
     const mirroredIndex = index <= 32 ? index : 64 - index;
-    const mirrored = Math.sin(mirroredIndex * (0.78 + chapter * 0.03) + phase) * 0.44
-      + Math.sin(mirroredIndex * (1.61 + chapter * 0.025) - phase * 0.55) * 0.21;
-    return lerp(asym, mirrored, symmetry);
+    const baseIndex = lerp(index, mirroredIndex, symmetry);
+    const phase = chapter * 1.73 + layer * 2.11;
+
+    if (chapter === 0) {
+      const branch = Math.sin(baseIndex * 0.48 + phase) * 0.30 + Math.sin(baseIndex * 1.47 - phase * 0.4) * 0.20;
+      const antler = Math.pow(Math.abs(Math.sin(baseIndex * 0.91 + phase)), 7) * 0.34;
+      return branch + antler;
+    }
+    if (chapter === 1) {
+      const forest = Math.sin(baseIndex * 0.79 + phase) * 0.35 + Math.sin(baseIndex * 1.69 - phase * 0.55) * 0.18;
+      const needles = Math.pow(Math.abs(Math.sin(baseIndex * 2.38 + phase)), 15) * 0.42;
+      return forest + needles;
+    }
+    if (chapter === 2) {
+      const mountain = Math.sin(baseIndex * 0.19 + phase) * 0.30 + Math.sin(baseIndex * 0.39 - phase) * 0.22;
+      const tower = Math.pow(Math.abs(Math.sin(baseIndex * 0.72 + phase)), 11) * 0.30;
+      return mountain + tower;
+    }
+    const shoulders = Math.sin(baseIndex * 0.31 + phase) * 0.28 + Math.sin(baseIndex * 0.62 - phase * 0.7) * 0.18;
+    const maskSpine = Math.pow(Math.abs(Math.sin(baseIndex * 1.24 + phase)), 9) * 0.34;
+    return shoulders + maskSpine;
   }
 
   private drawSilhouettes(ctx: CanvasRenderingContext2D, horizon: number, e: Energy, scene: SceneState, _t: number) {
@@ -664,6 +826,161 @@ export class DreamFieldEngine {
     }
   }
 
+  private drawSideCanopies(
+    ctx: CanvasRenderingContext2D,
+    horizon: number,
+    minDim: number,
+    e: Energy,
+    scene: SceneState,
+    t: number
+  ) {
+    const amount = scene.canopy;
+    if (amount < 0.05) return;
+    const w = this.width;
+    const h = this.height;
+    const branchCount = 3 + Math.round(amount * 3);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.lineCap = 'round';
+
+    for (const side of [-1, 1] as const) {
+      const edgeX = side < 0 ? 0 : w;
+      for (let i = 0; i < branchCount; i += 1) {
+        const seed = i + scene.chapterA * 5.7 + (side > 0 ? 13.4 : 0);
+        const baseY = horizon - h * (0.025 + i * 0.032);
+        const reach = w * (0.10 + amount * 0.11 + hash(seed, 4.1) * 0.05);
+        const lift = h * (0.06 + hash(seed, 2.7) * 0.11 + scene.flora * 0.04);
+        const endX = edgeX - side * reach;
+        const endY = baseY - lift * (0.55 + hash(seed, 8.3) * 0.55);
+        const c1x = edgeX - side * reach * 0.32;
+        const c1y = baseY - lift * 0.18;
+        const c2x = edgeX - side * reach * 0.72;
+        const c2y = endY + Math.sin(t * 0.018 + seed) * 2;
+        const alpha = amount * (0.025 + e.atmos * 0.014 + scene.reveal * 0.012);
+
+        ctx.strokeStyle = i % 2
+          ? `rgba(84,208,210,${alpha})`
+          : `rgba(216,111,185,${alpha * 0.78})`;
+        ctx.lineWidth = Math.max(0.8, minDim * (0.0015 + amount * 0.0006));
+        ctx.beginPath();
+        ctx.moveTo(edgeX, baseY);
+        ctx.bezierCurveTo(c1x, c1y, c2x, c2y, endX, endY);
+        ctx.stroke();
+
+        const forks = 2 + Math.round(scene.flora * 2);
+        for (let f = 0; f < forks; f += 1) {
+          const q = 0.48 + f * 0.16;
+          const bx = lerp(edgeX, endX, q);
+          const by = lerp(baseY, endY, q) - lift * 0.08;
+          const twig = minDim * (0.028 + f * 0.010 + scene.flora * 0.012);
+          const dir = side * (f % 2 ? -1 : 1);
+          ctx.beginPath();
+          ctx.moveTo(bx, by);
+          ctx.quadraticCurveTo(bx - side * twig * 0.45, by - twig * 0.55, bx - side * twig, by - twig * (0.72 + dir * 0.08));
+          ctx.stroke();
+
+          if (scene.flora > 0.25) {
+            const podAlpha = alpha * (0.60 + scene.flora * 0.45);
+            ctx.fillStyle = `rgba(238,181,130,${podAlpha})`;
+            ctx.beginPath();
+            ctx.ellipse(
+              bx - side * twig,
+              by - twig * 0.72,
+              minDim * 0.0045 * (0.8 + scene.flora),
+              minDim * 0.0025 * (0.8 + scene.flora),
+              side * 0.45,
+              0,
+              Math.PI * 2
+            );
+            ctx.fill();
+          }
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  private drawShrineSpines(
+    ctx: CanvasRenderingContext2D,
+    horizon: number,
+    minDim: number,
+    e: Energy,
+    scene: SceneState,
+    t: number
+  ) {
+    const amount = scene.shrine;
+    if (amount < 0.05) return;
+    const w = this.width;
+    const count = 3 + Math.round(amount * 5);
+    const spread = w * (0.18 + scene.corridor * 0.18);
+    const center = w * (0.5 + scene.heroX * 0.35);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    for (let i = 0; i < count; i += 1) {
+      const p = count <= 1 ? 0.5 : i / (count - 1);
+      const x = center + (p - 0.5) * spread * 2;
+      const symmetrical = 1 - Math.abs(p - 0.5) * 2;
+      const height = minDim * (0.07 + symmetrical * 0.12 + amount * 0.08) * (0.88 + hash(i + scene.chapterA * 3.2, 2.9) * 0.25);
+      const width = minDim * (0.011 + amount * 0.010);
+      const alpha = amount * (0.020 + e.halo * 0.010 + scene.reveal * 0.010);
+      ctx.strokeStyle = i % 2
+        ? `rgba(93,215,220,${alpha})`
+        : `rgba(244,160,104,${alpha * 0.82})`;
+      ctx.lineWidth = Math.max(0.8, minDim * 0.0014);
+
+      ctx.beginPath();
+      ctx.moveTo(x - width, horizon);
+      ctx.lineTo(x - width * 0.55, horizon - height * 0.72);
+      ctx.quadraticCurveTo(x, horizon - height * (1.02 + Math.sin(t * 0.011 + i) * 0.01), x + width * 0.55, horizon - height * 0.72);
+      ctx.lineTo(x + width, horizon);
+      ctx.stroke();
+
+      if (amount > 0.58 && i % 2 === 0) {
+        ctx.beginPath();
+        ctx.moveTo(x - width * 0.55, horizon - height * 0.45);
+        ctx.lineTo(x + width * 0.55, horizon - height * 0.45);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  private drawRootVeins(ctx: CanvasRenderingContext2D, horizon: number, e: Energy, scene: SceneState, t: number) {
+    const amount = scene.roots;
+    if (amount < 0.06) return;
+    const w = this.width;
+    const h = this.height;
+    const alpha = amount * (0.018 + e.atmos * 0.010);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.strokeStyle = `rgba(116,202,188,${alpha})`;
+    ctx.lineWidth = 0.8;
+
+    for (const side of [-1, 1] as const) {
+      for (let i = 0; i < 3; i += 1) {
+        const sx = side < 0 ? w * (0.08 + i * 0.045) : w * (0.92 - i * 0.045);
+        const sy = horizon - h * (0.01 + i * 0.018);
+        const ex = side < 0 ? w * (0.20 + i * 0.06) : w * (0.80 - i * 0.06);
+        const ey = h * (0.72 + i * 0.065);
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.bezierCurveTo(
+          sx - side * w * 0.035,
+          h * 0.61,
+          ex + side * w * 0.035,
+          h * (0.65 + Math.sin(t * 0.015 + i) * 0.004),
+          ex,
+          ey
+        );
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   private drawReflectionBands(
     ctx: CanvasRenderingContext2D,
     heroX: number,
@@ -695,6 +1012,50 @@ export class DreamFieldEngine {
         yy - h * (0.007 + patch.yStrength * 0.004 + scene.mirror * 0.006),
         heroX + spread,
         yy + Math.cos(t * 0.046 + i) * wobble
+      );
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  private drawWaterCalligraphy(
+    ctx: CanvasRenderingContext2D,
+    heroX: number,
+    horizon: number,
+    e: Energy,
+    scene: SceneState,
+    t: number
+  ) {
+    const amount = scene.calligraphy;
+    if (amount < 0.06) return;
+    const w = this.width;
+    const h = this.height;
+    const count = 3 + Math.round(amount * 5);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.lineCap = 'round';
+    for (let i = 0; i < count; i += 1) {
+      const seed = i + scene.chapterA * 7.3;
+      const side = i % 2 ? 1 : -1;
+      const startX = heroX + side * w * (0.025 + hash(seed, 2.7) * 0.08);
+      const startY = horizon + h * (0.04 + i * 0.045);
+      const endX = heroX + side * w * (0.18 + amount * 0.08 + hash(seed, 6.1) * 0.08);
+      const endY = startY + h * (0.045 + hash(seed, 9.4) * 0.055);
+      const alpha = amount * (0.018 + e.drift * 0.010 + scene.mirror * 0.010);
+      ctx.strokeStyle = i % 3 === 0
+        ? `rgba(235,111,190,${alpha})`
+        : `rgba(91,215,220,${alpha})`;
+      ctx.lineWidth = Math.max(0.7, 0.8 + amount * 0.4);
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.bezierCurveTo(
+        startX + side * w * 0.04,
+        startY + Math.sin(t * 0.020 + i) * 2,
+        endX - side * w * 0.055,
+        endY - h * 0.035,
+        endX,
+        endY
       );
       ctx.stroke();
     }
@@ -793,8 +1154,7 @@ export class DreamFieldEngine {
     horizon: number,
     minDim: number,
     e: Energy,
-    scene: SceneState,
-    _t: number
+    scene: SceneState
   ) {
     if (scene.foregroundOrb < 0.03) return;
 
@@ -841,6 +1201,60 @@ export class DreamFieldEngine {
       ctx.beginPath();
       ctx.moveTo(heroX, Math.max(horizon, heroY + radius));
       ctx.lineTo(heroX, cy - radius);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  private drawMaskHints(
+    ctx: CanvasRenderingContext2D,
+    heroX: number,
+    heroY: number,
+    horizon: number,
+    minDim: number,
+    e: Energy,
+    scene: SceneState,
+    t: number
+  ) {
+    const amount = scene.mask * (0.30 + scene.reveal * 0.70);
+    if (amount < 0.08) return;
+
+    const w = this.width;
+    const h = this.height;
+    const centerX = lerp(w * 0.5, heroX, 0.25);
+    const centerY = lerp(heroY, horizon - h * 0.06, 0.62);
+    const eyeDx = minDim * (0.080 + amount * 0.020);
+    const eyeRy = minDim * (0.018 + amount * 0.008);
+    const alpha = amount * (0.018 + e.atmos * 0.010 + scene.reveal * 0.012);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.strokeStyle = `rgba(224,231,221,${alpha})`;
+    ctx.lineWidth = Math.max(0.8, minDim * 0.0013);
+
+    for (const side of [-1, 1] as const) {
+      const ex = centerX + side * eyeDx;
+      const ey = centerY + Math.sin(t * 0.015 + side) * 1.2;
+      ctx.beginPath();
+      ctx.ellipse(ex, ey, eyeDx * 0.54, eyeRy, side * 0.08, Math.PI * 1.08, Math.PI * 1.92);
+      ctx.stroke();
+      if (scene.reveal > 0.28) {
+        ctx.beginPath();
+        ctx.arc(ex + side * eyeDx * 0.06, ey, minDim * (0.004 + scene.reveal * 0.003), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    ctx.strokeStyle = `rgba(245,169,111,${alpha * 0.66})`;
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY + eyeRy * 0.6);
+    ctx.quadraticCurveTo(centerX + Math.sin(t * 0.012) * 1.5, centerY + minDim * 0.045, centerX, centerY + minDim * 0.075);
+    ctx.stroke();
+
+    if (scene.mask > 0.72) {
+      ctx.strokeStyle = `rgba(92,214,219,${alpha * 0.72})`;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY + minDim * 0.055, minDim * 0.095, Math.PI * 0.14, Math.PI * 0.86);
       ctx.stroke();
     }
     ctx.restore();
