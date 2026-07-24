@@ -6,6 +6,7 @@ import {
   noteRandomMutationWall,
 } from './perf/randomProfiler';
 import { applyRandomBatch } from './perf/randomBatch';
+import { beginViewportPerformanceHold } from './components/effects/viewportScheduler';
 
 const RANDOM_PREP_MS = 72;
 const RANDOM_SETTLE_MS = 18;
@@ -87,8 +88,11 @@ function markBusy(button: HTMLButtonElement, busy: boolean): void {
   }
 }
 
-function nextFrame(): Promise<void> {
-  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+function yieldMainThread(): Promise<void> {
+  // A task boundary is enough to let input/paint work breathe. Waiting for a full RAF
+  // here used to force the six expensive viewport canvases to run between every DSP
+  // batch, stretching RANDOM into a 600+ ms operation.
+  return new Promise((resolve) => window.setTimeout(resolve, 0));
 }
 
 function beginParameterCapture(engine: AudioEngine): void {
@@ -108,15 +112,15 @@ async function flushCapturedRandom(
   engine: AudioEngine,
   batches: Map<string, Map<string, number>>,
 ): Promise<void> {
-  // Give rendering a scheduling boundary between module transactions. This prevents
-  // Atmos/Halo network construction and Ember/Artifact curve generation from piling
-  // into one 100+ ms main-thread frame.
+  // Keep module rebuilds as separate tasks so Halo/Atmos construction cannot combine
+  // with Ember/Artifact curve generation into one giant synchronous long task. The
+  // viewport scheduler is held during this window, so these yields stay cheap.
   for (const effectId of RANDOM_BATCH_ORDER) {
     const values = batches.get(effectId);
     if (!values?.size) continue;
     if (activeEngine !== engine || engine.getState() !== 'running') return;
 
-    await nextFrame();
+    await yieldMainThread();
     const effect = engine.getEffect(effectId);
     if (effect) applyRandomBatch(effect, values);
   }
@@ -125,7 +129,7 @@ async function flushCapturedRandom(
   for (const [effectId, values] of batches) {
     if ((RANDOM_BATCH_ORDER as readonly string[]).includes(effectId) || !values.size) continue;
     if (activeEngine !== engine || engine.getState() !== 'running') return;
-    await nextFrame();
+    await yieldMainThread();
     const effect = engine.getEffect(effectId);
     if (effect) applyRandomBatch(effect, values);
   }
@@ -138,12 +142,7 @@ function handleSignalRandom(button: HTMLButtonElement, event: MouseEvent): void 
     return;
   }
 
-  // SIGNAL RANDOM already uses AudioEngine.reorderEffectsClickSafe(). The profiler
-  // measures both its intentional transfer window and the synchronous graph surgery.
   if (activeEngine?.getState() === 'running') beginRandomProfile('signal');
-
-  // Prevent repeated clicks from queueing several graph rebuilds while the first
-  // click-safe reorder is still fading out/in.
   signalBusyUntil = stamp + SIGNAL_LOCK_MS;
   markBusy(button, true);
   window.setTimeout(() => markBusy(button, false), SIGNAL_LOCK_MS);
@@ -161,10 +160,7 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
   }
 
   const engine = activeEngine;
-  if (!engine || engine.getState() !== 'running') {
-    // When audio is off, RANDOM only changes UI state; no transfer envelope is needed.
-    return;
-  }
+  if (!engine || engine.getState() !== 'running') return;
 
   const snapshot = engine.getEffectOrder().map((id) => ({
     id,
@@ -178,14 +174,17 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
   markBusy(button, true);
   beginRandomProfile('musical');
 
-  // Dry bridge: fade the old processed rack toward each effect's clean bypass path.
-  // The finished random patch is then built behind that bridge one module at a time.
+  // Preserve the current artwork like a held hardware display while the rack changes
+  // behind it. This removes six high-DPI canvas renderers from the critical DSP path.
+  const releaseViewportHold = beginViewportPerformanceHold();
+
   for (const entry of active) engine.setEffectBypassed(entry.id, true);
 
   window.setTimeout(() => {
     if (activeEngine !== engine || engine.getState() !== 'running') {
       randomBusy = false;
       markBusy(button, false);
+      releaseViewportHold();
       abortRandomProfile();
       return;
     }
@@ -194,9 +193,8 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
     beginParameterCapture(engine);
     const planningStarted = performance.now();
     try {
-      // HTMLElement.click() is synchronous. During this replay the existing RANDOM
-      // logic still computes the exact same final patch and updates React state, but
-      // AudioEngine parameter writes are captured instead of executed immediately.
+      // The existing RANDOM logic still chooses exactly the same patch and updates UI
+      // state. Only its DSP setter calls are captured and collapsed into six batches.
       button.click();
     } finally {
       noteRandomMutationWall(performance.now() - planningStarted);
@@ -207,9 +205,7 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
       .then(() => new Promise<void>((resolve) => window.setTimeout(resolve, RANDOM_SETTLE_MS)))
       .then(() => {
         if (activeEngine === engine && engine.getState() === 'running') {
-          for (const entry of snapshot) {
-            engine.setEffectBypassed(entry.id, entry.bypassed);
-          }
+          for (const entry of snapshot) engine.setEffectBypassed(entry.id, entry.bypassed);
         }
       })
       .catch((error) => {
@@ -218,6 +214,9 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
       .finally(() => {
         randomBusy = false;
         markBusy(button, false);
+        releaseViewportHold();
+        // Profiling finishes after the visual scheduler has been released so the
+        // reported frame gap still includes the first real recovery paint.
         finishMusicalRandomProfile();
       });
   }, RANDOM_PREP_MS);
