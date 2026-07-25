@@ -1,10 +1,4 @@
 import { AudioEngine } from './audio/AudioEngine';
-import {
-  abortRandomProfile,
-  beginRandomProfile,
-  finishMusicalRandomProfile,
-  noteRandomMutationWall,
-} from './perf/randomProfiler';
 import { applyRandomBatch } from './perf/randomBatch';
 import { beginViewportPerformanceHold } from './components/effects/viewportScheduler';
 
@@ -20,10 +14,10 @@ let signalBusyUntil = 0;
 let captureEngine: AudioEngine | null = null;
 let capturedParameters = new Map<string, Map<string, number>>();
 
-// The profiler patches AudioEngine.setEffectParameter first. Keep that instrumented
-// function as the normal path, but capture RANDOM's synchronous setter burst instead
-// of executing all 41 mutations in one JavaScript turn.
-const instrumentedSetEffectParameter = AudioEngine.prototype.setEffectParameter;
+// Capture RANDOM's synchronous setter burst instead of executing every parameter
+// mutation in one JavaScript turn. Outside that short capture window, calls go
+// straight to the engine with no profiling or diagnostic wrapper in the hot path.
+const directSetEffectParameter = AudioEngine.prototype.setEffectParameter;
 AudioEngine.prototype.setEffectParameter = function (
   this: AudioEngine,
   effectId: string,
@@ -39,7 +33,7 @@ AudioEngine.prototype.setEffectParameter = function (
     values.set(parameterId, value);
     return;
   }
-  instrumentedSetEffectParameter.call(this, effectId, parameterId, value);
+  directSetEffectParameter.call(this, effectId, parameterId, value);
 };
 
 // Keep this bridge deliberately outside React's render path. RANDOM is a bursty,
@@ -67,7 +61,6 @@ AudioEngine.prototype.stop = async function (
       captureEngine = null;
       capturedParameters.clear();
     }
-    abortRandomProfile();
   }
 };
 
@@ -142,7 +135,9 @@ function handleSignalRandom(button: HTMLButtonElement, event: MouseEvent): void 
     return;
   }
 
-  if (activeEngine?.getState() === 'running') beginRandomProfile('signal');
+  // SIGNAL RANDOM already uses AudioEngine.reorderEffectsClickSafe(). This short
+  // guard prevents repeated clicks from queueing multiple graph rebuilds while the
+  // first click-safe reorder is still fading out/in.
   signalBusyUntil = stamp + SIGNAL_LOCK_MS;
   markBusy(button, true);
   window.setTimeout(() => markBusy(button, false), SIGNAL_LOCK_MS);
@@ -172,10 +167,9 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
   consumeClick(event);
   randomBusy = true;
   markBusy(button, true);
-  beginRandomProfile('musical');
 
   // Preserve the current artwork like a held hardware display while the rack changes
-  // behind it. This removes six high-DPI canvas renderers from the critical DSP path.
+  // behind it. This removes the viewport renderers from the critical DSP path.
   const releaseViewportHold = beginViewportPerformanceHold();
 
   for (const entry of active) engine.setEffectBypassed(entry.id, true);
@@ -185,19 +179,17 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
       randomBusy = false;
       markBusy(button, false);
       releaseViewportHold();
-      abortRandomProfile();
       return;
     }
 
     replayButton = button;
     beginParameterCapture(engine);
-    const planningStarted = performance.now();
     try {
-      // The existing RANDOM logic still chooses exactly the same patch and updates UI
+      // Existing RANDOM logic still chooses exactly the same patch and updates UI
       // state. Only its DSP setter calls are captured and collapsed into six batches.
       button.click();
     } finally {
-      noteRandomMutationWall(performance.now() - planningStarted);
+      // Always release capture even if UI-side randomization throws.
     }
 
     const batches = finishParameterCapture(engine);
@@ -215,9 +207,6 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
         randomBusy = false;
         markBusy(button, false);
         releaseViewportHold();
-        // Profiling finishes after the visual scheduler has been released so the
-        // reported frame gap still includes the first real recovery paint.
-        finishMusicalRandomProfile();
       });
   }, RANDOM_PREP_MS);
 }
