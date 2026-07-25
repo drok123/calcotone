@@ -1,11 +1,20 @@
+.dream-pad {
+  position: relative !important;
+  overflow: hidden !important;
+  isolation: isolate;
+  background: #000 !important;
+}
+
 .xy-video-baseline {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 20;
   overflow: hidden;
   border-radius: inherit;
   pointer-events: none;
   background: #000;
+  animation: none !important;
+  transition: none !important;
 }
 
 .xy-video-baseline-media {
@@ -16,12 +25,12 @@
   height: 100%;
   object-fit: cover;
   object-position: center;
-  opacity: 1;
-  transform: none;
-  filter: none;
-  mix-blend-mode: normal;
-  animation: none;
-  transition: none;
+  opacity: 1 !important;
+  transform: none !important;
+  filter: none !important;
+  mix-blend-mode: normal !important;
+  animation: none !important;
+  transition: none !important;
 }
 
 /* Baseline media test: nothing decorative is allowed above the source video. */
@@ -33,4 +42,8 @@
 .dream-pad .dream-hud,
 .dream-pad .dream-cursor {
   display: none !important;
+}
+
+.xy-patch-bay.patch-target-active .xy-patch-destination {
+  animation: none !important;
 }
