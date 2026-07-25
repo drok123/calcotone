@@ -123,38 +123,56 @@ export class ChorusEffect extends BaseEffect {
 
     this.sum.connect(this.wetGain);
     this.initializeParameters([MODE, RATE, DEPTH, SHAPE, SPREAD, MOTION, MIX]);
-    for (const parameter of [MODE, RATE, DEPTH, SHAPE, SPREAD, MOTION, MIX]) {
-      this.setParameter(parameter.id, parameter.defaultValue);
-    }
+    this.apply();
+    this.setWetDryMix(MIX.defaultValue);
   }
 
   public setParameter(id: string, value: number): void {
     if (id === 'mode') {
       const next = clampParameter(value, MODE);
+      const nextMode = DRIFT_MODE_ORDER[Math.round(next)] ?? 'chorus';
+      const unchanged = this.parameterValues.get(id) === next && this.mode === nextMode;
       this.parameterValues.set(id, next);
-      this.mode = DRIFT_MODE_ORDER[Math.round(next)] ?? 'chorus';
+      if (unchanged) return;
+      this.mode = nextMode;
       this.apply();
       return;
     }
-    if (id === 'rate') this.rate = clampParameter(value, RATE);
-    else if (id === 'depth') this.depth = clampParameter(value, DEPTH);
-    else if (id === 'shape') this.shape = clampParameter(value, SHAPE);
-    else if (id === 'spread') this.spread = clampParameter(value, SPREAD);
-    else if (id === 'motion') this.motion = clampParameter(value, MOTION);
-    else if (id === 'mix') {
+
+    if (id === 'mix') {
       const next = clampParameter(value, MIX);
+      if (this.parameterValues.get(id) === next) return;
       this.parameterValues.set(id, next);
       this.setWetDryMix(next);
       return;
-    } else {
+    }
+
+    let next: number;
+    if (id === 'rate') next = clampParameter(value, RATE);
+    else if (id === 'depth') next = clampParameter(value, DEPTH);
+    else if (id === 'shape') next = clampParameter(value, SHAPE);
+    else if (id === 'spread') next = clampParameter(value, SPREAD);
+    else if (id === 'motion') next = clampParameter(value, MOTION);
+    else {
       console.warn(`Unknown parameter "${id}" for ${this.name}.`);
       return;
     }
 
-    this.parameterValues.set(
-      id,
-      id === 'rate' ? this.rate : id === 'depth' ? this.depth : id === 'shape' ? this.shape : id === 'spread' ? this.spread : this.motion,
-    );
+    if (this.parameterValues.get(id) === next) return;
+    this.parameterValues.set(id, next);
+
+    if (id === 'rate') this.rate = next;
+    else if (id === 'depth') this.depth = next;
+    else if (id === 'shape') this.shape = next;
+    else if (id === 'spread') this.spread = next;
+    else this.motion = next;
+
+    // Hardware-study modes intentionally ignore several generic Drift controls.
+    // Keep their stored values for presets/UI, but do not reschedule the audio graph.
+    if (this.mode === 'ce1' && (id === 'rate' || id === 'depth' || id === 'spread')) return;
+    if (this.mode === 'dimensiond' && id !== 'shape') return;
+    if (this.mode === 'orbit' && id === 'spread') return;
+
     this.apply();
   }
 
