@@ -30,7 +30,7 @@ const PROFILE_INDEX: Record<BehaviorMemoryProfile, number> = {
 };
 
 const workletLoads = new WeakMap<AudioContext, Promise<void>>();
-const WORKLET_VERSION = '1.0.2-reset-on-resume';
+const WORKLET_VERSION = '1.0.3-full-suspend';
 
 async function ensureWorklet(context: AudioContext): Promise<void> {
   const existing = workletLoads.get(context);
@@ -52,8 +52,8 @@ async function ensureWorklet(context: AudioContext): Promise<void> {
 /**
  * Small stateful residual stage used to give otherwise mathematical algorithms
  * physical memory. Profiles are behavioral studies, not calibrated component models.
- * The stage stays dry-safe while its AudioWorklet loads and removes bypassed processors
- * from the live input feed after their crossfade completes.
+ * The stage stays dry-safe while its AudioWorklet loads and fully removes bypassed
+ * processors from the live render graph after their crossfade completes.
  */
 export class BehaviorMemoryStage {
   public readonly input: GainNode;
@@ -119,7 +119,6 @@ export class BehaviorMemoryStage {
         channelInterpretation: 'speakers',
       });
       processor.onprocessorerror = () => console.error('CALCOTONE physical behavior AudioWorklet stopped unexpectedly.');
-      processor.connect(this.processedGain);
       this.processor = processor;
       this.sync();
     } catch (error) {
@@ -131,16 +130,14 @@ export class BehaviorMemoryStage {
     if (!this.processor || this.processorConnected || this.disposed) return;
     this.processor.port.postMessage({ type: 'reset' });
     this.input.connect(this.processor);
+    this.processor.connect(this.processedGain);
     this.processorConnected = true;
   }
 
   private disconnectProcessor(): void {
     if (!this.processor || !this.processorConnected) return;
-    try {
-      this.input.disconnect(this.processor);
-    } catch {
-      // Already disconnected by teardown or a previous transition.
-    }
+    try { this.input.disconnect(this.processor); } catch { /* already disconnected */ }
+    try { this.processor.disconnect(this.processedGain); } catch { /* already disconnected */ }
     this.processorConnected = false;
   }
 
