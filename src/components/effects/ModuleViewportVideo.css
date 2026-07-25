@@ -199,6 +199,51 @@
 .module-video-viewport[data-visual-recipe='halo-star'] .module-video-fx-c { opacity:.34; clip-path:circle(17% at 50% 50%); transform:scale(2.2); }
 .module-video-viewport[data-visual-recipe='halo-star'] .module-video-void-mask { opacity:.86; background:#000; clip-path:polygon(0 0,41% 0,50% 34%,59% 0,100% 0,100% 41%,66% 50%,100% 59%,100% 100%,59% 100%,50% 66%,41% 100%,0 100%,0 59%,34% 50%,0 41%); }
 
+@keyframes haloBreathStage {
+  0%, 100% { transform: scale(1.08); }
+  45% { transform: scale(.78); }
+  55% { transform: scale(.78); }
+}
+@keyframes haloBreathBars {
+  0%, 100% {
+    background-size: 34% 100%;
+    opacity: .52;
+    transform: scaleX(.92);
+  }
+  35% {
+    background-size: 18% 100%;
+    opacity: .82;
+    transform: scaleX(1);
+  }
+  50% {
+    background-size: 10% 100%;
+    opacity: 1;
+    transform: scaleX(1.04);
+  }
+  70% {
+    background-size: 24% 100%;
+    opacity: .7;
+    transform: scaleX(.96);
+  }
+}
+@keyframes haloRingBreath {
+  0%, 100% { transform: scale(.92); opacity:.68; }
+  50% { transform: scale(1.12); opacity:.96; }
+}
+
+.module-video-viewport[data-visual-recipe='halo-echo'] .module-video-stage {
+  animation: haloBreathStage 9.6s cubic-bezier(.37,0,.63,1) infinite;
+}
+.module-video-viewport[data-visual-recipe='halo-echo'] .module-video-void-mask {
+  background: repeating-linear-gradient(90deg, transparent 0 7%, #000 7% 11%, transparent 11% 18%);
+  animation: haloBreathBars 9.6s cubic-bezier(.37,0,.63,1) infinite;
+}
+.module-video-viewport[data-visual-recipe='halo-rings'] .module-video-void-mask,
+.module-video-viewport[data-visual-recipe='halo-star'] .module-video-void-mask {
+  animation: haloRingBreath 10.8s cubic-bezier(.37,0,.63,1) infinite;
+  transform-origin:center;
+}
+
 .module-video-viewport[data-visual-mode='halo-clean'] .module-video-stage{transform:scale(.94)}
 .module-video-viewport[data-visual-mode='halo-tape'] .module-video-stage{transform:scale(1.08)}
 .module-video-viewport[data-visual-mode='halo-bbd'] .module-video-stage{transform:scale(1.18)}
@@ -259,6 +304,45 @@
 .module-video-viewport[data-visual-recipe='grain-raster'] .module-video-fx-b{opacity:.72;clip-path:polygon(0 62%,100% 62%,100% 69%,0 69%,0 75%,100% 75%,100% 83%,0 83%,0 89%,100% 89%,100% 97%,0 97%);transform:translateX(-4%) scaleX(-1) scale(1.1)}
 .module-video-viewport[data-visual-recipe='grain-raster'] .module-video-fx-c{opacity:.44;clip-path:inset(20% 22%);transform:scale(1.5)}
 .module-video-viewport[data-visual-recipe='grain-raster'] .module-video-void-mask{opacity:1;background:repeating-linear-gradient(0deg,transparent 0 7%,#000 7% 10%,transparent 10% 16%)}
+
+@keyframes grainFallA {
+  0%, 16%, 100% { transform: translate(0,0) rotate(0deg) scale(1); opacity:1; }
+  38% { transform: translate(-9%,18%) rotate(-8deg) scale(.94); opacity:.5; }
+  56% { transform: translate(-4%,8%) rotate(-3deg) scale(.98); opacity:.72; }
+  72% { transform: translate(1%,-2%) rotate(1deg) scale(1.01); opacity:1; }
+}
+@keyframes grainFallB {
+  0%, 22%, 100% { transform: translate(0,0) rotate(0deg) scale(1); opacity:1; }
+  44% { transform: translate(10%,22%) rotate(10deg) scale(.93); opacity:.46; }
+  60% { transform: translate(4%,9%) rotate(4deg) scale(.98); opacity:.7; }
+  76% { transform: translate(-1%,1%) rotate(-1deg) scale(1.01); opacity:1; }
+}
+@keyframes grainFallC {
+  0%, 28%, 100% { transform: translate(0,0) rotate(0deg) scale(1); opacity:1; }
+  50% { transform: translate(-2%,28%) rotate(-5deg) scale(.9); opacity:.38; }
+  66% { transform: translate(2%,11%) rotate(3deg) scale(.97); opacity:.66; }
+  82% { transform: translate(0,-1%) rotate(0deg) scale(1); opacity:1; }
+}
+@keyframes grainShutterDrift {
+  0%,100% { background-position:0 0; transform:scaleY(1); }
+  50% { background-position:0 14px; transform:scaleY(1.08); }
+}
+
+.module-video-viewport[data-visual-recipe='grain-diamond'] .module-video-fx-a,
+.module-video-viewport[data-visual-recipe='grain-shards'] .module-video-fx-a {
+  animation: grainFallA 8.8s cubic-bezier(.22,.75,.2,1) infinite;
+}
+.module-video-viewport[data-visual-recipe='grain-diamond'] .module-video-fx-b,
+.module-video-viewport[data-visual-recipe='grain-shards'] .module-video-fx-b {
+  animation: grainFallB 8.8s cubic-bezier(.22,.75,.2,1) infinite;
+}
+.module-video-viewport[data-visual-recipe='grain-diamond'] .module-video-fx-c,
+.module-video-viewport[data-visual-recipe='grain-shards'] .module-video-fx-c {
+  animation: grainFallC 8.8s cubic-bezier(.22,.75,.2,1) infinite;
+}
+.module-video-viewport[data-visual-recipe='grain-raster'] .module-video-fx-a { animation:grainFallA 7.6s cubic-bezier(.22,.75,.2,1) infinite; }
+.module-video-viewport[data-visual-recipe='grain-raster'] .module-video-fx-b { animation:grainFallB 7.6s cubic-bezier(.22,.75,.2,1) infinite; }
+.module-video-viewport[data-visual-recipe='grain-raster'] .module-video-void-mask { animation:grainShutterDrift 5.8s ease-in-out infinite; }
 
 /* Specialty atmos-compatible full-frame treatments */
 .module-video-viewport[data-visual-recipe='cinema'] .module-video-base{transform:scale(1.14)}
