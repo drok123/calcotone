@@ -182,11 +182,6 @@ export class ChorusEffect extends BaseEffect {
     this.currentPreampCurve = curve;
   }
 
-  private target(parameter: AudioParam, value: number, now: number, smoothing: number): void {
-    parameter.cancelScheduledValues(now);
-    parameter.setTargetAtTime(value, now, smoothing);
-  }
-
   private apply(): void {
     const now = this.context.currentTime;
 
@@ -198,17 +193,17 @@ export class ChorusEffect extends BaseEffect {
       const chorusRate = 0.19 + intensity * 0.63;
       const chorusDepth = 0.00055 + intensity * 0.00245;
       this.setPreampCurve(getCe1Curve(this.motion));
-      this.target(this.inputTone.frequency, 9_600 - this.motion * 1_900, now, 0.05);
-      this.target(this.sum.gain, 0.82, now, 0.04);
+      this.inputTone.frequency.setTargetAtTime(9_600 - this.motion * 1_900, now, 0.05);
+      this.sum.gain.setTargetAtTime(0.82, now, 0.04);
       for (let i = 0; i < 4; i += 1) {
         const active = i < 2;
-        this.target(this.voiceGains[i].gain, active ? 0.72 : 0, now, 0.04);
-        this.target(this.lfos[i].frequency, chorusRate * (i === 0 ? 1 : 0.97), now, 0.05);
-        this.target(this.depths[i].gain, active ? chorusDepth * (i ? -0.92 : 1) : 0, now, 0.05);
-        this.target(this.delays[i].delayTime, 0.0148 + i * 0.00115, now, 0.05);
-        this.target(this.highpasses[i].frequency, 82, now, 0.05);
-        this.target(this.tones[i].frequency, 7_100 + (1 - this.motion) * 1_500, now, 0.06);
-        this.target(this.pans[i].pan, i === 0 ? -0.68 : 0.68, now, 0.05);
+        this.voiceGains[i].gain.setTargetAtTime(active ? 0.72 : 0, now, 0.04);
+        this.lfos[i].frequency.setTargetAtTime(chorusRate * (i === 0 ? 1 : 0.97), now, 0.05);
+        this.depths[i].gain.setTargetAtTime(active ? chorusDepth * (i ? -0.92 : 1) : 0, now, 0.05);
+        this.delays[i].delayTime.setTargetAtTime(0.0148 + i * 0.00115, now, 0.05);
+        this.highpasses[i].frequency.setTargetAtTime(82, now, 0.05);
+        this.tones[i].frequency.setTargetAtTime(7_100 + (1 - this.motion) * 1_500, now, 0.06);
+        this.pans[i].pan.setTargetAtTime(i === 0 ? -0.68 : 0.68, now, 0.05);
       }
       return;
     }
@@ -223,38 +218,38 @@ export class ChorusEffect extends BaseEffect {
       const baseByVoice = [0.0084, 0.0118, 0.0159, 0.0204];
       const phaseSigns = [1, -1, -0.74, 0.74];
       this.setPreampCurve(DIMENSION_D_CURVE);
-      this.target(this.inputTone.frequency, 13_800, now, 0.05);
-      this.target(this.sum.gain, 0.52, now, 0.04);
+      this.inputTone.frequency.setTargetAtTime(13_800, now, 0.05);
+      this.sum.gain.setTargetAtTime(0.52, now, 0.04);
       for (let i = 0; i < 4; i += 1) {
-        this.target(this.voiceGains[i].gain, 0.55 + (i % 2) * 0.035, now, 0.05);
-        this.target(this.lfos[i].frequency, modeRate * (1 + i * 0.031), now, 0.06);
-        this.target(this.depths[i].gain, 0.00092 * modeDepth * phaseSigns[i], now, 0.06);
-        this.target(this.delays[i].delayTime, baseByVoice[i], now, 0.06);
-        this.target(this.highpasses[i].frequency, 92, now, 0.05);
-        this.target(this.tones[i].frequency, 10_800 - i * 260, now, 0.06);
-        this.target(this.pans[i].pan, i % 2 ? 0.92 : -0.92, now, 0.05);
+        this.voiceGains[i].gain.setTargetAtTime(0.55 + (i % 2) * 0.035, now, 0.05);
+        this.lfos[i].frequency.setTargetAtTime(modeRate * (1 + i * 0.031), now, 0.06);
+        this.depths[i].gain.setTargetAtTime(0.00092 * modeDepth * phaseSigns[i], now, 0.06);
+        this.delays[i].delayTime.setTargetAtTime(baseByVoice[i], now, 0.06);
+        this.highpasses[i].frequency.setTargetAtTime(92, now, 0.05);
+        this.tones[i].frequency.setTargetAtTime(10_800 - i * 260, now, 0.06);
+        this.pans[i].pan.setTargetAtTime(i % 2 ? 0.92 : -0.92, now, 0.05);
       }
       return;
     }
 
     this.setPreampCurve(IDENTITY_CURVE);
-    this.target(this.inputTone.frequency, 18_000, now, 0.05);
+    this.inputTone.frequency.setTargetAtTime(18_000, now, 0.05);
     const index = DRIFT_MODE_ORDER.indexOf(this.mode);
     const rateMul = [1,0.73,0.41,1.18,0.58,0.92,0.31,0.48,1,1][index] ?? 1;
     const base = [0.015,0.018,0.011,0.006,0.021,0.012,0.024,0.016,0.015,0.012][index] ?? 0.015;
     const voiceCount = this.mode === 'ensemble' || this.mode === 'liquid' ? 4 : this.mode === 'dimension' ? 3 : 2;
-    this.target(this.sum.gain, 1 / Math.sqrt(voiceCount), now, 0.04);
+    this.sum.gain.setTargetAtTime(1 / Math.sqrt(voiceCount), now, 0.04);
 
     for (let i = 0; i < 4; i += 1) {
       const active = i < voiceCount;
-      this.target(this.voiceGains[i].gain, active ? 1 : 0, now, 0.04);
-      this.target(this.lfos[i].frequency, this.rate * rateMul * (1 + i * 0.071 * this.motion), now, 0.04);
-      this.target(this.depths[i].gain, active ? this.depth * (0.65 + i * 0.12) * (i % 2 ? -1 : 1) * (this.mode === 'vibrato' ? 1.45 : 1) : 0, now, 0.04);
-      this.target(this.delays[i].delayTime, base + i * 0.0026 * (0.4 + this.shape), now, 0.04);
+      this.voiceGains[i].gain.setTargetAtTime(active ? 1 : 0, now, 0.04);
+      this.lfos[i].frequency.setTargetAtTime(this.rate * rateMul * (1 + i * 0.071 * this.motion), now, 0.04);
+      this.depths[i].gain.setTargetAtTime(active ? this.depth * (0.65 + i * 0.12) * (i % 2 ? -1 : 1) * (this.mode === 'vibrato' ? 1.45 : 1) : 0, now, 0.04);
+      this.delays[i].delayTime.setTargetAtTime(base + i * 0.0026 * (0.4 + this.shape), now, 0.04);
       const orbit = this.mode === 'orbit' ? Math.sin((i / 4) * Math.PI * 2 + this.motion * Math.PI) * 0.95 : (i % 2 ? 1 : -1) * (0.18 + this.spread * 0.72);
-      this.target(this.pans[i].pan, orbit, now, 0.04);
-      this.target(this.highpasses[i].frequency, 55 + this.motion * 45, now, 0.05);
-      this.target(this.tones[i].frequency, 6500 + this.shape * 9000 - (this.mode === 'rotary' ? i * 900 : 0), now, 0.05);
+      this.pans[i].pan.setTargetAtTime(orbit, now, 0.04);
+      this.highpasses[i].frequency.setTargetAtTime(55 + this.motion * 45, now, 0.05);
+      this.tones[i].frequency.setTargetAtTime(6500 + this.shape * 9000 - (this.mode === 'rotary' ? i * 900 : 0), now, 0.05);
     }
   }
 
