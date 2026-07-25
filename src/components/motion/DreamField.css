@@ -1,49 +1,16 @@
-.dream-pad {
-  position: relative !important;
-  overflow: hidden !important;
-  isolation: isolate;
-  background: #000 !important;
+.xy-signal-field {
+  filter:
+    brightness(1.72)
+    contrast(1.03)
+    saturate(0.98)
+    drop-shadow(0 0 5px rgba(210, 226, 216, 0.16));
 }
 
-.xy-video-baseline {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-  overflow: hidden;
-  border-radius: inherit;
-  pointer-events: none;
-  background: #000;
-  animation: none !important;
-  transition: none !important;
-}
-
-.xy-video-baseline-media {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
-  opacity: 1 !important;
-  transform: none !important;
-  filter: none !important;
-  mix-blend-mode: normal !important;
-  animation: none !important;
-  transition: none !important;
-}
-
-/* Baseline media test: nothing decorative is allowed above the source video. */
-.dream-pad::before,
-.dream-pad::after,
-.dream-pad .dream-reticle,
-.dream-pad .dream-position-guide,
-.dream-pad .dream-origin,
-.dream-pad .dream-hud,
-.dream-pad .dream-cursor {
-  display: none !important;
-}
-
-.xy-patch-bay.patch-target-active .xy-patch-destination {
-  animation: none !important;
+.xy-pad.is-dragging .xy-signal-field,
+.xy-pad.patch-target-active .xy-signal-field {
+  filter:
+    brightness(1.92)
+    contrast(1.04)
+    saturate(1.02)
+    drop-shadow(0 0 7px rgba(226, 182, 126, 0.20));
 }
