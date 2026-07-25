@@ -50,6 +50,7 @@ export class BitcrusherEffect extends BaseEffect {
   private readonly bloomMerge: ChannelMergerNode;
   private readonly bloomGain: GainNode;
   private readonly directGain: GainNode;
+  private readonly workletValues = new Map<string, number>();
   private mode: GrainMode = 'reconstruct';
   private profilerStats: GrainProfilerStats = { averageCallbackMs: 0, worstCallbackMs: 0, callbackBudgetMs: 0, cpuLoad: 0, callbackJitterMs: 0, activeVoices: 0, maxVoices: 0, effectiveVoiceLimit: 0, overruns: 0, droppedSpawns: 0 };
 
@@ -185,9 +186,10 @@ export class BitcrusherEffect extends BaseEffect {
   }
 
   private setWorkletParameter(name: string, value: number, now: number): void {
+    if (this.workletValues.get(name) === value) return;
     const parameter = this.processor.parameters.get(name);
     if (!parameter) throw new Error(`Grain processor parameter "${name}" is unavailable.`);
-    parameter.cancelScheduledValues(now);
+    this.workletValues.set(name, value);
     parameter.setTargetAtTime(value, now, 0.012);
   }
 
@@ -201,6 +203,7 @@ export class BitcrusherEffect extends BaseEffect {
     this.bloomMerge.disconnect();
     this.bloomGain.disconnect();
     this.directGain.disconnect();
+    this.workletValues.clear();
     super.dispose();
   }
 }
