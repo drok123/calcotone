@@ -1,52 +1,23 @@
-import { useEffect, useMemo, useState } from 'react';
 import type { ModuleState } from '../../ui/types';
 import type { VisualAudioState } from '../../visual/VisualEngine';
 import { formatAlgorithmName } from '../../ui/formatting';
 import './ModuleViewportVideo.css';
 
-type ModuleVideoKey = 'ember' | 'drift' | 'drift-alt' | 'halo' | 'artifact';
+type ModuleVideoKey = 'ember' | 'drift' | 'drift-alt' | 'halo' | 'artifact' | 'atmos' | 'grain';
 
 const VIDEO_FILES: Record<ModuleVideoKey, string> = {
-  ember: 'visuals/ember.b64',
-  drift: 'visuals/drift.b64',
-  'drift-alt': 'visuals/drift-alt.b64',
-  halo: 'visuals/halo.b64',
-  artifact: 'visuals/artifact.b64',
+  ember: 'visuals/ember.mp4',
+  drift: 'visuals/drift.mp4',
+  'drift-alt': 'visuals/drift-alt.mp4',
+  halo: 'visuals/halo.mp4',
+  artifact: 'visuals/artifact.mp4',
+  atmos: 'visuals/atmos.mp4',
+  grain: 'visuals/grain.mp4',
 };
-
-const videoPromises = new Map<ModuleVideoKey, Promise<string>>();
 
 function assetUrl(path: string): string {
   const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
   return `${base}${path}`;
-}
-
-function decodeVideo(encoded: string): string {
-  const binary = window.atob(encoded.replace(/\s+/g, ''));
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' }));
-}
-
-function loadVideo(key: ModuleVideoKey): Promise<string> {
-  const cached = videoPromises.get(key);
-  if (cached) return cached;
-
-  const request = fetch(assetUrl(VIDEO_FILES[key]), { cache: 'force-cache' })
-    .then((response) => {
-      if (!response.ok) throw new Error(`Unable to load ${key} module video (${response.status})`);
-      return response.text();
-    })
-    .then(decodeVideo)
-    .catch((error) => {
-      videoPromises.delete(key);
-      throw error;
-    });
-
-  videoPromises.set(key, request);
-  return request;
 }
 
 function videoFor(module: ModuleState): ModuleVideoKey | null {
@@ -56,6 +27,8 @@ function videoFor(module: ModuleState): ModuleVideoKey | null {
     return ['liquid', 'orbit', 'doppler', 'rotary'].includes(mode) ? 'drift-alt' : 'drift';
   }
   if (module.id === 'delay') return 'halo';
+  if (module.id === 'reverb') return 'atmos';
+  if (module.id === 'bitcrusher') return 'grain';
   if (module.id === 'media') return 'artifact';
   return null;
 }
@@ -79,37 +52,15 @@ export function ModuleViewport({
   module: ModuleState;
   visualState: VisualAudioState;
 }) {
-  const key = useMemo(() => videoFor(module), [module.id, module.driftMode]);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setVideoUrl(null);
-    setFailed(false);
-
-    if (!key) return () => { cancelled = true; };
-
-    loadVideo(key)
-      .then((url) => {
-        if (!cancelled) setVideoUrl(url);
-      })
-      .catch((error) => {
-        console.warn(`CALCOTONE ${module.name} module video unavailable`, error);
-        if (!cancelled) setFailed(true);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [key, module.name]);
+  const key = videoFor(module);
+  const videoUrl = key ? assetUrl(VIDEO_FILES[key]) : null;
 
   return (
     <div
       className={`dsp-viewport module-video-viewport viewport-${module.id} ${module.enabled ? 'active' : ''}`}
       data-audio-level={visualState.level.toFixed(3)}
     >
-      {videoUrl && (
+      {videoUrl ? (
         <video
           className="module-video"
           src={videoUrl}
@@ -123,11 +74,9 @@ export function ModuleViewport({
           }}
           aria-hidden="true"
         />
-      )}
-
-      {!videoUrl && (
-        <div className={`module-video-empty ${failed ? 'is-error' : ''}`} aria-hidden="true">
-          <span>{key ? (failed ? 'VIDEO LOAD ERROR' : 'LOADING VIDEO') : 'VIDEO SOURCE NEEDED'}</span>
+      ) : (
+        <div className="module-video-empty" aria-hidden="true">
+          <span>VIDEO SOURCE NEEDED</span>
         </div>
       )}
 
