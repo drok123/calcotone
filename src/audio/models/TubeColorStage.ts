@@ -25,7 +25,7 @@ const MODEL_INDEX: Record<TubeColorModel, number> = {
 };
 
 const tubeWorkletLoads = new WeakMap<AudioContext, Promise<void>>();
-const TUBE_WORKLET_VERSION = '9.1.2-reset-on-resume';
+const TUBE_WORKLET_VERSION = '9.1.3-full-suspend';
 
 async function ensureTubeWorklet(context: AudioContext): Promise<void> {
   const existing = tubeWorkletLoads.get(context);
@@ -46,13 +46,7 @@ async function ensureTubeWorklet(context: AudioContext): Promise<void> {
   return promise;
 }
 
-/**
- * Reusable small-signal tube coloration stage.
- *
- * The stage is intentionally dry-safe while its worklet loads. Once available,
- * it crossfades to the selected model. Hardware studies can insert this class
- * anywhere a real device used a tube preamp without duplicating Ember's DSP.
- */
+/** Reusable small-signal tube coloration stage. */
 export class TubeColorStage {
   public readonly input: GainNode;
   public readonly output: GainNode;
@@ -130,7 +124,6 @@ export class TubeColorStage {
         console.error('CALCOTONE tube coloration AudioWorklet stopped unexpectedly.');
       };
       processor.port.postMessage({ type: 'quality', factor: this.quality });
-      processor.connect(this.processedGain);
       this.processor = processor;
       this.syncParameters();
       this.syncModel();
@@ -143,16 +136,14 @@ export class TubeColorStage {
     if (!this.processor || this.processorConnected || this.disposed) return;
     this.processor.port.postMessage({ type: 'reset' });
     this.input.connect(this.processor);
+    this.processor.connect(this.processedGain);
     this.processorConnected = true;
   }
 
   private disconnectProcessor(): void {
     if (!this.processor || !this.processorConnected) return;
-    try {
-      this.input.disconnect(this.processor);
-    } catch {
-      // Already disconnected by teardown or a previous transition.
-    }
+    try { this.input.disconnect(this.processor); } catch { /* already disconnected */ }
+    try { this.processor.disconnect(this.processedGain); } catch { /* already disconnected */ }
     this.processorConnected = false;
   }
 
