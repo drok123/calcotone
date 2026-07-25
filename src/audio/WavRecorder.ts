@@ -79,6 +79,10 @@ export class WavRecorder {
     };
     processor.onprocessorerror = () => {
       this.recording = false;
+      this.stopResolver?.();
+      this.stopResolver = null;
+      this.disconnectNodes();
+      this.resetBuffers();
       console.error('CALCOTONE recorder AudioWorklet stopped unexpectedly.');
     };
 
@@ -104,17 +108,21 @@ export class WavRecorder {
     // Wait for the render thread to flush its final partial chunk before encoding.
     await new Promise<void>((resolve) => {
       let settled = false;
+      let timeout: ReturnType<typeof setTimeout> | null = null;
       const finish = () => {
         if (settled) return;
         settled = true;
+        if (timeout !== null) clearTimeout(timeout);
+        timeout = null;
         resolve();
       };
       this.stopResolver = finish;
       processor.port.postMessage({ type: 'stop' });
       // A closed/suspended context should never strand the UI forever.
-      globalThis.setTimeout(finish, 250);
+      timeout = globalThis.setTimeout(finish, 250);
     });
 
+    this.stopResolver = null;
     this.disconnectNodes();
     if (this.frameCount === 0) {
       this.resetBuffers();
