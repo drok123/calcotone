@@ -4,6 +4,7 @@ import { DRIFT_MODE_ORDER } from '../audio/effects/Chorus';
 import { DELAY_ALGORITHM_ORDER } from '../audio/effects/Delay';
 import { REVERB_ALGORITHM_ORDER } from '../audio/effects/Reverb';
 import { MEDIA_MODE_ORDER } from '../audio/effects/Media';
+import { syncPhysicalBehavior } from '../audio/PhysicalBehaviorRegistry';
 
 export type RandomBatchValues = ReadonlyMap<string, number>;
 
@@ -126,11 +127,12 @@ export function applyRandomBatch(effect: Effect, values: RandomBatchValues): voi
     }
 
     case 'bitcrusher':
-      // Grain's public setters are already lightweight AudioParam/worklet schedules.
       for (const [parameterId, parameterValue] of values) effect.setParameter(parameterId, parameterValue);
       break;
 
     default:
       for (const [parameterId, parameterValue] of values) effect.setParameter(parameterId, parameterValue);
   }
+
+  syncPhysicalBehavior(effect);
 }
