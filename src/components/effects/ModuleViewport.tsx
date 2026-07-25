@@ -5,6 +5,8 @@ import './ModuleViewportVideo.css';
 
 type ModuleVideoKey = 'ember' | 'drift' | 'drift-alt' | 'halo' | 'artifact' | 'atmos' | 'grain';
 
+const VIDEO_PLAYBACK_RATE = 0.35;
+
 const VIDEO_FILES: Record<ModuleVideoKey, string> = {
   ember: 'visuals/ember.mp4',
   drift: 'visuals/drift.mp4',
@@ -57,10 +59,10 @@ export function ModuleViewport({
 
   return (
     <div
-      className={`dsp-viewport module-video-viewport viewport-${module.id} ${module.enabled ? 'active' : ''}`}
+      className={`dsp-viewport module-video-viewport viewport-${module.id} ${module.enabled ? 'active' : 'is-off'}`}
       data-audio-level={visualState.level.toFixed(3)}
     >
-      {videoUrl ? (
+      {module.enabled && videoUrl ? (
         <video
           className="module-video"
           src={videoUrl}
@@ -69,18 +71,22 @@ export function ModuleViewport({
           loop
           playsInline
           preload="auto"
+          onLoadedMetadata={(event) => {
+            event.currentTarget.playbackRate = VIDEO_PLAYBACK_RATE;
+          }}
           onCanPlay={(event) => {
+            event.currentTarget.playbackRate = VIDEO_PLAYBACK_RATE;
             void event.currentTarget.play().catch(() => undefined);
           }}
           aria-hidden="true"
         />
-      ) : (
+      ) : module.enabled ? (
         <div className="module-video-empty" aria-hidden="true">
           <span>VIDEO SOURCE NEEDED</span>
         </div>
-      )}
+      ) : null}
 
-      <span className="viewport-caption">{captionFor(module)}</span>
+      {module.enabled && <span className="viewport-caption">{captionFor(module)}</span>}
     </div>
   );
 }
