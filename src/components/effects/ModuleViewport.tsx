@@ -22,24 +22,54 @@ type VisualRecipe =
   | 'abyss'
   | 'freeze'
   | 'cinema'
-  | 'artifact';
+  | 'artifact'
+  | 'halo-rings'
+  | 'halo-echo'
+  | 'halo-star'
+  | 'atmos-vault'
+  | 'atmos-cloud'
+  | 'atmos-aurora'
+  | 'grain-grid'
+  | 'grain-shards'
+  | 'grain-raster';
 
 type ColorProfile =
   | 'neutral'
-  | 'ember'
   | 'ember-dark'
-  | 'amber'
-  | 'gold'
-  | 'cyan'
-  | 'ice'
-  | 'teal'
-  | 'violet'
-  | 'magenta'
-  | 'blue'
-  | 'green'
-  | 'red'
-  | 'sepia'
-  | 'mono';
+  | 'ember-gold'
+  | 'drift-cyan'
+  | 'drift-blue'
+  | 'drift-teal'
+  | 'drift-violet'
+  | 'halo-ice'
+  | 'halo-blue'
+  | 'halo-cyan'
+  | 'halo-violet'
+  | 'halo-green'
+  | 'halo-gold'
+  | 'atmos-blue'
+  | 'atmos-cyan'
+  | 'atmos-violet'
+  | 'atmos-aurora'
+  | 'atmos-deep'
+  | 'atmos-warm'
+  | 'grain-ice'
+  | 'grain-red'
+  | 'grain-violet'
+  | 'grain-magenta'
+  | 'grain-cyan'
+  | 'grain-amber'
+  | 'grain-green'
+  | 'artifact-amber'
+  | 'artifact-gold'
+  | 'artifact-violet'
+  | 'artifact-magenta'
+  | 'artifact-green'
+  | 'artifact-sepia'
+  | 'artifact-red'
+  | 'artifact-cyan'
+  | 'artifact-teal'
+  | 'artifact-blue';
 
 const VIDEO_FILES: Record<ModuleVideoKey, string> = {
   ember: 'visuals/ember.mp4',
@@ -103,41 +133,47 @@ function visualRecipeFor(module: ModuleState): VisualRecipe {
 
   if (module.id === 'delay') {
     const mode = module.delayAlgorithm ?? 'tape';
-    if (mode === 'clean') return 'mirror';
-    if (['tape', 'bbd', 're201'].includes(mode)) return 'slices';
-    if (mode === 'pingpong') return 'columns';
-    if (mode === 'diffuse') return 'recursive';
-    if (mode === 'scatter') return 'shatter';
-    if (mode === 'constellation') return 'quad';
-    if (mode === 'Binson Echorec') return 'rotary';
-    if (mode === 'AMS DMX 15-80 S') return 'prism';
-    return 'hardware';
+    if (mode === 'clean') return 'halo-rings';
+    if (mode === 'tape') return 'halo-echo';
+    if (mode === 'bbd') return 'halo-rings';
+    if (mode === 'pingpong') return 'halo-star';
+    if (mode === 'diffuse') return 'halo-rings';
+    if (mode === 'scatter') return 'halo-star';
+    if (mode === 'constellation') return 'halo-star';
+    if (mode === 're201') return 'halo-echo';
+    if (mode === 'EP-3 Echoplex') return 'halo-echo';
+    if (mode === 'Binson Echorec') return 'halo-rings';
+    if (mode === 'Deluxe Memory Man') return 'halo-rings';
+    return 'halo-star';
   }
 
   if (module.id === 'reverb') {
     const mode = module.algorithm ?? 'hall';
-    if (mode === 'room') return 'columns';
+    if (mode === 'room') return 'atmos-vault';
     if (mode === 'plate') return 'quad';
-    if (mode === 'hall') return 'mirror';
+    if (mode === 'hall') return 'atmos-vault';
     if (mode === 'cinema') return 'cinema';
-    if (mode === 'cloud') return 'recursive';
+    if (mode === 'cloud') return 'atmos-cloud';
     if (mode === 'freeze') return 'freeze';
-    if (mode === 'celestial') return 'quad';
-    if (mode === 'aurora') return 'prism';
-    if (mode === 'nebula') return 'portal';
+    if (mode === 'celestial') return 'atmos-aurora';
+    if (mode === 'aurora') return 'atmos-aurora';
+    if (mode === 'nebula') return 'atmos-cloud';
     if (mode === 'abyss') return 'abyss';
-    return 'hardware';
+    if (mode === 'emt140') return 'atmos-vault';
+    return 'atmos-cloud';
   }
 
   if (module.id === 'bitcrusher') {
     const mode = module.grainMode ?? 'reconstruct';
-    if (mode === 'reconstruct') return 'slices';
-    if (mode === 'shatter') return 'shatter';
+    if (mode === 'reconstruct') return 'grain-grid';
+    if (mode === 'shatter') return 'grain-shards';
     if (mode === 'smear') return 'smear';
     if (mode === 'prism') return 'prism';
-    if (mode === 'stutter') return 'cross';
-    if (mode === 'ruin') return 'recursive';
-    return 'hardware';
+    if (mode === 'stutter') return 'grain-raster';
+    if (mode === 'ruin') return 'grain-shards';
+    if (mode === 'sp1200') return 'grain-grid';
+    if (mode === 'mpc60') return 'grain-raster';
+    return 'grain-shards';
   }
 
   return 'artifact';
@@ -146,82 +182,76 @@ function visualRecipeFor(module: ModuleState): VisualRecipe {
 function colorProfileFor(module: ModuleState): ColorProfile {
   if (module.id === 'saturation') {
     const mode = module.emberMode ?? 'velvet';
-    return mode === 'goldlion' ? 'gold' : 'ember-dark';
+    return mode === 'goldlion' ? 'ember-gold' : 'ember-dark';
   }
 
   if (module.id === 'chorus') {
     const mode = module.driftMode ?? 'chorus';
-    if (mode === 'chorus') return 'cyan';
-    if (mode === 'ensemble') return 'teal';
-    if (mode === 'dimension') return 'blue';
-    if (mode === 'vibrato') return 'violet';
-    if (mode === 'rotary') return 'magenta';
-    if (mode === 'doppler') return 'ice';
-    if (mode === 'liquid') return 'teal';
-    if (mode === 'orbit') return 'violet';
-    if (mode === 'ce1') return 'green';
-    return 'blue';
+    if (['chorus', 'doppler'].includes(mode)) return 'drift-cyan';
+    if (['dimension', 'dimensiond'].includes(mode)) return 'drift-blue';
+    if (['ensemble', 'liquid', 'ce1'].includes(mode)) return 'drift-teal';
+    return 'drift-violet';
   }
 
   if (module.id === 'delay') {
     const mode = module.delayAlgorithm ?? 'tape';
-    if (mode === 'clean') return 'ice';
-    if (mode === 'tape') return 'amber';
-    if (mode === 'bbd') return 'green';
-    if (mode === 'pingpong') return 'cyan';
-    if (mode === 'diffuse') return 'violet';
-    if (mode === 'scatter') return 'magenta';
-    if (mode === 'constellation') return 'blue';
-    if (mode === 're201') return 'gold';
-    if (mode === 'EP-3 Echoplex') return 'sepia';
-    if (mode === 'Binson Echorec') return 'teal';
-    if (mode === 'Deluxe Memory Man') return 'green';
-    return 'cyan';
+    if (mode === 'clean') return 'halo-ice';
+    if (mode === 'tape') return 'halo-gold';
+    if (mode === 'bbd') return 'halo-green';
+    if (mode === 'pingpong') return 'halo-cyan';
+    if (mode === 'diffuse') return 'halo-violet';
+    if (mode === 'scatter') return 'halo-violet';
+    if (mode === 'constellation') return 'halo-blue';
+    if (mode === 're201') return 'halo-gold';
+    if (mode === 'EP-3 Echoplex') return 'halo-gold';
+    if (mode === 'Binson Echorec') return 'halo-cyan';
+    if (mode === 'Deluxe Memory Man') return 'halo-green';
+    return 'halo-ice';
   }
 
   if (module.id === 'reverb') {
     const mode = module.algorithm ?? 'hall';
-    if (mode === 'room') return 'amber';
-    if (mode === 'plate') return 'ice';
-    if (mode === 'hall') return 'blue';
-    if (mode === 'cinema') return 'gold';
-    if (mode === 'cloud') return 'cyan';
-    if (mode === 'freeze') return 'ice';
-    if (mode === 'celestial') return 'violet';
-    if (mode === 'aurora') return 'magenta';
-    if (mode === 'nebula') return 'violet';
-    if (mode === 'abyss') return 'teal';
-    if (mode === 'emt140') return 'sepia';
-    return 'green';
+    if (mode === 'room') return 'atmos-warm';
+    if (mode === 'plate') return 'atmos-cyan';
+    if (mode === 'hall') return 'atmos-blue';
+    if (mode === 'cinema') return 'atmos-warm';
+    if (mode === 'cloud') return 'atmos-cyan';
+    if (mode === 'freeze') return 'atmos-cyan';
+    if (mode === 'celestial') return 'atmos-violet';
+    if (mode === 'aurora') return 'atmos-aurora';
+    if (mode === 'nebula') return 'atmos-violet';
+    if (mode === 'abyss') return 'atmos-deep';
+    if (mode === 'emt140') return 'atmos-warm';
+    return 'atmos-blue';
   }
 
   if (module.id === 'bitcrusher') {
     const mode = module.grainMode ?? 'reconstruct';
-    if (mode === 'reconstruct') return 'ice';
-    if (mode === 'shatter') return 'red';
-    if (mode === 'smear') return 'violet';
-    if (mode === 'prism') return 'magenta';
-    if (mode === 'stutter') return 'cyan';
-    if (mode === 'ruin') return 'amber';
-    if (mode === 'sp1200') return 'sepia';
-    if (mode === 'mpc60') return 'gold';
-    return 'green';
+    if (mode === 'reconstruct') return 'grain-ice';
+    if (mode === 'shatter') return 'grain-red';
+    if (mode === 'smear') return 'grain-violet';
+    if (mode === 'prism') return 'grain-magenta';
+    if (mode === 'stutter') return 'grain-cyan';
+    if (mode === 'ruin') return 'grain-amber';
+    if (mode === 'sp1200') return 'grain-amber';
+    if (mode === 'mpc60') return 'grain-green';
+    return 'grain-violet';
   }
 
   const mode = module.mediaMode ?? 'cassette';
-  if (mode === 'cassette') return 'amber';
-  if (mode === 'reel') return 'gold';
-  if (mode === 'vinyl') return 'violet';
-  if (mode === 'vhs') return 'magenta';
-  if (mode === 'radio') return 'green';
-  if (mode === 'wax') return 'sepia';
-  if (mode === 'broken') return 'red';
-  if (mode === 'archive') return 'cyan';
-  if (mode === 'tascam424') return 'teal';
-  if (mode === 'Neve 1073') return 'amber';
-  if (mode === 'SSL 4000E') return 'blue';
-  if (mode === 'API 1608') return 'red';
-  return 'gold';
+  if (mode === 'cassette') return 'artifact-amber';
+  if (mode === 'reel') return 'artifact-gold';
+  if (mode === 'vinyl') return 'artifact-violet';
+  if (mode === 'vhs') return 'artifact-magenta';
+  if (mode === 'radio') return 'artifact-green';
+  if (mode === 'wax') return 'artifact-sepia';
+  if (mode === 'broken') return 'artifact-red';
+  if (mode === 'archive') return 'artifact-cyan';
+  if (mode === 'tascam424') return 'artifact-teal';
+  if (mode === 'Neve 1073') return 'artifact-amber';
+  if (mode === 'SSL 4000E') return 'artifact-blue';
+  if (mode === 'API 1608') return 'artifact-red';
+  return 'artifact-gold';
 }
 
 function visualModeFor(module: ModuleState): string {
