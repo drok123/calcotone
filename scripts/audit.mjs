@@ -36,6 +36,8 @@ function extractOrder(source, exportName) {
 }
 
 const effect = read('src/audio/effects/Effect.ts');
+const graph = read('src/audio/AudioGraph.ts');
+const dreamBuffer = read('src/audio/DreamBuffer.ts');
 const registry = read('src/audio/PhysicalBehaviorRegistry.ts');
 const factory = read('src/audio/EffectFactory.ts');
 const randomBatch = read('src/perf/randomBatch.ts');
@@ -50,6 +52,7 @@ const behaviorStage = read('src/audio/models/BehaviorMemoryStage.ts');
 const tubeProcessor = read('public/ember-tube-processor.js');
 const magneticProcessor = read('public/magnetic-core-processor.js');
 const behaviorProcessor = read('public/behavior-memory-processor.js');
+const dreamProcessor = read('public/dream-buffer-processor.js');
 
 const worklets = [
   'public/grain-processor.js',
@@ -62,11 +65,22 @@ for (const file of worklets) read(file);
 
 requireText(effect, 'this.wetGain.connect(this.behaviorStage.input)', 'BaseEffect physical chassis');
 requireText(effect, 'this.behaviorStage.dispose()', 'BaseEffect physical chassis');
+requireText(effect, 'isProcessingSuspended()', 'Effect bypass suspension');
+requireText(effect, 'this.processingSuspended = true', 'Effect bypass suspension');
+requireText(effect, 'this.routingInvalidator?.()', 'Effect bypass routing refresh');
+requireText(graph, '!effect.isProcessingSuspended()', 'AudioGraph suspended-effect filter');
+requireText(graph, 'private serialEdges', 'AudioGraph serial-edge ownership');
+requireText(dreamBuffer, 'this.disconnectSourceFeed(id)', 'Dream source suspension');
+requireText(dreamBuffer, 'this.disconnectRouteFeed(route)', 'Dream route suspension');
+requireText(dreamProcessor, 'this.silentFrames >= this.maxHeadOffset', 'Dream idle tail flush');
+
 requireText(factory, 'attachPhysicalBehavior(effect)', 'EffectFactory physical registry attachment');
 requireText(randomBatch, 'syncPhysicalBehavior(effect)', 'RANDOM physical registry sync');
 requireText(randomBridge, 'beginViewportPerformanceHold()', 'RANDOM viewport hold');
 requireText(randomBridge, 'engine.setEffectBypassed(entry.id, entry.bypassed)', 'RANDOM transactional restore');
 requireText(randomBridge, '.finally(() => {', 'RANDOM transactional cleanup');
+requireText(randomBridge, 'import.meta.hot.dispose', 'RANDOM HMR cleanup');
+requireText(randomBridge, "document.removeEventListener('click', onRandomizerClick, true)", 'RANDOM HMR listener cleanup');
 
 requireText(tubeStage, "ember-tube-processor.js?v=", 'Tube worklet loader');
 requireText(magneticStage, "magnetic-core-processor.js?v=", 'Magnetic worklet loader');
