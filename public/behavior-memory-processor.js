@@ -18,10 +18,10 @@ class CalcotoneBehaviorMemoryProcessor extends AudioWorkletProcessor {
   }
 
   resetState() {
-    this.state = [this.makeState(0.9971), this.makeState(1.0023)];
+    this.state = [this.makeState(0.9971, 0.31), this.makeState(1.0023, 0.67)];
   }
 
-  makeState(mismatch) {
+  makeState(mismatch, phaseSeed) {
     return {
       mismatch,
       envelope: 0,
@@ -29,13 +29,19 @@ class CalcotoneBehaviorMemoryProcessor extends AudioWorkletProcessor {
       position: 0,
       velocity: 0,
       charge: 0,
+      absorption: 0,
       remanence: 0,
       previous: 0,
+      slew: 0,
       loss: 0,
+      thermal: 0,
+      rail: 1,
+      phase: phaseSeed * Math.PI * 2,
+      fatigue: 0,
     };
   }
 
-  processSample(input, profile, amount, motion, memory, color, s) {
+  updateCommon(input, motion, memory, s) {
     const absolute = Math.abs(input);
     const attack = 0.012 + motion * 0.032;
     const release = 0.00018 + (1 - memory) * 0.0014;
@@ -44,86 +50,121 @@ class CalcotoneBehaviorMemoryProcessor extends AudioWorkletProcessor {
 
     const delta = input - s.previous;
     s.previous = input;
+    s.slew += (delta - s.slew) * (0.13 + (1 - memory) * 0.24);
+
+    const heatTarget = Math.min(1.5, s.envelope * s.envelope + Math.abs(s.slew) * 0.22);
+    s.thermal += (heatTarget - s.thermal) * (heatTarget > s.thermal ? 0.00072 + motion * 0.00045 : 0.000035 + (1 - memory) * 0.00008);
+
+    const sagTarget = Math.max(0.91, 1 - s.envelope * (0.012 + memory * 0.022) - s.thermal * 0.006);
+    s.rail += (sagTarget - s.rail) * (sagTarget < s.rail ? 0.0024 : 0.00018 + (1 - memory) * 0.00022);
+
+    s.phase += 0.00019 + motion * 0.00115 + s.envelope * 0.00011;
+    if (s.phase > Math.PI * 2) s.phase -= Math.PI * 2;
+
+    s.fatigue += (s.envelope - s.fatigue) * (0.000025 + memory * 0.000075);
+    return delta;
+  }
+
+  processSample(input, profile, amount, motion, memory, color, s) {
+    const delta = this.updateCommon(input, motion, memory, s);
     let residual = 0;
 
     switch (profile) {
-      case 1: {
-        const stiffness = 0.0015 + (1 - memory) * 0.006;
-        const damping = 0.965 - motion * 0.06;
+      case 1: { // elastic: compliance + damping + amplitude-dependent stiffness
+        const stiffness = (0.0014 + (1 - memory) * 0.0062) * (1 + s.envelope * (0.18 + color * 0.24));
+        const damping = 0.966 - motion * 0.058 - s.thermal * 0.004;
         s.velocity = s.velocity * damping + (input - s.position) * stiffness;
         s.position += s.velocity;
-        residual = (s.position - input) * (0.18 + color * 0.22);
+        const hystereticDrag = s.velocity * Math.abs(s.position) * (0.018 + memory * 0.022);
+        residual = (s.position - input) * (0.17 + color * 0.22) - hystereticDrag;
         break;
       }
-      case 2: {
-        const drag = 0.992 - motion * 0.018;
+      case 2: { // rotor: inertia, drag, bearing load and tiny deterministic eccentricity
+        const drag = 0.992 - motion * 0.018 - s.fatigue * 0.0025;
         s.velocity = s.velocity * drag + delta * (0.012 + motion * 0.03);
         s.position += s.velocity;
-        residual = Math.tanh(s.velocity * 3.2) * 0.045 + s.slow * s.velocity * 0.03;
+        const eccentricity = Math.sin(s.phase) * s.envelope * (0.0015 + color * 0.0025);
+        residual = Math.tanh(s.velocity * 3.2) * 0.043 + s.slow * s.velocity * 0.03 + eccentricity;
         break;
       }
-      case 3: {
-        s.slow += (input - s.slow) * (0.0008 + (1 - memory) * 0.0035);
-        const shear = input - s.slow;
-        residual = Math.tanh(shear * (1.2 + color * 2.8)) * (0.035 + motion * 0.04);
+      case 3: { // fluid: slow bulk motion + viscosity/shear + thermal thinning
+        s.position += (input - s.position) * (0.0007 + (1 - memory) * 0.0032);
+        const shear = input - s.position;
+        const viscosity = (1.15 + color * 2.75) * (1 - Math.min(0.18, s.thermal * 0.06));
+        residual = Math.tanh(shear * viscosity) * (0.034 + motion * 0.04) - s.slew * s.fatigue * 0.006;
         break;
       }
-      case 4: {
+      case 4: { // orbital: inertial phase memory with envelope-weighted trajectory error
         s.velocity = s.velocity * (0.987 - memory * 0.012) + delta * (0.018 + motion * 0.022);
-        s.position = s.position * 0.9994 + s.velocity;
-        residual = Math.sin(s.position * (0.55 + color * 0.9)) * s.envelope * 0.028;
+        s.position = s.position * 0.99935 + s.velocity;
+        const orbit = Math.sin(s.position * (0.55 + color * 0.9) + s.phase * 0.18);
+        residual = orbit * s.envelope * 0.027 + Math.cos(s.phase) * s.slow * 0.0025;
         break;
       }
-      case 5: {
+      case 5: { // charge: capacitor settling + dielectric absorption/leakage
         const leakage = 0.994 - memory * 0.008;
         s.charge = s.charge * leakage + input * (0.006 + (1 - memory) * 0.006);
-        const transferError = (input - s.charge) * (0.018 + color * 0.035);
-        residual = transferError + Math.tanh(s.charge * 2.2) * 0.012;
+        s.absorption += (s.charge - s.absorption) * (0.00045 + memory * 0.0014);
+        const dielectricReturn = (s.absorption - s.charge) * (0.018 + memory * 0.018);
+        const transferError = (input - s.charge) * (0.017 + color * 0.034);
+        residual = transferError + dielectricReturn + Math.tanh(s.charge * 2.2) * 0.011;
         break;
       }
-      case 6: {
-        const coercion = 0.0018 + (1 - memory) * 0.005;
-        const target = Math.tanh((input + s.remanence * 0.22) * (1.1 + color * 1.7));
+      case 6: { // magnetic: dynamic coercion, remanence, core loss and thermal permeability drift
+        const coercion = (0.0017 + (1 - memory) * 0.0052) * (1 - Math.min(0.16, s.thermal * 0.055));
+        const field = input + s.remanence * (0.20 + memory * 0.055);
+        const target = Math.tanh(field * (1.08 + color * 1.72));
         s.remanence += (target - s.remanence) * coercion;
-        s.loss += (Math.abs(delta) - s.loss) * 0.004;
-        residual = (s.remanence - input) * 0.07 - Math.sign(input) * s.loss * (0.003 + motion * 0.006);
+        s.loss += (Math.abs(delta) - s.loss) * (0.0035 + motion * 0.0012);
+        const dynamicLoss = Math.sign(input || 1) * s.loss * (0.003 + motion * 0.006);
+        residual = (s.remanence - input) * (0.066 + memory * 0.008) - dynamicLoss - input * s.thermal * 0.0025;
         break;
       }
-      case 7: {
-        s.position += (input - s.position) * (0.002 + (1 - memory) * 0.004);
-        s.velocity = s.velocity * 0.985 + (input - s.position) * 0.003;
-        residual = (s.position + s.velocity * (0.4 + color * 0.7) - input) * 0.055;
+      case 7: { // acoustic: stored pressure/energy with lossy boundary recovery
+        s.position += (input - s.position) * (0.0018 + (1 - memory) * 0.0042);
+        s.velocity = s.velocity * (0.984 - motion * 0.003) + (input - s.position) * 0.0032;
+        s.absorption += (s.position - s.absorption) * (0.0006 + color * 0.0009);
+        residual = (s.position + s.velocity * (0.38 + color * 0.72) - input) * 0.052 + (s.absorption - s.position) * 0.012;
         break;
       }
-      case 8: {
+      case 8: { // granular: finite reconstruction memory + edge-density stress
         s.charge = s.charge * (0.97 + memory * 0.024) + input * (0.03 - memory * 0.018);
         const edge = input - s.charge;
-        residual = Math.tanh(edge * (1.2 + color * 2.2)) * (0.025 + motion * 0.035);
+        s.fatigue += (Math.abs(edge) - s.fatigue) * 0.0011;
+        residual = Math.tanh(edge * (1.18 + color * 2.22)) * (0.024 + motion * 0.034) + s.slew * s.fatigue * 0.004;
         break;
       }
-      case 9: {
-        s.velocity = s.velocity * (0.995 - motion * 0.004) + delta * 0.006;
-        s.slow += (s.velocity - s.slow) * 0.0007;
-        residual = (s.velocity - s.slow) * (0.06 + color * 0.05) + s.envelope * s.slow * 0.018;
+      case 9: { // transport: capstan inertia, belt elasticity, head-contact drag and periodic eccentricity
+        s.velocity = s.velocity * (0.995 - motion * 0.0042) + delta * 0.006;
+        s.position += (s.velocity - s.position) * (0.00055 + (1 - memory) * 0.00045);
+        const eccentricity = Math.sin(s.phase) * (0.004 + motion * 0.006);
+        const contact = (s.velocity - s.position) * (0.058 + color * 0.05);
+        residual = contact + s.envelope * s.position * 0.017 + eccentricity * s.slow;
         break;
       }
-      case 10: {
-        s.charge += (s.envelope - s.charge) * (s.envelope > s.charge ? 0.003 : 0.00025);
-        const rail = Math.max(0.94, 1 - s.charge * (0.012 + memory * 0.018));
-        residual = input * (rail - 1) + Math.tanh(input * (1.02 + color * 0.16)) - input;
-        residual *= 0.35;
+      case 10: { // console: supply sag, recovery, thermal drift and finite slew
+        const railError = input * (s.rail - 1);
+        const slewError = (s.slew - delta) * (0.012 + color * 0.018);
+        const thermalBias = Math.sign(input || 1) * s.thermal * (color - 0.5) * 0.0018;
+        const soft = Math.tanh((input + thermalBias) * (1.015 + color * 0.18)) - input;
+        residual = railError + slewError + soft * 0.34;
         break;
       }
-      case 11: {
-        s.charge += (input - s.charge) * (0.18 + (1 - memory) * 0.48);
-        residual = (s.charge - input) * (0.02 + color * 0.028) + delta * motion * 0.002;
+      case 11: { // converter: finite settling, aperture memory and level-dependent edge error
+        const settle = 0.16 + (1 - memory) * 0.5;
+        s.charge += (input - s.charge) * settle;
+        s.absorption += (s.charge - s.absorption) * (0.025 + color * 0.045);
+        const aperture = (s.absorption - input) * (0.018 + color * 0.027);
+        residual = aperture + delta * motion * 0.0018 + s.slew * s.envelope * 0.0025;
         break;
       }
-      case 12: {
-        s.velocity = s.velocity * 0.93 + delta * (0.025 + motion * 0.04);
+      case 12: { // fracture: stressed structure, residual offset and deterministic intermittent instability
+        s.velocity = s.velocity * (0.93 - s.fatigue * 0.01) + delta * (0.025 + motion * 0.04);
         s.position = s.position * 0.998 + s.velocity;
-        residual = Math.tanh((s.position + s.remanence) * (1.4 + color * 2.5)) * 0.045;
-        s.remanence = s.remanence * 0.999 + Math.sign(input) * s.envelope * 0.00003;
+        s.remanence = s.remanence * 0.9991 + Math.sign(input || 1) * s.envelope * 0.00003;
+        const stress = Math.max(0, s.envelope - (0.28 + (1 - memory) * 0.32));
+        const chatter = Math.sin(s.phase * (5 + color * 7)) * stress * (0.012 + motion * 0.018);
+        residual = Math.tanh((s.position + s.remanence) * (1.4 + color * 2.5)) * 0.043 + chatter;
         break;
       }
       default:
