@@ -9,8 +9,6 @@
     inset 0 0 72px rgba(0, 0, 0, 0.58);
 }
 
-/* Keep the source footage completely neutral. Only black vignette and neutral
-   white/black reflections sit above it. */
 .module-video-viewport::before,
 .module-video-viewport::after {
   content: '' !important;
@@ -20,26 +18,23 @@
   pointer-events: none;
 }
 
-/* Strong recessed vignette with a clear untouched center. */
 .module-video-viewport::before {
-  z-index: 1;
-  background:
-    radial-gradient(
-      ellipse at center,
-      rgba(0, 0, 0, 0) 36%,
-      rgba(0, 0, 0, 0.08) 54%,
-      rgba(0, 0, 0, 0.32) 72%,
-      rgba(0, 0, 0, 0.72) 90%,
-      rgba(0, 0, 0, 0.94) 100%
-    );
+  z-index: 3;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 0, 0, 0) 36%,
+    rgba(0, 0, 0, 0.08) 54%,
+    rgba(0, 0, 0, 0.32) 72%,
+    rgba(0, 0, 0, 0.72) 90%,
+    rgba(0, 0, 0, 0.94) 100%
+  );
   box-shadow:
     inset 0 0 22px rgba(0, 0, 0, 0.5),
     inset 0 0 56px rgba(0, 0, 0, 0.34);
 }
 
-/* Neutral glass reflections only. No tint, saturation, brightness, or blend wash. */
 .module-video-viewport::after {
-  z-index: 2;
+  z-index: 4;
   background:
     linear-gradient(
       122deg,
@@ -56,16 +51,6 @@
       rgba(255, 255, 255, 0.08) 0%,
       rgba(255, 255, 255, 0.028) 16%,
       rgba(255, 255, 255, 0) 38%
-    ),
-    linear-gradient(
-      104deg,
-      rgba(255, 255, 255, 0) 0%,
-      rgba(255, 255, 255, 0) 44%,
-      rgba(255, 255, 255, 0.025) 49%,
-      rgba(255, 255, 255, 0.055) 51%,
-      rgba(255, 255, 255, 0.02) 54%,
-      rgba(255, 255, 255, 0) 60%,
-      rgba(255, 255, 255, 0) 100%
     );
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
@@ -74,10 +59,18 @@
     inset 0 -1px 0 rgba(0, 0, 0, 0.68);
 }
 
+.module-video-stage,
 .module-video {
   position: absolute;
   inset: 0;
+}
+
+.module-video-stage {
   z-index: 0;
+  overflow: hidden;
+}
+
+.module-video {
   display: block;
   width: 100%;
   height: 100%;
@@ -88,8 +81,188 @@
   transform: scale(calc(1 + (var(--module-feedback, 0) * 0.0045)));
   transform-origin: center;
   mix-blend-mode: normal;
-  transition: transform 7.5s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
+  transition:
+    transform 7.5s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 2.8s cubic-bezier(0.22, 1, 0.36, 1),
+    clip-path 2.8s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, opacity, clip-path;
+}
+
+.module-video-fx {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Shared optical vocabulary ------------------------------------------------ */
+
+/* Mirror split */
+.module-video-viewport[data-visual-mode*='tube'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='chorus'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='clean'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='hall'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='cassette'] .module-video-fx-a {
+  opacity: 0.42;
+  clip-path: inset(0 0 0 50%);
+  transform: scaleX(-1) scale(calc(1 + (var(--module-feedback, 0) * 0.0045)));
+}
+
+/* Four-way symmetry / kaleidoscope */
+.module-video-viewport[data-visual-mode*='dimension'] .module-video-base,
+.module-video-viewport[data-visual-mode*='orbit'] .module-video-base,
+.module-video-viewport[data-visual-mode*='constellation'] .module-video-base,
+.module-video-viewport[data-visual-mode*='plate'] .module-video-base,
+.module-video-viewport[data-visual-mode*='archive'] .module-video-base {
+  transform: scale(1.12);
+}
+.module-video-viewport[data-visual-mode*='dimension'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='orbit'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='constellation'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='plate'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='archive'] .module-video-fx-a {
+  opacity: 0.58;
+  clip-path: inset(0 50% 50% 0);
+  transform: scaleX(-1) scale(1.12);
+}
+.module-video-viewport[data-visual-mode*='dimension'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='orbit'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='constellation'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='plate'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='archive'] .module-video-fx-b {
+  opacity: 0.52;
+  clip-path: inset(50% 0 0 50%);
+  transform: scaleY(-1) scale(1.12);
+}
+.module-video-viewport[data-visual-mode*='dimension'] .module-video-fx-c,
+.module-video-viewport[data-visual-mode*='orbit'] .module-video-fx-c,
+.module-video-viewport[data-visual-mode*='constellation'] .module-video-fx-c,
+.module-video-viewport[data-visual-mode*='plate'] .module-video-fx-c,
+.module-video-viewport[data-visual-mode*='archive'] .module-video-fx-c {
+  opacity: 0.44;
+  clip-path: inset(50% 50% 0 0);
+  transform: scale(-1, -1) scale(1.12);
+}
+
+/* Rotational echo */
+.module-video-viewport[data-visual-mode*='rotary'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='doppler'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='scatter'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='spring'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='broken'] .module-video-fx-a {
+  opacity: 0.28;
+  transform: rotate(2.4deg) scale(1.045);
+}
+.module-video-viewport[data-visual-mode*='rotary'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='doppler'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='scatter'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='spring'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='broken'] .module-video-fx-b {
+  opacity: 0.2;
+  transform: rotate(-3.2deg) scale(1.085);
+}
+
+/* Recursive inset / pseudo-fractal */
+.module-video-viewport[data-visual-mode*='liquid'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='diffuse'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='shimmer'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='furnace'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='vhs'] .module-video-fx-a {
+  opacity: 0.42;
+  clip-path: inset(14% 16% 14% 16% round 18%);
+  transform: scale(1.18);
+}
+.module-video-viewport[data-visual-mode*='liquid'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='diffuse'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='shimmer'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='furnace'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='vhs'] .module-video-fx-b {
+  opacity: 0.28;
+  clip-path: inset(27% 30% 27% 30% round 28%);
+  transform: scale(1.38);
+}
+.module-video-viewport[data-visual-mode*='liquid'] .module-video-fx-c,
+.module-video-viewport[data-visual-mode*='diffuse'] .module-video-fx-c,
+.module-video-viewport[data-visual-mode*='shimmer'] .module-video-fx-c,
+.module-video-viewport[data-visual-mode*='furnace'] .module-video-fx-c,
+.module-video-viewport[data-visual-mode*='vhs'] .module-video-fx-c {
+  opacity: 0.18;
+  clip-path: inset(38% 40% 38% 40% round 38%);
+  transform: scale(1.62);
+}
+
+/* Horizontal sliced bands */
+.module-video-viewport[data-visual-mode*='vibrato'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='tape'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='bbd'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='reconstruct'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='radio'] .module-video-fx-a {
+  opacity: 0.5;
+  clip-path: polygon(0 18%,100% 18%,100% 34%,0 34%,0 58%,100% 58%,100% 70%,0 70%);
+  transform: translateX(calc(var(--module-feedback, 0) * 1.2%)) scale(1.015);
+}
+.module-video-viewport[data-visual-mode*='vibrato'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='tape'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='bbd'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='reconstruct'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='radio'] .module-video-fx-b {
+  opacity: 0.32;
+  clip-path: polygon(0 7%,100% 7%,100% 13%,0 13%,0 77%,100% 77%,100% 88%,0 88%);
+  transform: translateX(calc(var(--module-feedback, 0) * -1.4%)) scale(1.02);
+}
+
+/* Vertical symmetry columns */
+.module-video-viewport[data-visual-mode*='ensemble'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='pingpong'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='room'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='vinyl'] .module-video-fx-a {
+  opacity: 0.38;
+  clip-path: inset(0 66% 0 0);
+  transform: scaleX(-1) scale(1.05);
+}
+.module-video-viewport[data-visual-mode*='ensemble'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='pingpong'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='room'] .module-video-fx-b,
+.module-video-viewport[data-visual-mode*='vinyl'] .module-video-fx-b {
+  opacity: 0.34;
+  clip-path: inset(0 33% 0 33%);
+  transform: scaleX(-1) scale(1.03);
+}
+.module-video-viewport[data-visual-mode*='ensemble'] .module-video-fx-c,
+.module-video-viewport[data-visual-mode*='pingpong'] .module-video-fx-c,
+.module-video-viewport[data-visual-mode*='room'] .module-video-fx-c,
+.module-video-viewport[data-visual-mode*='vinyl'] .module-video-fx-c {
+  opacity: 0.38;
+  clip-path: inset(0 0 0 66%);
+  transform: scaleX(-1) scale(1.05);
+}
+
+/* Named hardware modes get restrained framing rather than wild effects. */
+.module-video-viewport[data-visual-mode*='goldlion'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='mullard'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='telefunken'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='bugleboy'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='rcablack'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='neve'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='ssl'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='api'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='ampex'] .module-video-fx-a {
+  opacity: 0.22;
+  clip-path: inset(8% 8% 8% 8% round 12%);
+  transform: scale(1.08);
+}
+
+/* Keep unspecified modes clean but still subtly alive. */
+.module-video-viewport[data-visual-mode*='velvet'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='console'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='transformer'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='exciter'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='ce1'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='ep-3'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='echorec'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='memory-man'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='wax'] .module-video-fx-a,
+.module-video-viewport[data-visual-mode*='tascam'] .module-video-fx-a {
+  opacity: 0.16;
+  transform: scale(1.025);
 }
 
 .module-video-empty {
@@ -110,5 +283,5 @@
 
 .module-video-viewport .viewport-caption {
   position: absolute;
-  z-index: 3;
+  z-index: 5;
 }
