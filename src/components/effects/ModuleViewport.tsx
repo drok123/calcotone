@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import type { ModuleState } from '../../ui/types';
 import type { VisualAudioState } from '../../visual/VisualEngine';
 import { formatAlgorithmName } from '../../ui/formatting';
@@ -33,6 +34,16 @@ function videoFor(module: ModuleState): ModuleVideoKey | null {
   return null;
 }
 
+function visualModeFor(module: ModuleState): string {
+  if (module.id === 'saturation') return `ember-${module.emberMode ?? 'velvet'}`;
+  if (module.id === 'chorus') return `drift-${module.driftMode ?? 'chorus'}`;
+  if (module.id === 'delay') return `halo-${module.delayAlgorithm ?? 'tape'}`;
+  if (module.id === 'reverb') return `atmos-${module.algorithm ?? 'hall'}`;
+  if (module.id === 'bitcrusher') return `grain-${module.grainMode ?? 'reconstruct'}`;
+  if (module.id === 'media') return `artifact-${String(module.mediaMode ?? 'cassette').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  return 'default';
+}
+
 function captionFor(module: ModuleState): string {
   if (module.id === 'saturation') return `EMBER · ${(module.emberMode ?? 'velvet').toUpperCase()}`;
   if (module.id === 'chorus') return `DRIFT · ${(module.driftMode ?? 'chorus').toUpperCase()}`;
@@ -45,6 +56,21 @@ function captionFor(module: ModuleState): string {
     : `ARTIFACT · ${mode.toUpperCase()}`;
 }
 
+function VideoLayer({ src, className }: { src: string; className: string }) {
+  return (
+    <video
+      className={className}
+      src={src}
+      autoPlay
+      muted
+      loop
+      playsInline
+      preload="auto"
+      aria-hidden="true"
+    />
+  );
+}
+
 export function ModuleViewport({
   module,
   visualState,
@@ -55,24 +81,22 @@ export function ModuleViewport({
   const key = videoFor(module);
   const videoUrl = key ? assetUrl(VIDEO_FILES[key]) : null;
   const feedback = Math.max(0, Math.min(1, visualState.level));
+  const visualMode = visualModeFor(module);
 
   return (
     <div
       className={`dsp-viewport module-video-viewport viewport-${module.id} ${module.enabled ? 'active' : 'is-off'}`}
       data-audio-level={feedback.toFixed(3)}
-      style={{ '--module-feedback': feedback } as React.CSSProperties}
+      data-visual-mode={visualMode}
+      style={{ '--module-feedback': feedback } as CSSProperties}
     >
       {module.enabled && videoUrl ? (
-        <video
-          className="module-video"
-          src={videoUrl}
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="auto"
-          aria-hidden="true"
-        />
+        <div className="module-video-stage" aria-hidden="true">
+          <VideoLayer src={videoUrl} className="module-video module-video-base" />
+          <VideoLayer src={videoUrl} className="module-video module-video-fx module-video-fx-a" />
+          <VideoLayer src={videoUrl} className="module-video module-video-fx module-video-fx-b" />
+          <VideoLayer src={videoUrl} className="module-video module-video-fx module-video-fx-c" />
+        </div>
       ) : module.enabled ? (
         <div className="module-video-empty" aria-hidden="true">
           <span>VIDEO SOURCE NEEDED</span>
