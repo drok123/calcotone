@@ -41,6 +41,8 @@ const factory = read('src/audio/EffectFactory.ts');
 const randomBatch = read('src/perf/randomBatch.ts');
 const randomBridge = read('src/randomTransferBridge.ts');
 const viewport = read('src/components/effects/ModuleViewport.tsx');
+const visualEngine = read('src/visual/VisualEngine.ts');
+const recorder = read('src/audio/WavRecorder.ts');
 const grainEffect = read('src/audio/effects/Bitcrusher.ts');
 const tubeStage = read('src/audio/models/TubeColorStage.ts');
 const magneticStage = read('src/audio/models/MagneticCoreStage.ts');
@@ -63,15 +65,21 @@ requireText(effect, 'this.behaviorStage.dispose()', 'BaseEffect physical chassis
 requireText(factory, 'attachPhysicalBehavior(effect)', 'EffectFactory physical registry attachment');
 requireText(randomBatch, 'syncPhysicalBehavior(effect)', 'RANDOM physical registry sync');
 requireText(randomBridge, 'beginViewportPerformanceHold()', 'RANDOM viewport hold');
+requireText(randomBridge, 'engine.setEffectBypassed(entry.id, entry.bypassed)', 'RANDOM transactional restore');
+requireText(randomBridge, '.finally(() => {', 'RANDOM transactional cleanup');
 
 requireText(tubeStage, "ember-tube-processor.js?v=", 'Tube worklet loader');
 requireText(magneticStage, "magnetic-core-processor.js?v=", 'Magnetic worklet loader');
 requireText(behaviorStage, "behavior-memory-processor.js?v=", 'Behavior worklet loader');
 for (const [source, label] of [
-  [tubeStage, 'Tube resume reset'],
-  [magneticStage, 'Magnetic resume reset'],
-  [behaviorStage, 'Behavior resume reset'],
-]) requireText(source, "postMessage({ type: 'reset' })", label);
+  [tubeStage, 'Tube worklet suspend/resume'],
+  [magneticStage, 'Magnetic worklet suspend/resume'],
+  [behaviorStage, 'Behavior worklet suspend/resume'],
+]) {
+  requireText(source, "postMessage({ type: 'reset' })", label);
+  requireText(source, 'this.processor.connect(this.processedGain)', label);
+  requireText(source, 'this.processor.disconnect(this.processedGain)', label);
+}
 for (const [source, label] of [
   [tubeProcessor, 'Tube processor reset handler'],
   [magneticProcessor, 'Magnetic processor reset handler'],
@@ -82,6 +90,9 @@ for (const [source, label] of [
 }
 
 requireText(grainEffect, 'stats.cpuLoad = Number.NaN', 'Grain fake timing guard');
+requireText(visualEngine, 'if (!running || !analyser)', 'Idle visual sleep');
+requireText(visualEngine, 'const reactInterval = 1000 / 20', 'React visual cadence cap');
+requireText(recorder, 'this.disconnectNodes();', 'Recorder processor-error cleanup');
 
 forbidText(randomBridge, 'randomProfiler', 'RANDOM bridge');
 forbidText(randomBatch, '__calcotoneRandomProfiler', 'RANDOM batch');
