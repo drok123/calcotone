@@ -1,4 +1,4 @@
-import { type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { ModuleState } from '../../ui/types';
 import type { VisualAudioState } from '../../visual/VisualEngine';
 import { formatAlgorithmName } from '../../ui/formatting';
@@ -316,10 +316,34 @@ export function ModuleViewport({
   const visualMode = visualModeFor(module);
   const visualRecipe = visualRecipeFor(module);
   const colorProfile = colorProfileFor(module);
+  const signature = `${visualMode}|${visualRecipe}|${colorProfile}`;
+  const previousSignatureRef = useRef(signature);
+  const transitionTimerRef = useRef<number | null>(null);
+  const [transitioning, setTransitioning] = useState(false);
+
+  useEffect(() => {
+    if (previousSignatureRef.current === signature) return;
+    previousSignatureRef.current = signature;
+    setTransitioning(false);
+    requestAnimationFrame(() => setTransitioning(true));
+
+    if (transitionTimerRef.current !== null) window.clearTimeout(transitionTimerRef.current);
+    transitionTimerRef.current = window.setTimeout(() => {
+      setTransitioning(false);
+      transitionTimerRef.current = null;
+    }, 950);
+
+    return () => {
+      if (transitionTimerRef.current !== null) {
+        window.clearTimeout(transitionTimerRef.current);
+        transitionTimerRef.current = null;
+      }
+    };
+  }, [signature]);
 
   return (
     <div
-      className={`dsp-viewport module-video-viewport viewport-${module.id} ${module.enabled ? 'active' : 'is-off'}`}
+      className={`dsp-viewport module-video-viewport viewport-${module.id} ${module.enabled ? 'active' : 'is-off'} ${transitioning ? 'is-reconfiguring' : ''}`}
       data-audio-level={feedback.toFixed(3)}
       data-visual-mode={visualMode}
       data-visual-recipe={visualRecipe}
@@ -332,6 +356,8 @@ export function ModuleViewport({
           <VideoLayer src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-fx module-video-fx-a" />
           <VideoLayer src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-fx module-video-fx-b" />
           <VideoLayer src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-fx module-video-fx-c" />
+          <span className="module-video-void-mask" />
+          <span className="module-video-transition-veil" />
         </div>
       ) : module.enabled ? (
         <div className="module-video-empty" aria-hidden="true">
