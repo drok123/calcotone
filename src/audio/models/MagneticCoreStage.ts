@@ -1,5 +1,5 @@
 const magneticWorkletLoads = new WeakMap<AudioContext, Promise<void>>();
-const MAGNETIC_WORKLET_VERSION = '1.0.1-suspend-bypass';
+const MAGNETIC_WORKLET_VERSION = '1.0.2-reset-on-resume';
 
 async function ensureMagneticWorklet(context: AudioContext): Promise<void> {
   const existing = magneticWorkletLoads.get(context);
@@ -112,6 +112,7 @@ export class MagneticCoreStage {
 
   private connectProcessor(): void {
     if (!this.processor || this.processorConnected || this.disposed) return;
+    this.processor.port.postMessage({ type: 'reset' });
     this.input.connect(this.processor);
     this.processorConnected = true;
   }
