@@ -4,13 +4,13 @@
   isolation: isolate;
   background: #020407 !important;
   box-shadow:
-    inset 0 0 0 1px rgba(210, 225, 230, 0.08),
-    inset 0 0 24px rgba(0, 0, 0, 0.72),
-    inset 0 0 54px rgba(0, 0, 0, 0.5);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset 0 0 30px rgba(0, 0, 0, 0.82),
+    inset 0 0 72px rgba(0, 0, 0, 0.58);
 }
 
-/* The footage itself stays neutral and smooth. The glass treatment is layered
-   above it so the source color remains intact. */
+/* Keep the source footage completely neutral. Only black vignette and neutral
+   white/black reflections sit above it. */
 .module-video-viewport::before,
 .module-video-viewport::after {
   content: '' !important;
@@ -20,46 +20,58 @@
   pointer-events: none;
 }
 
-/* Deep edge falloff: makes each module feel like a world recessed behind glass. */
+/* Strong recessed vignette with a clear untouched center. */
 .module-video-viewport::before {
   z-index: 1;
   background:
     radial-gradient(
       ellipse at center,
-      rgba(0, 0, 0, 0) 42%,
-      rgba(0, 0, 0, 0.12) 62%,
-      rgba(0, 0, 0, 0.46) 84%,
-      rgba(0, 0, 0, 0.78) 100%
+      rgba(0, 0, 0, 0) 36%,
+      rgba(0, 0, 0, 0.08) 54%,
+      rgba(0, 0, 0, 0.32) 72%,
+      rgba(0, 0, 0, 0.72) 90%,
+      rgba(0, 0, 0, 0.94) 100%
     );
   box-shadow:
-    inset 0 0 18px rgba(0, 0, 0, 0.36),
-    inset 0 0 46px rgba(0, 0, 0, 0.28);
+    inset 0 0 22px rgba(0, 0, 0, 0.5),
+    inset 0 0 56px rgba(0, 0, 0, 0.34);
 }
 
-/* Subtle glass reflection/lens sheen. Keep it restrained so it reads as glass,
-   not a color filter. */
+/* Neutral glass reflections only. No tint, saturation, brightness, or blend wash. */
 .module-video-viewport::after {
   z-index: 2;
   background:
     linear-gradient(
-      118deg,
-      rgba(255, 255, 255, 0.075) 0%,
-      rgba(255, 255, 255, 0.025) 16%,
+      122deg,
+      rgba(255, 255, 255, 0.11) 0%,
+      rgba(255, 255, 255, 0.045) 10%,
+      rgba(255, 255, 255, 0.012) 22%,
       rgba(255, 255, 255, 0) 34%,
-      rgba(255, 255, 255, 0) 72%,
-      rgba(180, 210, 220, 0.035) 100%
+      rgba(255, 255, 255, 0) 68%,
+      rgba(255, 255, 255, 0.022) 82%,
+      rgba(255, 255, 255, 0.055) 100%
     ),
     radial-gradient(
-      ellipse at 26% 13%,
-      rgba(255, 255, 255, 0.055) 0%,
-      rgba(255, 255, 255, 0.018) 18%,
-      rgba(255, 255, 255, 0) 42%
+      ellipse at 22% 10%,
+      rgba(255, 255, 255, 0.08) 0%,
+      rgba(255, 255, 255, 0.028) 16%,
+      rgba(255, 255, 255, 0) 38%
+    ),
+    linear-gradient(
+      104deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0) 44%,
+      rgba(255, 255, 255, 0.025) 49%,
+      rgba(255, 255, 255, 0.055) 51%,
+      rgba(255, 255, 255, 0.02) 54%,
+      rgba(255, 255, 255, 0) 60%,
+      rgba(255, 255, 255, 0) 100%
     );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.09),
-    inset 1px 0 0 rgba(255, 255, 255, 0.035),
-    inset -1px 0 0 rgba(0, 0, 0, 0.42),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.55);
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 1px 0 0 rgba(255, 255, 255, 0.045),
+    inset -1px 0 0 rgba(0, 0, 0, 0.5),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.68);
 }
 
 .module-video {
@@ -73,10 +85,10 @@
   object-position: center;
   opacity: 1;
   filter: none;
-  transform: scale(calc(1 + (var(--module-feedback, 0) * 0.006)));
+  transform: scale(calc(1 + (var(--module-feedback, 0) * 0.0045)));
   transform-origin: center;
   mix-blend-mode: normal;
-  transition: transform 4.5s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 7.5s cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;
 }
 
