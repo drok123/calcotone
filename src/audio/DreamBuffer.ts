@@ -159,8 +159,6 @@ export class DreamBuffer {
     if (safeAmount <= 0.0001 && this.sourceConnected.has(id)) {
       const timer = setTimeout(() => {
         this.sourceDisconnectTimers.delete(id);
-        const current = this.sendGains.get(id);
-        if (!current || current.gain.value > 0.0002) return;
         this.disconnectSourceFeed(id);
       }, 180);
       this.sourceDisconnectTimers.set(id, timer);
