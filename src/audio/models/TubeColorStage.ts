@@ -25,7 +25,7 @@ const MODEL_INDEX: Record<TubeColorModel, number> = {
 };
 
 const tubeWorkletLoads = new WeakMap<AudioContext, Promise<void>>();
-const TUBE_WORKLET_VERSION = '9.1.0-stateful-circuit';
+const TUBE_WORKLET_VERSION = '9.1.1-suspend-bypass';
 
 async function ensureTubeWorklet(context: AudioContext): Promise<void> {
   const existing = tubeWorkletLoads.get(context);
@@ -61,6 +61,8 @@ export class TubeColorStage {
   private readonly bypassGain: GainNode;
   private readonly processedGain: GainNode;
   private processor: AudioWorkletNode | null = null;
+  private processorConnected = false;
+  private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private quality = 2;
   private model: TubeColorModel = 'bypass';
@@ -68,6 +70,7 @@ export class TubeColorStage {
   private heat = 0.18;
   private character = 0.22;
   private dynamics = 0.38;
+  private readonly values = new Map<string, number>();
 
   public constructor(context: AudioContext) {
     this.context = context;
@@ -90,6 +93,7 @@ export class TubeColorStage {
   }
 
   public setModel(model: TubeColorModel): void {
+    if (this.model === model) return;
     this.model = model;
     this.syncModel();
   }
@@ -103,7 +107,9 @@ export class TubeColorStage {
   }
 
   public setQuality(factor: number): void {
-    this.quality = factor >= 4 ? 4 : 2;
+    const next = factor >= 4 ? 4 : 2;
+    if (this.quality === next) return;
+    this.quality = next;
     this.processor?.port.postMessage({ type: 'quality', factor: this.quality });
   }
 
@@ -124,24 +130,54 @@ export class TubeColorStage {
         console.error('CALCOTONE tube coloration AudioWorklet stopped unexpectedly.');
       };
       processor.port.postMessage({ type: 'quality', factor: this.quality });
-      this.input.connect(processor);
       processor.connect(this.processedGain);
       this.processor = processor;
-      this.syncModel();
       this.syncParameters();
+      this.syncModel();
     } catch (error) {
       console.warn('CALCOTONE tube coloration stage could not initialize; dry fallback remains active.', error);
     }
   }
 
+  private connectProcessor(): void {
+    if (!this.processor || this.processorConnected || this.disposed) return;
+    this.input.connect(this.processor);
+    this.processorConnected = true;
+  }
+
+  private disconnectProcessor(): void {
+    if (!this.processor || !this.processorConnected) return;
+    try {
+      this.input.disconnect(this.processor);
+    } catch {
+      // Already disconnected by teardown or a previous transition.
+    }
+    this.processorConnected = false;
+  }
+
+  private clearDisconnectTimer(): void {
+    if (this.disconnectTimer === null) return;
+    clearTimeout(this.disconnectTimer);
+    this.disconnectTimer = null;
+  }
+
   private syncModel(): void {
     const now = this.context.currentTime;
     const modelIndex = MODEL_INDEX[this.model];
-    this.setProcessorParameter('model', modelIndex, now);
-
     const processed = Boolean(this.processor && modelIndex > 0);
+
+    this.clearDisconnectTimer();
+    if (processed) this.connectProcessor();
+    this.setProcessorParameter('model', modelIndex, now, true);
     this.bypassGain.gain.setTargetAtTime(processed ? 0 : 1, now, 0.018);
     this.processedGain.gain.setTargetAtTime(processed ? 1 : 0, now, 0.018);
+
+    if (!processed && this.processorConnected) {
+      this.disconnectTimer = setTimeout(() => {
+        this.disconnectTimer = null;
+        if (!this.disposed && this.model === 'bypass') this.disconnectProcessor();
+      }, 72);
+    }
   }
 
   private syncParameters(): void {
@@ -152,22 +188,27 @@ export class TubeColorStage {
     this.setProcessorParameter('dynamics', this.dynamics, now);
   }
 
-  private setProcessorParameter(name: string, value: number, now: number): void {
+  private setProcessorParameter(name: string, value: number, now: number, discrete = false): void {
+    if (this.values.get(name) === value) return;
     const parameter = this.processor?.parameters.get(name);
     if (!parameter) return;
-    parameter.cancelScheduledValues(now);
-    parameter.setTargetAtTime(value, now, 0.012);
+    this.values.set(name, value);
+    if (discrete) parameter.setValueAtTime(value, now);
+    else parameter.setTargetAtTime(value, now, 0.012);
   }
 
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.clearDisconnectTimer();
+    this.disconnectProcessor();
     if (this.processor) {
       this.processor.onprocessorerror = null;
       this.processor.port.close();
       this.processor.disconnect();
       this.processor = null;
     }
+    this.values.clear();
     this.input.disconnect();
     this.output.disconnect();
     this.bypassGain.disconnect();
