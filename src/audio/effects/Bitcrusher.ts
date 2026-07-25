@@ -106,7 +106,17 @@ export class BitcrusherEffect extends BaseEffect {
     this.setParameter('mix', MIX.defaultValue);
   }
 
-  public getProfilerStats(): GrainProfilerStats { return { ...this.profilerStats }; }
+  public getProfilerStats(): GrainProfilerStats {
+    const stats = { ...this.profilerStats };
+    // AudioWorklet does not expose a trustworthy synchronous wall-clock timer here.
+    // The processor currently reports zero-duration callbacks, so mark timing-derived
+    // fields unavailable instead of letting a fake 0% CPU load drive adaptive quality.
+    if (stats.callbackBudgetMs > 0 && stats.averageCallbackMs === 0 && stats.worstCallbackMs === 0) {
+      stats.cpuLoad = Number.NaN;
+      stats.callbackJitterMs = Number.NaN;
+    }
+    return stats;
+  }
 
   public setQualityMode(mode: PerformanceMode): void {
     const maxVoices = mode === 'studio' ? 8 : mode === 'balanced' ? 7 : 6;
@@ -175,7 +185,6 @@ export class BitcrusherEffect extends BaseEffect {
     const bloom = this.parameterValues.get('bloom') ?? BLOOM.defaultValue;
     const modeIndex = GRAIN_MODE_ORDER.indexOf(this.mode);
     if (this.isHardwareMode()) {
-      // Hardware sampler modes are direct conversion paths; the worklet owns their filters.
       this.directGain.gain.setTargetAtTime(1.04, now, 0.04);
       this.bloomGain.gain.setTargetAtTime(0, now, 0.04);
       return;
