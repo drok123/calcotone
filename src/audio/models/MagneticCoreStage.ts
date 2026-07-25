@@ -1,5 +1,5 @@
 const magneticWorkletLoads = new WeakMap<AudioContext, Promise<void>>();
-const MAGNETIC_WORKLET_VERSION = '1.0.2-reset-on-resume';
+const MAGNETIC_WORKLET_VERSION = '1.0.3-full-suspend';
 
 async function ensureMagneticWorklet(context: AudioContext): Promise<void> {
   const existing = magneticWorkletLoads.get(context);
@@ -20,13 +20,7 @@ async function ensureMagneticWorklet(context: AudioContext): Promise<void> {
   return promise;
 }
 
-/**
- * Stateful transformer/core coloration block.
- *
- * This is a reusable theory-crafted core model with hysteresis/remanence,
- * saturation, eddy-current-style dynamic loss and slow load memory. It is
- * deliberately subtle enough for insert use and dry-safe while the worklet loads.
- */
+/** Stateful transformer/core coloration block. */
 export class MagneticCoreStage {
   public readonly input: GainNode;
   public readonly output: GainNode;
@@ -101,7 +95,6 @@ export class MagneticCoreStage {
         console.error('CALCOTONE magnetic core AudioWorklet stopped unexpectedly.');
       };
       processor.port.postMessage({ type: 'quality', factor: this.quality });
-      processor.connect(this.processedGain);
       this.processor = processor;
       this.syncParameters();
       this.syncRouting();
@@ -114,16 +107,14 @@ export class MagneticCoreStage {
     if (!this.processor || this.processorConnected || this.disposed) return;
     this.processor.port.postMessage({ type: 'reset' });
     this.input.connect(this.processor);
+    this.processor.connect(this.processedGain);
     this.processorConnected = true;
   }
 
   private disconnectProcessor(): void {
     if (!this.processor || !this.processorConnected) return;
-    try {
-      this.input.disconnect(this.processor);
-    } catch {
-      // Already disconnected by teardown or a previous transition.
-    }
+    try { this.input.disconnect(this.processor); } catch { /* already disconnected */ }
+    try { this.processor.disconnect(this.processedGain); } catch { /* already disconnected */ }
     this.processorConnected = false;
   }
 
