@@ -190,6 +190,7 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
       // state. Only its DSP setter calls are captured and collapsed into six batches.
       button.click();
     } catch (error) {
+      replayButton = null;
       console.error('CALCOTONE RANDOM planning failed.', error);
     } finally {
       // Never leave capture armed: a stuck capture would swallow later live control writes.
@@ -198,15 +199,15 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
 
     void flushCapturedRandom(engine, batches)
       .then(() => new Promise<void>((resolve) => window.setTimeout(resolve, RANDOM_SETTLE_MS)))
-      .then(() => {
-        if (activeEngine === engine && engine.getState() === 'running') {
-          for (const entry of snapshot) engine.setEffectBypassed(entry.id, entry.bypassed);
-        }
-      })
       .catch((error) => {
         console.error('CALCOTONE RANDOM batch transfer failed.', error);
       })
       .finally(() => {
+        // Restoration is a transaction invariant, not a success-only step. A failed
+        // module batch must never strand the previously active rack in bypass.
+        if (activeEngine === engine && engine.getState() === 'running') {
+          for (const entry of snapshot) engine.setEffectBypassed(entry.id, entry.bypassed);
+        }
         randomBusy = false;
         markBusy(button, false);
         releaseViewportHold();
