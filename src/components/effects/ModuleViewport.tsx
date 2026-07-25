@@ -5,8 +5,6 @@ import './ModuleViewportVideo.css';
 
 type ModuleVideoKey = 'ember' | 'drift' | 'drift-alt' | 'halo' | 'artifact' | 'atmos' | 'grain';
 
-const VIDEO_PLAYBACK_RATE = 0.35;
-
 const VIDEO_FILES: Record<ModuleVideoKey, string> = {
   ember: 'visuals/ember.mp4',
   drift: 'visuals/drift.mp4',
@@ -56,11 +54,13 @@ export function ModuleViewport({
 }) {
   const key = videoFor(module);
   const videoUrl = key ? assetUrl(VIDEO_FILES[key]) : null;
+  const feedback = Math.max(0, Math.min(1, visualState.level));
 
   return (
     <div
       className={`dsp-viewport module-video-viewport viewport-${module.id} ${module.enabled ? 'active' : 'is-off'}`}
-      data-audio-level={visualState.level.toFixed(3)}
+      data-audio-level={feedback.toFixed(3)}
+      style={{ '--module-feedback': feedback } as React.CSSProperties}
     >
       {module.enabled && videoUrl ? (
         <video
@@ -71,13 +71,6 @@ export function ModuleViewport({
           loop
           playsInline
           preload="auto"
-          onLoadedMetadata={(event) => {
-            event.currentTarget.playbackRate = VIDEO_PLAYBACK_RATE;
-          }}
-          onCanPlay={(event) => {
-            event.currentTarget.playbackRate = VIDEO_PLAYBACK_RATE;
-            void event.currentTarget.play().catch(() => undefined);
-          }}
           aria-hidden="true"
         />
       ) : module.enabled ? (
