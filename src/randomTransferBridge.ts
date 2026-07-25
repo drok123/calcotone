@@ -14,11 +14,11 @@ let signalBusyUntil = 0;
 let captureEngine: AudioEngine | null = null;
 let capturedParameters = new Map<string, Map<string, number>>();
 
-// Capture RANDOM's synchronous setter burst instead of executing every parameter
-// mutation in one JavaScript turn. Outside that short capture window, calls go
-// straight to the engine with no profiling or diagnostic wrapper in the hot path.
 const directSetEffectParameter = AudioEngine.prototype.setEffectParameter;
-AudioEngine.prototype.setEffectParameter = function (
+const originalStart = AudioEngine.prototype.start;
+const originalStop = AudioEngine.prototype.stop;
+
+const capturedSetEffectParameter = function (
   this: AudioEngine,
   effectId: string,
   parameterId: string,
@@ -36,11 +36,7 @@ AudioEngine.prototype.setEffectParameter = function (
   directSetEffectParameter.call(this, effectId, parameterId, value);
 };
 
-// Keep this bridge deliberately outside React's render path. RANDOM is a bursty,
-// hardware-style operation; handling its transfer envelope here avoids adding more
-// component state/re-renders just to protect a short audio transition.
-const originalStart = AudioEngine.prototype.start;
-AudioEngine.prototype.start = async function (
+const trackedStart = async function (
   this: AudioEngine,
   ...args: Parameters<AudioEngine['start']>
 ): Promise<void> {
@@ -48,8 +44,7 @@ AudioEngine.prototype.start = async function (
   await originalStart.apply(this, args);
 };
 
-const originalStop = AudioEngine.prototype.stop;
-AudioEngine.prototype.stop = async function (
+const trackedStop = async function (
   this: AudioEngine,
   ...args: Parameters<AudioEngine['stop']>
 ): Promise<void> {
@@ -82,9 +77,6 @@ function markBusy(button: HTMLButtonElement, busy: boolean): void {
 }
 
 function yieldMainThread(): Promise<void> {
-  // A task boundary is enough to let input/paint work breathe. Waiting for a full RAF
-  // here used to force the six expensive viewport canvases to run between every DSP
-  // batch, stretching RANDOM into a 600+ ms operation.
   return new Promise((resolve) => window.setTimeout(resolve, 0));
 }
 
@@ -105,9 +97,6 @@ async function flushCapturedRandom(
   engine: AudioEngine,
   batches: Map<string, Map<string, number>>,
 ): Promise<void> {
-  // Keep module rebuilds as separate tasks so Halo/Atmos construction cannot combine
-  // with Ember/Artifact curve generation into one giant synchronous long task. The
-  // viewport scheduler is held during this window, so these yields stay cheap.
   for (const effectId of RANDOM_BATCH_ORDER) {
     const values = batches.get(effectId);
     if (!values?.size) continue;
@@ -118,7 +107,6 @@ async function flushCapturedRandom(
     if (effect) applyRandomBatch(effect, values);
   }
 
-  // Future modules not represented in the fixed rack order still get a safe batch.
   for (const [effectId, values] of batches) {
     if ((RANDOM_BATCH_ORDER as readonly string[]).includes(effectId) || !values.size) continue;
     if (activeEngine !== engine || engine.getState() !== 'running') return;
@@ -135,9 +123,6 @@ function handleSignalRandom(button: HTMLButtonElement, event: MouseEvent): void 
     return;
   }
 
-  // SIGNAL RANDOM already uses AudioEngine.reorderEffectsClickSafe(). This short
-  // guard prevents repeated clicks from queueing multiple graph rebuilds while the
-  // first click-safe reorder is still fading out/in.
   signalBusyUntil = stamp + SIGNAL_LOCK_MS;
   markBusy(button, true);
   window.setTimeout(() => markBusy(button, false), SIGNAL_LOCK_MS);
@@ -167,9 +152,6 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
   consumeClick(event);
   randomBusy = true;
   markBusy(button, true);
-
-  // Preserve the current artwork like a held hardware display while the rack changes
-  // behind it. This removes the viewport renderers from the critical DSP path.
   const releaseViewportHold = beginViewportPerformanceHold();
 
   for (const entry of active) engine.setEffectBypassed(entry.id, true);
@@ -186,14 +168,13 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
     beginParameterCapture(engine);
     let batches: Map<string, Map<string, number>>;
     try {
-      // Existing RANDOM logic still chooses exactly the same patch and updates UI
-      // state. Only its DSP setter calls are captured and collapsed into six batches.
+      // Existing RANDOM logic still chooses exactly the same patch and updates UI.
+      // Only its DSP setter calls are captured and collapsed into module batches.
       button.click();
     } catch (error) {
       replayButton = null;
       console.error('CALCOTONE RANDOM planning failed.', error);
     } finally {
-      // Never leave capture armed: a stuck capture would swallow later live control writes.
       batches = finishParameterCapture(engine);
     }
 
@@ -203,8 +184,6 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
         console.error('CALCOTONE RANDOM batch transfer failed.', error);
       })
       .finally(() => {
-        // Restoration is a transaction invariant, not a success-only step. A failed
-        // module batch must never strand the previously active rack in bypass.
         if (activeEngine === engine && engine.getState() === 'running') {
           for (const entry of snapshot) engine.setEffectBypassed(entry.id, entry.bypassed);
         }
@@ -229,4 +208,29 @@ function onRandomizerClick(event: MouseEvent): void {
   handleMusicalRandom(button, event);
 }
 
-document.addEventListener('click', onRandomizerClick, true);
+function installBridge(): void {
+  AudioEngine.prototype.setEffectParameter = capturedSetEffectParameter;
+  AudioEngine.prototype.start = trackedStart;
+  AudioEngine.prototype.stop = trackedStop;
+  document.addEventListener('click', onRandomizerClick, true);
+}
+
+function uninstallBridge(): void {
+  document.removeEventListener('click', onRandomizerClick, true);
+  if (AudioEngine.prototype.setEffectParameter === capturedSetEffectParameter) {
+    AudioEngine.prototype.setEffectParameter = directSetEffectParameter;
+  }
+  if (AudioEngine.prototype.start === trackedStart) AudioEngine.prototype.start = originalStart;
+  if (AudioEngine.prototype.stop === trackedStop) AudioEngine.prototype.stop = originalStop;
+  activeEngine = null;
+  captureEngine = null;
+  capturedParameters.clear();
+  replayButton = null;
+  randomBusy = false;
+}
+
+installBridge();
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => uninstallBridge());
+}
