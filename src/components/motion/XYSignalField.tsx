@@ -1,12 +1,24 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ModuleState, XYAssignment } from '../../ui/types';
 import { getEffectiveMotionValue } from '../../ui/motion';
 import { getLatestVisualAudioState } from '../../visual/VisualEngine';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
 import { DreamFieldEngine } from './DreamFieldEngine';
+import {
+  preloadVideoWorlds,
+  type VideoWorldKey,
+} from './videoWorlds';
 import './DreamField.css';
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+
+type VideoWorldKind = 'drift' | 'ember' | 'halo' | 'artifact';
+type VideoWorldLayer = {
+  key: VideoWorldKey;
+  kind: VideoWorldKind;
+  flavor: string;
+  energy: number;
+};
 
 function visualEnergy(module: ModuleState): number {
   const value = (id: string, fallback = 0) =>
@@ -37,6 +49,76 @@ function visualEnergy(module: ModuleState): number {
   }
 
   return clamp01(Math.sqrt(mix) * (0.52 + clamp01(character) * 0.48));
+}
+
+function describeVideoWorld(module: ModuleState): VideoWorldLayer | null {
+  if (!module.enabled || !module.available) return null;
+  const energy = visualEnergy(module);
+  if (energy <= 0) return null;
+
+  if (module.id === 'chorus') {
+    const mode = module.driftMode ?? 'chorus';
+    const useAlternate = ['liquid', 'orbit', 'doppler', 'rotary'].includes(mode);
+    const flavor = useAlternate
+      ? 'liquid'
+      : ['ensemble', 'dimension', 'dimensiond'].includes(mode)
+        ? 'wide'
+        : ['ce1', 'vibrato'].includes(mode)
+          ? 'vintage'
+          : 'abyss';
+    return { key: useAlternate ? 'drift-alt' : 'drift', kind: 'drift', flavor, energy };
+  }
+
+  if (module.id === 'saturation') {
+    const mode = module.emberMode ?? 'velvet';
+    const flavor = ['furnace', 'exciter'].includes(mode)
+      ? 'furnace'
+      : mode === 'broken'
+        ? 'overload'
+        : ['tube', 'goldlion', 'mullard', 'telefunken', 'bugleboy', 'rcablack'].includes(mode)
+          ? 'tube'
+          : 'grid';
+    return { key: 'ember', kind: 'ember', flavor, energy };
+  }
+
+  if (module.id === 'delay') {
+    const mode = module.delayAlgorithm ?? 'clean';
+    const flavor = ['diffuse', 'constellation', 'pingpong'].includes(mode)
+      ? 'prism'
+      : ['scatter', 'AMS DMX 15-80 S'].includes(mode)
+        ? 'scatter'
+        : ['tape', 're201', 'EP-3 Echoplex', 'Binson Echorec', 'Deluxe Memory Man'].includes(mode)
+          ? 'echo'
+          : 'mirror';
+    return { key: 'halo', kind: 'halo', flavor, energy };
+  }
+
+  if (module.id === 'media') {
+    const mode = module.mediaMode ?? 'cassette';
+    const flavor = ['broken', 'vhs', 'radio'].includes(mode)
+      ? 'corrupt'
+      : ['archive', 'wax', 'vinyl'].includes(mode)
+        ? 'archive'
+        : ['Neve 1073', 'SSL 4000E', 'API 1608', 'Ampex ATR-102'].includes(mode)
+          ? 'machine'
+          : 'relic';
+    return { key: 'artifact', kind: 'artifact', flavor, energy };
+  }
+
+  return null;
+}
+
+function videoWorldsForModules(modules: ModuleState[]): Array<VideoWorldLayer & { opacity: number }> {
+  const worlds = modules
+    .map(describeVideoWorld)
+    .filter((world): world is VideoWorldLayer => world !== null);
+  const totalEnergy = worlds.reduce((total, world) => total + world.energy, 0);
+  const blendGain = totalEnergy > 1.45 ? 1.45 / totalEnergy : 1;
+
+  return worlds.map((world) => ({
+    ...world,
+    opacity: clamp01((0.14 + world.energy * 0.64) * blendGain),
+  }));
 }
 
 function modulesForDreamEngine(
@@ -86,16 +168,33 @@ export function XYSignalField({
   dragging: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const videoStackRef = useRef<HTMLDivElement | null>(null);
   const modulesRef = useRef(modules);
   const assignmentsRef = useRef(assignments);
   const positionRef = useRef(position);
   const draggingRef = useRef(dragging);
   const engineRef = useRef<DreamFieldEngine | null>(null);
+  const [videoUrls, setVideoUrls] = useState<Partial<Record<VideoWorldKey, string>>>({});
 
   modulesRef.current = modules;
   assignmentsRef.current = assignments;
   positionRef.current = position;
   draggingRef.current = dragging;
+
+  useEffect(() => {
+    let cancelled = false;
+    preloadVideoWorlds()
+      .then((urls) => {
+        if (!cancelled) setVideoUrls(urls);
+      })
+      .catch((error) => {
+        // The procedural Dream Field remains a complete fallback if a plate cannot load.
+        console.warn('CALCOTONE Dream Field video plates unavailable', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -181,6 +280,26 @@ export function XYSignalField({
         return;
       }
 
+      const audio = getLatestVisualAudioState();
+      const stack = videoStackRef.current;
+      if (stack) {
+        const x = (positionRef.current.x - 50) / 50;
+        const y = (positionRef.current.y - 50) / 50;
+        const idleX = Math.sin(stamp * 0.00031 + audio.mid * 2.7) * (1.4 + audio.mid * 3.4);
+        const idleY = Math.cos(stamp * 0.00023 + audio.low * 2.2) * (1.0 + audio.low * 2.8);
+        const impulse = audio.transient * 0.018;
+        const scale = 1.075 + audio.low * 0.035 + impulse + (draggingRef.current ? 0.008 : 0);
+        const translateX = -x * 12 + idleX;
+        const translateY = y * 8 + idleY;
+
+        stack.style.transform = `translate3d(${translateX.toFixed(2)}px, ${translateY.toFixed(2)}px, 0) scale(${scale.toFixed(4)})`;
+        stack.style.setProperty('--dream-level', audio.level.toFixed(3));
+        stack.style.setProperty('--dream-low', audio.low.toFixed(3));
+        stack.style.setProperty('--dream-mid', audio.mid.toFixed(3));
+        stack.style.setProperty('--dream-high', audio.high.toFixed(3));
+        stack.style.setProperty('--dream-transient', audio.transient.toFixed(3));
+      }
+
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
       try {
         engine.render(context, {
@@ -190,7 +309,7 @@ export function XYSignalField({
           y: positionRef.current.y / 100,
           dragging: draggingRef.current,
           time: stamp / 1000,
-          audio: getLatestVisualAudioState(),
+          audio,
         });
       } catch (error) {
         faulted = true;
@@ -207,5 +326,27 @@ export function XYSignalField({
     };
   }, []);
 
-  return <canvas ref={canvasRef} className="xy-signal-field" aria-hidden="true" />;
+  const worlds = videoWorldsForModules(modules);
+  const visibleWorlds = worlds.filter((world) => videoUrls[world.key]);
+
+  return (
+    <div className={`xy-signal-field-shell ${visibleWorlds.length ? 'has-video-world' : ''}`} aria-hidden="true">
+      <div ref={videoStackRef} className="dream-video-stack">
+        {visibleWorlds.map((world) => (
+          <video
+            key={`${world.kind}-${world.key}`}
+            className={`dream-video dream-video-${world.kind} flavor-${world.flavor}`}
+            src={videoUrls[world.key]}
+            style={{ opacity: world.opacity }}
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="auto"
+          />
+        ))}
+      </div>
+      <canvas ref={canvasRef} className="xy-signal-field" />
+    </div>
+  );
 }
