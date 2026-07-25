@@ -35,7 +35,6 @@ function getCe1Curve(motion: number): Float32Array<ArrayBuffer> {
   const key = Math.max(0, Math.min(CE1_CURVE_STEPS, Math.round(motion * CE1_CURVE_STEPS)));
   const cached = CE1_CURVE_CACHE.get(key);
   if (cached) return cached;
-
   const quantizedMotion = key / CE1_CURVE_STEPS;
   const curve = makePreampCurve(0.018 + quantizedMotion * 0.09, 0.018);
   CE1_CURVE_CACHE.set(key, curve);
@@ -60,11 +59,11 @@ export class ChorusEffect extends BaseEffect {
   private currentPreampCurve: Float32Array<ArrayBuffer> = IDENTITY_CURVE;
 
   private mode: DriftMode = 'chorus';
-  private rate = 0.28;
-  private depth = 0.0022;
-  private shape = 0.35;
-  private spread = 0.62;
-  private motion = 0.32;
+  private rate = RATE.defaultValue;
+  private depth = DEPTH.defaultValue;
+  private shape = SHAPE.defaultValue;
+  private spread = SPREAD.defaultValue;
+  private motion = MOTION.defaultValue;
 
   public constructor(context: AudioContext) {
     super(context);
@@ -90,7 +89,6 @@ export class ChorusEffect extends BaseEffect {
       const tone = context.createBiquadFilter();
       const pan = context.createStereoPanner();
       const voiceGain = context.createGain();
-
       delay.delayTime.value = 0.012 + i * 0.0031;
       lfo.type = i % 2 === 0 ? 'sine' : 'triangle';
       hp.type = 'highpass';
@@ -131,14 +129,12 @@ export class ChorusEffect extends BaseEffect {
     if (id === 'mode') {
       const next = clampParameter(value, MODE);
       const nextMode = DRIFT_MODE_ORDER[Math.round(next)] ?? 'chorus';
-      const unchanged = this.parameterValues.get(id) === next && this.mode === nextMode;
+      if (this.parameterValues.get(id) === next && this.mode === nextMode) return;
       this.parameterValues.set(id, next);
-      if (unchanged) return;
       this.mode = nextMode;
       this.apply();
       return;
     }
-
     if (id === 'mix') {
       const next = clampParameter(value, MIX);
       if (this.parameterValues.get(id) === next) return;
@@ -160,19 +156,11 @@ export class ChorusEffect extends BaseEffect {
 
     if (this.parameterValues.get(id) === next) return;
     this.parameterValues.set(id, next);
-
     if (id === 'rate') this.rate = next;
     else if (id === 'depth') this.depth = next;
     else if (id === 'shape') this.shape = next;
     else if (id === 'spread') this.spread = next;
     else this.motion = next;
-
-    // Hardware-study modes intentionally ignore several generic Drift controls.
-    // Keep their stored values for presets/UI, but do not reschedule the audio graph.
-    if (this.mode === 'ce1' && (id === 'rate' || id === 'depth' || id === 'spread')) return;
-    if (this.mode === 'dimensiond' && id !== 'shape') return;
-    if (this.mode === 'orbit' && id === 'spread') return;
-
     this.apply();
   }
 
@@ -186,12 +174,15 @@ export class ChorusEffect extends BaseEffect {
     const now = this.context.currentTime;
 
     if (this.mode === 'ce1') {
-      // CE-1 Chorus study: hardware Chorus mode has one Intensity control that changes
-      // both modulation rate and depth. The generic Rate/Depth controls are ignored here.
-      // Preamp remains a CALCOTONE access point to the CE-1 input-stage coloration.
+      // The CE-1 hardware center is still Shape=Intensity. The generic controls are
+      // deliberately restrained CALCOTONE extensions around that operating point so no
+      // faceplate knob becomes decorative in this mode.
       const intensity = this.shape;
-      const chorusRate = 0.19 + intensity * 0.63;
-      const chorusDepth = 0.00055 + intensity * 0.00245;
+      const rateTrim = Math.pow(2, (this.rate - RATE.defaultValue) * 0.22);
+      const depthTrim = 0.75 + (this.depth / Math.max(DEPTH.defaultValue, 1e-6)) * 0.25;
+      const panWidth = Math.min(0.96, 0.246 + this.spread * 0.7);
+      const chorusRate = (0.19 + intensity * 0.63) * rateTrim;
+      const chorusDepth = (0.00055 + intensity * 0.00245) * depthTrim;
       this.setPreampCurve(getCe1Curve(this.motion));
       this.inputTone.frequency.setTargetAtTime(9_600 - this.motion * 1_900, now, 0.05);
       this.sum.gain.setTargetAtTime(0.82, now, 0.04);
@@ -203,31 +194,34 @@ export class ChorusEffect extends BaseEffect {
         this.delays[i].delayTime.setTargetAtTime(0.0148 + i * 0.00115, now, 0.05);
         this.highpasses[i].frequency.setTargetAtTime(82, now, 0.05);
         this.tones[i].frequency.setTargetAtTime(7_100 + (1 - this.motion) * 1_500, now, 0.06);
-        this.pans[i].pan.setTargetAtTime(i === 0 ? -0.68 : 0.68, now, 0.05);
+        this.pans[i].pan.setTargetAtTime(i === 0 ? -panWidth : panWidth, now, 0.05);
       }
       return;
     }
 
     if (this.mode === 'dimensiond') {
-      // SDD-320 study: the original user-facing modulation choices are button modes,
-      // including the three +4 combinations. Rate/Depth/Spread/Motion are fixed inside
-      // the hardware study rather than behaving like a generic chorus.
+      // Shape remains the seven SDD-320 button combinations. The other controls act as
+      // conservative trims around the authentic center so the generic panel stays alive.
       const modeIndex = Math.max(0, Math.min(6, Math.floor(this.shape * 7)));
       const modeDepth = [0.34, 0.46, 0.60, 0.76, 0.84, 0.91, 0.98][modeIndex];
       const modeRate = [0.165, 0.185, 0.215, 0.245, 0.178, 0.205, 0.232][modeIndex];
       const baseByVoice = [0.0084, 0.0118, 0.0159, 0.0204];
       const phaseSigns = [1, -1, -0.74, 0.74];
+      const rateTrim = Math.pow(2, (this.rate - RATE.defaultValue) * 0.16);
+      const depthTrim = 0.75 + (this.depth / Math.max(DEPTH.defaultValue, 1e-6)) * 0.25;
+      const panWidth = Math.min(0.98, 0.30 + this.spread);
+      const motionDelta = this.motion - MOTION.defaultValue;
       this.setPreampCurve(DIMENSION_D_CURVE);
-      this.inputTone.frequency.setTargetAtTime(13_800, now, 0.05);
+      this.inputTone.frequency.setTargetAtTime(13_800 - motionDelta * 900, now, 0.05);
       this.sum.gain.setTargetAtTime(0.52, now, 0.04);
       for (let i = 0; i < 4; i += 1) {
         this.voiceGains[i].gain.setTargetAtTime(0.55 + (i % 2) * 0.035, now, 0.05);
-        this.lfos[i].frequency.setTargetAtTime(modeRate * (1 + i * 0.031), now, 0.06);
-        this.depths[i].gain.setTargetAtTime(0.00092 * modeDepth * phaseSigns[i], now, 0.06);
-        this.delays[i].delayTime.setTargetAtTime(baseByVoice[i], now, 0.06);
-        this.highpasses[i].frequency.setTargetAtTime(92, now, 0.05);
-        this.tones[i].frequency.setTargetAtTime(10_800 - i * 260, now, 0.06);
-        this.pans[i].pan.setTargetAtTime(i % 2 ? 0.92 : -0.92, now, 0.05);
+        this.lfos[i].frequency.setTargetAtTime(modeRate * rateTrim * (1 + i * (0.031 + motionDelta * 0.006)), now, 0.06);
+        this.depths[i].gain.setTargetAtTime(0.00092 * modeDepth * depthTrim * phaseSigns[i], now, 0.06);
+        this.delays[i].delayTime.setTargetAtTime(baseByVoice[i] * (1 + motionDelta * 0.025 * (i + 1)), now, 0.06);
+        this.highpasses[i].frequency.setTargetAtTime(92 + motionDelta * 18, now, 0.05);
+        this.tones[i].frequency.setTargetAtTime(10_800 - i * 260 - motionDelta * 520, now, 0.06);
+        this.pans[i].pan.setTargetAtTime(i % 2 ? panWidth : -panWidth, now, 0.05);
       }
       return;
     }
@@ -246,8 +240,10 @@ export class ChorusEffect extends BaseEffect {
       this.lfos[i].frequency.setTargetAtTime(this.rate * rateMul * (1 + i * 0.071 * this.motion), now, 0.04);
       this.depths[i].gain.setTargetAtTime(active ? this.depth * (0.65 + i * 0.12) * (i % 2 ? -1 : 1) * (this.mode === 'vibrato' ? 1.45 : 1) : 0, now, 0.04);
       this.delays[i].delayTime.setTargetAtTime(base + i * 0.0026 * (0.4 + this.shape), now, 0.04);
-      const orbit = this.mode === 'orbit' ? Math.sin((i / 4) * Math.PI * 2 + this.motion * Math.PI) * 0.95 : (i % 2 ? 1 : -1) * (0.18 + this.spread * 0.72);
-      this.pans[i].pan.setTargetAtTime(orbit, now, 0.04);
+      const normalPan = (i % 2 ? 1 : -1) * (0.18 + this.spread * 0.72);
+      const orbitWidth = Math.min(0.99, 0.58 + this.spread * 0.6);
+      const orbitPan = Math.sin((i / 4) * Math.PI * 2 + this.motion * Math.PI) * orbitWidth;
+      this.pans[i].pan.setTargetAtTime(this.mode === 'orbit' ? orbitPan : normalPan, now, 0.04);
       this.highpasses[i].frequency.setTargetAtTime(55 + this.motion * 45, now, 0.05);
       this.tones[i].frequency.setTargetAtTime(6500 + this.shape * 9000 - (this.mode === 'rotary' ? i * 900 : 0), now, 0.05);
     }
