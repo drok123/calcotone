@@ -24,10 +24,10 @@
   object-position: center;
   opacity: 1;
   filter: none;
-  transform: scale(calc(1 + (var(--module-feedback, 0) * 0.008)));
+  transform: scale(calc(1 + (var(--module-feedback, 0) * 0.006)));
   transform-origin: center;
   mix-blend-mode: normal;
-  transition: transform 2.2s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 4.5s cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;
 }
 
