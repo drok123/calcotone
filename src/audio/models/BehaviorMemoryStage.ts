@@ -30,7 +30,7 @@ const PROFILE_INDEX: Record<BehaviorMemoryProfile, number> = {
 };
 
 const workletLoads = new WeakMap<AudioContext, Promise<void>>();
-const WORKLET_VERSION = '1.0.1-suspend-bypass';
+const WORKLET_VERSION = '1.0.2-reset-on-resume';
 
 async function ensureWorklet(context: AudioContext): Promise<void> {
   const existing = workletLoads.get(context);
@@ -129,6 +129,7 @@ export class BehaviorMemoryStage {
 
   private connectProcessor(): void {
     if (!this.processor || this.processorConnected || this.disposed) return;
+    this.processor.port.postMessage({ type: 'reset' });
     this.input.connect(this.processor);
     this.processorConnected = true;
   }
@@ -165,8 +166,6 @@ export class BehaviorMemoryStage {
     this.setParameter('color', this.color, now);
 
     if (!enabled && this.processorConnected) {
-      // Allow the 18 ms route fade to finish before removing the processor from the
-      // realtime feed. The identity bypass remains continuously connected.
       this.disconnectTimer = setTimeout(() => {
         this.disconnectTimer = null;
         const stillDisabled = this.profile === 'bypass' || this.amount <= 0.0001;
