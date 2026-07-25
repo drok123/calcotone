@@ -77,15 +77,15 @@
   object-fit: cover;
   object-position: center;
   opacity: 1;
-  filter: none;
   transform: scale(calc(1 + (var(--module-feedback, 0) * 0.0035)));
   transform-origin: center;
   mix-blend-mode: normal;
   transition:
     transform 8.5s cubic-bezier(0.22, 1, 0.36, 1),
     opacity 2.4s cubic-bezier(0.22, 1, 0.36, 1),
-    clip-path 2.4s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform, opacity, clip-path;
+    clip-path 2.4s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 1.4s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, opacity, clip-path, filter;
 }
 
 .module-video-fx {
@@ -93,275 +93,187 @@
   pointer-events: none;
 }
 
+/* Color profiles ----------------------------------------------------------
+   Hue/saturation only: no brightness or opacity wash. */
+.module-video-viewport[data-color-profile='neutral'] .module-video { filter: none; }
+.module-video-viewport[data-color-profile='ember'] .module-video { filter: hue-rotate(-12deg) saturate(1.16); }
+.module-video-viewport[data-color-profile='amber'] .module-video { filter: sepia(0.18) hue-rotate(-10deg) saturate(1.28); }
+.module-video-viewport[data-color-profile='gold'] .module-video { filter: sepia(0.28) hue-rotate(2deg) saturate(1.34); }
+.module-video-viewport[data-color-profile='cyan'] .module-video { filter: hue-rotate(142deg) saturate(1.42); }
+.module-video-viewport[data-color-profile='ice'] .module-video { filter: hue-rotate(165deg) saturate(1.16); }
+.module-video-viewport[data-color-profile='teal'] .module-video { filter: hue-rotate(118deg) saturate(1.34); }
+.module-video-viewport[data-color-profile='violet'] .module-video { filter: hue-rotate(228deg) saturate(1.42); }
+.module-video-viewport[data-color-profile='magenta'] .module-video { filter: hue-rotate(278deg) saturate(1.46); }
+.module-video-viewport[data-color-profile='blue'] .module-video { filter: hue-rotate(188deg) saturate(1.32); }
+.module-video-viewport[data-color-profile='green'] .module-video { filter: hue-rotate(78deg) saturate(1.32); }
+.module-video-viewport[data-color-profile='red'] .module-video { filter: hue-rotate(-28deg) saturate(1.44); }
+.module-video-viewport[data-color-profile='sepia'] .module-video { filter: sepia(0.52) saturate(1.18); }
+.module-video-viewport[data-color-profile='mono'] .module-video { filter: grayscale(0.82) saturate(0.45); }
+
 /* Explicit visual recipes -------------------------------------------------- */
 
-/* Mirror */
-.module-video-viewport[data-visual-recipe='mirror'] .module-video-base {
-  transform: scale(1.05);
+/* Artifact: same world, color-first identity. Keep geometry restrained. */
+.module-video-viewport[data-visual-recipe='artifact'] .module-video-base {
+  transform: scale(calc(1.025 + (var(--module-feedback, 0) * 0.0025)));
 }
+.module-video-viewport[data-visual-recipe='artifact'] .module-video-fx-a {
+  opacity: 0.22;
+  clip-path: inset(0 0 0 72%);
+  transform: scaleX(-1) scale(1.035);
+}
+.module-video-viewport[data-visual-recipe='artifact'] .module-video-fx-b {
+  opacity: 0.14;
+  clip-path: inset(72% 0 0 0);
+  transform: scaleY(-1) scale(1.03);
+}
+.module-video-viewport[data-visual-recipe='artifact'] .module-video-fx-c {
+  opacity: 0.08;
+  clip-path: inset(18% 22%);
+  transform: scale(1.16);
+}
+
+/* Mirror */
+.module-video-viewport[data-visual-recipe='mirror'] .module-video-base { transform: scale(1.05); }
 .module-video-viewport[data-visual-recipe='mirror'] .module-video-fx-a {
-  opacity: 0.82;
+  opacity: 0.86;
   clip-path: inset(0 0 0 50%);
   transform: scaleX(-1) scale(1.05);
 }
 .module-video-viewport[data-visual-recipe='mirror'] .module-video-fx-b {
-  opacity: 0.32;
+  opacity: 0.38;
   clip-path: inset(0 50% 0 0);
-  transform: scaleY(-1) scale(1.08);
+  transform: scaleY(-1) scale(1.1);
 }
 
 /* Three mirrored columns */
-.module-video-viewport[data-visual-recipe='columns'] .module-video-base {
-  transform: scale(1.08);
-}
+.module-video-viewport[data-visual-recipe='columns'] .module-video-base { transform: scale(1.1); }
 .module-video-viewport[data-visual-recipe='columns'] .module-video-fx-a {
-  opacity: 0.72;
+  opacity: 0.78;
   clip-path: inset(0 66% 0 0);
-  transform: scaleX(-1) scale(1.12);
+  transform: scaleX(-1) scale(1.14);
 }
 .module-video-viewport[data-visual-recipe='columns'] .module-video-fx-b {
-  opacity: 0.6;
+  opacity: 0.66;
   clip-path: inset(0 33% 0 33%);
-  transform: scaleX(-1) scale(1.07);
+  transform: scaleX(-1) scale(1.09);
 }
 .module-video-viewport[data-visual-recipe='columns'] .module-video-fx-c {
-  opacity: 0.72;
+  opacity: 0.78;
   clip-path: inset(0 0 0 66%);
-  transform: scaleX(-1) scale(1.12);
+  transform: scaleX(-1) scale(1.14);
 }
 
 /* Four-way kaleidoscope */
-.module-video-viewport[data-visual-recipe='quad'] .module-video-base {
-  transform: scale(1.2);
-}
+.module-video-viewport[data-visual-recipe='quad'] .module-video-base { transform: scale(1.22); }
 .module-video-viewport[data-visual-recipe='quad'] .module-video-fx-a {
-  opacity: 0.86;
+  opacity: 0.9;
   clip-path: inset(0 50% 50% 0);
-  transform: scaleX(-1) scale(1.2);
+  transform: scaleX(-1) scale(1.22);
 }
 .module-video-viewport[data-visual-recipe='quad'] .module-video-fx-b {
-  opacity: 0.82;
+  opacity: 0.86;
   clip-path: inset(50% 0 0 50%);
-  transform: scaleY(-1) scale(1.2);
+  transform: scaleY(-1) scale(1.22);
 }
 .module-video-viewport[data-visual-recipe='quad'] .module-video-fx-c {
-  opacity: 0.78;
+  opacity: 0.82;
   clip-path: inset(50% 50% 0 0);
-  transform: scale(-1, -1) scale(1.2);
+  transform: scale(-1, -1) scale(1.22);
 }
 
 /* Rotational echoes */
-.module-video-viewport[data-visual-recipe='rotary'] .module-video-base {
-  transform: scale(1.08);
-}
-.module-video-viewport[data-visual-recipe='rotary'] .module-video-fx-a {
-  opacity: 0.58;
-  transform: rotate(7deg) scale(1.18);
-}
-.module-video-viewport[data-visual-recipe='rotary'] .module-video-fx-b {
-  opacity: 0.42;
-  transform: rotate(-11deg) scale(1.27);
-}
-.module-video-viewport[data-visual-recipe='rotary'] .module-video-fx-c {
-  opacity: 0.28;
-  transform: rotate(18deg) scale(1.38);
-}
+.module-video-viewport[data-visual-recipe='rotary'] .module-video-base { transform: scale(1.1); }
+.module-video-viewport[data-visual-recipe='rotary'] .module-video-fx-a { opacity: 0.64; transform: rotate(9deg) scale(1.2); }
+.module-video-viewport[data-visual-recipe='rotary'] .module-video-fx-b { opacity: 0.48; transform: rotate(-14deg) scale(1.3); }
+.module-video-viewport[data-visual-recipe='rotary'] .module-video-fx-c { opacity: 0.32; transform: rotate(22deg) scale(1.42); }
 
 /* Recursive portal */
-.module-video-viewport[data-visual-recipe='recursive'] .module-video-base {
-  transform: scale(1.08);
-}
+.module-video-viewport[data-visual-recipe='recursive'] .module-video-base { transform: scale(1.1); }
 .module-video-viewport[data-visual-recipe='recursive'] .module-video-fx-a {
-  opacity: 0.68;
-  clip-path: inset(11% 13% round 20%);
-  transform: scale(1.28);
+  opacity: 0.74;
+  clip-path: inset(9% 11% round 18%);
+  transform: scale(1.32);
 }
 .module-video-viewport[data-visual-recipe='recursive'] .module-video-fx-b {
-  opacity: 0.48;
-  clip-path: inset(24% 27% round 30%);
-  transform: scale(1.58);
+  opacity: 0.54;
+  clip-path: inset(22% 25% round 28%);
+  transform: scale(1.64);
 }
 .module-video-viewport[data-visual-recipe='recursive'] .module-video-fx-c {
-  opacity: 0.34;
-  clip-path: inset(36% 39% round 40%);
-  transform: scale(1.96);
+  opacity: 0.38;
+  clip-path: inset(35% 38% round 40%);
+  transform: scale(2.02);
 }
 
 /* Strong horizontal slicing */
 .module-video-viewport[data-visual-recipe='slices'] .module-video-fx-a {
-  opacity: 0.78;
-  clip-path: polygon(0 12%,100% 12%,100% 31%,0 31%,0 51%,100% 51%,100% 70%,0 70%);
-  transform: translateX(calc(var(--module-feedback, 0) * 2.2%)) scale(1.035);
+  opacity: 0.84;
+  clip-path: polygon(0 10%,100% 10%,100% 31%,0 31%,0 50%,100% 50%,100% 72%,0 72%);
+  transform: translateX(calc(var(--module-feedback, 0) * 3%)) scale(1.045);
 }
 .module-video-viewport[data-visual-recipe='slices'] .module-video-fx-b {
-  opacity: 0.58;
-  clip-path: polygon(0 2%,100% 2%,100% 9%,0 9%,0 76%,100% 76%,100% 94%,0 94%);
-  transform: translateX(calc(var(--module-feedback, 0) * -2.8%)) scale(1.06);
+  opacity: 0.64;
+  clip-path: polygon(0 1%,100% 1%,100% 9%,0 9%,0 76%,100% 76%,100% 95%,0 95%);
+  transform: translateX(calc(var(--module-feedback, 0) * -3.4%)) scale(1.07);
 }
 .module-video-viewport[data-visual-recipe='slices'] .module-video-fx-c {
-  opacity: 0.4;
-  clip-path: polygon(0 35%,100% 35%,100% 45%,0 45%,0 88%,100% 88%,100% 96%,0 96%);
-  transform: translateX(2.4%) scaleX(-1) scale(1.08);
+  opacity: 0.46;
+  clip-path: polygon(0 34%,100% 34%,100% 46%,0 46%,0 87%,100% 87%,100% 97%,0 97%);
+  transform: translateX(3%) scaleX(-1) scale(1.1);
 }
 
 /* Center portal / tunnel */
-.module-video-viewport[data-visual-recipe='portal'] .module-video-base {
-  transform: scale(1.12);
-}
-.module-video-viewport[data-visual-recipe='portal'] .module-video-fx-a {
-  opacity: 0.72;
-  clip-path: circle(38% at 50% 50%);
-  transform: scale(1.36) rotate(3deg);
-}
-.module-video-viewport[data-visual-recipe='portal'] .module-video-fx-b {
-  opacity: 0.5;
-  clip-path: circle(25% at 50% 50%);
-  transform: scale(1.72) rotate(-5deg);
-}
-.module-video-viewport[data-visual-recipe='portal'] .module-video-fx-c {
-  opacity: 0.34;
-  clip-path: circle(14% at 50% 50%);
-  transform: scale(2.28) rotate(8deg);
-}
+.module-video-viewport[data-visual-recipe='portal'] .module-video-base { transform: scale(1.14); }
+.module-video-viewport[data-visual-recipe='portal'] .module-video-fx-a { opacity: 0.78; clip-path: circle(39% at 50% 50%); transform: scale(1.4) rotate(4deg); }
+.module-video-viewport[data-visual-recipe='portal'] .module-video-fx-b { opacity: 0.56; clip-path: circle(26% at 50% 50%); transform: scale(1.8) rotate(-6deg); }
+.module-video-viewport[data-visual-recipe='portal'] .module-video-fx-c { opacity: 0.4; clip-path: circle(14% at 50% 50%); transform: scale(2.38) rotate(10deg); }
 
 /* Cross slices */
 .module-video-viewport[data-visual-recipe='cross'] .module-video-fx-a {
-  opacity: 0.72;
-  clip-path: polygon(42% 0,58% 0,58% 42%,100% 42%,100% 58%,58% 58%,58% 100%,42% 100%,42% 58%,0 58%,0 42%,42% 42%);
-  transform: scale(1.1);
+  opacity: 0.78;
+  clip-path: polygon(40% 0,60% 0,60% 40%,100% 40%,100% 60%,60% 60%,60% 100%,40% 100%,40% 60%,0 60%,0 40%,40% 40%);
+  transform: scale(1.13);
 }
-.module-video-viewport[data-visual-recipe='cross'] .module-video-fx-b {
-  opacity: 0.48;
-  clip-path: inset(20% 20%);
-  transform: rotate(45deg) scale(1.35);
-}
+.module-video-viewport[data-visual-recipe='cross'] .module-video-fx-b { opacity: 0.56; clip-path: inset(18% 18%); transform: rotate(45deg) scale(1.42); }
+.module-video-viewport[data-visual-recipe='cross'] .module-video-fx-c { opacity: 0.34; clip-path: inset(34% 8%); transform: scaleX(-1) scale(1.18); }
 
 /* Shattered angular collage */
-.module-video-viewport[data-visual-recipe='shatter'] .module-video-fx-a {
-  opacity: 0.8;
-  clip-path: polygon(0 0,48% 0,34% 48%,0 62%);
-  transform: translate(-3%, -2%) rotate(-4deg) scale(1.16);
-}
-.module-video-viewport[data-visual-recipe='shatter'] .module-video-fx-b {
-  opacity: 0.74;
-  clip-path: polygon(52% 0,100% 0,100% 55%,66% 42%);
-  transform: translate(3%, -1%) rotate(5deg) scale(1.18);
-}
-.module-video-viewport[data-visual-recipe='shatter'] .module-video-fx-c {
-  opacity: 0.66;
-  clip-path: polygon(0 68%,38% 52%,62% 48%,100% 62%,100% 100%,0 100%);
-  transform: translateY(3%) scaleX(-1) scale(1.12);
-}
+.module-video-viewport[data-visual-recipe='shatter'] .module-video-fx-a { opacity: 0.86; clip-path: polygon(0 0,50% 0,34% 50%,0 64%); transform: translate(-4%, -3%) rotate(-6deg) scale(1.2); }
+.module-video-viewport[data-visual-recipe='shatter'] .module-video-fx-b { opacity: 0.8; clip-path: polygon(50% 0,100% 0,100% 58%,65% 42%); transform: translate(4%, -2%) rotate(7deg) scale(1.22); }
+.module-video-viewport[data-visual-recipe='shatter'] .module-video-fx-c { opacity: 0.72; clip-path: polygon(0 66%,38% 50%,62% 47%,100% 62%,100% 100%,0 100%); transform: translateY(4%) scaleX(-1) scale(1.16); }
 
 /* Prism wedges, geometry only */
-.module-video-viewport[data-visual-recipe='prism'] .module-video-base {
-  transform: scale(1.14);
-}
-.module-video-viewport[data-visual-recipe='prism'] .module-video-fx-a {
-  opacity: 0.72;
-  clip-path: polygon(0 0,52% 0,42% 100%,0 100%);
-  transform: skewX(-8deg) scaleX(-1) scale(1.18);
-}
-.module-video-viewport[data-visual-recipe='prism'] .module-video-fx-b {
-  opacity: 0.62;
-  clip-path: polygon(48% 0,100% 0,100% 100%,58% 100%);
-  transform: skewX(8deg) scaleY(-1) scale(1.18);
-}
-.module-video-viewport[data-visual-recipe='prism'] .module-video-fx-c {
-  opacity: 0.4;
-  clip-path: polygon(35% 0,65% 0,58% 100%,42% 100%);
-  transform: scale(1.34);
-}
+.module-video-viewport[data-visual-recipe='prism'] .module-video-base { transform: scale(1.16); }
+.module-video-viewport[data-visual-recipe='prism'] .module-video-fx-a { opacity: 0.78; clip-path: polygon(0 0,52% 0,41% 100%,0 100%); transform: skewX(-10deg) scaleX(-1) scale(1.22); }
+.module-video-viewport[data-visual-recipe='prism'] .module-video-fx-b { opacity: 0.68; clip-path: polygon(48% 0,100% 0,100% 100%,59% 100%); transform: skewX(10deg) scaleY(-1) scale(1.22); }
+.module-video-viewport[data-visual-recipe='prism'] .module-video-fx-c { opacity: 0.48; clip-path: polygon(34% 0,66% 0,58% 100%,42% 100%); transform: scale(1.4); }
 
 /* Smear through stretched mirrored bands */
-.module-video-viewport[data-visual-recipe='smear'] .module-video-fx-a {
-  opacity: 0.7;
-  clip-path: inset(15% 0 55% 0);
-  transform: scaleY(1.55) scaleX(-1) scale(1.08);
-}
-.module-video-viewport[data-visual-recipe='smear'] .module-video-fx-b {
-  opacity: 0.58;
-  clip-path: inset(45% 0 18% 0);
-  transform: scaleY(1.8) scale(1.1);
-}
-.module-video-viewport[data-visual-recipe='smear'] .module-video-fx-c {
-  opacity: 0.36;
-  clip-path: inset(31% 8% 31% 8%);
-  transform: scaleX(1.5) scaleY(-1) scale(1.05);
-}
+.module-video-viewport[data-visual-recipe='smear'] .module-video-fx-a { opacity: 0.76; clip-path: inset(13% 0 54% 0); transform: scaleY(1.68) scaleX(-1) scale(1.1); }
+.module-video-viewport[data-visual-recipe='smear'] .module-video-fx-b { opacity: 0.64; clip-path: inset(43% 0 16% 0); transform: scaleY(1.82) scale(1.12); }
+.module-video-viewport[data-visual-recipe='smear'] .module-video-fx-c { opacity: 0.42; clip-path: inset(26% 0 28% 0); transform: scaleX(-1) scaleY(1.32) scale(1.18); }
 
-/* Hardware framing: restrained but definitely different */
-.module-video-viewport[data-visual-recipe='hardware'] .module-video-base {
-  transform: scale(1.09);
-}
-.module-video-viewport[data-visual-recipe='hardware'] .module-video-fx-a {
-  opacity: 0.5;
-  clip-path: inset(8% 8% round 8%);
-  transform: scaleX(-1) scale(1.16);
-}
-.module-video-viewport[data-visual-recipe='hardware'] .module-video-fx-b {
-  opacity: 0.28;
-  clip-path: inset(24% 24% round 12%);
-  transform: scale(1.42);
-}
+/* Hardware framing */
+.module-video-viewport[data-visual-recipe='hardware'] .module-video-base { transform: scale(1.055); }
+.module-video-viewport[data-visual-recipe='hardware'] .module-video-fx-a { opacity: 0.3; clip-path: inset(0 0 0 78%); transform: scaleX(-1) scale(1.04); }
+.module-video-viewport[data-visual-recipe='hardware'] .module-video-fx-b { opacity: 0.22; clip-path: inset(78% 0 0 0); transform: scaleY(-1) scale(1.04); }
+.module-video-viewport[data-visual-recipe='hardware'] .module-video-fx-c { opacity: 0.16; clip-path: inset(24% 24%); transform: scale(1.18); }
 
-/* Reverb specials */
-.module-video-viewport[data-visual-recipe='abyss'] .module-video-base {
-  transform: scale(1.28);
-}
-.module-video-viewport[data-visual-recipe='abyss'] .module-video-fx-a {
-  opacity: 0.72;
-  clip-path: circle(46% at 50% 50%);
-  transform: scale(-1, 1) scale(1.42);
-}
-.module-video-viewport[data-visual-recipe='abyss'] .module-video-fx-b {
-  opacity: 0.5;
-  clip-path: circle(30% at 50% 50%);
-  transform: scale(1.84) rotate(180deg);
-}
-.module-video-viewport[data-visual-recipe='abyss'] .module-video-fx-c {
-  opacity: 0.34;
-  clip-path: circle(16% at 50% 50%);
-  transform: scale(2.5);
-}
+/* Atmos-specific extremes */
+.module-video-viewport[data-visual-recipe='abyss'] .module-video-base { transform: scale(1.2); }
+.module-video-viewport[data-visual-recipe='abyss'] .module-video-fx-a { opacity: 0.7; clip-path: circle(42% at 50% 60%); transform: scaleY(-1) scale(1.46); }
+.module-video-viewport[data-visual-recipe='abyss'] .module-video-fx-b { opacity: 0.5; clip-path: circle(28% at 50% 58%); transform: scale(1.9); }
+.module-video-viewport[data-visual-recipe='abyss'] .module-video-fx-c { opacity: 0.34; clip-path: circle(15% at 50% 56%); transform: scale(-1, -1) scale(2.5); }
 
-.module-video-viewport[data-visual-recipe='freeze'] .module-video-base {
-  transform: scale(1.16);
-}
-.module-video-viewport[data-visual-recipe='freeze'] .module-video-fx-a {
-  opacity: 0.66;
-  clip-path: inset(0 50% 0 0);
-  transform: scaleX(-1) scale(1.16);
-}
-.module-video-viewport[data-visual-recipe='freeze'] .module-video-fx-b {
-  opacity: 0.54;
-  clip-path: inset(50% 0 0 0);
-  transform: scaleY(-1) scale(1.16);
-}
-.module-video-viewport[data-visual-recipe='freeze'] .module-video-fx-c {
-  opacity: 0.36;
-  clip-path: inset(20% 20%);
-  transform: scale(-1, -1) scale(1.46);
-}
+.module-video-viewport[data-visual-recipe='freeze'] .module-video-base { transform: scale(1.16); }
+.module-video-viewport[data-visual-recipe='freeze'] .module-video-fx-a { opacity: 0.78; clip-path: inset(0 50% 0 0); transform: scaleX(-1) scale(1.16); }
+.module-video-viewport[data-visual-recipe='freeze'] .module-video-fx-b { opacity: 0.58; clip-path: inset(0 0 50% 0); transform: scaleY(-1) scale(1.22); }
+.module-video-viewport[data-visual-recipe='freeze'] .module-video-fx-c { opacity: 0.4; clip-path: inset(28% 28%); transform: rotate(180deg) scale(1.5); }
 
-.module-video-viewport[data-visual-recipe='cinema'] .module-video-base {
-  transform: scale(1.18);
-}
-.module-video-viewport[data-visual-recipe='cinema'] .module-video-fx-a {
-  opacity: 0.52;
-  clip-path: inset(0 0 68% 0);
-  transform: scaleY(-1) scale(1.2);
-}
-.module-video-viewport[data-visual-recipe='cinema'] .module-video-fx-b {
-  opacity: 0.44;
-  clip-path: inset(68% 0 0 0);
-  transform: scaleY(-1) scale(1.2);
-}
-.module-video-viewport[data-visual-recipe='cinema'] .module-video-fx-c {
-  opacity: 0.3;
-  clip-path: inset(25% 12%);
-  transform: scale(1.48);
-}
+.module-video-viewport[data-visual-recipe='cinema'] .module-video-base { transform: scale(1.12); }
+.module-video-viewport[data-visual-recipe='cinema'] .module-video-fx-a { opacity: 0.62; clip-path: inset(7% 0 58% 0); transform: scaleX(-1) scale(1.14); }
+.module-video-viewport[data-visual-recipe='cinema'] .module-video-fx-b { opacity: 0.46; clip-path: inset(58% 0 7% 0); transform: scaleY(-1) scale(1.2); }
+.module-video-viewport[data-visual-recipe='cinema'] .module-video-fx-c { opacity: 0.28; clip-path: inset(18% 12%); transform: scale(1.36); }
 
 .module-video-empty {
   position: absolute;
@@ -375,9 +287,7 @@
   letter-spacing: 0.12em;
 }
 
-.module-video-empty.is-error {
-  color: rgba(238, 166, 145, 0.72);
-}
+.module-video-empty.is-error { color: rgba(238, 166, 145, 0.72); }
 
 .module-video-viewport .viewport-caption {
   position: absolute;
