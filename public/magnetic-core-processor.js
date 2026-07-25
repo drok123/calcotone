@@ -11,6 +11,17 @@ class CalcotoneMagneticCoreProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.quality = 2;
+    this.resetState();
+    this.port.onmessage = (event) => {
+      if (event.data?.type === 'quality') {
+        this.quality = Math.max(1, Math.min(4, event.data.factor | 0));
+      } else if (event.data?.type === 'reset') {
+        this.resetState();
+      }
+    };
+  }
+
+  resetState() {
     this.previousInputL = 0;
     this.previousInputR = 0;
     this.fluxL = 0;
@@ -20,9 +31,6 @@ class CalcotoneMagneticCoreProcessor extends AudioWorkletProcessor {
     this.eddyL = 0;
     this.eddyR = 0;
     this.lossMemory = 0;
-    this.port.onmessage = (event) => {
-      if (event.data?.type === 'quality') this.quality = Math.max(1, Math.min(4, event.data.factor | 0));
-    };
   }
 
   processChannel(input, drive, heat, character, dynamics, channel) {
@@ -47,20 +55,13 @@ class CalcotoneMagneticCoreProcessor extends AudioWorkletProcessor {
       const interpolated = previous + (input - previous) * sub;
       const field = interpolated * excitation;
       const direction = field >= flux ? 1 : -1;
-
-      // Hysteresis proxy: the desired magnetization depends on both the applied field
-      // and the retained remanent state, so rising and falling trajectories differ.
       const biasedField = field + remanence * coercivity * direction;
       const targetFlux = Math.tanh(biasedField / saturation) * saturation;
       flux += (targetFlux - flux) * fluxRate;
 
-      // Remanence is deliberately very slow. It gives the core a tiny memory of recent
-      // polarity without allowing DC to accumulate indefinitely.
       const remanentTarget = Math.tanh(flux * 1.7) * (0.045 + character * 0.055);
       remanence += (remanentTarget - remanence) * remanenceRate;
 
-      // Eddy-current loss opposes rapid flux changes. A smoothed derivative becomes a
-      // small frequency-dependent damping term instead of a static low-pass filter.
       const derivative = field - previous * excitation;
       eddy += (derivative - eddy) * eddyRate;
       const eddyLoss = eddy * eddyAmount;
@@ -105,8 +106,6 @@ class CalcotoneMagneticCoreProcessor extends AudioWorkletProcessor {
       if (!Number.isFinite(left) || Math.abs(left) < 1e-20) left = 0;
       if (!Number.isFinite(right) || Math.abs(right) < 1e-20) right = 0;
 
-      // Shared core-loss memory approximates heating/load history and very gently
-      // reduces magnetization after sustained excitation.
       const power = 0.5 * (left * left + right * right);
       const lossTarget = Math.min(1, power * (0.7 + drive * 0.8));
       this.lossMemory += (lossTarget - this.lossMemory) * (lossTarget > this.lossMemory ? 0.000018 : 0.0000045);
