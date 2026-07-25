@@ -74,6 +74,8 @@
   display: block;
   width: 100%;
   height: 100%;
+  object-fit: cover;
+  object-position: center;
   opacity: 1;
   transform: scale(calc(1 + (var(--module-feedback, 0) * 0.0035)));
   transform-origin: center;
@@ -86,33 +88,17 @@
   will-change: transform, opacity, clip-path, filter;
 }
 
-.smooth-loop-layer {
-  overflow: hidden;
-}
-
-.smooth-loop-video {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
-  pointer-events: none;
-}
-
-.smooth-loop-front { opacity: 1; }
-.smooth-loop-back { opacity: 0; }
-
 .module-video-fx {
   opacity: 0;
   pointer-events: none;
 }
 
 /* Color profiles ----------------------------------------------------------
-   Hue/saturation only: no brightness or opacity wash. */
+   Color-only grading. Ember-dark is intentionally moodier and darker, while
+   Gold Lion remains the single warm/gold exception inside Ember. */
 .module-video-viewport[data-color-profile='neutral'] .module-video { filter: none; }
 .module-video-viewport[data-color-profile='ember'] .module-video { filter: hue-rotate(-12deg) saturate(1.16); }
+.module-video-viewport[data-color-profile='ember-dark'] .module-video { filter: sepia(0.3) hue-rotate(-38deg) saturate(1.9) brightness(0.62) contrast(1.18); }
 .module-video-viewport[data-color-profile='amber'] .module-video { filter: sepia(0.18) hue-rotate(-10deg) saturate(1.28); }
 .module-video-viewport[data-color-profile='gold'] .module-video { filter: sepia(0.28) hue-rotate(2deg) saturate(1.34); }
 .module-video-viewport[data-color-profile='cyan'] .module-video { filter: hue-rotate(142deg) saturate(1.42); }
@@ -125,6 +111,8 @@
 .module-video-viewport[data-color-profile='red'] .module-video { filter: hue-rotate(-28deg) saturate(1.44); }
 .module-video-viewport[data-color-profile='sepia'] .module-video { filter: sepia(0.52) saturate(1.18); }
 .module-video-viewport[data-color-profile='mono'] .module-video { filter: grayscale(0.82) saturate(0.45); }
+
+/* Explicit visual recipes -------------------------------------------------- */
 
 /* Artifact: same world, color-first identity. Keep geometry restrained. */
 .module-video-viewport[data-visual-recipe='artifact'] .module-video-base {
@@ -252,41 +240,53 @@
 .module-video-viewport[data-visual-recipe='cross'] .module-video-fx-c { opacity: 0.34; clip-path: inset(34% 8%); transform: scaleX(-1) scale(1.18); }
 
 /* Shattered angular collage */
-.module-video-viewport[data-visual-recipe='shatter'] .module-video-fx-a { opacity: 0.84; clip-path: polygon(0 0,48% 0,34% 48%,0 62%); transform: translate(-4%, -3%) rotate(-5deg) scale(1.2); }
-.module-video-viewport[data-visual-recipe='shatter'] .module-video-fx-b { opacity: 0.78; clip-path: polygon(52% 0,100% 0,100% 55%,66% 42%); transform: translate(4%, -2%) rotate(6deg) scale(1.22); }
-.module-video-viewport[data-visual-recipe='shatter'] .module-video-fx-c { opacity: 0.7; clip-path: polygon(0 68%,38% 52%,62% 48%,100% 62%,100% 100%,0 100%); transform: translateY(4%) scaleX(-1) scale(1.16); }
+.module-video-viewport[data-visual-recipe='shatter'] .module-video-fx-a {
+  opacity: 0.84;
+  clip-path: polygon(0 0,49% 0,34% 49%,0 64%);
+  transform: translate(-4%, -3%) rotate(-5deg) scale(1.2);
+}
+.module-video-viewport[data-visual-recipe='shatter'] .module-video-fx-b {
+  opacity: 0.78;
+  clip-path: polygon(51% 0,100% 0,100% 57%,66% 42%);
+  transform: translate(4%, -2%) rotate(6deg) scale(1.22);
+}
+.module-video-viewport[data-visual-recipe='shatter'] .module-video-fx-c {
+  opacity: 0.7;
+  clip-path: polygon(0 66%,39% 50%,61% 47%,100% 61%,100% 100%,0 100%);
+  transform: translateY(4%) scaleX(-1) scale(1.16);
+}
 
 /* Prism wedges */
 .module-video-viewport[data-visual-recipe='prism'] .module-video-base { transform: scale(1.16); }
-.module-video-viewport[data-visual-recipe='prism'] .module-video-fx-a { opacity: 0.78; clip-path: polygon(0 0,52% 0,42% 100%,0 100%); transform: skewX(-10deg) scaleX(-1) scale(1.2); }
-.module-video-viewport[data-visual-recipe='prism'] .module-video-fx-b { opacity: 0.68; clip-path: polygon(48% 0,100% 0,100% 100%,58% 100%); transform: skewX(10deg) scaleY(-1) scale(1.2); }
-.module-video-viewport[data-visual-recipe='prism'] .module-video-fx-c { opacity: 0.46; clip-path: polygon(34% 0,66% 0,59% 100%,41% 100%); transform: scale(1.4); }
+.module-video-viewport[data-visual-recipe='prism'] .module-video-fx-a { opacity: 0.78; clip-path: polygon(0 0,54% 0,42% 100%,0 100%); transform: skewX(-10deg) scaleX(-1) scale(1.22); }
+.module-video-viewport[data-visual-recipe='prism'] .module-video-fx-b { opacity: 0.68; clip-path: polygon(46% 0,100% 0,100% 100%,58% 100%); transform: skewX(10deg) scaleY(-1) scale(1.22); }
+.module-video-viewport[data-visual-recipe='prism'] .module-video-fx-c { opacity: 0.46; clip-path: polygon(33% 0,67% 0,58% 100%,42% 100%); transform: scale(1.38); }
 
 /* Smear */
-.module-video-viewport[data-visual-recipe='smear'] .module-video-fx-a { opacity: 0.74; clip-path: inset(13% 0 54% 0); transform: scaleY(1.7) scaleX(-1) scale(1.1); }
-.module-video-viewport[data-visual-recipe='smear'] .module-video-fx-b { opacity: 0.62; clip-path: inset(44% 0 16% 0); transform: scaleY(1.85) scale(1.12); }
-.module-video-viewport[data-visual-recipe='smear'] .module-video-fx-c { opacity: 0.42; clip-path: inset(26% 0 30% 0); transform: scaleX(-1) scaleY(1.25) scale(1.18); }
+.module-video-viewport[data-visual-recipe='smear'] .module-video-fx-a { opacity: 0.76; clip-path: inset(12% 0 54% 0); transform: scaleY(1.68) scaleX(-1) scale(1.1); }
+.module-video-viewport[data-visual-recipe='smear'] .module-video-fx-b { opacity: 0.62; clip-path: inset(43% 0 16% 0); transform: scaleY(1.82) scale(1.12); }
+.module-video-viewport[data-visual-recipe='smear'] .module-video-fx-c { opacity: 0.4; clip-path: inset(25% 0 37% 0); transform: translateX(2%) scaleY(2.1) scaleX(-1); }
 
 /* Hardware */
-.module-video-viewport[data-visual-recipe='hardware'] .module-video-base { transform: scale(1.035); }
-.module-video-viewport[data-visual-recipe='hardware'] .module-video-fx-a { opacity: 0.2; clip-path: inset(0 0 0 78%); transform: scaleX(-1) scale(1.04); }
-.module-video-viewport[data-visual-recipe='hardware'] .module-video-fx-b { opacity: 0.16; clip-path: inset(78% 0 0 0); transform: scaleY(-1) scale(1.035); }
+.module-video-viewport[data-visual-recipe='hardware'] .module-video-base { transform: scale(1.04); }
+.module-video-viewport[data-visual-recipe='hardware'] .module-video-fx-a { opacity: 0.26; clip-path: inset(0 0 0 76%); transform: scaleX(-1) scale(1.04); }
+.module-video-viewport[data-visual-recipe='hardware'] .module-video-fx-b { opacity: 0.16; clip-path: inset(76% 0 0 0); transform: scaleY(-1) scale(1.03); }
 
-/* Atmos specials */
-.module-video-viewport[data-visual-recipe='abyss'] .module-video-base { transform: scale(1.18); }
-.module-video-viewport[data-visual-recipe='abyss'] .module-video-fx-a { opacity: 0.62; clip-path: circle(42% at 50% 54%); transform: scaleY(-1) scale(1.46); }
-.module-video-viewport[data-visual-recipe='abyss'] .module-video-fx-b { opacity: 0.38; clip-path: circle(26% at 50% 58%); transform: scale(1.9); }
-.module-video-viewport[data-visual-recipe='abyss'] .module-video-fx-c { opacity: 0.24; clip-path: circle(12% at 50% 62%); transform: scale(-1, -1) scale(2.5); }
+/* Atmos special recipes */
+.module-video-viewport[data-visual-recipe='abyss'] .module-video-base { transform: scale(1.28); }
+.module-video-viewport[data-visual-recipe='abyss'] .module-video-fx-a { opacity: 0.72; clip-path: circle(42% at 50% 58%); transform: scaleY(-1) scale(1.52); }
+.module-video-viewport[data-visual-recipe='abyss'] .module-video-fx-b { opacity: 0.5; clip-path: circle(26% at 50% 58%); transform: scale(-1, -1) scale(2); }
+.module-video-viewport[data-visual-recipe='abyss'] .module-video-fx-c { opacity: 0.32; clip-path: circle(13% at 50% 58%); transform: scale(2.65); }
 
-.module-video-viewport[data-visual-recipe='freeze'] .module-video-base { transform: scale(1.2); }
-.module-video-viewport[data-visual-recipe='freeze'] .module-video-fx-a { opacity: 0.84; clip-path: inset(0 50% 0 0); transform: scaleX(-1) scale(1.2); }
-.module-video-viewport[data-visual-recipe='freeze'] .module-video-fx-b { opacity: 0.72; clip-path: inset(50% 0 0 0); transform: scaleY(-1) scale(1.2); }
-.module-video-viewport[data-visual-recipe='freeze'] .module-video-fx-c { opacity: 0.52; clip-path: inset(20% 20%); transform: scale(-1, -1) scale(1.5); }
+.module-video-viewport[data-visual-recipe='freeze'] .module-video-base { transform: scale(1.18); }
+.module-video-viewport[data-visual-recipe='freeze'] .module-video-fx-a { opacity: 0.78; clip-path: inset(0 50% 0 0); transform: scaleX(-1) scale(1.18); }
+.module-video-viewport[data-visual-recipe='freeze'] .module-video-fx-b { opacity: 0.68; clip-path: inset(50% 0 0 0); transform: scaleY(-1) scale(1.18); }
+.module-video-viewport[data-visual-recipe='freeze'] .module-video-fx-c { opacity: 0.5; clip-path: circle(24% at 50% 50%); transform: scale(-1, -1) scale(1.82); }
 
-.module-video-viewport[data-visual-recipe='cinema'] .module-video-base { transform: scale(1.16); }
-.module-video-viewport[data-visual-recipe='cinema'] .module-video-fx-a { opacity: 0.54; clip-path: inset(0 0 58% 0); transform: scaleX(-1) scale(1.25); }
-.module-video-viewport[data-visual-recipe='cinema'] .module-video-fx-b { opacity: 0.44; clip-path: inset(58% 0 0 0); transform: scaleY(-1) scale(1.3); }
-.module-video-viewport[data-visual-recipe='cinema'] .module-video-fx-c { opacity: 0.3; clip-path: inset(24% 15%); transform: rotate(2deg) scale(1.6); }
+.module-video-viewport[data-visual-recipe='cinema'] .module-video-base { transform: scale(1.18); }
+.module-video-viewport[data-visual-recipe='cinema'] .module-video-fx-a { opacity: 0.58; clip-path: inset(0 0 56% 0); transform: scaleX(-1) scale(1.28); }
+.module-video-viewport[data-visual-recipe='cinema'] .module-video-fx-b { opacity: 0.58; clip-path: inset(56% 0 0 0); transform: scaleY(-1) scale(1.28); }
+.module-video-viewport[data-visual-recipe='cinema'] .module-video-fx-c { opacity: 0.32; clip-path: inset(22% 20%); transform: scale(1.52); }
 
 .module-video-empty {
   position: absolute;
@@ -300,7 +300,9 @@
   letter-spacing: 0.12em;
 }
 
-.module-video-empty.is-error { color: rgba(238, 166, 145, 0.72); }
+.module-video-empty.is-error {
+  color: rgba(238, 166, 145, 0.72);
+}
 
 .module-video-viewport .viewport-caption {
   position: absolute;
