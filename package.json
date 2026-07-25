@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "audit": "node scripts/audit.mjs",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "check": "npm run audit && npm run lint && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {
