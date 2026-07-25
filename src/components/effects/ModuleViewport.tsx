@@ -146,6 +146,21 @@ function captionFor(module: ModuleState): string {
     : `ARTIFACT · ${mode.toUpperCase()}`;
 }
 
+function VideoLayer({ src, className }: { src: string; className: string }) {
+  return (
+    <video
+      className={className}
+      src={src}
+      autoPlay
+      muted
+      loop
+      playsInline
+      preload="metadata"
+      aria-hidden="true"
+    />
+  );
+}
+
 export function ModuleViewport({
   module,
   visualState,
@@ -165,26 +180,14 @@ export function ModuleViewport({
       data-audio-level={feedback.toFixed(3)}
       data-visual-mode={visualMode}
       data-visual-recipe={visualRecipe}
-      style={{
-        '--module-feedback': feedback,
-        '--module-video-url': videoUrl ? `url("${videoUrl}")` : 'none',
-      } as CSSProperties}
+      style={{ '--module-feedback': feedback } as CSSProperties}
     >
       {module.enabled && videoUrl ? (
         <div className="module-video-stage" aria-hidden="true">
-          <video
-            className="module-video module-video-base"
-            src={videoUrl}
-            autoPlay
-            muted
-            loop
-            playsInline
-            preload="auto"
-            aria-hidden="true"
-          />
-          <div className="module-video-fx module-video-fx-a" />
-          <div className="module-video-fx module-video-fx-b" />
-          <div className="module-video-fx module-video-fx-c" />
+          <VideoLayer src={videoUrl} className="module-video module-video-base" />
+          <VideoLayer src={videoUrl} className="module-video module-video-fx module-video-fx-a" />
+          <VideoLayer src={videoUrl} className="module-video module-video-fx module-video-fx-b" />
+          <VideoLayer src={videoUrl} className="module-video module-video-fx module-video-fx-c" />
         </div>
       ) : module.enabled ? (
         <div className="module-video-empty" aria-hidden="true">
