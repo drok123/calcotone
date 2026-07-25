@@ -16,16 +16,11 @@ interface DreamRoute {
   readonly lowpass: BiquadFilterNode;
   readonly saturator: WaveShaperNode;
   amount: number;
+  connected: boolean;
+  disconnectTimer: ReturnType<typeof setTimeout> | null;
 }
 
-/**
- * Shared stereo memory core for the Dream Engine.
- *
- * Halo, Atmos and Grain write into one realtime circular history. The buffer
- * exposes three decorrelated read heads. A very quiet master-memory return is
- * kept separate from protected cross-module routes so the two jobs can be
- * tuned, bypassed and debugged independently.
- */
+/** Shared stereo memory core for the Dream Engine. */
 export class DreamBuffer {
   public readonly node: AudioWorkletNode;
   public readonly short: GainNode;
@@ -42,6 +37,8 @@ export class DreamBuffer {
   private readonly context: AudioContext;
   private readonly sendGains = new Map<string, GainNode>();
   private readonly sources = new Map<string, AudioNode>();
+  private readonly sourceConnected = new Set<string>();
+  private readonly sourceDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly routes = new Map<string, DreamRoute>();
   private stats: Omit<DreamBufferStats, 'activeRoutes'> = {
     fillRatio: 0,
@@ -71,8 +68,6 @@ export class DreamBuffer {
     this.longFilter = context.createBiquadFilter();
     this.returnClipper = context.createWaveShaper();
 
-    // Keep the old parallel "memory air" deliberately subtle. Cross-module
-    // interaction is handled by independent guarded routes below.
     this.short.gain.value = 0.014;
     this.medium.gain.value = 0.009;
     this.long.gain.value = 0.006;
@@ -112,20 +107,44 @@ export class DreamBuffer {
   public attachSource(id: string, source: AudioNode, amount: number): void {
     this.detachSource(id);
     const gain = this.context.createGain();
-    gain.gain.value = Math.max(0, Math.min(0.5, amount));
-    source.connect(gain);
+    const safeAmount = Math.max(0, Math.min(0.5, amount));
+    gain.gain.value = safeAmount;
     gain.connect(this.node);
     this.sources.set(id, source);
     this.sendGains.set(id, gain);
+    if (safeAmount > 0.0001) this.connectSource(id);
   }
 
-  public detachSource(id: string): void {
+  private connectSource(id: string): void {
+    if (this.sourceConnected.has(id)) return;
+    const source = this.sources.get(id);
+    const gain = this.sendGains.get(id);
+    if (!source || !gain) return;
+    source.connect(gain);
+    this.sourceConnected.add(id);
+  }
+
+  private disconnectSourceFeed(id: string): void {
+    if (!this.sourceConnected.has(id)) return;
     const source = this.sources.get(id);
     const gain = this.sendGains.get(id);
     if (source && gain) {
       try { source.disconnect(gain); } catch { /* already disconnected */ }
-      gain.disconnect();
     }
+    this.sourceConnected.delete(id);
+  }
+
+  private clearSourceDisconnectTimer(id: string): void {
+    const timer = this.sourceDisconnectTimers.get(id);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.sourceDisconnectTimers.delete(id);
+  }
+
+  public detachSource(id: string): void {
+    this.clearSourceDisconnectTimer(id);
+    this.disconnectSourceFeed(id);
+    this.sendGains.get(id)?.disconnect();
     this.sources.delete(id);
     this.sendGains.delete(id);
   }
@@ -133,14 +152,21 @@ export class DreamBuffer {
   public setSendAmount(id: string, amount: number): void {
     const gain = this.sendGains.get(id);
     if (!gain) return;
-    gain.gain.setTargetAtTime(Math.max(0, Math.min(0.5, amount)), this.context.currentTime, 0.04);
+    const safeAmount = Math.max(0, Math.min(0.5, amount));
+    this.clearSourceDisconnectTimer(id);
+    if (safeAmount > 0.0001) this.connectSource(id);
+    gain.gain.setTargetAtTime(safeAmount, this.context.currentTime, 0.04);
+    if (safeAmount <= 0.0001 && this.sourceConnected.has(id)) {
+      const timer = setTimeout(() => {
+        this.sourceDisconnectTimers.delete(id);
+        const current = this.sendGains.get(id);
+        if (!current || current.gain.value > 0.0002) return;
+        this.disconnectSourceFeed(id);
+      }, 180);
+      this.sourceDisconnectTimers.set(id, timer);
+    }
   }
 
-  /**
-   * Attach one protected Dream-memory read head to a module input.
-   * Route amounts are intentionally hard-capped: these are texture couplings,
-   * not conventional feedback knobs.
-   */
   public attachRoute(
     id: string,
     head: DreamHead,
@@ -163,18 +189,13 @@ export class DreamBuffer {
     lowpass.frequency.value = head === 'long' ? 4200 : head === 'medium' ? 6500 : 9200;
     lowpass.Q.value = 0.5;
     saturator.curve = this.safetyCurve;
-    // Cross-routes are deliberately 1x: the tiny gain plus the downstream
-    // module's own protection makes oversampling here wasted callback budget.
     saturator.oversample = 'none';
 
-    const outputIndex = head === 'short' ? 0 : head === 'medium' ? 1 : 2;
-    this.node.connect(gain, outputIndex, 0);
     gain.connect(highpass);
     highpass.connect(lowpass);
     lowpass.connect(saturator);
-    saturator.connect(destination);
 
-    this.routes.set(id, {
+    const route: DreamRoute = {
       head,
       destination,
       gain,
@@ -182,20 +203,51 @@ export class DreamBuffer {
       lowpass,
       saturator,
       amount: safeAmount,
-    });
+      connected: false,
+      disconnectTimer: null,
+    };
+    this.routes.set(id, route);
+    if (safeAmount > 0.0001) this.connectRoute(route);
+  }
+
+  private connectRoute(route: DreamRoute): void {
+    if (route.connected) return;
+    const outputIndex = route.head === 'short' ? 0 : route.head === 'medium' ? 1 : 2;
+    this.node.connect(route.gain, outputIndex, 0);
+    route.saturator.connect(route.destination);
+    route.connected = true;
+  }
+
+  private disconnectRouteFeed(route: DreamRoute): void {
+    if (!route.connected) return;
+    try { this.node.disconnect(route.gain); } catch { /* already disconnected */ }
+    try { route.saturator.disconnect(route.destination); } catch { /* already disconnected */ }
+    route.connected = false;
   }
 
   public setRouteAmount(id: string, amount: number): void {
     const route = this.routes.get(id);
     if (!route) return;
     route.amount = clampRouteAmount(amount);
+    if (route.disconnectTimer !== null) {
+      clearTimeout(route.disconnectTimer);
+      route.disconnectTimer = null;
+    }
+    if (route.amount > 0.0001) this.connectRoute(route);
     route.gain.gain.setTargetAtTime(route.amount, this.context.currentTime, 0.06);
+    if (route.amount <= 0.0001 && route.connected) {
+      route.disconnectTimer = setTimeout(() => {
+        route.disconnectTimer = null;
+        if (route.amount <= 0.0001) this.disconnectRouteFeed(route);
+      }, 240);
+    }
   }
 
   public detachRoute(id: string): void {
     const route = this.routes.get(id);
     if (!route) return;
-    try { this.node.disconnect(route.gain); } catch { /* already disconnected */ }
+    if (route.disconnectTimer !== null) clearTimeout(route.disconnectTimer);
+    this.disconnectRouteFeed(route);
     route.gain.disconnect();
     route.highpass.disconnect();
     route.lowpass.disconnect();
@@ -207,18 +259,19 @@ export class DreamBuffer {
     for (const id of [...this.routes.keys()]) this.detachRoute(id);
   }
 
-  /** Connect the protected, parallel memory return into the master safety path. */
   public connectReturn(destination: AudioNode): void {
     this.returnClipper.connect(destination);
   }
 
   public getStats(): DreamBufferStats {
-    return { ...this.stats, activeRoutes: this.routes.size };
+    return { ...this.stats, activeRoutes: [...this.routes.values()].filter((route) => route.connected).length };
   }
 
   public dispose(): void {
     this.detachAllRoutes();
     for (const id of [...this.sendGains.keys()]) this.detachSource(id);
+    for (const timer of this.sourceDisconnectTimers.values()) clearTimeout(timer);
+    this.sourceDisconnectTimers.clear();
     this.node.onprocessorerror = null;
     this.node.port.close();
     this.node.disconnect();
