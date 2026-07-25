@@ -41,9 +41,13 @@ const factory = read('src/audio/EffectFactory.ts');
 const randomBatch = read('src/perf/randomBatch.ts');
 const randomBridge = read('src/randomTransferBridge.ts');
 const viewport = read('src/components/effects/ModuleViewport.tsx');
+const grainEffect = read('src/audio/effects/Bitcrusher.ts');
 const tubeStage = read('src/audio/models/TubeColorStage.ts');
 const magneticStage = read('src/audio/models/MagneticCoreStage.ts');
 const behaviorStage = read('src/audio/models/BehaviorMemoryStage.ts');
+const tubeProcessor = read('public/ember-tube-processor.js');
+const magneticProcessor = read('public/magnetic-core-processor.js');
+const behaviorProcessor = read('public/behavior-memory-processor.js');
 
 const worklets = [
   'public/grain-processor.js',
@@ -63,9 +67,21 @@ requireText(randomBridge, 'beginViewportPerformanceHold()', 'RANDOM viewport hol
 requireText(tubeStage, "ember-tube-processor.js?v=", 'Tube worklet loader');
 requireText(magneticStage, "magnetic-core-processor.js?v=", 'Magnetic worklet loader');
 requireText(behaviorStage, "behavior-memory-processor.js?v=", 'Behavior worklet loader');
-requireText(tubeStage, "postMessage({ type: 'reset' })", 'Tube resume reset');
-requireText(magneticStage, "postMessage({ type: 'reset' })", 'Magnetic resume reset');
-requireText(behaviorStage, "postMessage({ type: 'reset' })", 'Behavior resume reset');
+for (const [source, label] of [
+  [tubeStage, 'Tube resume reset'],
+  [magneticStage, 'Magnetic resume reset'],
+  [behaviorStage, 'Behavior resume reset'],
+]) requireText(source, "postMessage({ type: 'reset' })", label);
+for (const [source, label] of [
+  [tubeProcessor, 'Tube processor reset handler'],
+  [magneticProcessor, 'Magnetic processor reset handler'],
+  [behaviorProcessor, 'Behavior processor reset handler'],
+]) {
+  requireText(source, "event.data?.type === 'reset'", label);
+  requireText(source, 'resetState()', label);
+}
+
+requireText(grainEffect, 'stats.cpuLoad = Number.NaN', 'Grain fake timing guard');
 
 forbidText(randomBridge, 'randomProfiler', 'RANDOM bridge');
 forbidText(randomBatch, '__calcotoneRandomProfiler', 'RANDOM batch');
