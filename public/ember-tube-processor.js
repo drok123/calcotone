@@ -12,6 +12,17 @@ class CalcotoneEmberTubeProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.quality = 2;
+    this.resetState();
+    this.port.onmessage = (event) => {
+      if (event.data?.type === 'quality') {
+        this.quality = Math.max(1, Math.min(4, event.data.factor | 0));
+      } else if (event.data?.type === 'reset') {
+        this.resetState();
+      }
+    };
+  }
+
+  resetState() {
     this.previousInputL = 0;
     this.previousInputR = 0;
     this.biasMemoryL = 0;
@@ -22,36 +33,19 @@ class CalcotoneEmberTubeProcessor extends AudioWorkletProcessor {
     this.blockingMemoryR = 0;
     this.outputMemoryL = 0;
     this.outputMemoryR = 0;
-
-    // Supply and temperature are shared physical states. Stereo channels in a real
-    // device do not live on separate power supplies, so a transient on one side can
-    // very slightly alter the operating point seen by the other side.
     this.supplyDemand = 0;
     this.supplySag = 0;
     this.thermalState = 0;
-
-    this.port.onmessage = (event) => {
-      if (event.data?.type === 'quality') {
-        this.quality = Math.max(1, Math.min(4, event.data.factor | 0));
-      }
-    };
   }
 
   updateSharedState(left, right, profile, drive, heat, dynamics) {
     const peak = Math.max(Math.abs(left), Math.abs(right));
     const power = 0.5 * (left * left + right * right);
-
-    // Reservoir/rail demand: fast discharge, slower recovery. This is intentionally
-    // conservative because these are preamp-color studies, not cranked power amps.
     const demandTarget = Math.min(1.5, peak * (0.55 + drive * 0.45));
     const demandCoefficient = demandTarget > this.supplyDemand ? 0.0024 : 0.00016;
     this.supplyDemand += (demandTarget - this.supplyDemand) * demandCoefficient;
     const sagTarget = this.supplyDemand * (0.006 + profile.sag * 0.010) * (0.35 + dynamics * 0.65);
     this.supplySag += (sagTarget - this.supplySag) * (sagTarget > this.supplySag ? 0.0011 : 0.00010);
-
-    // Very slow thermal/operating-point memory. This does not model literal tube
-    // temperature in degrees; it is a normalized proxy for slow bias/transconductance
-    // drift after sustained excitation.
     const thermalTarget = Math.min(1, power * (0.45 + drive * 0.75) + heat * 0.12);
     this.thermalState += (thermalTarget - this.thermalState) * (thermalTarget > this.thermalState ? 0.000010 : 0.0000032);
   }
@@ -70,9 +64,6 @@ class CalcotoneEmberTubeProcessor extends AudioWorkletProcessor {
     const channelTrim = isLeft ? 1 + profile.mismatch : 1 - profile.mismatch * 0.73;
     const thermalSoftening = 1 - this.thermalState * (0.004 + profile.thermal * 0.008);
     const railScale = Math.max(0.94, 1 - this.supplySag);
-
-    // Small-signal preamp philosophy: Drive changes excitation and operating point,
-    // while the tube contributes a nonlinear residual rather than replacing the wave.
     const inputGain = (0.92 + Math.pow(drive, 1.55) * (0.48 + profile.gain * 0.18))
       * channelTrim * railScale * thermalSoftening;
     const colorMix = Math.min(
@@ -96,9 +87,6 @@ class CalcotoneEmberTubeProcessor extends AudioWorkletProcessor {
       const coefficient = absolute > biasMemory ? attack : release;
       biasMemory += (absolute - biasMemory) * coefficient;
 
-      // Cathode-bias memory follows average conduction more slowly than the ordinary
-      // envelope. Increased recent current shifts the effective bias and produces a
-      // small amount of level/harmonic "squish" before recovering.
       const cathodeTarget = Math.min(1, absolute * absolute * (0.65 + drive * 0.55));
       const cathodeCoefficient = cathodeTarget > cathodeMemory
         ? 0.0011 + heat * 0.0007
@@ -109,10 +97,6 @@ class CalcotoneEmberTubeProcessor extends AudioWorkletProcessor {
       const cathodeShift = cathodeMemory * profile.cathode * (0.003 + dynamics * 0.006);
       const bias = characterBias - dynamicBias - cathodeShift;
       const stageInput = interpolated * inputGain;
-
-      // AC-coupling/grid-recovery proxy. Only strong excursions charge this state;
-      // normal small-signal use is effectively untouched. The stored bias then
-      // decays over tens of milliseconds instead of creating hard digital clipping.
       const overdrive = Math.max(0, Math.abs(stageInput) - (0.86 + profile.gridHeadroom * 0.10));
       blockingMemory += (overdrive - blockingMemory) * (overdrive > blockingMemory ? 0.018 : 0.00042 + profile.recovery * 0.00018);
       const recoveryBias = Math.min(0.018, blockingMemory * profile.blocking * (0.012 + drive * 0.010));
@@ -121,15 +105,9 @@ class CalcotoneEmberTubeProcessor extends AudioWorkletProcessor {
       const zero = Math.tanh(effectiveBias * curve);
       const localSlope = Math.max(0.42, inputGain * curve * (1 - zero * zero));
       let shaped = (Math.tanh((stageInput + effectiveBias) * curve) - zero) / localSlope;
-
-      // Bias memory, cathode squish and shared rail sag round strong transients without
-      // turning the stage into a broadband compressor.
       const localSag = Math.min(0.10, biasMemory * sagAmount + cathodeMemory * profile.cathode * 0.010 + this.supplySag * 0.8);
       shaped *= 1 - localSag;
-
-      // Blend only the nonlinear residual back onto the original signal.
       const colored = interpolated + (shaped - interpolated) * colorMix;
-
       const plateFollow = 0.82 + profile.plateMemory * 0.10;
       outputMemory += (colored - outputMemory) * plateFollow;
       accumulated += outputMemory;
@@ -201,31 +179,28 @@ class CalcotoneEmberTubeProcessor extends AudioWorkletProcessor {
   }
 }
 
-// These profile deltas are intentionally conservative theory-crafted operating studies,
-// not claims that every specimen of a named ECC83/12AX7 measures this way. The metadata
-// gives the simulation stable physical axes that can later be replaced by bench data.
 const TUBE_PROFILES = [
-  { // Genalex Gold Lion B759 / ECC83
+  {
     mu: 100, supply: 300, plateLoad: 100000, bias: -1.50,
     gain: 1.04, softness: 1.08, biasMemory: 0.62, recovery: 0.76, sag: 0.58, plateMemory: 0.58, characterRange: 0.055,
     cathode: 0.55, blocking: 0.48, gridHeadroom: 0.72, thermal: 0.52, mismatch: 0.0020,
   },
-  { // Mullard ECC83
+  {
     mu: 100, supply: 295, plateLoad: 100000, bias: -1.55,
     gain: 1.02, softness: 1.12, biasMemory: 0.74, recovery: 0.64, sag: 0.72, plateMemory: 0.66, characterRange: 0.065,
     cathode: 0.70, blocking: 0.62, gridHeadroom: 0.58, thermal: 0.68, mismatch: 0.0028,
   },
-  { // Telefunken ECC83 smooth plate
+  {
     mu: 100, supply: 305, plateLoad: 100000, bias: -1.48,
     gain: 1.00, softness: 1.04, biasMemory: 0.50, recovery: 0.86, sag: 0.46, plateMemory: 0.48, characterRange: 0.045,
     cathode: 0.44, blocking: 0.36, gridHeadroom: 0.84, thermal: 0.42, mismatch: 0.0012,
   },
-  { // Amperex Bugle Boy ECC83
+  {
     mu: 100, supply: 300, plateLoad: 100000, bias: -1.52,
     gain: 1.03, softness: 1.10, biasMemory: 0.64, recovery: 0.72, sag: 0.62, plateMemory: 0.56, characterRange: 0.060,
     cathode: 0.61, blocking: 0.54, gridHeadroom: 0.68, thermal: 0.57, mismatch: 0.0022,
   },
-  { // RCA 12AX7 black plate
+  {
     mu: 100, supply: 290, plateLoad: 100000, bias: -1.58,
     gain: 1.06, softness: 1.15, biasMemory: 0.80, recovery: 0.58, sag: 0.80, plateMemory: 0.72, characterRange: 0.070,
     cathode: 0.78, blocking: 0.70, gridHeadroom: 0.50, thermal: 0.76, mismatch: 0.0034,
