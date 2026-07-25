@@ -16,6 +16,7 @@ interface BehaviorSpec {
 }
 
 const BYPASS: BehaviorSpec = { profile: 'bypass', amount: 0, motion: 0, memory: 0, color: 0.5 };
+const attached = new WeakSet<Effect>();
 
 function value(effect: Effect, id: string, fallback = 0): number {
   return effect.getParameter(id)?.normalizedValue ?? fallback;
@@ -27,6 +28,22 @@ function index(effect: Effect, id: string, fallback = 0): number {
 
 function spec(profile: BehaviorMemoryProfile, amount: number, motion: number, memory: number, color: number): BehaviorSpec {
   return { profile, amount, motion, memory, color };
+}
+
+/**
+ * Wrap an effect instance once so every ordinary parameter write refreshes its
+ * physical behavior model. RANDOM's batch fast path calls syncPhysicalBehavior directly.
+ */
+export function attachPhysicalBehavior(effect: Effect): Effect {
+  if (attached.has(effect)) return effect;
+  attached.add(effect);
+  const originalSetParameter = effect.setParameter.bind(effect);
+  effect.setParameter = (parameterId: string, parameterValue: number): void => {
+    originalSetParameter(parameterId, parameterValue);
+    syncPhysicalBehavior(effect);
+  };
+  syncPhysicalBehavior(effect);
+  return effect;
 }
 
 /**
@@ -49,7 +66,7 @@ export function syncPhysicalBehavior(effect: Effect): void {
       case 'velvet': behavior = spec('elastic', 0.07 + drive * 0.08, heat, 0.55 + dynamics * 0.3, character); break;
       case 'tube': behavior = spec('console', 0.045 + drive * 0.045, heat, 0.72, character); break;
       case 'console': behavior = spec('console', 0.07 + drive * 0.07, dynamics, 0.7, character); break;
-      case 'transformer': behavior = BYPASS; break; // dedicated MagneticCoreStage owns this mechanism.
+      case 'transformer': behavior = BYPASS; break;
       case 'furnace': behavior = spec('console', 0.11 + drive * 0.10, heat, 0.82, character); break;
       case 'exciter': behavior = spec('converter', 0.055 + character * 0.07, heat, 0.28, character); break;
       case 'broken': behavior = spec('fracture', 0.09 + drive * 0.12, heat, 0.88, character); break;
