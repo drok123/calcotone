@@ -19,11 +19,16 @@ const BYPASS: BehaviorSpec = { profile: 'bypass', amount: 0, motion: 0, memory: 
 const attached = new WeakSet<Effect>();
 
 function value(effect: Effect, id: string, fallback = 0): number {
-  return effect.getParameter(id)?.normalizedValue ?? fallback;
+  const raw = effect.getParameterValue(id);
+  if (raw === undefined) return fallback;
+  const parameter = effect.getParameter(id);
+  if (!parameter) return fallback;
+  const span = parameter.max - parameter.min;
+  return span > 0 ? Math.max(0, Math.min(1, (raw - parameter.min) / span)) : 0;
 }
 
 function index(effect: Effect, id: string, fallback = 0): number {
-  return Math.round(effect.getParameter(id)?.value ?? fallback);
+  return Math.round(effect.getParameterValue(id) ?? fallback);
 }
 
 function spec(profile: BehaviorMemoryProfile, amount: number, motion: number, memory: number, color: number): BehaviorSpec {
@@ -31,8 +36,9 @@ function spec(profile: BehaviorMemoryProfile, amount: number, motion: number, me
 }
 
 /**
- * Wrap an effect instance once so every ordinary parameter write refreshes its
- * physical behavior model. RANDOM's batch fast path calls syncPhysicalBehavior directly.
+ * Wrap an effect instance once so ordinary parameter writes refresh its physical
+ * behavior model. Mix changes are intentionally excluded because no physical
+ * profile depends on wet/dry balance; this keeps the highest-rate UI path cheap.
  */
 export function attachPhysicalBehavior(effect: Effect): Effect {
   if (attached.has(effect)) return effect;
@@ -40,7 +46,7 @@ export function attachPhysicalBehavior(effect: Effect): Effect {
   const originalSetParameter = effect.setParameter.bind(effect);
   effect.setParameter = (parameterId: string, parameterValue: number): void => {
     originalSetParameter(parameterId, parameterValue);
-    syncPhysicalBehavior(effect);
+    if (parameterId !== 'mix') syncPhysicalBehavior(effect);
   };
   syncPhysicalBehavior(effect);
   return effect;
