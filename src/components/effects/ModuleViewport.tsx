@@ -31,7 +31,11 @@ type VisualRecipe =
   | 'atmos-aurora'
   | 'grain-grid'
   | 'grain-shards'
-  | 'grain-raster';
+  | 'grain-raster'
+  | 'grain-checker'
+  | 'grain-diamond'
+  | 'grain-brick'
+  | 'grain-hex';
 
 type ColorProfile =
   | 'neutral'
@@ -165,15 +169,15 @@ function visualRecipeFor(module: ModuleState): VisualRecipe {
 
   if (module.id === 'bitcrusher') {
     const mode = module.grainMode ?? 'reconstruct';
-    if (mode === 'reconstruct') return 'grain-grid';
+    if (mode === 'reconstruct') return 'grain-checker';
     if (mode === 'shatter') return 'grain-shards';
-    if (mode === 'smear') return 'smear';
-    if (mode === 'prism') return 'prism';
+    if (mode === 'smear') return 'grain-brick';
+    if (mode === 'prism') return 'grain-diamond';
     if (mode === 'stutter') return 'grain-raster';
-    if (mode === 'ruin') return 'grain-shards';
+    if (mode === 'ruin') return 'grain-hex';
     if (mode === 'sp1200') return 'grain-grid';
-    if (mode === 'mpc60') return 'grain-raster';
-    return 'grain-shards';
+    if (mode === 'mpc60') return 'grain-brick';
+    return 'grain-diamond';
   }
 
   return 'artifact';
