@@ -22,15 +22,15 @@
   z-index: 3;
   background: radial-gradient(
     ellipse at center,
-    rgba(0, 0, 0, 0) 36%,
-    rgba(0, 0, 0, 0.08) 54%,
-    rgba(0, 0, 0, 0.32) 72%,
-    rgba(0, 0, 0, 0.72) 90%,
-    rgba(0, 0, 0, 0.94) 100%
+    rgba(0, 0, 0, 0) 34%,
+    rgba(0, 0, 0, 0.08) 52%,
+    rgba(0, 0, 0, 0.34) 70%,
+    rgba(0, 0, 0, 0.76) 89%,
+    rgba(0, 0, 0, 0.96) 100%
   );
   box-shadow:
-    inset 0 0 22px rgba(0, 0, 0, 0.5),
-    inset 0 0 56px rgba(0, 0, 0, 0.34);
+    inset 0 0 24px rgba(0, 0, 0, 0.54),
+    inset 0 0 62px rgba(0, 0, 0, 0.36);
 }
 
 .module-video-viewport::after {
@@ -38,23 +38,23 @@
   background:
     linear-gradient(
       122deg,
-      rgba(255, 255, 255, 0.11) 0%,
-      rgba(255, 255, 255, 0.045) 10%,
-      rgba(255, 255, 255, 0.012) 22%,
+      rgba(255, 255, 255, 0.105) 0%,
+      rgba(255, 255, 255, 0.038) 10%,
+      rgba(255, 255, 255, 0.01) 22%,
       rgba(255, 255, 255, 0) 34%,
       rgba(255, 255, 255, 0) 68%,
-      rgba(255, 255, 255, 0.022) 82%,
-      rgba(255, 255, 255, 0.055) 100%
+      rgba(255, 255, 255, 0.02) 82%,
+      rgba(255, 255, 255, 0.048) 100%
     ),
     radial-gradient(
       ellipse at 22% 10%,
-      rgba(255, 255, 255, 0.08) 0%,
-      rgba(255, 255, 255, 0.028) 16%,
+      rgba(255, 255, 255, 0.07) 0%,
+      rgba(255, 255, 255, 0.024) 16%,
       rgba(255, 255, 255, 0) 38%
     );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    inset 1px 0 0 rgba(255, 255, 255, 0.045),
+    inset 0 1px 0 rgba(255, 255, 255, 0.11),
+    inset 1px 0 0 rgba(255, 255, 255, 0.04),
     inset -1px 0 0 rgba(0, 0, 0, 0.5),
     inset 0 -1px 0 rgba(0, 0, 0, 0.68);
 }
@@ -78,13 +78,13 @@
   object-position: center;
   opacity: 1;
   filter: none;
-  transform: scale(calc(1 + (var(--module-feedback, 0) * 0.0045)));
+  transform: scale(calc(1 + (var(--module-feedback, 0) * 0.0035)));
   transform-origin: center;
   mix-blend-mode: normal;
   transition:
-    transform 7.5s cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 2.8s cubic-bezier(0.22, 1, 0.36, 1),
-    clip-path 2.8s cubic-bezier(0.22, 1, 0.36, 1);
+    transform 8.5s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 2.4s cubic-bezier(0.22, 1, 0.36, 1),
+    clip-path 2.4s cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform, opacity, clip-path;
 }
 
@@ -93,176 +93,274 @@
   pointer-events: none;
 }
 
-/* Shared optical vocabulary ------------------------------------------------ */
+/* Explicit visual recipes -------------------------------------------------- */
 
-/* Mirror split */
-.module-video-viewport[data-visual-mode*='tube'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='chorus'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='clean'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='hall'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='cassette'] .module-video-fx-a {
-  opacity: 0.42;
+/* Mirror */
+.module-video-viewport[data-visual-recipe='mirror'] .module-video-base {
+  transform: scale(1.05);
+}
+.module-video-viewport[data-visual-recipe='mirror'] .module-video-fx-a {
+  opacity: 0.82;
   clip-path: inset(0 0 0 50%);
-  transform: scaleX(-1) scale(calc(1 + (var(--module-feedback, 0) * 0.0045)));
+  transform: scaleX(-1) scale(1.05);
 }
-
-/* Four-way symmetry / kaleidoscope */
-.module-video-viewport[data-visual-mode*='dimension'] .module-video-base,
-.module-video-viewport[data-visual-mode*='orbit'] .module-video-base,
-.module-video-viewport[data-visual-mode*='constellation'] .module-video-base,
-.module-video-viewport[data-visual-mode*='plate'] .module-video-base,
-.module-video-viewport[data-visual-mode*='archive'] .module-video-base {
-  transform: scale(1.12);
-}
-.module-video-viewport[data-visual-mode*='dimension'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='orbit'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='constellation'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='plate'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='archive'] .module-video-fx-a {
-  opacity: 0.58;
-  clip-path: inset(0 50% 50% 0);
-  transform: scaleX(-1) scale(1.12);
-}
-.module-video-viewport[data-visual-mode*='dimension'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='orbit'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='constellation'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='plate'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='archive'] .module-video-fx-b {
-  opacity: 0.52;
-  clip-path: inset(50% 0 0 50%);
-  transform: scaleY(-1) scale(1.12);
-}
-.module-video-viewport[data-visual-mode*='dimension'] .module-video-fx-c,
-.module-video-viewport[data-visual-mode*='orbit'] .module-video-fx-c,
-.module-video-viewport[data-visual-mode*='constellation'] .module-video-fx-c,
-.module-video-viewport[data-visual-mode*='plate'] .module-video-fx-c,
-.module-video-viewport[data-visual-mode*='archive'] .module-video-fx-c {
-  opacity: 0.44;
-  clip-path: inset(50% 50% 0 0);
-  transform: scale(-1, -1) scale(1.12);
-}
-
-/* Rotational echo */
-.module-video-viewport[data-visual-mode*='rotary'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='doppler'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='scatter'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='spring'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='broken'] .module-video-fx-a {
-  opacity: 0.28;
-  transform: rotate(2.4deg) scale(1.045);
-}
-.module-video-viewport[data-visual-mode*='rotary'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='doppler'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='scatter'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='spring'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='broken'] .module-video-fx-b {
-  opacity: 0.2;
-  transform: rotate(-3.2deg) scale(1.085);
-}
-
-/* Recursive inset / pseudo-fractal */
-.module-video-viewport[data-visual-mode*='liquid'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='diffuse'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='shimmer'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='furnace'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='vhs'] .module-video-fx-a {
-  opacity: 0.42;
-  clip-path: inset(14% 16% 14% 16% round 18%);
-  transform: scale(1.18);
-}
-.module-video-viewport[data-visual-mode*='liquid'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='diffuse'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='shimmer'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='furnace'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='vhs'] .module-video-fx-b {
-  opacity: 0.28;
-  clip-path: inset(27% 30% 27% 30% round 28%);
-  transform: scale(1.38);
-}
-.module-video-viewport[data-visual-mode*='liquid'] .module-video-fx-c,
-.module-video-viewport[data-visual-mode*='diffuse'] .module-video-fx-c,
-.module-video-viewport[data-visual-mode*='shimmer'] .module-video-fx-c,
-.module-video-viewport[data-visual-mode*='furnace'] .module-video-fx-c,
-.module-video-viewport[data-visual-mode*='vhs'] .module-video-fx-c {
-  opacity: 0.18;
-  clip-path: inset(38% 40% 38% 40% round 38%);
-  transform: scale(1.62);
-}
-
-/* Horizontal sliced bands */
-.module-video-viewport[data-visual-mode*='vibrato'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='tape'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='bbd'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='reconstruct'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='radio'] .module-video-fx-a {
-  opacity: 0.5;
-  clip-path: polygon(0 18%,100% 18%,100% 34%,0 34%,0 58%,100% 58%,100% 70%,0 70%);
-  transform: translateX(calc(var(--module-feedback, 0) * 1.2%)) scale(1.015);
-}
-.module-video-viewport[data-visual-mode*='vibrato'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='tape'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='bbd'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='reconstruct'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='radio'] .module-video-fx-b {
+.module-video-viewport[data-visual-recipe='mirror'] .module-video-fx-b {
   opacity: 0.32;
-  clip-path: polygon(0 7%,100% 7%,100% 13%,0 13%,0 77%,100% 77%,100% 88%,0 88%);
-  transform: translateX(calc(var(--module-feedback, 0) * -1.4%)) scale(1.02);
+  clip-path: inset(0 50% 0 0);
+  transform: scaleY(-1) scale(1.08);
 }
 
-/* Vertical symmetry columns */
-.module-video-viewport[data-visual-mode*='ensemble'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='pingpong'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='room'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='vinyl'] .module-video-fx-a {
-  opacity: 0.38;
-  clip-path: inset(0 66% 0 0);
-  transform: scaleX(-1) scale(1.05);
-}
-.module-video-viewport[data-visual-mode*='ensemble'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='pingpong'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='room'] .module-video-fx-b,
-.module-video-viewport[data-visual-mode*='vinyl'] .module-video-fx-b {
-  opacity: 0.34;
-  clip-path: inset(0 33% 0 33%);
-  transform: scaleX(-1) scale(1.03);
-}
-.module-video-viewport[data-visual-mode*='ensemble'] .module-video-fx-c,
-.module-video-viewport[data-visual-mode*='pingpong'] .module-video-fx-c,
-.module-video-viewport[data-visual-mode*='room'] .module-video-fx-c,
-.module-video-viewport[data-visual-mode*='vinyl'] .module-video-fx-c {
-  opacity: 0.38;
-  clip-path: inset(0 0 0 66%);
-  transform: scaleX(-1) scale(1.05);
-}
-
-/* Named hardware modes get restrained framing rather than wild effects. */
-.module-video-viewport[data-visual-mode*='goldlion'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='mullard'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='telefunken'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='bugleboy'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='rcablack'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='neve'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='ssl'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='api'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='ampex'] .module-video-fx-a {
-  opacity: 0.22;
-  clip-path: inset(8% 8% 8% 8% round 12%);
+/* Three mirrored columns */
+.module-video-viewport[data-visual-recipe='columns'] .module-video-base {
   transform: scale(1.08);
 }
+.module-video-viewport[data-visual-recipe='columns'] .module-video-fx-a {
+  opacity: 0.72;
+  clip-path: inset(0 66% 0 0);
+  transform: scaleX(-1) scale(1.12);
+}
+.module-video-viewport[data-visual-recipe='columns'] .module-video-fx-b {
+  opacity: 0.6;
+  clip-path: inset(0 33% 0 33%);
+  transform: scaleX(-1) scale(1.07);
+}
+.module-video-viewport[data-visual-recipe='columns'] .module-video-fx-c {
+  opacity: 0.72;
+  clip-path: inset(0 0 0 66%);
+  transform: scaleX(-1) scale(1.12);
+}
 
-/* Keep unspecified modes clean but still subtly alive. */
-.module-video-viewport[data-visual-mode*='velvet'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='console'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='transformer'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='exciter'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='ce1'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='ep-3'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='echorec'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='memory-man'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='wax'] .module-video-fx-a,
-.module-video-viewport[data-visual-mode*='tascam'] .module-video-fx-a {
-  opacity: 0.16;
-  transform: scale(1.025);
+/* Four-way kaleidoscope */
+.module-video-viewport[data-visual-recipe='quad'] .module-video-base {
+  transform: scale(1.2);
+}
+.module-video-viewport[data-visual-recipe='quad'] .module-video-fx-a {
+  opacity: 0.86;
+  clip-path: inset(0 50% 50% 0);
+  transform: scaleX(-1) scale(1.2);
+}
+.module-video-viewport[data-visual-recipe='quad'] .module-video-fx-b {
+  opacity: 0.82;
+  clip-path: inset(50% 0 0 50%);
+  transform: scaleY(-1) scale(1.2);
+}
+.module-video-viewport[data-visual-recipe='quad'] .module-video-fx-c {
+  opacity: 0.78;
+  clip-path: inset(50% 50% 0 0);
+  transform: scale(-1, -1) scale(1.2);
+}
+
+/* Rotational echoes */
+.module-video-viewport[data-visual-recipe='rotary'] .module-video-base {
+  transform: scale(1.08);
+}
+.module-video-viewport[data-visual-recipe='rotary'] .module-video-fx-a {
+  opacity: 0.58;
+  transform: rotate(7deg) scale(1.18);
+}
+.module-video-viewport[data-visual-recipe='rotary'] .module-video-fx-b {
+  opacity: 0.42;
+  transform: rotate(-11deg) scale(1.27);
+}
+.module-video-viewport[data-visual-recipe='rotary'] .module-video-fx-c {
+  opacity: 0.28;
+  transform: rotate(18deg) scale(1.38);
+}
+
+/* Recursive portal */
+.module-video-viewport[data-visual-recipe='recursive'] .module-video-base {
+  transform: scale(1.08);
+}
+.module-video-viewport[data-visual-recipe='recursive'] .module-video-fx-a {
+  opacity: 0.68;
+  clip-path: inset(11% 13% round 20%);
+  transform: scale(1.28);
+}
+.module-video-viewport[data-visual-recipe='recursive'] .module-video-fx-b {
+  opacity: 0.48;
+  clip-path: inset(24% 27% round 30%);
+  transform: scale(1.58);
+}
+.module-video-viewport[data-visual-recipe='recursive'] .module-video-fx-c {
+  opacity: 0.34;
+  clip-path: inset(36% 39% round 40%);
+  transform: scale(1.96);
+}
+
+/* Strong horizontal slicing */
+.module-video-viewport[data-visual-recipe='slices'] .module-video-fx-a {
+  opacity: 0.78;
+  clip-path: polygon(0 12%,100% 12%,100% 31%,0 31%,0 51%,100% 51%,100% 70%,0 70%);
+  transform: translateX(calc(var(--module-feedback, 0) * 2.2%)) scale(1.035);
+}
+.module-video-viewport[data-visual-recipe='slices'] .module-video-fx-b {
+  opacity: 0.58;
+  clip-path: polygon(0 2%,100% 2%,100% 9%,0 9%,0 76%,100% 76%,100% 94%,0 94%);
+  transform: translateX(calc(var(--module-feedback, 0) * -2.8%)) scale(1.06);
+}
+.module-video-viewport[data-visual-recipe='slices'] .module-video-fx-c {
+  opacity: 0.4;
+  clip-path: polygon(0 35%,100% 35%,100% 45%,0 45%,0 88%,100% 88%,100% 96%,0 96%);
+  transform: translateX(2.4%) scaleX(-1) scale(1.08);
+}
+
+/* Center portal / tunnel */
+.module-video-viewport[data-visual-recipe='portal'] .module-video-base {
+  transform: scale(1.12);
+}
+.module-video-viewport[data-visual-recipe='portal'] .module-video-fx-a {
+  opacity: 0.72;
+  clip-path: circle(38% at 50% 50%);
+  transform: scale(1.36) rotate(3deg);
+}
+.module-video-viewport[data-visual-recipe='portal'] .module-video-fx-b {
+  opacity: 0.5;
+  clip-path: circle(25% at 50% 50%);
+  transform: scale(1.72) rotate(-5deg);
+}
+.module-video-viewport[data-visual-recipe='portal'] .module-video-fx-c {
+  opacity: 0.34;
+  clip-path: circle(14% at 50% 50%);
+  transform: scale(2.28) rotate(8deg);
+}
+
+/* Cross slices */
+.module-video-viewport[data-visual-recipe='cross'] .module-video-fx-a {
+  opacity: 0.72;
+  clip-path: polygon(42% 0,58% 0,58% 42%,100% 42%,100% 58%,58% 58%,58% 100%,42% 100%,42% 58%,0 58%,0 42%,42% 42%);
+  transform: scale(1.1);
+}
+.module-video-viewport[data-visual-recipe='cross'] .module-video-fx-b {
+  opacity: 0.48;
+  clip-path: inset(20% 20%);
+  transform: rotate(45deg) scale(1.35);
+}
+
+/* Shattered angular collage */
+.module-video-viewport[data-visual-recipe='shatter'] .module-video-fx-a {
+  opacity: 0.8;
+  clip-path: polygon(0 0,48% 0,34% 48%,0 62%);
+  transform: translate(-3%, -2%) rotate(-4deg) scale(1.16);
+}
+.module-video-viewport[data-visual-recipe='shatter'] .module-video-fx-b {
+  opacity: 0.74;
+  clip-path: polygon(52% 0,100% 0,100% 55%,66% 42%);
+  transform: translate(3%, -1%) rotate(5deg) scale(1.18);
+}
+.module-video-viewport[data-visual-recipe='shatter'] .module-video-fx-c {
+  opacity: 0.66;
+  clip-path: polygon(0 68%,38% 52%,62% 48%,100% 62%,100% 100%,0 100%);
+  transform: translateY(3%) scaleX(-1) scale(1.12);
+}
+
+/* Prism wedges, geometry only */
+.module-video-viewport[data-visual-recipe='prism'] .module-video-base {
+  transform: scale(1.14);
+}
+.module-video-viewport[data-visual-recipe='prism'] .module-video-fx-a {
+  opacity: 0.72;
+  clip-path: polygon(0 0,52% 0,42% 100%,0 100%);
+  transform: skewX(-8deg) scaleX(-1) scale(1.18);
+}
+.module-video-viewport[data-visual-recipe='prism'] .module-video-fx-b {
+  opacity: 0.62;
+  clip-path: polygon(48% 0,100% 0,100% 100%,58% 100%);
+  transform: skewX(8deg) scaleY(-1) scale(1.18);
+}
+.module-video-viewport[data-visual-recipe='prism'] .module-video-fx-c {
+  opacity: 0.4;
+  clip-path: polygon(35% 0,65% 0,58% 100%,42% 100%);
+  transform: scale(1.34);
+}
+
+/* Smear through stretched mirrored bands */
+.module-video-viewport[data-visual-recipe='smear'] .module-video-fx-a {
+  opacity: 0.7;
+  clip-path: inset(15% 0 55% 0);
+  transform: scaleY(1.55) scaleX(-1) scale(1.08);
+}
+.module-video-viewport[data-visual-recipe='smear'] .module-video-fx-b {
+  opacity: 0.58;
+  clip-path: inset(45% 0 18% 0);
+  transform: scaleY(1.8) scale(1.1);
+}
+.module-video-viewport[data-visual-recipe='smear'] .module-video-fx-c {
+  opacity: 0.36;
+  clip-path: inset(31% 8% 31% 8%);
+  transform: scaleX(1.5) scaleY(-1) scale(1.05);
+}
+
+/* Hardware framing: restrained but definitely different */
+.module-video-viewport[data-visual-recipe='hardware'] .module-video-base {
+  transform: scale(1.09);
+}
+.module-video-viewport[data-visual-recipe='hardware'] .module-video-fx-a {
+  opacity: 0.5;
+  clip-path: inset(8% 8% round 8%);
+  transform: scaleX(-1) scale(1.16);
+}
+.module-video-viewport[data-visual-recipe='hardware'] .module-video-fx-b {
+  opacity: 0.28;
+  clip-path: inset(24% 24% round 12%);
+  transform: scale(1.42);
+}
+
+/* Reverb specials */
+.module-video-viewport[data-visual-recipe='abyss'] .module-video-base {
+  transform: scale(1.28);
+}
+.module-video-viewport[data-visual-recipe='abyss'] .module-video-fx-a {
+  opacity: 0.72;
+  clip-path: circle(46% at 50% 50%);
+  transform: scale(-1, 1) scale(1.42);
+}
+.module-video-viewport[data-visual-recipe='abyss'] .module-video-fx-b {
+  opacity: 0.5;
+  clip-path: circle(30% at 50% 50%);
+  transform: scale(1.84) rotate(180deg);
+}
+.module-video-viewport[data-visual-recipe='abyss'] .module-video-fx-c {
+  opacity: 0.34;
+  clip-path: circle(16% at 50% 50%);
+  transform: scale(2.5);
+}
+
+.module-video-viewport[data-visual-recipe='freeze'] .module-video-base {
+  transform: scale(1.16);
+}
+.module-video-viewport[data-visual-recipe='freeze'] .module-video-fx-a {
+  opacity: 0.66;
+  clip-path: inset(0 50% 0 0);
+  transform: scaleX(-1) scale(1.16);
+}
+.module-video-viewport[data-visual-recipe='freeze'] .module-video-fx-b {
+  opacity: 0.54;
+  clip-path: inset(50% 0 0 0);
+  transform: scaleY(-1) scale(1.16);
+}
+.module-video-viewport[data-visual-recipe='freeze'] .module-video-fx-c {
+  opacity: 0.36;
+  clip-path: inset(20% 20%);
+  transform: scale(-1, -1) scale(1.46);
+}
+
+.module-video-viewport[data-visual-recipe='cinema'] .module-video-base {
+  transform: scale(1.18);
+}
+.module-video-viewport[data-visual-recipe='cinema'] .module-video-fx-a {
+  opacity: 0.52;
+  clip-path: inset(0 0 68% 0);
+  transform: scaleY(-1) scale(1.2);
+}
+.module-video-viewport[data-visual-recipe='cinema'] .module-video-fx-b {
+  opacity: 0.44;
+  clip-path: inset(68% 0 0 0);
+  transform: scaleY(-1) scale(1.2);
+}
+.module-video-viewport[data-visual-recipe='cinema'] .module-video-fx-c {
+  opacity: 0.3;
+  clip-path: inset(25% 12%);
+  transform: scale(1.48);
 }
 
 .module-video-empty {
