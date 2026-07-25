@@ -1,5 +1,6 @@
 import type { ParameterDefinition, ParameterState } from '../Parameter';
 import { normalizeParameter } from '../Parameter';
+import { BehaviorMemoryStage, type BehaviorMemoryProfile } from '../models/BehaviorMemoryStage';
 
 export interface Effect {
   readonly id: string;
@@ -13,6 +14,7 @@ export interface Effect {
   getParameters(): ParameterState[];
   setBypassed(bypassed: boolean): void;
   isBypassed(): boolean;
+  configureBehavior(profile: BehaviorMemoryProfile, amount: number, motion: number, memory: number, color: number): void;
   dispose(): void;
 }
 
@@ -26,6 +28,7 @@ export abstract class BaseEffect implements Effect {
   protected readonly dryGain: GainNode;
   protected readonly wetGain: GainNode;
   protected readonly processedBus: GainNode;
+  private readonly behaviorStage: BehaviorMemoryStage;
   private readonly wetDcBlock: BiquadFilterNode;
   private readonly wetLimiter: DynamicsCompressorNode;
 
@@ -44,6 +47,7 @@ export abstract class BaseEffect implements Effect {
     this.dryGain = context.createGain();
     this.wetGain = context.createGain();
     this.processedBus = context.createGain();
+    this.behaviorStage = new BehaviorMemoryStage(context);
     this.wetDcBlock = context.createBiquadFilter();
     this.wetLimiter = context.createDynamicsCompressor();
     this.bypassDryGain = context.createGain();
@@ -52,8 +56,8 @@ export abstract class BaseEffect implements Effect {
     this.input.channelCountMode = 'max';
     this.output.channelCountMode = 'max';
 
-    // Mix stage: original dry + protected processed wet. Keep the protection effectively
-    // transparent during normal operation; musical compression belongs inside each model.
+    // Mix stage: original dry + protected processed wet. The optional behavior stage
+    // contributes only a restrained stateful residual selected by the simulation registry.
     this.wetDcBlock.type = 'highpass';
     this.wetDcBlock.frequency.value = 18;
     this.wetDcBlock.Q.value = 0.5;
@@ -64,7 +68,8 @@ export abstract class BaseEffect implements Effect {
     this.wetLimiter.release.value = 0.06;
     this.input.connect(this.dryGain);
     this.dryGain.connect(this.processedBus);
-    this.wetGain.connect(this.wetDcBlock);
+    this.wetGain.connect(this.behaviorStage.input);
+    this.behaviorStage.connect(this.wetDcBlock);
     this.wetDcBlock.connect(this.wetLimiter);
     this.wetLimiter.connect(this.processedBus);
 
@@ -130,6 +135,16 @@ export abstract class BaseEffect implements Effect {
     });
   }
 
+  public configureBehavior(
+    profile: BehaviorMemoryProfile,
+    amount: number,
+    motion: number,
+    memory: number,
+    color: number,
+  ): void {
+    this.behaviorStage.configure(profile, amount, motion, memory, color);
+  }
+
   public abstract setParameter(parameterId: string, value: number): void;
 
   public dispose(): void {
@@ -138,6 +153,7 @@ export abstract class BaseEffect implements Effect {
     this.dryGain.disconnect();
     this.wetGain.disconnect();
     this.processedBus.disconnect();
+    this.behaviorStage.dispose();
     this.wetDcBlock.disconnect();
     this.wetLimiter.disconnect();
     this.bypassDryGain.disconnect();
