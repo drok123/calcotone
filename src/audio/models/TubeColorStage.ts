@@ -25,7 +25,7 @@ const MODEL_INDEX: Record<TubeColorModel, number> = {
 };
 
 const tubeWorkletLoads = new WeakMap<AudioContext, Promise<void>>();
-const TUBE_WORKLET_VERSION = '9.0.1-color-stage';
+const TUBE_WORKLET_VERSION = '9.1.0-stateful-circuit';
 
 async function ensureTubeWorklet(context: AudioContext): Promise<void> {
   const existing = tubeWorkletLoads.get(context);
