@@ -21,7 +21,24 @@ type VisualRecipe =
   | 'hardware'
   | 'abyss'
   | 'freeze'
-  | 'cinema';
+  | 'cinema'
+  | 'artifact';
+
+type ColorProfile =
+  | 'neutral'
+  | 'ember'
+  | 'amber'
+  | 'gold'
+  | 'cyan'
+  | 'ice'
+  | 'teal'
+  | 'violet'
+  | 'magenta'
+  | 'blue'
+  | 'green'
+  | 'red'
+  | 'sepia'
+  | 'mono';
 
 const VIDEO_FILES: Record<ModuleVideoKey, string> = {
   ember: 'visuals/ember.mp4',
@@ -112,16 +129,100 @@ function visualRecipeFor(module: ModuleState): VisualRecipe {
     return 'hardware';
   }
 
+  // Artifact keeps the same world geometry; its dropdown identity is color-first.
+  return 'artifact';
+}
+
+function colorProfileFor(module: ModuleState): ColorProfile {
+  if (module.id === 'saturation') {
+    const mode = module.emberMode ?? 'velvet';
+    if (mode === 'velvet') return 'ember';
+    if (mode === 'tube') return 'amber';
+    if (mode === 'console') return 'gold';
+    if (mode === 'transformer') return 'red';
+    if (mode === 'furnace') return 'amber';
+    if (mode === 'exciter') return 'magenta';
+    if (mode === 'broken') return 'red';
+    if (mode === 'goldlion') return 'gold';
+    if (mode === 'mullard') return 'sepia';
+    if (mode === 'telefunken') return 'cyan';
+    if (mode === 'bugleboy') return 'violet';
+    return 'mono';
+  }
+
+  if (module.id === 'chorus') {
+    const mode = module.driftMode ?? 'chorus';
+    if (mode === 'chorus') return 'cyan';
+    if (mode === 'ensemble') return 'teal';
+    if (mode === 'dimension') return 'blue';
+    if (mode === 'vibrato') return 'violet';
+    if (mode === 'rotary') return 'magenta';
+    if (mode === 'doppler') return 'ice';
+    if (mode === 'liquid') return 'teal';
+    if (mode === 'orbit') return 'violet';
+    if (mode === 'ce1') return 'green';
+    return 'blue';
+  }
+
+  if (module.id === 'delay') {
+    const mode = module.delayAlgorithm ?? 'tape';
+    if (mode === 'clean') return 'ice';
+    if (mode === 'tape') return 'amber';
+    if (mode === 'bbd') return 'green';
+    if (mode === 'pingpong') return 'cyan';
+    if (mode === 'diffuse') return 'violet';
+    if (mode === 'scatter') return 'magenta';
+    if (mode === 'constellation') return 'blue';
+    if (mode === 're201') return 'gold';
+    if (mode === 'EP-3 Echoplex') return 'sepia';
+    if (mode === 'Binson Echorec') return 'teal';
+    if (mode === 'Deluxe Memory Man') return 'green';
+    return 'cyan';
+  }
+
+  if (module.id === 'reverb') {
+    const mode = module.algorithm ?? 'hall';
+    if (mode === 'room') return 'amber';
+    if (mode === 'plate') return 'ice';
+    if (mode === 'hall') return 'blue';
+    if (mode === 'cinema') return 'gold';
+    if (mode === 'cloud') return 'cyan';
+    if (mode === 'freeze') return 'ice';
+    if (mode === 'celestial') return 'violet';
+    if (mode === 'aurora') return 'magenta';
+    if (mode === 'nebula') return 'violet';
+    if (mode === 'abyss') return 'teal';
+    if (mode === 'emt140') return 'sepia';
+    return 'green';
+  }
+
+  if (module.id === 'bitcrusher') {
+    const mode = module.grainMode ?? 'reconstruct';
+    if (mode === 'reconstruct') return 'ice';
+    if (mode === 'shatter') return 'red';
+    if (mode === 'smear') return 'violet';
+    if (mode === 'prism') return 'magenta';
+    if (mode === 'stutter') return 'cyan';
+    if (mode === 'ruin') return 'amber';
+    if (mode === 'sp1200') return 'sepia';
+    if (mode === 'mpc60') return 'gold';
+    return 'green';
+  }
+
   const mode = module.mediaMode ?? 'cassette';
-  if (mode === 'cassette') return 'mirror';
-  if (mode === 'reel') return 'rotary';
-  if (mode === 'vinyl') return 'columns';
-  if (mode === 'vhs') return 'slices';
-  if (mode === 'radio') return 'cross';
-  if (mode === 'wax') return 'smear';
-  if (mode === 'broken') return 'shatter';
-  if (mode === 'archive') return 'recursive';
-  return 'hardware';
+  if (mode === 'cassette') return 'amber';
+  if (mode === 'reel') return 'gold';
+  if (mode === 'vinyl') return 'violet';
+  if (mode === 'vhs') return 'magenta';
+  if (mode === 'radio') return 'green';
+  if (mode === 'wax') return 'sepia';
+  if (mode === 'broken') return 'red';
+  if (mode === 'archive') return 'cyan';
+  if (mode === 'tascam424') return 'teal';
+  if (mode === 'Neve 1073') return 'amber';
+  if (mode === 'SSL 4000E') return 'blue';
+  if (mode === 'API 1608') return 'red';
+  return 'gold';
 }
 
 function visualModeFor(module: ModuleState): string {
@@ -173,6 +274,7 @@ export function ModuleViewport({
   const feedback = Math.max(0, Math.min(1, visualState.level));
   const visualMode = visualModeFor(module);
   const visualRecipe = visualRecipeFor(module);
+  const colorProfile = colorProfileFor(module);
 
   return (
     <div
@@ -180,6 +282,7 @@ export function ModuleViewport({
       data-audio-level={feedback.toFixed(3)}
       data-visual-mode={visualMode}
       data-visual-recipe={visualRecipe}
+      data-color-profile={colorProfile}
       style={{ '--module-feedback': feedback } as CSSProperties}
     >
       {module.enabled && videoUrl ? (
