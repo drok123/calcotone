@@ -17,8 +17,11 @@ function parameterValue(module: ModuleState, id: string, fallback = 0): number {
 
 function visualEnergy(module: ModuleState): number {
   if (!module.enabled || !module.available) return 0;
-  const mix = parameterValue(module, 'mix', 0);
-  if (mix <= 0) return 0;
+
+  // During the raw-video baseline every enabled visual module gets a minimum presence,
+  // even with MIX at zero. This prevents a silent/black pad from masquerading as a
+  // media-loading problem while we validate the source-video path.
+  const mix = Math.max(parameterValue(module, 'mix', 0), 0.04);
 
   let character = 0.5;
   if (module.id === 'saturation') {
@@ -60,12 +63,15 @@ function worldForModule(module: ModuleState): VideoWorld | null {
   return null;
 }
 
-function activeVideoWorld(modules: ModuleState[]): VideoWorld | null {
+function activeVideoWorld(modules: ModuleState[]): VideoWorld {
   const worlds = modules
     .map(worldForModule)
     .filter((world): world is VideoWorld => world !== null)
     .sort((a, b) => b.energy - a.energy);
-  return worlds[0] ?? null;
+
+  // Never allow the pad to become an empty black diagnostic surface. Drift is the
+  // baseline source plate when no supported module is currently enabled.
+  return worlds[0] ?? { key: 'drift', kind: 'drift', energy: 1 };
 }
 
 export function XYSignalField({
@@ -83,8 +89,6 @@ export function XYSignalField({
     let cancelled = false;
     setVideoUrl(null);
 
-    if (!world) return () => { cancelled = true; };
-
     loadVideoWorld(world.key)
       .then((url) => {
         if (!cancelled) setVideoUrl(url);
@@ -96,18 +100,18 @@ export function XYSignalField({
     return () => {
       cancelled = true;
     };
-  }, [world?.key]);
+  }, [world.key]);
 
   return (
     <div
       className="xy-video-baseline"
-      data-video-world={world?.key ?? 'none'}
+      data-video-world={world.key}
       data-video-ready={videoUrl ? 'true' : 'false'}
       aria-hidden="true"
     >
       {videoUrl ? (
         <video
-          key={world?.key}
+          key={world.key}
           className="xy-video-baseline-media"
           src={videoUrl}
           autoPlay
@@ -118,11 +122,11 @@ export function XYSignalField({
           onLoadedData={(event) => {
             event.currentTarget.currentTime = 0;
             void event.currentTarget.play().catch((error) => {
-              console.error(`CALCOTONE ${world?.key ?? 'unknown'} source video could not autoplay`, error);
+              console.error(`CALCOTONE ${world.key} source video could not autoplay`, error);
             });
           }}
           onError={(event) => {
-            console.error(`CALCOTONE ${world?.key ?? 'unknown'} video element error`, event.currentTarget.error);
+            console.error(`CALCOTONE ${world.key} video element error`, event.currentTarget.error);
           }}
         />
       ) : null}
