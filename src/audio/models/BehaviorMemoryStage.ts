@@ -130,19 +130,20 @@ export class BehaviorMemoryStage {
     const enabled = Boolean(this.processor && this.profile !== 'bypass' && this.amount > 0.0001);
     this.bypassGain.gain.setTargetAtTime(enabled ? 0 : 1, now, 0.018);
     this.processedGain.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.018);
-    this.setParameter('profile', PROFILE_INDEX[this.profile], now);
+    this.setParameter('profile', PROFILE_INDEX[this.profile], now, true);
     this.setParameter('amount', this.amount, now);
     this.setParameter('motion', this.motion, now);
     this.setParameter('memory', this.memory, now);
     this.setParameter('color', this.color, now);
   }
 
-  private setParameter(name: string, value: number, now: number): void {
+  private setParameter(name: string, value: number, now: number, discrete = false): void {
     if (this.values.get(name) === value) return;
     const parameter = this.processor?.parameters.get(name);
     if (!parameter) return;
     this.values.set(name, value);
-    parameter.setTargetAtTime(value, now, 0.018);
+    if (discrete) parameter.setValueAtTime(value, now);
+    else parameter.setTargetAtTime(value, now, 0.018);
   }
 
   public dispose(): void {
