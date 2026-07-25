@@ -19,12 +19,7 @@ const BYPASS: BehaviorSpec = { profile: 'bypass', amount: 0, motion: 0, memory: 
 const attached = new WeakSet<Effect>();
 
 function value(effect: Effect, id: string, fallback = 0): number {
-  const raw = effect.getParameterValue(id);
-  if (raw === undefined) return fallback;
-  const parameter = effect.getParameter(id);
-  if (!parameter) return fallback;
-  const span = parameter.max - parameter.min;
-  return span > 0 ? Math.max(0, Math.min(1, (raw - parameter.min) / span)) : 0;
+  return effect.getNormalizedParameterValue(id) ?? fallback;
 }
 
 function index(effect: Effect, id: string, fallback = 0): number {
