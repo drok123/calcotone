@@ -1,135 +1,36 @@
-.xy-signal-field-shell {
+.xy-video-baseline {
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: 4;
   overflow: hidden;
   border-radius: inherit;
   pointer-events: none;
-  background: #04090c;
-  isolation: isolate;
+  background: #000;
 }
 
-.xy-signal-field-shell.has-video-world {
-  background: #010306;
-}
-
-.dream-video-stack {
-  --dream-bright: 0.94;
-  --dream-contrast: 1.04;
-  --dream-sat: 1.03;
-  position: absolute;
-  inset: -7%;
-  z-index: 0;
-  transform: scale(1.09);
-  transform-origin: 50% 50%;
-  will-change: transform;
-}
-
-.dream-video {
-  --mode-bright: 1;
-  --mode-contrast: 1;
-  --mode-sat: 1;
-  --mode-hue: 0deg;
+.xy-video-baseline-media {
   position: absolute;
   inset: 0;
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
   object-position: center;
-  transform: scale(1.025);
-  transition: opacity 260ms ease, filter 120ms ease;
-  will-change: opacity, filter;
-  filter:
-    brightness(var(--dream-bright))
-    brightness(var(--mode-bright))
-    contrast(var(--dream-contrast))
-    contrast(var(--mode-contrast))
-    saturate(var(--dream-sat))
-    saturate(var(--mode-sat))
-    hue-rotate(var(--mode-hue));
-}
-
-.dream-video-drift {
-  mix-blend-mode: screen;
-  transform: scale(1.055);
-}
-
-.dream-video-ember {
-  mix-blend-mode: screen;
-  transform: scale(1.035);
-}
-
-.dream-video-halo {
-  mix-blend-mode: screen;
-  transform: scale(1.02);
-}
-
-.dream-video-artifact {
-  mix-blend-mode: lighten;
-  transform: scale(1.045);
-}
-
-.dream-video.flavor-liquid { --mode-bright: 1.06; --mode-sat: 1.18; --mode-hue: -5deg; }
-.dream-video.flavor-wide { --mode-contrast: 0.94; --mode-sat: 1.10; }
-.dream-video.flavor-vintage { --mode-bright: 0.94; --mode-contrast: 0.96; --mode-sat: 0.88; }
-.dream-video.flavor-abyss { --mode-contrast: 1.10; --mode-sat: 1.12; }
-
-.dream-video.flavor-furnace { --mode-bright: 1.10; --mode-contrast: 1.12; --mode-sat: 1.22; --mode-hue: -7deg; }
-.dream-video.flavor-overload { --mode-bright: 1.13; --mode-contrast: 1.22; --mode-sat: 0.92; }
-.dream-video.flavor-tube { --mode-bright: 1.02; --mode-contrast: 0.96; --mode-sat: 1.13; --mode-hue: -3deg; }
-.dream-video.flavor-grid { --mode-contrast: 1.06; --mode-sat: 1.04; }
-
-.dream-video.flavor-prism { --mode-bright: 1.06; --mode-contrast: 1.05; --mode-sat: 1.28; --mode-hue: 7deg; }
-.dream-video.flavor-scatter { --mode-bright: 1.10; --mode-contrast: 1.20; --mode-sat: 1.15; --mode-hue: -8deg; }
-.dream-video.flavor-echo { --mode-bright: 0.96; --mode-contrast: 0.92; --mode-sat: 0.94; }
-.dream-video.flavor-mirror { --mode-contrast: 1.12; --mode-sat: 0.90; }
-
-.dream-video.flavor-corrupt { --mode-bright: 1.05; --mode-contrast: 1.24; --mode-sat: 0.88; --mode-hue: 4deg; }
-.dream-video.flavor-archive { --mode-bright: 0.92; --mode-contrast: 1.04; --mode-sat: 0.72; --mode-hue: -8deg; }
-.dream-video.flavor-machine { --mode-contrast: 1.14; --mode-sat: 0.92; }
-.dream-video.flavor-relic { --mode-bright: 0.96; --mode-contrast: 1.08; --mode-sat: 0.84; }
-
-.xy-signal-field {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  width: 100%;
-  height: 100%;
   opacity: 1;
-  transition: opacity 220ms ease, filter 140ms ease;
-  filter:
-    brightness(1.72)
-    contrast(1.03)
-    saturate(0.98)
-    drop-shadow(0 0 5px rgba(210, 226, 216, 0.16));
+  transform: none;
+  filter: none;
+  mix-blend-mode: normal;
+  animation: none;
+  transition: none;
 }
 
-.xy-signal-field-shell.has-video-world .xy-signal-field {
-  /* With a source plate active, the canvas becomes the reactive physics/detail layer. */
-  opacity: 0.34;
-  mix-blend-mode: screen;
-  filter:
-    brightness(1.14)
-    contrast(1.05)
-    saturate(0.92)
-    drop-shadow(0 0 5px rgba(210, 226, 216, 0.10));
-}
-
-.xy-pad.is-dragging .xy-signal-field,
-.xy-pad.patch-target-active .xy-signal-field {
-  filter:
-    brightness(1.92)
-    contrast(1.04)
-    saturate(1.02)
-    drop-shadow(0 0 7px rgba(226, 182, 126, 0.20));
-}
-
-.xy-pad.is-dragging .xy-signal-field-shell.has-video-world .xy-signal-field,
-.xy-pad.patch-target-active .xy-signal-field-shell.has-video-world .xy-signal-field {
-  opacity: 0.42;
-  filter:
-    brightness(1.28)
-    contrast(1.07)
-    saturate(0.98)
-    drop-shadow(0 0 7px rgba(226, 182, 126, 0.14));
+/* Baseline media test: nothing decorative is allowed above the source video. */
+.dream-pad::before,
+.dream-pad::after,
+.dream-pad .dream-reticle,
+.dream-pad .dream-position-guide,
+.dream-pad .dream-origin,
+.dream-pad .dream-hud,
+.dream-pad .dream-cursor {
+  display: none !important;
 }
