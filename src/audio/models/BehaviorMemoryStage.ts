@@ -30,7 +30,7 @@ const PROFILE_INDEX: Record<BehaviorMemoryProfile, number> = {
 };
 
 const workletLoads = new WeakMap<AudioContext, Promise<void>>();
-const WORKLET_VERSION = '1.0.0-physical-profiles';
+const WORKLET_VERSION = '1.0.1-suspend-bypass';
 
 async function ensureWorklet(context: AudioContext): Promise<void> {
   const existing = workletLoads.get(context);
@@ -52,7 +52,8 @@ async function ensureWorklet(context: AudioContext): Promise<void> {
 /**
  * Small stateful residual stage used to give otherwise mathematical algorithms
  * physical memory. Profiles are behavioral studies, not calibrated component models.
- * The stage stays dry-safe while its AudioWorklet loads.
+ * The stage stays dry-safe while its AudioWorklet loads and removes bypassed processors
+ * from the live input feed after their crossfade completes.
  */
 export class BehaviorMemoryStage {
   public readonly input: GainNode;
@@ -62,6 +63,8 @@ export class BehaviorMemoryStage {
   private readonly bypassGain: GainNode;
   private readonly processedGain: GainNode;
   private processor: AudioWorkletNode | null = null;
+  private processorConnected = false;
+  private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private profile: BehaviorMemoryProfile = 'bypass';
   private amount = 0;
@@ -116,7 +119,6 @@ export class BehaviorMemoryStage {
         channelInterpretation: 'speakers',
       });
       processor.onprocessorerror = () => console.error('CALCOTONE physical behavior AudioWorklet stopped unexpectedly.');
-      this.input.connect(processor);
       processor.connect(this.processedGain);
       this.processor = processor;
       this.sync();
@@ -125,9 +127,35 @@ export class BehaviorMemoryStage {
     }
   }
 
+  private connectProcessor(): void {
+    if (!this.processor || this.processorConnected || this.disposed) return;
+    this.input.connect(this.processor);
+    this.processorConnected = true;
+  }
+
+  private disconnectProcessor(): void {
+    if (!this.processor || !this.processorConnected) return;
+    try {
+      this.input.disconnect(this.processor);
+    } catch {
+      // Already disconnected by teardown or a previous transition.
+    }
+    this.processorConnected = false;
+  }
+
+  private clearDisconnectTimer(): void {
+    if (this.disconnectTimer === null) return;
+    clearTimeout(this.disconnectTimer);
+    this.disconnectTimer = null;
+  }
+
   private sync(): void {
     const now = this.context.currentTime;
     const enabled = Boolean(this.processor && this.profile !== 'bypass' && this.amount > 0.0001);
+
+    this.clearDisconnectTimer();
+    if (enabled) this.connectProcessor();
+
     this.bypassGain.gain.setTargetAtTime(enabled ? 0 : 1, now, 0.018);
     this.processedGain.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.018);
     this.setParameter('profile', PROFILE_INDEX[this.profile], now, true);
@@ -135,6 +163,16 @@ export class BehaviorMemoryStage {
     this.setParameter('motion', this.motion, now);
     this.setParameter('memory', this.memory, now);
     this.setParameter('color', this.color, now);
+
+    if (!enabled && this.processorConnected) {
+      // Allow the 18 ms route fade to finish before removing the processor from the
+      // realtime feed. The identity bypass remains continuously connected.
+      this.disconnectTimer = setTimeout(() => {
+        this.disconnectTimer = null;
+        const stillDisabled = this.profile === 'bypass' || this.amount <= 0.0001;
+        if (!this.disposed && stillDisabled) this.disconnectProcessor();
+      }, 72);
+    }
   }
 
   private setParameter(name: string, value: number, now: number, discrete = false): void {
@@ -149,6 +187,8 @@ export class BehaviorMemoryStage {
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.clearDisconnectTimer();
+    this.disconnectProcessor();
     if (this.processor) {
       this.processor.onprocessorerror = null;
       this.processor.port.close();
