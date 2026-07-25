@@ -1,135 +1,211 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ModuleState, XYAssignment } from '../../ui/types';
-import { loadVideoWorld, type VideoWorldKey } from './videoWorlds';
+import { getEffectiveMotionValue } from '../../ui/motion';
+import { getLatestVisualAudioState } from '../../visual/VisualEngine';
+import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
+import { DreamFieldEngine } from './DreamFieldEngine';
 import './DreamField.css';
-
-type VideoWorld = {
-  key: VideoWorldKey;
-  kind: 'drift' | 'ember' | 'halo' | 'artifact';
-  energy: number;
-};
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 
-function parameterValue(module: ModuleState, id: string, fallback = 0): number {
-  return module.parameters.find((parameter) => parameter.id === id)?.value ?? fallback;
-}
-
 function visualEnergy(module: ModuleState): number {
-  if (!module.enabled || !module.available) return 0;
-
-  // During the raw-video baseline every enabled visual module gets a minimum presence,
-  // even with MIX at zero. This prevents a silent/black pad from masquerading as a
-  // media-loading problem while we validate the source-video path.
-  const mix = Math.max(parameterValue(module, 'mix', 0), 0.04);
+  const value = (id: string, fallback = 0) =>
+    module.parameters.find((parameter) => parameter.id === id)?.value ?? fallback;
+  const mix = value('mix', 0);
+  if (mix <= 0) return 0;
 
   let character = 0.5;
-  if (module.id === 'saturation') {
-    character = parameterValue(module, 'drive') * 0.55
-      + parameterValue(module, 'heat') * 0.30
-      + parameterValue(module, 'character') * 0.15;
-  } else if (module.id === 'chorus') {
-    character = parameterValue(module, 'depth') * 0.42
-      + parameterValue(module, 'motion') * 0.33
-      + parameterValue(module, 'spread') * 0.25;
-  } else if (module.id === 'delay') {
-    character = parameterValue(module, 'feedback') * 0.46
-      + parameterValue(module, 'time') * 0.24
-      + parameterValue(module, 'character') * 0.18
-      + parameterValue(module, 'width') * 0.12;
-  } else if (module.id === 'media') {
-    character = parameterValue(module, 'wear') * 0.40
-      + parameterValue(module, 'wow') * 0.28
-      + parameterValue(module, 'noise') * 0.18
-      + (1 - parameterValue(module, 'tone', 0.5)) * 0.14;
+  switch (module.id) {
+    case 'saturation':
+      character = value('drive') * 0.55 + value('heat') * 0.30 + value('character') * 0.15;
+      break;
+    case 'chorus':
+      character = value('depth') * 0.42 + value('motion') * 0.33 + value('spread') * 0.25;
+      break;
+    case 'delay':
+      character = value('feedback') * 0.46 + value('time') * 0.24 + value('character') * 0.18 + value('width') * 0.12;
+      break;
+    case 'reverb':
+      character = value('size') * 0.34 + value('diffusion') * 0.28 + value('decay') * 0.24 + value('motion') * 0.14;
+      break;
+    case 'bitcrusher':
+      character = value('chaos') * 0.40 + value('density') * 0.25 + value('bloom') * 0.22 + (1 - value('bits', 1)) * 0.13;
+      break;
+    case 'media':
+      character = value('wear') * 0.40 + value('wow') * 0.28 + value('noise') * 0.18 + (1 - value('tone', 0.5)) * 0.14;
+      break;
   }
 
   return clamp01(Math.sqrt(mix) * (0.52 + clamp01(character) * 0.48));
 }
 
-function worldForModule(module: ModuleState): VideoWorld | null {
-  const energy = visualEnergy(module);
-  if (energy <= 0) return null;
+function modulesForDreamEngine(
+  modules: ModuleState[],
+  assignments: XYAssignment[],
+  position: { x: number; y: number }
+): ModuleState[] {
+  const assignmentByTarget = new Map(assignments.map((assignment) => [assignment.target, assignment]));
 
-  if (module.id === 'saturation') return { key: 'ember', kind: 'ember', energy };
-  if (module.id === 'delay') return { key: 'halo', kind: 'halo', energy };
-  if (module.id === 'media') return { key: 'artifact', kind: 'artifact', energy };
-  if (module.id === 'chorus') {
-    const mode = module.driftMode ?? 'chorus';
-    const alternate = ['liquid', 'orbit', 'doppler', 'rotary'].includes(mode);
-    return { key: alternate ? 'drift-alt' : 'drift', kind: 'drift', energy };
-  }
+  return modules.map((module) => {
+    const effectiveParameters = module.parameters.map((parameter) => {
+      const assignment = assignmentByTarget.get(`${module.id}.${parameter.id}`);
+      if (!assignment) return parameter;
 
-  return null;
-}
+      return {
+        ...parameter,
+        value: getEffectiveMotionValue(parameter.value, assignment, position),
+      };
+    });
 
-function activeVideoWorld(modules: ModuleState[]): VideoWorld {
-  const worlds = modules
-    .map(worldForModule)
-    .filter((world): world is VideoWorld => world !== null)
-    .sort((a, b) => b.energy - a.energy);
+    const effectiveModule: ModuleState = {
+      ...module,
+      parameters: effectiveParameters,
+    };
 
-  // Never allow the pad to become an empty black diagnostic surface. Drift is the
-  // baseline source plate when no supported module is currently enabled.
-  return worlds[0] ?? { key: 'drift', kind: 'drift', energy: 1 };
+    if (!module.enabled || !module.available) return effectiveModule;
+
+    const energy = visualEnergy(effectiveModule);
+    return {
+      ...effectiveModule,
+      parameters: effectiveParameters.map((parameter) =>
+        parameter.id === 'mix' ? { ...parameter, value: energy } : parameter
+      ),
+    };
+  });
 }
 
 export function XYSignalField({
   modules,
+  assignments,
+  position,
+  dragging,
 }: {
   modules: ModuleState[];
   assignments: XYAssignment[];
   position: { x: number; y: number };
   dragging: boolean;
 }) {
-  const world = activeVideoWorld(modules);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const modulesRef = useRef(modules);
+  const assignmentsRef = useRef(assignments);
+  const positionRef = useRef(position);
+  const draggingRef = useRef(dragging);
+  const engineRef = useRef<DreamFieldEngine | null>(null);
+
+  modulesRef.current = modules;
+  assignmentsRef.current = assignments;
+  positionRef.current = position;
+  draggingRef.current = dragging;
 
   useEffect(() => {
-    let cancelled = false;
-    setVideoUrl(null);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-    loadVideoWorld(world.key)
-      .then((url) => {
-        if (!cancelled) setVideoUrl(url);
-      })
-      .catch((error) => {
-        console.error(`CALCOTONE ${world.key} source video failed to load`, error);
-      });
+    const context = canvas.getContext('2d', { alpha: true });
+    if (!context) return;
 
-    return () => {
-      cancelled = true;
+    const engine = new DreamFieldEngine();
+    engineRef.current = engine;
+
+    let width = 1;
+    let height = 1;
+    let dpr = Math.min(1.75, window.devicePixelRatio || 1);
+    let faulted = false;
+    let visualModuleSource: ModuleState[] | null = null;
+    let visualAssignmentSource: XYAssignment[] | null = null;
+    let visualX = Number.NaN;
+    let visualY = Number.NaN;
+    let visualModules: ModuleState[] = modulesForDreamEngine(
+      modulesRef.current,
+      assignmentsRef.current,
+      positionRef.current
+    );
+
+    const getVisualModules = () => {
+      const nextPosition = positionRef.current;
+      if (
+        visualModuleSource !== modulesRef.current ||
+        visualAssignmentSource !== assignmentsRef.current ||
+        visualX !== nextPosition.x ||
+        visualY !== nextPosition.y
+      ) {
+        visualModuleSource = modulesRef.current;
+        visualAssignmentSource = assignmentsRef.current;
+        visualX = nextPosition.x;
+        visualY = nextPosition.y;
+        visualModules = modulesForDreamEngine(
+          modulesRef.current,
+          assignmentsRef.current,
+          nextPosition
+        );
+      }
+      return visualModules;
     };
-  }, [world.key]);
 
-  return (
-    <div
-      className="xy-video-baseline"
-      data-video-world={world.key}
-      data-video-ready={videoUrl ? 'true' : 'false'}
-      aria-hidden="true"
-    >
-      {videoUrl ? (
-        <video
-          key={world.key}
-          className="xy-video-baseline-media"
-          src={videoUrl}
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="auto"
-          onLoadedData={(event) => {
-            event.currentTarget.currentTime = 0;
-            void event.currentTarget.play().catch((error) => {
-              console.error(`CALCOTONE ${world.key} source video could not autoplay`, error);
-            });
-          }}
-          onError={(event) => {
-            console.error(`CALCOTONE ${world.key} video element error`, event.currentTarget.error);
-          }}
-        />
-      ) : null}
-    </div>
-  );
+    const resize = () => {
+      const bounds = canvas.getBoundingClientRect();
+      width = Math.max(1, bounds.width);
+      height = Math.max(1, bounds.height);
+      dpr = Math.min(1.75, window.devicePixelRatio || 1);
+
+      const pixelWidth = Math.max(1, Math.round(width * dpr));
+      const pixelHeight = Math.max(1, Math.round(height * dpr));
+      if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+        canvas.width = pixelWidth;
+        canvas.height = pixelHeight;
+      }
+
+      engine.resize(width, height);
+    };
+
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(canvas);
+
+    const drawFault = () => {
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      context.clearRect(0, 0, width, height);
+      context.fillStyle = 'rgba(10, 3, 3, 0.96)';
+      context.fillRect(0, 0, width, height);
+      context.strokeStyle = 'rgba(220, 118, 90, 0.85)';
+      context.lineWidth = 1;
+      context.strokeRect(8.5, 8.5, Math.max(1, width - 17), Math.max(1, height - 17));
+      context.fillStyle = 'rgba(238, 188, 166, 0.92)';
+      context.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace';
+      context.fillText('DREAM ENGINE FAULT', 18, 28);
+    };
+
+    const render: ViewportRenderCallback = (stamp) => {
+      if (faulted) {
+        drawFault();
+        return;
+      }
+
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      try {
+        engine.render(context, {
+          modules: getVisualModules(),
+          assignments: assignmentsRef.current,
+          x: positionRef.current.x / 100,
+          y: positionRef.current.y / 100,
+          dragging: draggingRef.current,
+          time: stamp / 1000,
+          audio: getLatestVisualAudioState(),
+        });
+      } catch (error) {
+        faulted = true;
+        console.error('CALCOTONE Dream Engine render failed', error);
+        drawFault();
+      }
+    };
+
+    const unsubscribe = subscribeViewportAnimation(render);
+    return () => {
+      unsubscribe();
+      observer.disconnect();
+      engineRef.current = null;
+    };
+  }, []);
+
+  return <canvas ref={canvasRef} className="xy-signal-field" aria-hidden="true" />;
 }
