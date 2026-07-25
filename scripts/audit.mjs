@@ -68,6 +68,7 @@ requireText(effect, 'this.behaviorStage.dispose()', 'BaseEffect physical chassis
 requireText(effect, 'isProcessingSuspended()', 'Effect bypass suspension');
 requireText(effect, 'this.processingSuspended = true', 'Effect bypass suspension');
 requireText(effect, 'this.routingInvalidator?.()', 'Effect bypass routing refresh');
+requireText(effect, 'getNormalizedParameterValue(parameterId: string)', 'Allocation-free parameter read');
 requireText(graph, '!effect.isProcessingSuspended()', 'AudioGraph suspended-effect filter');
 requireText(graph, 'private serialEdges', 'AudioGraph serial-edge ownership');
 requireText(dreamBuffer, 'this.disconnectSourceFeed(id)', 'Dream source suspension');
@@ -75,6 +76,8 @@ requireText(dreamBuffer, 'this.disconnectRouteFeed(route)', 'Dream route suspens
 requireText(dreamProcessor, 'this.silentFrames >= this.maxHeadOffset', 'Dream idle tail flush');
 
 requireText(factory, 'attachPhysicalBehavior(effect)', 'EffectFactory physical registry attachment');
+requireText(registry, 'effect.getNormalizedParameterValue(id)', 'Physical registry allocation-free reads');
+requireText(registry, "if (parameterId !== 'mix') syncPhysicalBehavior(effect)", 'Physical registry mix bypass');
 requireText(randomBatch, 'syncPhysicalBehavior(effect)', 'RANDOM physical registry sync');
 requireText(randomBridge, 'beginViewportPerformanceHold()', 'RANDOM viewport hold');
 requireText(randomBridge, 'engine.setEffectBypassed(entry.id, entry.bypassed)', 'RANDOM transactional restore');
