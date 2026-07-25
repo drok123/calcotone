@@ -353,9 +353,9 @@ export function ModuleViewport({
       {module.enabled && videoUrl && fallbackVideoUrl ? (
         <div className="module-video-stage" aria-hidden="true">
           <VideoLayer src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-base" />
-          <VideoLayer src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-fx module-video-fx-a" />
-          <VideoLayer src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-fx module-video-fx-b" />
-          <VideoLayer src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-fx module-video-fx-c" />
+          <span className="module-video module-video-fx module-video-fx-a" />
+          <span className="module-video module-video-fx module-video-fx-b" />
+          <span className="module-video module-video-fx module-video-fx-c" />
           <span className="module-video-void-mask" />
           <span className="module-video-transition-veil" />
         </div>
