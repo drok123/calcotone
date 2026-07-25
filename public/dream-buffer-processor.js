@@ -10,11 +10,13 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
     this.profileCounter = 0;
     this.profilePeak = 0;
     this.captures = 0;
+    this.silentFrames = 0;
 
     // Deliberately irrational-ish offsets reduce obvious resonance when these
-    // heads are eventually fed back into different Dream Engine modules.
+    // heads are fed back into different Dream Engine modules.
     this.offsetsL = [0.071, 0.347, 1.371].map((seconds) => Math.max(1, Math.round(seconds * sampleRate)));
     this.offsetsR = [0.089, 0.431, 1.613].map((seconds) => Math.max(1, Math.round(seconds * sampleRate)));
+    this.maxHeadOffset = Math.max(...this.offsetsL, ...this.offsetsR);
   }
 
   read(buffer, index, offset) {
@@ -23,11 +25,37 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
     return buffer[readIndex];
   }
 
+  publishProfile(frames) {
+    this.profileCounter += 1;
+    if (this.profileCounter < Math.max(1, Math.round(sampleRate / frames))) return;
+    this.profileCounter = 0;
+    this.port.postMessage({
+      type: 'profile',
+      fillRatio: this.samplesWritten / this.length,
+      historySeconds: this.historySeconds,
+      inputPeak: this.profilePeak,
+      captures: this.captures,
+    });
+    this.profilePeak = 0;
+  }
+
   process(inputs, outputs) {
     const input = inputs[0];
     const inL = input && input[0];
     const inR = input && (input[1] || input[0]);
     const frames = outputs[0]?.[0]?.length || 128;
+    const hasInput = Boolean(inL || inR);
+
+    // Once disconnected input has advanced zeros past the longest readable head,
+    // every future output is guaranteed silent. Output buffers arrive zeroed, so
+    // skip all ring-buffer work until a source reconnects.
+    if (!hasInput && this.samplesWritten === 0) {
+      this.publishProfile(frames);
+      return true;
+    }
+
+    if (hasInput) this.silentFrames = 0;
+    else this.silentFrames += frames;
 
     for (let i = 0; i < frames; i += 1) {
       let l = inL ? inL[i] || 0 : 0;
@@ -64,20 +92,15 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
       if (this.samplesWritten < this.length) this.samplesWritten += 1;
     }
 
-    // ~5 Hz diagnostics: low enough not to turn the realtime thread into a UI bus.
-    this.profileCounter += 1;
-    if (this.profileCounter >= Math.max(1, Math.round(sampleRate / frames / 5))) {
-      this.profileCounter = 0;
-      this.port.postMessage({
-        type: 'profile',
-        fillRatio: this.samplesWritten / this.length,
-        historySeconds: this.historySeconds,
-        inputPeak: this.profilePeak,
-        captures: this.captures,
-      });
+    if (!hasInput && this.silentFrames >= this.maxHeadOffset + frames) {
+      // The moving zero window now covers every fixed playback-head offset. Mark
+      // the store idle; old samples farther back in the 8 s ring are unreachable.
+      this.samplesWritten = 0;
+      this.silentFrames = 0;
       this.profilePeak = 0;
     }
 
+    this.publishProfile(frames);
     return true;
   }
 }
