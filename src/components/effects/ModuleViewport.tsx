@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useEffect, useRef, type CSSProperties } from 'react';
 import type { ModuleState } from '../../ui/types';
 import type { VisualAudioState } from '../../visual/VisualEngine';
 import { formatAlgorithmName } from '../../ui/formatting';
@@ -49,6 +49,8 @@ const VIDEO_FILES: Record<ModuleVideoKey, string> = {
   atmos: 'visuals/atmos.mp4',
   grain: 'visuals/grain.mp4',
 };
+
+const LOOP_CROSSFADE_SECONDS = 0.9;
 
 function assetUrl(path: string): string {
   const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
@@ -129,7 +131,6 @@ function visualRecipeFor(module: ModuleState): VisualRecipe {
     return 'hardware';
   }
 
-  // Artifact keeps the same world geometry; its dropdown identity is color-first.
   return 'artifact';
 }
 
@@ -247,18 +248,111 @@ function captionFor(module: ModuleState): string {
     : `ARTIFACT · ${mode.toUpperCase()}`;
 }
 
-function VideoLayer({ src, className }: { src: string; className: string }) {
+function SmoothLoopLayer({ src, className }: { src: string; className: string }) {
+  const frontRef = useRef<HTMLVideoElement | null>(null);
+  const backRef = useRef<HTMLVideoElement | null>(null);
+  const frontActiveRef = useRef(true);
+  const crossfadingRef = useRef(false);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const front = frontRef.current;
+    const back = backRef.current;
+    if (!front || !back) return;
+
+    const videos = [front, back];
+    videos.forEach((video) => {
+      video.muted = true;
+      video.loop = false;
+      video.playbackRate = 1;
+    });
+
+    const clearTimer = () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+
+    const resetOpacity = () => {
+      front.style.opacity = frontActiveRef.current ? '1' : '0';
+      back.style.opacity = frontActiveRef.current ? '0' : '1';
+    };
+
+    const schedule = () => {
+      clearTimer();
+      const active = frontActiveRef.current ? front : back;
+      if (!Number.isFinite(active.duration) || active.duration <= LOOP_CROSSFADE_SECONDS + 0.2) return;
+      const secondsUntilFade = Math.max(0.1, active.duration - active.currentTime - LOOP_CROSSFADE_SECONDS);
+      timerRef.current = window.setTimeout(beginCrossfade, secondsUntilFade * 1000);
+    };
+
+    const beginCrossfade = () => {
+      if (crossfadingRef.current) return;
+      const active = frontActiveRef.current ? front : back;
+      const standby = frontActiveRef.current ? back : front;
+      if (!Number.isFinite(active.duration) || active.duration <= 0) return;
+
+      crossfadingRef.current = true;
+      standby.currentTime = 0;
+      standby.style.transition = `opacity ${LOOP_CROSSFADE_SECONDS}s linear`;
+      active.style.transition = `opacity ${LOOP_CROSSFADE_SECONDS}s linear`;
+      standby.style.opacity = '0';
+      void standby.play().catch(() => undefined);
+
+      requestAnimationFrame(() => {
+        standby.style.opacity = '1';
+        active.style.opacity = '0';
+      });
+
+      timerRef.current = window.setTimeout(() => {
+        active.pause();
+        active.currentTime = 0;
+        frontActiveRef.current = !frontActiveRef.current;
+        crossfadingRef.current = false;
+        resetOpacity();
+        schedule();
+      }, LOOP_CROSSFADE_SECONDS * 1000 + 40);
+    };
+
+    const onMetadata = () => {
+      resetOpacity();
+      const active = frontActiveRef.current ? front : back;
+      void active.play().catch(() => undefined);
+      schedule();
+    };
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        clearTimer();
+        videos.forEach((video) => video.pause());
+      } else {
+        const active = frontActiveRef.current ? front : back;
+        void active.play().catch(() => undefined);
+        schedule();
+      }
+    };
+
+    front.addEventListener('loadedmetadata', onMetadata);
+    back.addEventListener('loadedmetadata', onMetadata);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    if (front.readyState >= 1 && back.readyState >= 1) onMetadata();
+
+    return () => {
+      clearTimer();
+      front.removeEventListener('loadedmetadata', onMetadata);
+      back.removeEventListener('loadedmetadata', onMetadata);
+      document.removeEventListener('visibilitychange', onVisibility);
+      videos.forEach((video) => video.pause());
+    };
+  }, [src]);
+
   return (
-    <video
-      className={className}
-      src={src}
-      autoPlay
-      muted
-      loop
-      playsInline
-      preload="metadata"
-      aria-hidden="true"
-    />
+    <span className={`${className} smooth-loop-layer`} aria-hidden="true">
+      <video ref={frontRef} className="smooth-loop-video smooth-loop-front" src={src} muted playsInline preload="metadata" />
+      <video ref={backRef} className="smooth-loop-video smooth-loop-back" src={src} muted playsInline preload="metadata" />
+    </span>
   );
 }
 
@@ -287,10 +381,10 @@ export function ModuleViewport({
     >
       {module.enabled && videoUrl ? (
         <div className="module-video-stage" aria-hidden="true">
-          <VideoLayer src={videoUrl} className="module-video module-video-base" />
-          <VideoLayer src={videoUrl} className="module-video module-video-fx module-video-fx-a" />
-          <VideoLayer src={videoUrl} className="module-video module-video-fx module-video-fx-b" />
-          <VideoLayer src={videoUrl} className="module-video module-video-fx module-video-fx-c" />
+          <SmoothLoopLayer src={videoUrl} className="module-video module-video-base" />
+          <SmoothLoopLayer src={videoUrl} className="module-video module-video-fx module-video-fx-a" />
+          <SmoothLoopLayer src={videoUrl} className="module-video module-video-fx module-video-fx-b" />
+          <SmoothLoopLayer src={videoUrl} className="module-video module-video-fx module-video-fx-c" />
         </div>
       ) : module.enabled ? (
         <div className="module-video-empty" aria-hidden="true">
