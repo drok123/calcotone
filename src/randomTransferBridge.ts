@@ -184,15 +184,18 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
 
     replayButton = button;
     beginParameterCapture(engine);
+    let batches: Map<string, Map<string, number>>;
     try {
       // Existing RANDOM logic still chooses exactly the same patch and updates UI
       // state. Only its DSP setter calls are captured and collapsed into six batches.
       button.click();
+    } catch (error) {
+      console.error('CALCOTONE RANDOM planning failed.', error);
     } finally {
-      // Always release capture even if UI-side randomization throws.
+      // Never leave capture armed: a stuck capture would swallow later live control writes.
+      batches = finishParameterCapture(engine);
     }
 
-    const batches = finishParameterCapture(engine);
     void flushCapturedRandom(engine, batches)
       .then(() => new Promise<void>((resolve) => window.setTimeout(resolve, RANDOM_SETTLE_MS)))
       .then(() => {
