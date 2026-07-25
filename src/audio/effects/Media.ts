@@ -29,6 +29,14 @@ const NOISE = { id: 'noise', label: 'Noise', min: 0, max: 1, defaultValue: 0.1, 
 const TONE = { id: 'tone', label: 'Tone', min: 0, max: 1, defaultValue: 0.62, step: 0.01 };
 const MIX = { id: 'mix', label: 'Mix', min: 0, max: 1, defaultValue: 0.26, step: 0.01 };
 
+const MAX_CURVE_CACHE = 384;
+const IDENTITY_CURVE = createIdentityCurve();
+const summingCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
+const opAmpCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
+const transformerCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
+const tapeCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
+const saturationCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
+
 /** Recording-media coloration plus subtle bus/summing identities. */
 export class MediaEffect extends BaseEffect {
   public readonly id = 'media';
@@ -63,10 +71,11 @@ export class MediaEffect extends BaseEffect {
   private noise = NOISE.defaultValue;
   private tone = TONE.defaultValue;
   private artifactMix = MIX.defaultValue;
+  private currentPreampCurve: Float32Array<ArrayBuffer> | null = null;
+  private currentSaturatorCurve: Float32Array<ArrayBuffer> | null = null;
 
   public constructor(context: AudioContext) {
     super(context);
-
     this.modelInputGain = context.createGain();
     this.preampStage = context.createWaveShaper();
     this.lowShelf = context.createBiquadFilter();
@@ -116,14 +125,10 @@ export class MediaEffect extends BaseEffect {
     this.highpass.connect(this.lowpass);
     this.lowpass.connect(this.saturator);
     this.saturator.connect(this.splitter);
-
     this.splitter.connect(this.leftDelay, 0);
     this.splitter.connect(this.rightDelay, 1);
     this.leftDelay.connect(this.merger, 0, 0);
     this.rightDelay.connect(this.merger, 0, 1);
-
-    // Console modes use tiny, normalized opposite-channel leakage to mimic the way a
-    // physical summing bus slightly stops channels from feeling mathematically isolated.
     this.splitter.connect(this.crossfeedLtoR, 0);
     this.splitter.connect(this.crossfeedRtoL, 1);
     this.crossfeedLtoR.connect(this.merger, 0, 1);
@@ -134,7 +139,6 @@ export class MediaEffect extends BaseEffect {
     this.flutterLfo.connect(this.rightDepth);
     this.leftDepth.connect(this.leftDelay.delayTime);
     this.rightDepth.connect(this.rightDelay.delayTime);
-
     this.cassetteNoise.connect(this.cassetteNoiseGain);
     this.vinylNoise.connect(this.vinylNoiseGain);
     this.cassetteNoiseGain.connect(this.wetGain);
@@ -146,82 +150,94 @@ export class MediaEffect extends BaseEffect {
     this.vinylNoise.start();
 
     this.initializeParameters([MODE, WEAR, WOW, NOISE, TONE, MIX]);
-    this.setParameter('mode', MODE.defaultValue);
-    this.setParameter('wear', WEAR.defaultValue);
-    this.setParameter('wow', WOW.defaultValue);
-    this.setParameter('noise', NOISE.defaultValue);
-    this.setParameter('tone', TONE.defaultValue);
-    this.setParameter('mix', MIX.defaultValue);
+    // Internal fields already contain the same defaults. Build the initial machine once
+    // instead of running the entire character graph once per default control.
+    this.applyMixRouting();
+    this.applyCharacter();
   }
 
   public setParameter(parameterId: string, value: number): void {
     switch (parameterId) {
       case 'mode': {
         const next = clampParameter(value, MODE);
+        const nextMode = MEDIA_MODE_ORDER[Math.round(next)] ?? 'cassette';
+        if (this.parameterValues.get(parameterId) === next && this.mode === nextMode) return;
         this.parameterValues.set(parameterId, next);
-        this.mode = MEDIA_MODE_ORDER[Math.round(next)] ?? 'cassette';
+        this.mode = nextMode;
         this.applyMixRouting();
         this.applyCharacter();
-        break;
+        return;
       }
-      case 'wear':
-        this.wear = clampParameter(value, WEAR);
-        this.parameterValues.set(parameterId, this.wear);
+      case 'wear': {
+        const next = clampParameter(value, WEAR);
+        if (this.parameterValues.get(parameterId) === next) return;
+        this.wear = next;
+        this.parameterValues.set(parameterId, next);
         this.applyCharacter();
-        break;
-      case 'wow':
-        this.wow = clampParameter(value, WOW);
-        this.parameterValues.set(parameterId, this.wow);
+        return;
+      }
+      case 'wow': {
+        const next = clampParameter(value, WOW);
+        if (this.parameterValues.get(parameterId) === next) return;
+        this.wow = next;
+        this.parameterValues.set(parameterId, next);
         this.applyCharacter();
-        break;
-      case 'noise':
-        this.noise = clampParameter(value, NOISE);
-        this.parameterValues.set(parameterId, this.noise);
+        return;
+      }
+      case 'noise': {
+        const next = clampParameter(value, NOISE);
+        if (this.parameterValues.get(parameterId) === next) return;
+        this.noise = next;
+        this.parameterValues.set(parameterId, next);
         this.applyCharacter();
-        break;
-      case 'tone':
-        this.tone = clampParameter(value, TONE);
-        this.parameterValues.set(parameterId, this.tone);
+        return;
+      }
+      case 'tone': {
+        const next = clampParameter(value, TONE);
+        if (this.parameterValues.get(parameterId) === next) return;
+        this.tone = next;
+        this.parameterValues.set(parameterId, next);
         this.applyCharacter();
-        break;
-      case 'mix':
-        this.artifactMix = clampParameter(value, MIX);
-        this.parameterValues.set(parameterId, this.artifactMix);
+        return;
+      }
+      case 'mix': {
+        const next = clampParameter(value, MIX);
+        if (this.parameterValues.get(parameterId) === next) return;
+        this.artifactMix = next;
+        this.parameterValues.set(parameterId, next);
         this.applyMixRouting();
-        break;
+        return;
+      }
       default:
         console.warn(`Unknown parameter "${parameterId}" for ${this.name}.`);
     }
   }
 
   public override dispose(): void {
-    this.wowLfo.stop();
-    this.flutterLfo.stop();
-    this.cassetteNoise.stop();
-    this.vinylNoise.stop();
-    this.modelInputGain.disconnect();
-    this.preampStage.disconnect();
-    this.lowShelf.disconnect();
-    this.highShelf.disconnect();
-    this.modelOutputGain.disconnect();
-    this.highpass.disconnect();
-    this.lowpass.disconnect();
-    this.saturator.disconnect();
-    this.splitter.disconnect();
-    this.leftDelay.disconnect();
-    this.rightDelay.disconnect();
-    this.crossfeedLtoR.disconnect();
-    this.crossfeedRtoL.disconnect();
-    this.merger.disconnect();
-    this.wowLfo.disconnect();
-    this.flutterLfo.disconnect();
-    this.leftDepth.disconnect();
-    this.rightDepth.disconnect();
-    this.cassetteNoise.disconnect();
-    this.vinylNoise.disconnect();
-    this.cassetteNoiseGain.disconnect();
-    this.vinylNoiseGain.disconnect();
+    try { this.wowLfo.stop(); } catch { /* already stopped */ }
+    try { this.flutterLfo.stop(); } catch { /* already stopped */ }
+    try { this.cassetteNoise.stop(); } catch { /* already stopped */ }
+    try { this.vinylNoise.stop(); } catch { /* already stopped */ }
+    [
+      this.modelInputGain, this.preampStage, this.lowShelf, this.highShelf, this.modelOutputGain,
+      this.highpass, this.lowpass, this.saturator, this.splitter, this.leftDelay, this.rightDelay,
+      this.crossfeedLtoR, this.crossfeedRtoL, this.merger, this.wowLfo, this.flutterLfo,
+      this.leftDepth, this.rightDepth, this.cassetteNoise, this.vinylNoise,
+      this.cassetteNoiseGain, this.vinylNoiseGain,
+    ].forEach((node) => node.disconnect());
     super.dispose();
+  }
+
+  private setPreampCurve(curve: Float32Array<ArrayBuffer>): void {
+    if (curve === this.currentPreampCurve) return;
+    this.preampStage.curve = curve;
+    this.currentPreampCurve = curve;
+  }
+
+  private setSaturatorCurve(curve: Float32Array<ArrayBuffer>): void {
+    if (curve === this.currentSaturatorCurve) return;
+    this.saturator.curve = curve;
+    this.currentSaturatorCurve = curve;
   }
 
   private applyMixRouting(): void {
@@ -229,10 +245,9 @@ export class MediaEffect extends BaseEffect {
       this.setWetDryMix(this.artifactMix);
       return;
     }
-
-    // Hardware inserts/summing buses are highly correlated with dry. Complementary gains
-    // preserve level through the Mix control instead of creating a +3 dB-ish parallel sum.
     const now = this.context.currentTime;
+    // Insert/summing modes are strongly correlated with dry, so complementary gains avoid
+    // a parallel +3 dB bump while keeping Mix continuous and useful.
     this.dryGain.gain.setTargetAtTime(1 - this.artifactMix, now, 0.025);
     this.wetGain.gain.setTargetAtTime(this.artifactMix, now, 0.025);
   }
@@ -248,19 +263,16 @@ export class MediaEffect extends BaseEffect {
       const inputGain = 0.82 + trimDrive * 2.9;
       const preDrive = 1.05 + trimDrive * 4.4;
       const postDrive = 1 + Math.pow(channelDrive, 1.55) * 7.6;
-
       this.modelInputGain.gain.setTargetAtTime(inputGain, now, 0.025);
-      this.preampStage.curve = makeOpAmpCurve(preDrive, 0.045);
+      this.setPreampCurve(getOpAmpCurve(preDrive, 0.045));
       this.lowShelf.frequency.setTargetAtTime(100, now, 0.04);
       this.lowShelf.gain.setTargetAtTime(lowDb, now, 0.04);
       this.highShelf.frequency.setTargetAtTime(10_000, now, 0.04);
       this.highShelf.gain.setTargetAtTime(highDb, now, 0.04);
-      this.modelOutputGain.gain.setTargetAtTime(
-        hardwareAutoTrim(inputGain, opAmpSlope(preDrive), opAmpSlope(postDrive)), now, 0.035
-      );
+      this.modelOutputGain.gain.setTargetAtTime(hardwareAutoTrim(inputGain, opAmpSlope(preDrive), opAmpSlope(postDrive)), now, 0.035);
       this.highpass.frequency.setTargetAtTime(28, now, 0.04);
       this.lowpass.frequency.setTargetAtTime(19_000, now, 0.04);
-      this.saturator.curve = makeOpAmpCurve(postDrive, 0.032 + trimDrive * 0.025);
+      this.setSaturatorCurve(getOpAmpCurve(postDrive, 0.032 + trimDrive * 0.025));
       this.disableTransport(now);
       this.setCrossfeed(0, now);
       return;
@@ -271,8 +283,6 @@ export class MediaEffect extends BaseEffect {
       const weight = bipolarAroundDefault(this.wow, WOW.defaultValue);
       const air = bipolarAroundDefault(this.noise, NOISE.defaultValue);
       const iron = this.tone;
-      const crossfeed = 0.0015 + cohesion * 0.0045;
-
       this.configureSummingBus(now, {
         preCompression: 0.008 + cohesion * 0.035,
         postCompression: 0.006 + iron * 0.022,
@@ -283,7 +293,7 @@ export class MediaEffect extends BaseEffect {
         highDb: air * 1.15 - cohesion * 0.12,
         highpassHz: 20 + Math.max(0, -weight) * 8,
         lowpassHz: 21_500 - cohesion * 450,
-        crossfeed,
+        crossfeed: 0.0015 + cohesion * 0.0045,
       });
       return;
     }
@@ -293,8 +303,6 @@ export class MediaEffect extends BaseEffect {
       const weight = bipolarAroundDefault(this.wow, WOW.defaultValue);
       const presence = bipolarAroundDefault(this.noise, NOISE.defaultValue);
       const punch = this.tone;
-      const crossfeed = 0.001 + glue * 0.003;
-
       this.configureSummingBus(now, {
         preCompression: 0.007 + glue * 0.038,
         postCompression: 0.006 + punch * 0.018,
@@ -305,7 +313,7 @@ export class MediaEffect extends BaseEffect {
         highDb: presence * 1.2 + glue * 0.08,
         highpassHz: 24,
         lowpassHz: 22_000,
-        crossfeed,
+        crossfeed: 0.001 + glue * 0.003,
       });
       return;
     }
@@ -315,8 +323,6 @@ export class MediaEffect extends BaseEffect {
       const weight = bipolarAroundDefault(this.wow, WOW.defaultValue);
       const presence = bipolarAroundDefault(this.noise, NOISE.defaultValue);
       const iron = this.tone;
-      const crossfeed = 0.0008 + punch * 0.0025;
-
       this.configureSummingBus(now, {
         preCompression: 0.006 + punch * 0.028,
         postCompression: 0.005 + iron * 0.018,
@@ -327,32 +333,28 @@ export class MediaEffect extends BaseEffect {
         highDb: presence * 1.1 + punch * 0.1,
         highpassHz: 22,
         lowpassHz: 21_800,
-        crossfeed,
+        crossfeed: 0.0008 + punch * 0.0025,
       });
       return;
     }
 
     if (this.mode === 'Ampex ATR-102') {
-      const speed = atr102Speed(this.wow);
-      const speedProfile = atr102Profile(speed);
+      const speedProfile = atr102Profile(atr102Speed(this.wow));
       const record = this.wear;
       const bias = (this.tone - 0.5) * 2;
       const inputGain = 0.9 + record * 2.8;
       const preDrive = 1.02 + record * 2.6;
       const postDrive = 1.05 + record * speedProfile.driveScale * 5.4;
-
       this.modelInputGain.gain.setTargetAtTime(inputGain, now, 0.025);
-      this.preampStage.curve = makeTransformerCurve(preDrive, 0.018);
+      this.setPreampCurve(getTransformerCurve(preDrive, 0.018));
       this.lowShelf.frequency.setTargetAtTime(speedProfile.bumpHz, now, 0.04);
       this.lowShelf.gain.setTargetAtTime(speedProfile.bumpDb + record * 0.65, now, 0.04);
       this.highShelf.frequency.setTargetAtTime(10_500, now, 0.04);
       this.highShelf.gain.setTargetAtTime(bias * 1.8 - record * 0.45, now, 0.04);
-      this.modelOutputGain.gain.setTargetAtTime(
-        hardwareAutoTrim(inputGain, transformerSlope(preDrive), tapeSlope(postDrive)), now, 0.035
-      );
+      this.modelOutputGain.gain.setTargetAtTime(hardwareAutoTrim(inputGain, transformerSlope(preDrive), tapeSlope(postDrive)), now, 0.035);
       this.highpass.frequency.setTargetAtTime(speedProfile.highpassHz, now, 0.04);
       this.lowpass.frequency.setTargetAtTime(speedProfile.lowpassHz - Math.max(0, bias) * 650, now, 0.04);
-      this.saturator.curve = makeTapeCurve(postDrive, bias);
+      this.setSaturatorCurve(getTapeCurve(postDrive, bias));
       this.setCrossfeed(0, now);
       this.wowLfo.frequency.setTargetAtTime(speedProfile.wowHz, now, 0.05);
       this.flutterLfo.frequency.setTargetAtTime(speedProfile.flutterHz, now, 0.05);
@@ -368,7 +370,7 @@ export class MediaEffect extends BaseEffect {
     }
 
     this.modelInputGain.gain.setTargetAtTime(1, now, 0.03);
-    this.preampStage.curve = makeIdentityCurve();
+    this.setPreampCurve(IDENTITY_CURVE);
     this.lowShelf.frequency.setTargetAtTime(100, now, 0.03);
     this.lowShelf.gain.setTargetAtTime(0, now, 0.03);
     this.highShelf.frequency.setTargetAtTime(10_000, now, 0.03);
@@ -386,35 +388,24 @@ export class MediaEffect extends BaseEffect {
     const top = 2200 + this.tone * (topMax - 2200);
     this.highpass.frequency.setTargetAtTime(narrow ? 140 : cassette ? 48 : 28, now, 0.04);
     this.lowpass.frequency.setTargetAtTime(top, now, 0.04);
-    this.saturator.curve = makeSaturationCurve(1.2 + this.wear * (broken ? 12 : narrow ? 7 : cassette ? 8 : 4));
-
+    this.setSaturatorCurve(getSaturationCurve(1.2 + this.wear * (broken ? 12 : narrow ? 7 : cassette ? 8 : 4)));
     this.wowLfo.frequency.setTargetAtTime(this.mode === 'reel' ? 0.18 : this.mode === 'vhs' ? 0.72 : broken ? 0.91 : cassette ? 0.32 : 0.55, now, 0.04);
     this.flutterLfo.frequency.setTargetAtTime(this.mode === 'reel' ? 3.2 : this.mode === 'vhs' ? 7.4 : broken ? 9.1 : cassette ? 4.8 : 2.1, now, 0.04);
     const depth = 0.0001 + this.wow * (broken ? 0.0042 : this.mode === 'vhs' ? 0.0034 : this.mode === 'reel' ? 0.0015 : cassette ? 0.0026 : 0.0012);
     this.leftDepth.gain.setTargetAtTime(depth, now, 0.04);
     this.rightDepth.gain.setTargetAtTime(-depth * 0.72, now, 0.04);
-
     const baseNoise = this.noise * this.noise * 0.012;
     this.cassetteNoiseGain.gain.setTargetAtTime(cassette || narrow || broken ? baseNoise * (broken ? 1.7 : 1) : 0, now, 0.05);
     this.vinylNoiseGain.gain.setTargetAtTime(vinyl ? baseNoise * (this.mode === 'wax' ? 1.7 : 1.25) : 0, now, 0.05);
   }
 
   private configureSummingBus(now: number, profile: {
-    preCompression: number;
-    postCompression: number;
-    asymmetry: number;
-    lowHz: number;
-    lowDb: number;
-    highHz: number;
-    highDb: number;
-    highpassHz: number;
-    lowpassHz: number;
-    crossfeed: number;
+    preCompression: number; postCompression: number; asymmetry: number;
+    lowHz: number; lowDb: number; highHz: number; highDb: number;
+    highpassHz: number; lowpassHz: number; crossfeed: number;
   }): void {
-    // A summing bus should not manufacture gain. Both nonlinear stages have unity slope at
-    // zero and only shave progressively larger peaks; EQ stays deliberately sub-2 dB.
     this.modelInputGain.gain.setTargetAtTime(1, now, 0.025);
-    this.preampStage.curve = makeSummingCurve(profile.preCompression, profile.asymmetry);
+    this.setPreampCurve(getSummingCurve(profile.preCompression, profile.asymmetry));
     this.lowShelf.frequency.setTargetAtTime(profile.lowHz, now, 0.04);
     this.lowShelf.gain.setTargetAtTime(profile.lowDb, now, 0.04);
     this.highShelf.frequency.setTargetAtTime(profile.highHz, now, 0.04);
@@ -422,7 +413,7 @@ export class MediaEffect extends BaseEffect {
     this.modelOutputGain.gain.setTargetAtTime(1 / (1 + profile.crossfeed), now, 0.035);
     this.highpass.frequency.setTargetAtTime(profile.highpassHz, now, 0.04);
     this.lowpass.frequency.setTargetAtTime(profile.lowpassHz, now, 0.04);
-    this.saturator.curve = makeSummingCurve(profile.postCompression, profile.asymmetry * 0.55);
+    this.setSaturatorCurve(getSummingCurve(profile.postCompression, profile.asymmetry * 0.55));
     this.disableTransport(now);
     this.setCrossfeed(profile.crossfeed, now);
   }
@@ -500,76 +491,101 @@ function hardwareAutoTrim(inputGain: number, ...stageSlopes: number[]): number {
   return 1 / Math.max(1, transferGain);
 }
 
-function makeIdentityCurve(): Float32Array<ArrayBuffer> {
-  const samples = 1024;
-  const curve = new Float32Array(samples);
-  for (let index = 0; index < samples; index += 1) curve[index] = (index / (samples - 1)) * 2 - 1;
+function quantize(value: number, steps: number): number {
+  return Math.round(value * steps) / steps;
+}
+
+function cacheCurve(
+  cache: Map<string, Float32Array<ArrayBuffer>>,
+  key: string,
+  factory: () => Float32Array<ArrayBuffer>,
+): Float32Array<ArrayBuffer> {
+  const cached = cache.get(key);
+  if (cached) return cached;
+  const curve = factory();
+  if (cache.size >= MAX_CURVE_CACHE) {
+    const oldest = cache.keys().next().value as string | undefined;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(key, curve);
   return curve;
 }
 
-/** Unity-slope bus curve: no small-signal makeup gain, only mild peak cohesion. */
-function makeSummingCurve(compression: number, asymmetry: number): Float32Array<ArrayBuffer> {
-  const samples = 4096;
-  const curve = new Float32Array(samples);
-  const comp = Math.max(0, Math.min(0.12, compression));
-  const asym = Math.max(-0.08, Math.min(0.08, asymmetry));
-  for (let index = 0; index < samples; index += 1) {
-    const x = (index / (samples - 1)) * 2 - 1;
-    const even = asym * x * x * (1 - Math.abs(x));
-    const y = x - comp * x * x * x + even;
-    curve[index] = Math.max(-1, Math.min(1, y));
-  }
+function createIdentityCurve(): Float32Array<ArrayBuffer> {
+  const curve = new Float32Array(1024);
+  for (let index = 0; index < curve.length; index += 1) curve[index] = (index / (curve.length - 1)) * 2 - 1;
   return curve;
 }
 
-function makeOpAmpCurve(drive: number, asymmetry: number): Float32Array<ArrayBuffer> {
-  const samples = 4096;
-  const curve = new Float32Array(samples);
-  const safeDrive = Math.max(1, drive);
-  for (let index = 0; index < samples; index += 1) {
-    const x = (index / (samples - 1)) * 2 - 1;
-    const sideDrive = safeDrive * (x >= 0 ? 1 + asymmetry : 1 - asymmetry * 0.62);
-    const normal = Math.max(1e-6, Math.tanh(sideDrive));
-    curve[index] = Math.tanh(x * sideDrive) / normal;
-  }
-  return curve;
+function getSummingCurve(compression: number, asymmetry: number): Float32Array<ArrayBuffer> {
+  const comp = Math.max(0, Math.min(0.12, quantize(compression, 512)));
+  const asym = Math.max(-0.08, Math.min(0.08, quantize(asymmetry, 512)));
+  return cacheCurve(summingCurveCache, `${comp}:${asym}`, () => {
+    const curve = new Float32Array(4096);
+    for (let index = 0; index < curve.length; index += 1) {
+      const x = (index / (curve.length - 1)) * 2 - 1;
+      const even = asym * x * x * (1 - Math.abs(x));
+      curve[index] = Math.max(-1, Math.min(1, x - comp * x * x * x + even));
+    }
+    return curve;
+  });
 }
 
-function makeTransformerCurve(drive: number, asymmetry: number): Float32Array<ArrayBuffer> {
-  const samples = 4096;
-  const curve = new Float32Array(samples);
-  const safeDrive = Math.max(1, drive);
-  const norm = Math.max(1e-6, Math.tanh(safeDrive));
-  for (let index = 0; index < samples; index += 1) {
-    const x = (index / (samples - 1)) * 2 - 1;
-    const magneticCurvature = x * x * (x >= 0 ? 1 : -0.42);
-    const magnetized = x + asymmetry * magneticCurvature;
-    const compressed = Math.tanh(magnetized * safeDrive) / norm;
-    curve[index] = Math.max(-1, Math.min(1, compressed * 0.985));
-  }
-  return curve;
+function getOpAmpCurve(drive: number, asymmetry: number): Float32Array<ArrayBuffer> {
+  const safeDrive = Math.max(1, quantize(drive, 128));
+  const asym = quantize(asymmetry, 512);
+  return cacheCurve(opAmpCurveCache, `${safeDrive}:${asym}`, () => {
+    const curve = new Float32Array(4096);
+    for (let index = 0; index < curve.length; index += 1) {
+      const x = (index / (curve.length - 1)) * 2 - 1;
+      const sideDrive = safeDrive * (x >= 0 ? 1 + asym : 1 - asym * 0.62);
+      curve[index] = Math.tanh(x * sideDrive) / Math.max(1e-6, Math.tanh(sideDrive));
+    }
+    return curve;
+  });
 }
 
-function makeTapeCurve(drive: number, bias: number): Float32Array<ArrayBuffer> {
-  const samples = 4096;
-  const curve = new Float32Array(samples);
-  const safeDrive = Math.max(1, drive);
-  for (let index = 0; index < samples; index += 1) {
-    const x = (index / (samples - 1)) * 2 - 1;
-    const biased = x + bias * 0.035 + x * x * (0.018 + bias * 0.012);
-    const soft = Math.tanh(biased * safeDrive) / Math.max(1e-6, Math.tanh(safeDrive));
-    const compression = 1 - Math.min(0.085, Math.abs(x) * 0.045 * safeDrive);
-    curve[index] = Math.max(-1, Math.min(1, soft * compression));
-  }
-  return curve;
+function getTransformerCurve(drive: number, asymmetry: number): Float32Array<ArrayBuffer> {
+  const safeDrive = Math.max(1, quantize(drive, 128));
+  const asym = quantize(asymmetry, 512);
+  return cacheCurve(transformerCurveCache, `${safeDrive}:${asym}`, () => {
+    const curve = new Float32Array(4096);
+    const norm = Math.max(1e-6, Math.tanh(safeDrive));
+    for (let index = 0; index < curve.length; index += 1) {
+      const x = (index / (curve.length - 1)) * 2 - 1;
+      const magneticCurvature = x * x * (x >= 0 ? 1 : -0.42);
+      const compressed = Math.tanh((x + asym * magneticCurvature) * safeDrive) / norm;
+      curve[index] = Math.max(-1, Math.min(1, compressed * 0.985));
+    }
+    return curve;
+  });
 }
 
-function makeSaturationCurve(amount: number): Float32Array<ArrayBuffer> {
-  const samples = 2048;
-  const curve = new Float32Array(samples);
-  for (let index = 0; index < samples; index += 1) {
-    const x = (index / (samples - 1)) * 2 - 1;
-    curve[index] = Math.tanh(x * amount) / amount;
-  }
-  return curve;
+function getTapeCurve(drive: number, bias: number): Float32Array<ArrayBuffer> {
+  const safeDrive = Math.max(1, quantize(drive, 128));
+  const quantizedBias = quantize(bias, 256);
+  return cacheCurve(tapeCurveCache, `${safeDrive}:${quantizedBias}`, () => {
+    const curve = new Float32Array(4096);
+    const norm = Math.max(1e-6, Math.tanh(safeDrive));
+    for (let index = 0; index < curve.length; index += 1) {
+      const x = (index / (curve.length - 1)) * 2 - 1;
+      const biased = x + quantizedBias * 0.035 + x * x * (0.018 + quantizedBias * 0.012);
+      const soft = Math.tanh(biased * safeDrive) / norm;
+      const compression = 1 - Math.min(0.085, Math.abs(x) * 0.045 * safeDrive);
+      curve[index] = Math.max(-1, Math.min(1, soft * compression));
+    }
+    return curve;
+  });
+}
+
+function getSaturationCurve(amount: number): Float32Array<ArrayBuffer> {
+  const quantizedAmount = Math.max(0.001, quantize(amount, 128));
+  return cacheCurve(saturationCurveCache, `${quantizedAmount}`, () => {
+    const curve = new Float32Array(2048);
+    for (let index = 0; index < curve.length; index += 1) {
+      const x = (index / (curve.length - 1)) * 2 - 1;
+      curve[index] = Math.tanh(x * quantizedAmount) / quantizedAmount;
+    }
+    return curve;
+  });
 }
