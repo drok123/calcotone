@@ -5,8 +5,8 @@
   background: #020407 !important;
 }
 
-/* Module windows are source-video displays. Keep the base footage smooth and
-   let the audio feedback breathe on a much slower envelope. */
+/* Module windows are source-video displays. Keep the footage at its original
+   color and cadence; only the slow feedback motion changes over time. */
 .module-video-viewport::before,
 .module-video-viewport::after {
   display: none !important;
@@ -22,18 +22,13 @@
   height: 100%;
   object-fit: cover;
   object-position: center;
-  opacity: calc(0.78 + (var(--module-feedback, 0) * 0.22));
-  filter: brightness(calc(0.82 + (var(--module-feedback, 0) * 0.28)))
-    contrast(calc(0.96 + (var(--module-feedback, 0) * 0.08)))
-    saturate(calc(0.92 + (var(--module-feedback, 0) * 0.12)));
+  opacity: 1;
+  filter: none;
   transform: scale(calc(1 + (var(--module-feedback, 0) * 0.008)));
   transform-origin: center;
   mix-blend-mode: normal;
-  transition:
-    opacity 1.6s cubic-bezier(0.22, 1, 0.36, 1),
-    filter 1.8s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 2.2s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: opacity, filter, transform;
+  transition: transform 2.2s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
 }
 
 .module-video-empty {
