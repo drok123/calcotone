@@ -62,8 +62,6 @@ export abstract class BaseEffect implements Effect {
     this.input.channelCountMode = 'max';
     this.output.channelCountMode = 'max';
 
-    // Mix stage: original dry + protected processed wet. The optional behavior stage
-    // contributes only a restrained stateful residual selected by the simulation registry.
     this.wetDcBlock.type = 'highpass';
     this.wetDcBlock.frequency.value = 18;
     this.wetDcBlock.Q.value = 0.5;
@@ -79,7 +77,6 @@ export abstract class BaseEffect implements Effect {
     this.wetDcBlock.connect(this.wetLimiter);
     this.wetLimiter.connect(this.processedBus);
 
-    // Independent bypass stage. Bypass never changes the stored wet/dry mix.
     this.input.connect(this.bypassDryGain);
     this.processedBus.connect(this.bypassProcessedGain);
     this.bypassDryGain.connect(this.output);
@@ -112,6 +109,18 @@ export abstract class BaseEffect implements Effect {
       this.bypassSuspendTimer = null;
     }
 
+    // Presets configure bypass before AudioGraph binds the effect. There is no live
+    // serial signal yet, so bypassed modules can start fully suspended immediately.
+    if (bypassed && this.routingInvalidator === null) {
+      this.bypassed = true;
+      this.processingSuspended = true;
+      this.bypassDryGain.gain.cancelScheduledValues(now);
+      this.bypassProcessedGain.gain.cancelScheduledValues(now);
+      this.bypassDryGain.gain.setValueAtTime(1, now);
+      this.bypassProcessedGain.gain.setValueAtTime(0, now);
+      return;
+    }
+
     if (!bypassed && this.processingSuspended) {
       // Put the module back into the serial path while its output is still clean/dry,
       // then crossfade the processed path in. This avoids clicks on wake-up.
@@ -126,8 +135,6 @@ export abstract class BaseEffect implements Effect {
     this.bypassProcessedGain.gain.setTargetAtTime(bypassed ? 0 : 1, now, smoothing);
 
     if (bypassed && !this.processingSuspended) {
-      // Four-ish time constants lets the audible bypass crossfade settle before the
-      // graph removes this module from realtime rendering.
       this.bypassSuspendTimer = setTimeout(() => {
         this.bypassSuspendTimer = null;
         if (this.disposed || !this.bypassed || this.processingSuspended) return;
@@ -146,28 +153,16 @@ export abstract class BaseEffect implements Effect {
   }
 
   public getParameter(parameterId: string): ParameterState | undefined {
-    const definition = this.parameterDefinitions.find(
-      (parameter) => parameter.id === parameterId
-    );
+    const definition = this.parameterDefinitions.find((parameter) => parameter.id === parameterId);
     if (!definition) return undefined;
-    const value =
-      this.parameterValues.get(parameterId) ?? definition.defaultValue;
-    return {
-      ...definition,
-      value,
-      normalizedValue: normalizeParameter(value, definition),
-    };
+    const value = this.parameterValues.get(parameterId) ?? definition.defaultValue;
+    return { ...definition, value, normalizedValue: normalizeParameter(value, definition) };
   }
 
   public getParameters(): ParameterState[] {
     return this.parameterDefinitions.map((definition) => {
-      const value =
-        this.parameterValues.get(definition.id) ?? definition.defaultValue;
-      return {
-        ...definition,
-        value,
-        normalizedValue: normalizeParameter(value, definition),
-      };
+      const value = this.parameterValues.get(definition.id) ?? definition.defaultValue;
+      return { ...definition, value, normalizedValue: normalizeParameter(value, definition) };
     });
   }
 
@@ -215,7 +210,6 @@ export abstract class BaseEffect implements Effect {
 
   protected initializeParameters(definitions: ParameterDefinition[]): void {
     this.parameterDefinitions = definitions;
-    for (const definition of definitions)
-      this.parameterValues.set(definition.id, definition.defaultValue);
+    for (const definition of definitions) this.parameterValues.set(definition.id, definition.defaultValue);
   }
 }
