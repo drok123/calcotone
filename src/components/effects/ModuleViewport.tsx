@@ -6,6 +6,8 @@ import './ModuleViewportVideo.css';
 
 type ModuleVideoKey = 'ember' | 'drift' | 'drift-alt' | 'halo' | 'artifact' | 'atmos' | 'grain';
 
+const VIDEO_PLAYBACK_RATE = 0.08;
+
 const VIDEO_FILES: Record<ModuleVideoKey, string> = {
   ember: 'visuals/ember.mp4',
   drift: 'visuals/drift.mp4',
@@ -56,7 +58,7 @@ function captionFor(module: ModuleState): string {
     : `ARTIFACT · ${mode.toUpperCase()}`;
 }
 
-function VideoLayer({ src, className }: { src: string; className: string }) {
+function VideoLayer({ src, className, phase = 0 }: { src: string; className: string; phase?: number }) {
   return (
     <video
       className={className}
@@ -66,6 +68,16 @@ function VideoLayer({ src, className }: { src: string; className: string }) {
       loop
       playsInline
       preload="auto"
+      onLoadedMetadata={(event) => {
+        const video = event.currentTarget;
+        video.playbackRate = VIDEO_PLAYBACK_RATE;
+        if (video.duration > 0 && phase > 0) video.currentTime = Math.min(video.duration - 0.01, video.duration * phase);
+      }}
+      onCanPlay={(event) => {
+        const video = event.currentTarget;
+        video.playbackRate = VIDEO_PLAYBACK_RATE;
+        void video.play().catch(() => undefined);
+      }}
       aria-hidden="true"
     />
   );
@@ -92,10 +104,10 @@ export function ModuleViewport({
     >
       {module.enabled && videoUrl ? (
         <div className="module-video-stage" aria-hidden="true">
-          <VideoLayer src={videoUrl} className="module-video module-video-base" />
-          <VideoLayer src={videoUrl} className="module-video module-video-fx module-video-fx-a" />
-          <VideoLayer src={videoUrl} className="module-video module-video-fx module-video-fx-b" />
-          <VideoLayer src={videoUrl} className="module-video module-video-fx module-video-fx-c" />
+          <VideoLayer src={videoUrl} className="module-video module-video-base" phase={0} />
+          <VideoLayer src={videoUrl} className="module-video module-video-fx module-video-fx-a" phase={0.11} />
+          <VideoLayer src={videoUrl} className="module-video module-video-fx module-video-fx-b" phase={0.23} />
+          <VideoLayer src={videoUrl} className="module-video module-video-fx module-video-fx-c" phase={0.37} />
         </div>
       ) : module.enabled ? (
         <div className="module-video-empty" aria-hidden="true">
