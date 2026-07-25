@@ -27,6 +27,20 @@ const MOTION = { id: 'motion', label: 'Motion', min: 0, max: 1, defaultValue: 0.
 const MIX = { id: 'mix', label: 'Mix', min: 0, max: 1, defaultValue: 0.14, step: 0.01 };
 
 const IDENTITY_CURVE = makePreampCurve(0, 0);
+const DIMENSION_D_CURVE = makePreampCurve(0.018, 0.006);
+const CE1_CURVE_STEPS = 64;
+const CE1_CURVE_CACHE = new Map<number, Float32Array<ArrayBuffer>>();
+
+function getCe1Curve(motion: number): Float32Array<ArrayBuffer> {
+  const key = Math.max(0, Math.min(CE1_CURVE_STEPS, Math.round(motion * CE1_CURVE_STEPS)));
+  const cached = CE1_CURVE_CACHE.get(key);
+  if (cached) return cached;
+
+  const quantizedMotion = key / CE1_CURVE_STEPS;
+  const curve = makePreampCurve(0.018 + quantizedMotion * 0.09, 0.018);
+  CE1_CURVE_CACHE.set(key, curve);
+  return curve;
+}
 
 export class ChorusEffect extends BaseEffect {
   public readonly id = 'chorus';
@@ -43,6 +57,7 @@ export class ChorusEffect extends BaseEffect {
   private readonly pans: StereoPannerNode[] = [];
   private readonly voiceGains: GainNode[] = [];
   private readonly sum: GainNode;
+  private currentPreampCurve: Float32Array<ArrayBuffer> = IDENTITY_CURVE;
 
   private mode: DriftMode = 'chorus';
   private rate = 0.28;
@@ -143,6 +158,12 @@ export class ChorusEffect extends BaseEffect {
     this.apply();
   }
 
+  private setPreampCurve(curve: Float32Array<ArrayBuffer>): void {
+    if (curve === this.currentPreampCurve) return;
+    this.preamp.curve = curve;
+    this.currentPreampCurve = curve;
+  }
+
   private apply(): void {
     const now = this.context.currentTime;
 
@@ -153,7 +174,7 @@ export class ChorusEffect extends BaseEffect {
       const intensity = this.shape;
       const chorusRate = 0.19 + intensity * 0.63;
       const chorusDepth = 0.00055 + intensity * 0.00245;
-      this.preamp.curve = makePreampCurve(0.018 + this.motion * 0.09, 0.018);
+      this.setPreampCurve(getCe1Curve(this.motion));
       this.inputTone.frequency.setTargetAtTime(9_600 - this.motion * 1_900, now, 0.05);
       this.sum.gain.setTargetAtTime(0.82, now, 0.04);
       for (let i = 0; i < 4; i += 1) {
@@ -178,7 +199,7 @@ export class ChorusEffect extends BaseEffect {
       const modeRate = [0.165, 0.185, 0.215, 0.245, 0.178, 0.205, 0.232][modeIndex];
       const baseByVoice = [0.0084, 0.0118, 0.0159, 0.0204];
       const phaseSigns = [1, -1, -0.74, 0.74];
-      this.preamp.curve = makePreampCurve(0.018, 0.006);
+      this.setPreampCurve(DIMENSION_D_CURVE);
       this.inputTone.frequency.setTargetAtTime(13_800, now, 0.05);
       this.sum.gain.setTargetAtTime(0.52, now, 0.04);
       for (let i = 0; i < 4; i += 1) {
@@ -193,7 +214,7 @@ export class ChorusEffect extends BaseEffect {
       return;
     }
 
-    this.preamp.curve = IDENTITY_CURVE;
+    this.setPreampCurve(IDENTITY_CURVE);
     this.inputTone.frequency.setTargetAtTime(18_000, now, 0.05);
     const index = DRIFT_MODE_ORDER.indexOf(this.mode);
     const rateMul = [1,0.73,0.41,1.18,0.58,0.92,0.31,0.48,1,1][index] ?? 1;
