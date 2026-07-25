@@ -50,9 +50,9 @@ const VIDEO_FILES: Record<ModuleVideoKey, string> = {
   grain: 'visuals/grain.mp4',
 };
 
-const LOOP_CROSSFADE_SECONDS = 2.4;
-const LOOP_INCOMING_OFFSET_SECONDS = 0.18;
-const LOOP_EASING = 'cubic-bezier(0.37, 0, 0.63, 1)';
+const PING_PONG_END_PADDING = 0.08;
+const PING_PONG_REVERSE_SECONDS_PER_SECOND = 0.42;
+const PING_PONG_EDGE_EASE_SECONDS = 0.42;
 
 function assetUrl(path: string): string {
   const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
@@ -250,127 +250,119 @@ function captionFor(module: ModuleState): string {
     : `ARTIFACT · ${mode.toUpperCase()}`;
 }
 
-function SmoothLoopLayer({ src, className }: { src: string; className: string }) {
-  const frontRef = useRef<HTMLVideoElement | null>(null);
-  const backRef = useRef<HTMLVideoElement | null>(null);
-  const frontActiveRef = useRef(true);
-  const crossfadingRef = useRef(false);
-  const timerRef = useRef<number | null>(null);
+function PingPongLayer({ src, className }: { src: string; className: string }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const reverseFrameRef = useRef<number | null>(null);
+  const reverseStartRef = useRef<number | null>(null);
+  const reverseFromTimeRef = useRef(0);
+  const directionRef = useRef<'forward' | 'reverse'>('forward');
 
   useEffect(() => {
-    const front = frontRef.current;
-    const back = backRef.current;
-    if (!front || !back) return;
+    const video = videoRef.current;
+    if (!video) return;
 
-    const videos = [front, back];
-    videos.forEach((video) => {
-      video.muted = true;
-      video.loop = false;
-      video.playbackRate = 1;
-    });
+    let cancelled = false;
 
-    const clearTimer = () => {
-      if (timerRef.current !== null) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = null;
+    const cancelReverse = () => {
+      if (reverseFrameRef.current !== null) {
+        cancelAnimationFrame(reverseFrameRef.current);
+        reverseFrameRef.current = null;
       }
+      reverseStartRef.current = null;
     };
 
-    const resetOpacity = () => {
-      front.style.opacity = frontActiveRef.current ? '1' : '0';
-      back.style.opacity = frontActiveRef.current ? '0' : '1';
+    const startForward = () => {
+      cancelReverse();
+      directionRef.current = 'forward';
+      video.playbackRate = 1;
+      video.style.setProperty('--ping-pong-edge', '0');
+      void video.play().catch(() => undefined);
     };
 
-    const schedule = () => {
-      clearTimer();
-      const active = frontActiveRef.current ? front : back;
-      if (!Number.isFinite(active.duration) || active.duration <= LOOP_CROSSFADE_SECONDS + 0.35) return;
-      const secondsUntilFade = Math.max(0.08, active.duration - active.currentTime - LOOP_CROSSFADE_SECONDS);
-      timerRef.current = window.setTimeout(beginCrossfade, secondsUntilFade * 1000);
+    const reverseStep = (now: number) => {
+      if (cancelled || directionRef.current !== 'reverse') return;
+      if (reverseStartRef.current === null) reverseStartRef.current = now;
+
+      const elapsed = (now - reverseStartRef.current) / 1000;
+      const rawProgress = Math.min(1, elapsed * PING_PONG_REVERSE_SECONDS_PER_SECOND / Math.max(0.001, reverseFromTimeRef.current));
+      const easedProgress = rawProgress < 0.5
+        ? 2 * rawProgress * rawProgress
+        : 1 - Math.pow(-2 * rawProgress + 2, 2) / 2;
+
+      const nextTime = Math.max(PING_PONG_END_PADDING, reverseFromTimeRef.current * (1 - easedProgress));
+      if (Math.abs(video.currentTime - nextTime) > 0.008) video.currentTime = nextTime;
+
+      const edge = Math.min(1, Math.min(rawProgress, 1 - rawProgress) / Math.max(0.001, PING_PONG_EDGE_EASE_SECONDS / Math.max(0.001, reverseFromTimeRef.current)));
+      video.style.setProperty('--ping-pong-edge', edge.toFixed(3));
+
+      if (rawProgress >= 1 || nextTime <= PING_PONG_END_PADDING + 0.01) {
+        video.currentTime = PING_PONG_END_PADDING;
+        video.style.setProperty('--ping-pong-edge', '0');
+        startForward();
+        return;
+      }
+
+      reverseFrameRef.current = requestAnimationFrame(reverseStep);
     };
 
-    const beginCrossfade = () => {
-      if (crossfadingRef.current) return;
-      const active = frontActiveRef.current ? front : back;
-      const standby = frontActiveRef.current ? back : front;
-      if (!Number.isFinite(active.duration) || active.duration <= 0) return;
-
-      crossfadingRef.current = true;
-      const incomingOffset = Math.min(
-        LOOP_INCOMING_OFFSET_SECONDS,
-        Math.max(0, standby.duration - 0.05),
-      );
-      standby.currentTime = incomingOffset;
-      standby.style.transition = 'none';
-      standby.style.opacity = '0';
-      active.style.transition = 'none';
-      active.style.opacity = '1';
-
-      void standby.play().then(() => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            standby.style.transition = `opacity ${LOOP_CROSSFADE_SECONDS}s ${LOOP_EASING}`;
-            active.style.transition = `opacity ${LOOP_CROSSFADE_SECONDS}s ${LOOP_EASING}`;
-            standby.style.opacity = '1';
-            active.style.opacity = '0';
-          });
-        });
-      }).catch(() => {
-        crossfadingRef.current = false;
-        schedule();
-      });
-
-      timerRef.current = window.setTimeout(() => {
-        active.pause();
-        active.currentTime = LOOP_INCOMING_OFFSET_SECONDS;
-        active.style.transition = 'none';
-        frontActiveRef.current = !frontActiveRef.current;
-        crossfadingRef.current = false;
-        resetOpacity();
-        schedule();
-      }, LOOP_CROSSFADE_SECONDS * 1000 + 80);
+    const startReverse = () => {
+      if (!Number.isFinite(video.duration) || video.duration <= PING_PONG_END_PADDING * 2) return;
+      directionRef.current = 'reverse';
+      video.pause();
+      reverseFromTimeRef.current = Math.max(PING_PONG_END_PADDING, video.currentTime);
+      reverseStartRef.current = null;
+      video.style.setProperty('--ping-pong-edge', '0');
+      reverseFrameRef.current = requestAnimationFrame(reverseStep);
     };
+
+    const onTimeUpdate = () => {
+      if (directionRef.current !== 'forward') return;
+      if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+      if (video.currentTime >= video.duration - PING_PONG_END_PADDING) startReverse();
+    };
+
+    const onEnded = () => startReverse();
 
     const onMetadata = () => {
-      resetOpacity();
-      const active = frontActiveRef.current ? front : back;
-      if (active.currentTime < LOOP_INCOMING_OFFSET_SECONDS) {
-        active.currentTime = LOOP_INCOMING_OFFSET_SECONDS;
-      }
-      void active.play().catch(() => undefined);
-      schedule();
+      video.loop = false;
+      video.muted = true;
+      if (video.currentTime < PING_PONG_END_PADDING) video.currentTime = PING_PONG_END_PADDING;
+      startForward();
     };
 
     const onVisibility = () => {
       if (document.hidden) {
-        clearTimer();
-        videos.forEach((video) => video.pause());
+        video.pause();
+        cancelReverse();
+      } else if (directionRef.current === 'forward') {
+        startForward();
       } else {
-        const active = frontActiveRef.current ? front : back;
-        void active.play().catch(() => undefined);
-        schedule();
+        reverseStartRef.current = null;
+        reverseFrameRef.current = requestAnimationFrame(reverseStep);
       }
     };
 
-    front.addEventListener('loadedmetadata', onMetadata);
-    back.addEventListener('loadedmetadata', onMetadata);
+    video.addEventListener('loadedmetadata', onMetadata);
+    video.addEventListener('timeupdate', onTimeUpdate);
+    video.addEventListener('ended', onEnded);
     document.addEventListener('visibilitychange', onVisibility);
 
-    if (front.readyState >= 1 && back.readyState >= 1) onMetadata();
+    if (video.readyState >= 1) onMetadata();
 
     return () => {
-      clearTimer();
-      front.removeEventListener('loadedmetadata', onMetadata);
-      back.removeEventListener('loadedmetadata', onMetadata);
+      cancelled = true;
+      cancelReverse();
+      video.pause();
+      video.removeEventListener('loadedmetadata', onMetadata);
+      video.removeEventListener('timeupdate', onTimeUpdate);
+      video.removeEventListener('ended', onEnded);
       document.removeEventListener('visibilitychange', onVisibility);
-      videos.forEach((video) => video.pause());
     };
   }, [src]);
 
   return (
-    <span className={`${className} smooth-loop-layer`} aria-hidden="true">
-      <video ref={frontRef} className="smooth-loop-video smooth-loop-front" src={src} muted playsInline preload="auto" />
-      <video ref={backRef} className="smooth-loop-video smooth-loop-back" src={src} muted playsInline preload="auto" />
+    <span className={`${className} ping-pong-layer`} aria-hidden="true">
+      <video ref={videoRef} className="ping-pong-video" src={src} muted playsInline preload="auto" />
     </span>
   );
 }
@@ -400,10 +392,10 @@ export function ModuleViewport({
     >
       {module.enabled && videoUrl ? (
         <div className="module-video-stage" aria-hidden="true">
-          <SmoothLoopLayer src={videoUrl} className="module-video module-video-base" />
-          <SmoothLoopLayer src={videoUrl} className="module-video module-video-fx module-video-fx-a" />
-          <SmoothLoopLayer src={videoUrl} className="module-video module-video-fx module-video-fx-b" />
-          <SmoothLoopLayer src={videoUrl} className="module-video module-video-fx module-video-fx-c" />
+          <PingPongLayer src={videoUrl} className="module-video module-video-base" />
+          <PingPongLayer src={videoUrl} className="module-video module-video-fx module-video-fx-a" />
+          <PingPongLayer src={videoUrl} className="module-video module-video-fx module-video-fx-b" />
+          <PingPongLayer src={videoUrl} className="module-video module-video-fx module-video-fx-c" />
         </div>
       ) : module.enabled ? (
         <div className="module-video-empty" aria-hidden="true">
