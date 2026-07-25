@@ -50,7 +50,9 @@ const VIDEO_FILES: Record<ModuleVideoKey, string> = {
   grain: 'visuals/grain.mp4',
 };
 
-const LOOP_CROSSFADE_SECONDS = 0.9;
+const LOOP_CROSSFADE_SECONDS = 2.4;
+const LOOP_INCOMING_OFFSET_SECONDS = 0.18;
+const LOOP_EASING = 'cubic-bezier(0.37, 0, 0.63, 1)';
 
 function assetUrl(path: string): string {
   const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
@@ -282,8 +284,8 @@ function SmoothLoopLayer({ src, className }: { src: string; className: string })
     const schedule = () => {
       clearTimer();
       const active = frontActiveRef.current ? front : back;
-      if (!Number.isFinite(active.duration) || active.duration <= LOOP_CROSSFADE_SECONDS + 0.2) return;
-      const secondsUntilFade = Math.max(0.1, active.duration - active.currentTime - LOOP_CROSSFADE_SECONDS);
+      if (!Number.isFinite(active.duration) || active.duration <= LOOP_CROSSFADE_SECONDS + 0.35) return;
+      const secondsUntilFade = Math.max(0.08, active.duration - active.currentTime - LOOP_CROSSFADE_SECONDS);
       timerRef.current = window.setTimeout(beginCrossfade, secondsUntilFade * 1000);
     };
 
@@ -294,30 +296,47 @@ function SmoothLoopLayer({ src, className }: { src: string; className: string })
       if (!Number.isFinite(active.duration) || active.duration <= 0) return;
 
       crossfadingRef.current = true;
-      standby.currentTime = 0;
-      standby.style.transition = `opacity ${LOOP_CROSSFADE_SECONDS}s linear`;
-      active.style.transition = `opacity ${LOOP_CROSSFADE_SECONDS}s linear`;
+      const incomingOffset = Math.min(
+        LOOP_INCOMING_OFFSET_SECONDS,
+        Math.max(0, standby.duration - 0.05),
+      );
+      standby.currentTime = incomingOffset;
+      standby.style.transition = 'none';
       standby.style.opacity = '0';
-      void standby.play().catch(() => undefined);
+      active.style.transition = 'none';
+      active.style.opacity = '1';
 
-      requestAnimationFrame(() => {
-        standby.style.opacity = '1';
-        active.style.opacity = '0';
+      void standby.play().then(() => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            standby.style.transition = `opacity ${LOOP_CROSSFADE_SECONDS}s ${LOOP_EASING}`;
+            active.style.transition = `opacity ${LOOP_CROSSFADE_SECONDS}s ${LOOP_EASING}`;
+            standby.style.opacity = '1';
+            active.style.opacity = '0';
+          });
+        });
+      }).catch(() => {
+        crossfadingRef.current = false;
+        schedule();
       });
 
       timerRef.current = window.setTimeout(() => {
         active.pause();
-        active.currentTime = 0;
+        active.currentTime = LOOP_INCOMING_OFFSET_SECONDS;
+        active.style.transition = 'none';
         frontActiveRef.current = !frontActiveRef.current;
         crossfadingRef.current = false;
         resetOpacity();
         schedule();
-      }, LOOP_CROSSFADE_SECONDS * 1000 + 40);
+      }, LOOP_CROSSFADE_SECONDS * 1000 + 80);
     };
 
     const onMetadata = () => {
       resetOpacity();
       const active = frontActiveRef.current ? front : back;
+      if (active.currentTime < LOOP_INCOMING_OFFSET_SECONDS) {
+        active.currentTime = LOOP_INCOMING_OFFSET_SECONDS;
+      }
       void active.play().catch(() => undefined);
       schedule();
     };
@@ -350,8 +369,8 @@ function SmoothLoopLayer({ src, className }: { src: string; className: string })
 
   return (
     <span className={`${className} smooth-loop-layer`} aria-hidden="true">
-      <video ref={frontRef} className="smooth-loop-video smooth-loop-front" src={src} muted playsInline preload="metadata" />
-      <video ref={backRef} className="smooth-loop-video smooth-loop-back" src={src} muted playsInline preload="metadata" />
+      <video ref={frontRef} className="smooth-loop-video smooth-loop-front" src={src} muted playsInline preload="auto" />
+      <video ref={backRef} className="smooth-loop-video smooth-loop-back" src={src} muted playsInline preload="auto" />
     </span>
   );
 }
