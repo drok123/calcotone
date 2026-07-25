@@ -14,6 +14,8 @@ export interface Effect {
   getParameters(): ParameterState[];
   setBypassed(bypassed: boolean): void;
   isBypassed(): boolean;
+  isProcessingSuspended(): boolean;
+  setRoutingInvalidator(callback: (() => void) | null): void;
   configureBehavior(profile: BehaviorMemoryProfile, amount: number, motion: number, memory: number, color: number): void;
   dispose(): void;
 }
@@ -35,6 +37,10 @@ export abstract class BaseEffect implements Effect {
   private readonly bypassDryGain: GainNode;
   private readonly bypassProcessedGain: GainNode;
   private mix = 1;
+  private routingInvalidator: (() => void) | null = null;
+  private processingSuspended = false;
+  private bypassSuspendTimer: ReturnType<typeof setTimeout> | null = null;
+  private disposed = false;
 
   protected bypassed = false;
   protected parameterDefinitions: ParameterDefinition[] = [];
@@ -87,26 +93,56 @@ export abstract class BaseEffect implements Effect {
   public connect(destination: AudioNode): AudioNode {
     return this.output.connect(destination);
   }
+
   public disconnect(): void {
     this.output.disconnect();
   }
 
+  public setRoutingInvalidator(callback: (() => void) | null): void {
+    this.routingInvalidator = callback;
+  }
+
   public setBypassed(bypassed: boolean): void {
-    this.bypassed = bypassed;
+    if (this.disposed) return;
     const now = this.context.currentTime;
     const smoothing = 0.028;
+
+    if (this.bypassSuspendTimer !== null) {
+      clearTimeout(this.bypassSuspendTimer);
+      this.bypassSuspendTimer = null;
+    }
+
+    if (!bypassed && this.processingSuspended) {
+      // Put the module back into the serial path while its output is still clean/dry,
+      // then crossfade the processed path in. This avoids clicks on wake-up.
+      this.processingSuspended = false;
+      this.routingInvalidator?.();
+    }
+
+    this.bypassed = bypassed;
     this.bypassDryGain.gain.cancelScheduledValues(now);
     this.bypassProcessedGain.gain.cancelScheduledValues(now);
     this.bypassDryGain.gain.setTargetAtTime(bypassed ? 1 : 0, now, smoothing);
-    this.bypassProcessedGain.gain.setTargetAtTime(
-      bypassed ? 0 : 1,
-      now,
-      smoothing
-    );
+    this.bypassProcessedGain.gain.setTargetAtTime(bypassed ? 0 : 1, now, smoothing);
+
+    if (bypassed && !this.processingSuspended) {
+      // Four-ish time constants lets the audible bypass crossfade settle before the
+      // graph removes this module from realtime rendering.
+      this.bypassSuspendTimer = setTimeout(() => {
+        this.bypassSuspendTimer = null;
+        if (this.disposed || !this.bypassed || this.processingSuspended) return;
+        this.processingSuspended = true;
+        this.routingInvalidator?.();
+      }, 120);
+    }
   }
 
   public isBypassed(): boolean {
     return this.bypassed;
+  }
+
+  public isProcessingSuspended(): boolean {
+    return this.processingSuspended;
   }
 
   public getParameter(parameterId: string): ParameterState | undefined {
@@ -148,6 +184,13 @@ export abstract class BaseEffect implements Effect {
   public abstract setParameter(parameterId: string, value: number): void;
 
   public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    if (this.bypassSuspendTimer !== null) {
+      clearTimeout(this.bypassSuspendTimer);
+      this.bypassSuspendTimer = null;
+    }
+    this.routingInvalidator = null;
     this.input.disconnect();
     this.output.disconnect();
     this.dryGain.disconnect();
