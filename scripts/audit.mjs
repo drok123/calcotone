@@ -141,6 +141,15 @@ for (const [moduleId, source, expected] of controlContracts) {
   }
 }
 
+// Hardware-study modes keep their authentic center points, but Calcotone's generic panel
+// must never expose a decorative/dead control.
+forbidText(driftEffect, "this.mode === 'ce1' && (id === 'rate'", 'Drift CE-1 dead controls');
+forbidText(driftEffect, "this.mode === 'dimensiond' && id !== 'shape'", 'Drift Dimension-D dead controls');
+forbidText(driftEffect, "this.mode === 'orbit' && id === 'spread'", 'Drift Orbit dead spread');
+requireText(driftEffect, 'const rateTrim = Math.pow', 'Drift hardware rate trims');
+requireText(driftEffect, 'const panWidth = Math.min', 'Drift hardware spread trims');
+requireText(driftEffect, 'const orbitWidth = Math.min', 'Drift Orbit spread control');
+
 // Artifact's nonlinear stages must stay bounded/cached; live XY should not allocate a new
 // 2K-4K waveshaper curve for every pointer event.
 requireText(mediaEffect, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve cache');
