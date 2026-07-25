@@ -30,7 +30,7 @@ const PROFILE_INDEX: Record<BehaviorMemoryProfile, number> = {
 };
 
 const workletLoads = new WeakMap<AudioContext, Promise<void>>();
-const WORKLET_VERSION = '1.0.3-full-suspend';
+const WORKLET_VERSION = '1.1.0-deep-physical-memory';
 
 async function ensureWorklet(context: AudioContext): Promise<void> {
   const existing = workletLoads.get(context);
