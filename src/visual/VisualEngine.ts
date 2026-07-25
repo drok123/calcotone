@@ -42,10 +42,18 @@ export function useVisualEngine(
   const smoothedBands = useRef({ low: 0, mid: 0, high: 0 });
 
   useEffect(() => {
+    if (!running || !analyser) {
+      previousLevel.current = 0;
+      smoothedBands.current = { low: 0, mid: 0, high: 0 };
+      latestVisualAudioState = IDLE_STATE;
+      setState((current) => current === IDLE_STATE ? current : IDLE_STATE);
+      return;
+    }
+
     let frame = 0;
     let lastFrame = 0;
-    const interval = 1000 / frameRate;
-    const data = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
+    const interval = 1000 / Math.max(1, frameRate);
+    const data = new Uint8Array(analyser.frequencyBinCount);
 
     const publish = (next: VisualAudioState) => {
       latestVisualAudioState = next;
@@ -56,22 +64,6 @@ export function useVisualEngine(
       frame = requestAnimationFrame(render);
       if (timestamp - lastFrame < interval) return;
       lastFrame = timestamp;
-
-      if (!running || !analyser || !data) {
-        const idlePulse = (Math.sin(timestamp * 0.0008) + 1) * 0.015;
-        const next = {
-          ...IDLE_STATE,
-          level: idlePulse,
-          driftPhase: (timestamp * 0.00008) % 1,
-          time: timestamp / 1000,
-        };
-        smoothedBands.current.low *= 0.9;
-        smoothedBands.current.mid *= 0.9;
-        smoothedBands.current.high *= 0.9;
-        previousLevel.current *= 0.9;
-        publish(next);
-        return;
-      }
 
       analyser.getByteFrequencyData(data);
       const average = (start: number, end: number) => {
@@ -88,8 +80,6 @@ export function useVisualEngine(
       );
       const rawHigh = average(Math.floor(data.length * 0.48), data.length);
 
-      // Light attack/release smoothing keeps the physics input musical while
-      // still allowing kicks and snares to create useful impulses.
       const smoothBand = (previous: number, next: number) => {
         const amount = next > previous ? 0.48 : 0.20;
         return previous + (next - previous) * amount;
