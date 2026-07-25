@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { type CSSProperties } from 'react';
 import type { ModuleState } from '../../ui/types';
 import type { VisualAudioState } from '../../visual/VisualEngine';
 import { formatAlgorithmName } from '../../ui/formatting';
@@ -27,6 +27,7 @@ type VisualRecipe =
 type ColorProfile =
   | 'neutral'
   | 'ember'
+  | 'ember-dark'
   | 'amber'
   | 'gold'
   | 'cyan'
@@ -41,16 +42,6 @@ type ColorProfile =
   | 'mono';
 
 const VIDEO_FILES: Record<ModuleVideoKey, string> = {
-  ember: 'visuals/ember-pingpong.mp4',
-  drift: 'visuals/drift-pingpong.mp4',
-  'drift-alt': 'visuals/drift-alt-pingpong.mp4',
-  halo: 'visuals/halo-pingpong.mp4',
-  artifact: 'visuals/artifact-pingpong.mp4',
-  atmos: 'visuals/atmos-pingpong.mp4',
-  grain: 'visuals/grain-pingpong.mp4',
-};
-
-const FALLBACK_VIDEO_FILES: Record<ModuleVideoKey, string> = {
   ember: 'visuals/ember.mp4',
   drift: 'visuals/drift.mp4',
   'drift-alt': 'visuals/drift-alt.mp4',
@@ -58,6 +49,16 @@ const FALLBACK_VIDEO_FILES: Record<ModuleVideoKey, string> = {
   artifact: 'visuals/artifact.mp4',
   atmos: 'visuals/atmos.mp4',
   grain: 'visuals/grain.mp4',
+};
+
+const PING_PONG_FILES: Record<ModuleVideoKey, string> = {
+  ember: 'visuals/ember-pingpong.mp4',
+  drift: 'visuals/drift-pingpong.mp4',
+  'drift-alt': 'visuals/drift-alt-pingpong.mp4',
+  halo: 'visuals/halo-pingpong.mp4',
+  artifact: 'visuals/artifact-pingpong.mp4',
+  atmos: 'visuals/atmos-pingpong.mp4',
+  grain: 'visuals/grain-pingpong.mp4',
 };
 
 function assetUrl(path: string): string {
@@ -145,18 +146,7 @@ function visualRecipeFor(module: ModuleState): VisualRecipe {
 function colorProfileFor(module: ModuleState): ColorProfile {
   if (module.id === 'saturation') {
     const mode = module.emberMode ?? 'velvet';
-    if (mode === 'velvet') return 'ember';
-    if (mode === 'tube') return 'amber';
-    if (mode === 'console') return 'gold';
-    if (mode === 'transformer') return 'red';
-    if (mode === 'furnace') return 'amber';
-    if (mode === 'exciter') return 'magenta';
-    if (mode === 'broken') return 'red';
-    if (mode === 'goldlion') return 'gold';
-    if (mode === 'mullard') return 'sepia';
-    if (mode === 'telefunken') return 'cyan';
-    if (mode === 'bugleboy') return 'violet';
-    return 'mono';
+    return mode === 'goldlion' ? 'gold' : 'ember-dark';
   }
 
   if (module.id === 'chorus') {
@@ -256,7 +246,7 @@ function captionFor(module: ModuleState): string {
     : `ARTIFACT · ${mode.toUpperCase()}`;
 }
 
-function LoopVideo({ src, fallbackSrc, className }: { src: string; fallbackSrc: string; className: string }) {
+function VideoLayer({ src, fallbackSrc, className }: { src: string; fallbackSrc: string; className: string }) {
   return (
     <video
       className={className}
@@ -265,7 +255,8 @@ function LoopVideo({ src, fallbackSrc, className }: { src: string; fallbackSrc: 
       muted
       loop
       playsInline
-      preload="auto"
+      preload="metadata"
+      aria-hidden="true"
       onError={(event) => {
         const video = event.currentTarget;
         if (video.dataset.fallbackApplied === 'true') return;
@@ -273,7 +264,6 @@ function LoopVideo({ src, fallbackSrc, className }: { src: string; fallbackSrc: 
         video.src = fallbackSrc;
         void video.play().catch(() => undefined);
       }}
-      aria-hidden="true"
     />
   );
 }
@@ -286,8 +276,8 @@ export function ModuleViewport({
   visualState: VisualAudioState;
 }) {
   const key = videoFor(module);
-  const videoUrl = key ? assetUrl(VIDEO_FILES[key]) : null;
-  const fallbackVideoUrl = key ? assetUrl(FALLBACK_VIDEO_FILES[key]) : null;
+  const videoUrl = key ? assetUrl(PING_PONG_FILES[key]) : null;
+  const fallbackVideoUrl = key ? assetUrl(VIDEO_FILES[key]) : null;
   const feedback = Math.max(0, Math.min(1, visualState.level));
   const visualMode = visualModeFor(module);
   const visualRecipe = visualRecipeFor(module);
@@ -304,10 +294,10 @@ export function ModuleViewport({
     >
       {module.enabled && videoUrl && fallbackVideoUrl ? (
         <div className="module-video-stage" aria-hidden="true">
-          <LoopVideo src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-base" />
-          <LoopVideo src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-fx module-video-fx-a" />
-          <LoopVideo src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-fx module-video-fx-b" />
-          <LoopVideo src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-fx module-video-fx-c" />
+          <VideoLayer src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-base" />
+          <VideoLayer src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-fx module-video-fx-a" />
+          <VideoLayer src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-fx module-video-fx-b" />
+          <VideoLayer src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-fx module-video-fx-c" />
         </div>
       ) : module.enabled ? (
         <div className="module-video-empty" aria-hidden="true">
