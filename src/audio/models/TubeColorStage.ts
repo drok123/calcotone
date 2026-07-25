@@ -25,7 +25,7 @@ const MODEL_INDEX: Record<TubeColorModel, number> = {
 };
 
 const tubeWorkletLoads = new WeakMap<AudioContext, Promise<void>>();
-const TUBE_WORKLET_VERSION = '9.1.1-suspend-bypass';
+const TUBE_WORKLET_VERSION = '9.1.2-reset-on-resume';
 
 async function ensureTubeWorklet(context: AudioContext): Promise<void> {
   const existing = tubeWorkletLoads.get(context);
@@ -141,6 +141,7 @@ export class TubeColorStage {
 
   private connectProcessor(): void {
     if (!this.processor || this.processorConnected || this.disposed) return;
+    this.processor.port.postMessage({ type: 'reset' });
     this.input.connect(this.processor);
     this.processorConnected = true;
   }
