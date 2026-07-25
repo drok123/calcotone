@@ -1,4 +1,5 @@
 import { clampParameter } from '../Parameter';
+import { MagneticCoreStage } from '../models/MagneticCoreStage';
 import { TubeColorStage, type TubeColorModel } from '../models/TubeColorStage';
 import { BaseEffect } from './Effect';
 
@@ -60,6 +61,8 @@ export class SaturationEffect extends BaseEffect {
   private readonly genericGain: GainNode;
   private readonly tubeStage: TubeColorStage;
   private readonly tubeGain: GainNode;
+  private readonly magneticStage: MagneticCoreStage;
+  private readonly magneticGain: GainNode;
   private readonly tone: BiquadFilterNode;
   private readonly presence: BiquadFilterNode;
   private readonly compressor: DynamicsCompressorNode;
@@ -80,6 +83,8 @@ export class SaturationEffect extends BaseEffect {
     this.genericGain = context.createGain();
     this.tubeStage = new TubeColorStage(context);
     this.tubeGain = context.createGain();
+    this.magneticStage = new MagneticCoreStage(context);
+    this.magneticGain = context.createGain();
     this.tone = context.createBiquadFilter();
     this.presence = context.createBiquadFilter();
     this.compressor = context.createDynamicsCompressor();
@@ -98,19 +103,25 @@ export class SaturationEffect extends BaseEffect {
     this.compressor.knee.value = 12;
     this.genericGain.gain.value = 1;
     this.tubeGain.gain.value = 0;
+    this.magneticGain.gain.value = 0;
 
     this.input.connect(this.preGain);
     this.preGain.connect(this.hp);
 
-    // Generic Ember branch: creative saturation modes.
+    // Generic Ember branch: creative memoryless saturation modes.
     this.hp.connect(this.shaper);
     this.shaper.connect(this.genericGain);
     this.genericGain.connect(this.tone);
 
-    // Reusable small-signal tube branch: named Tube Lab modes and future hardware preamps.
+    // Stateful tube branch: bias, cathode, supply and recovery memory.
     this.hp.connect(this.tubeStage.input);
     this.tubeStage.connect(this.tubeGain);
     this.tubeGain.connect(this.tone);
+
+    // Stateful magnetic branch: hysteresis/remanence, saturation and dynamic core loss.
+    this.hp.connect(this.magneticStage.input);
+    this.magneticStage.connect(this.magneticGain);
+    this.magneticGain.connect(this.tone);
 
     this.tone.connect(this.presence);
     this.presence.connect(this.compressor);
@@ -123,11 +134,12 @@ export class SaturationEffect extends BaseEffect {
     }
   }
 
-  // Audio quality floor: the adaptive governor may request `none` in Live mode,
-  // but Ember's nonlinear stages are exactly where aliasing becomes most audible.
+  // Audio quality floor: nonlinear/stateful branches keep at least 2x internal quality.
   public setOversampling(value: OverSampleType): void {
     this.shaper.oversample = value === 'none' ? '2x' : value;
-    this.tubeStage.setQuality(value === '4x' ? 4 : 2);
+    const factor = value === '4x' ? 4 : 2;
+    this.tubeStage.setQuality(factor);
+    this.magneticStage.setQuality(factor);
   }
 
   public setParameter(id: string, value: number): void {
@@ -173,17 +185,18 @@ export class SaturationEffect extends BaseEffect {
   private apply(now = this.context.currentTime): void {
     const tubeModel = NAMED_TUBE_MODEL[this.mode] ?? 'bypass';
     const namedTube = tubeModel !== 'bypass';
+    const magnetic = this.mode === 'transformer';
 
     this.tubeStage.setModel(tubeModel);
     this.tubeStage.setParameters(this.drive, this.heat, this.character, this.dynamics);
+    this.magneticStage.setEnabled(magnetic);
+    this.magneticStage.setParameters(this.drive, this.heat, this.character, this.dynamics);
 
     if (namedTube) {
-      // Named Tube Lab models are rack coloration stages, not distortion effects.
-      // They retain unity-ish gain and let the reusable tube core supply only a
-      // restrained nonlinear residual, bias memory and gentle transient rounding.
       this.preGain.gain.setTargetAtTime(1, now, 0.012);
       this.genericGain.gain.setTargetAtTime(0, now, 0.018);
       this.tubeGain.gain.setTargetAtTime(1, now, 0.018);
+      this.magneticGain.gain.setTargetAtTime(0, now, 0.018);
       this.shaper.curve = getIdentityCurve();
       this.tone.frequency.setTargetAtTime(Math.max(2200, this.toneHz * (1 - this.heat * 0.055)), now, 0.025);
       this.presence.gain.setTargetAtTime((this.character - 0.5) * 0.9, now, 0.025);
@@ -194,15 +207,31 @@ export class SaturationEffect extends BaseEffect {
       return;
     }
 
+    if (magnetic) {
+      this.preGain.gain.setTargetAtTime(1, now, 0.012);
+      this.genericGain.gain.setTargetAtTime(0, now, 0.018);
+      this.tubeGain.gain.setTargetAtTime(0, now, 0.018);
+      this.magneticGain.gain.setTargetAtTime(1, now, 0.018);
+      this.shaper.curve = getIdentityCurve();
+      this.tone.frequency.setTargetAtTime(Math.max(2600, this.toneHz * (1 - this.heat * 0.09)), now, 0.025);
+      this.presence.frequency.setTargetAtTime(1450 + this.character * 900, now, 0.025);
+      this.presence.gain.setTargetAtTime(0.25 + (this.character - 0.5) * 1.25, now, 0.025);
+      this.compressor.threshold.setTargetAtTime(-1.5 - this.dynamics * 2.5, now, 0.03);
+      this.compressor.ratio.setTargetAtTime(1.02 + this.dynamics * 0.36, now, 0.03);
+      this.post.gain.setTargetAtTime(0.99 - this.drive * 0.035, now, 0.02);
+      return;
+    }
+
     this.genericGain.gain.setTargetAtTime(1, now, 0.018);
     this.tubeGain.gain.setTargetAtTime(0, now, 0.018);
+    this.magneticGain.gain.setTargetAtTime(0, now, 0.018);
     const fallbackMode = this.mode;
     const modeIndex = EMBER_MODE_ORDER.indexOf(fallbackMode);
     const aggressionByMode: Record<EmberMode, number> = {
       velvet: 0.7,
       tube: 0.42,
       console: 1.15,
-      transformer: 1.3,
+      transformer: 1.0,
       furnace: 2.2,
       exciter: 1.05,
       broken: 2.8,
@@ -219,7 +248,7 @@ export class SaturationEffect extends BaseEffect {
     this.preGain.gain.setTargetAtTime(input, now, 0.012);
     this.tone.frequency.setTargetAtTime(Math.max(1200, this.toneHz * (1 - this.heat * (fallbackMode === 'tube' ? 0.07 : 0.18))), now, 0.025);
     this.presence.gain.setTargetAtTime((fallbackMode === 'exciter' ? 5 : fallbackMode === 'tube' ? 0.8 : 2.2) * (this.character - 0.35), now, 0.025);
-    this.presence.frequency.setTargetAtTime(fallbackMode === 'transformer' ? 1700 : 3200 + this.character * 2600, now, 0.025);
+    this.presence.frequency.setTargetAtTime(3200 + this.character * 2600, now, 0.025);
     this.compressor.threshold.setTargetAtTime(fallbackMode === 'tube' ? -2 - this.dynamics * 4 : -4 - this.dynamics * 12, now, 0.03);
     this.compressor.ratio.setTargetAtTime(fallbackMode === 'tube' ? 1.05 + this.dynamics * 0.65 : 1.2 + this.dynamics * 3.8, now, 0.03);
     this.post.gain.setTargetAtTime(fallbackMode === 'tube' ? 0.98 / Math.pow(input, 0.22) : 1 / Math.pow(input, 0.72), now, 0.02);
@@ -228,12 +257,14 @@ export class SaturationEffect extends BaseEffect {
 
   public override dispose(): void {
     this.tubeStage.dispose();
+    this.magneticStage.dispose();
     for (const node of [
       this.preGain,
       this.hp,
       this.shaper,
       this.genericGain,
       this.tubeGain,
+      this.magneticGain,
       this.tone,
       this.presence,
       this.compressor,
@@ -262,11 +293,9 @@ function getCurve(mode: EmberMode, drive: number, heat: number, character: numbe
   const curve = new Float32Array(samples);
   const asymmetry = mode === 'tube'
     ? 0.035 + 0.055 * character
-    : mode === 'transformer'
-      ? 0.12 + 0.2 * character
-      : mode === 'broken'
-        ? 0.32 * character
-        : 0.04 * character;
+    : mode === 'broken'
+      ? 0.32 * character
+      : 0.04 * character;
   const amount = mode === 'tube'
     ? 0.95 + drive * 1.55 + heat * 0.55
     : 1.2 + drive * 7 + heat * 3 + (mode === 'furnace' ? 5 : 0);
@@ -276,7 +305,6 @@ function getCurve(mode: EmberMode, drive: number, heat: number, character: numbe
     const shaped = Math.tanh((x + Math.max(0, x) * asymmetry) * amount) / Math.tanh(amount);
     let y = mode === 'tube' ? x * 0.80 + shaped * 0.20 : shaped;
     if (mode === 'console') y = 0.72 * y + 0.28 * Math.atan(x * amount * 1.3) / Math.atan(amount * 1.3);
-    if (mode === 'transformer') y += Math.sin(x * Math.PI) * 0.035 * heat;
     if (mode === 'exciter') y = 0.82 * y + 0.18 * Math.tanh(x * amount * 2.4);
     if (mode === 'broken') y = Math.tanh((y + Math.sin(x * 17) * 0.06 * character) * 1.15);
     curve[index] = Math.max(-1, Math.min(1, y));
