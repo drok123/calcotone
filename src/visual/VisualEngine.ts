@@ -51,19 +51,16 @@ export function useVisualEngine(
     }
 
     let frame = 0;
-    let lastFrame = 0;
-    const interval = 1000 / Math.max(1, frameRate);
+    let lastSample = 0;
+    let lastReactPublish = 0;
+    const sampleInterval = 1000 / Math.max(1, frameRate);
+    const reactInterval = 1000 / 20;
     const data = new Uint8Array(analyser.frequencyBinCount);
-
-    const publish = (next: VisualAudioState) => {
-      latestVisualAudioState = next;
-      setState(next);
-    };
 
     const render = (timestamp: number) => {
       frame = requestAnimationFrame(render);
-      if (timestamp - lastFrame < interval) return;
-      lastFrame = timestamp;
+      if (timestamp - lastSample < sampleInterval) return;
+      lastSample = timestamp;
 
       analyser.getByteFrequencyData(data);
       const average = (start: number, end: number) => {
@@ -95,7 +92,7 @@ export function useVisualEngine(
       const transient = Math.min(1, levelRise * 8.5 + spectralSnap * 2.8);
       previousLevel.current = previousLevel.current * 0.66 + level * 0.34;
 
-      publish({
+      const next = {
         level,
         low,
         mid,
@@ -103,7 +100,15 @@ export function useVisualEngine(
         transient,
         driftPhase: (timestamp * 0.00008) % 1,
         time: timestamp / 1000,
-      });
+      };
+      latestVisualAudioState = next;
+
+      // Canvas renderers read latestVisualAudioState directly at their own cadence.
+      // React only needs a lower-rate snapshot for lightweight CSS/video feedback.
+      if (timestamp - lastReactPublish >= reactInterval) {
+        lastReactPublish = timestamp;
+        setState(next);
+      }
     };
 
     frame = requestAnimationFrame(render);
