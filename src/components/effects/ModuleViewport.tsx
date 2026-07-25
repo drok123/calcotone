@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 import type { ModuleState } from '../../ui/types';
 import type { VisualAudioState } from '../../visual/VisualEngine';
 import { formatAlgorithmName } from '../../ui/formatting';
@@ -41,6 +41,16 @@ type ColorProfile =
   | 'mono';
 
 const VIDEO_FILES: Record<ModuleVideoKey, string> = {
+  ember: 'visuals/ember-pingpong.mp4',
+  drift: 'visuals/drift-pingpong.mp4',
+  'drift-alt': 'visuals/drift-alt-pingpong.mp4',
+  halo: 'visuals/halo-pingpong.mp4',
+  artifact: 'visuals/artifact-pingpong.mp4',
+  atmos: 'visuals/atmos-pingpong.mp4',
+  grain: 'visuals/grain-pingpong.mp4',
+};
+
+const FALLBACK_VIDEO_FILES: Record<ModuleVideoKey, string> = {
   ember: 'visuals/ember.mp4',
   drift: 'visuals/drift.mp4',
   'drift-alt': 'visuals/drift-alt.mp4',
@@ -49,10 +59,6 @@ const VIDEO_FILES: Record<ModuleVideoKey, string> = {
   atmos: 'visuals/atmos.mp4',
   grain: 'visuals/grain.mp4',
 };
-
-const BREATH_CROSSFADE_SECONDS = 2.8;
-const BREATH_INCOMING_OFFSET_SECONDS = 0.12;
-const BREATH_EASING = 'cubic-bezier(0.45, 0, 0.55, 1)';
 
 function assetUrl(path: string): string {
   const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
@@ -250,115 +256,25 @@ function captionFor(module: ModuleState): string {
     : `ARTIFACT · ${mode.toUpperCase()}`;
 }
 
-function BreathingLoopLayer({ src, className }: { src: string; className: string }) {
-  const frontRef = useRef<HTMLVideoElement | null>(null);
-  const backRef = useRef<HTMLVideoElement | null>(null);
-  const frontActiveRef = useRef(true);
-  const timerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    const front = frontRef.current;
-    const back = backRef.current;
-    if (!front || !back) return;
-
-    const videos = [front, back];
-    videos.forEach((video) => {
-      video.muted = true;
-      video.loop = false;
-      video.playbackRate = 1;
-    });
-
-    const clearTimer = () => {
-      if (timerRef.current !== null) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-
-    const syncOpacity = () => {
-      front.style.opacity = frontActiveRef.current ? '1' : '0';
-      back.style.opacity = frontActiveRef.current ? '0' : '1';
-    };
-
-    const schedule = () => {
-      clearTimer();
-      const active = frontActiveRef.current ? front : back;
-      if (!Number.isFinite(active.duration) || active.duration <= BREATH_CROSSFADE_SECONDS + 0.4) return;
-      const delaySeconds = Math.max(0.1, active.duration - active.currentTime - BREATH_CROSSFADE_SECONDS);
-      timerRef.current = window.setTimeout(startBreathTurnaround, delaySeconds * 1000);
-    };
-
-    const startBreathTurnaround = () => {
-      const active = frontActiveRef.current ? front : back;
-      const incoming = frontActiveRef.current ? back : front;
-      if (!Number.isFinite(active.duration) || active.duration <= 0) return;
-
-      incoming.currentTime = Math.min(BREATH_INCOMING_OFFSET_SECONDS, Math.max(0, incoming.duration - 0.05));
-      incoming.style.transition = 'none';
-      incoming.style.opacity = '0';
-      active.style.transition = 'none';
-      active.style.opacity = '1';
-
-      void incoming.play().then(() => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            incoming.style.transition = `opacity ${BREATH_CROSSFADE_SECONDS}s ${BREATH_EASING}`;
-            active.style.transition = `opacity ${BREATH_CROSSFADE_SECONDS}s ${BREATH_EASING}`;
-            incoming.style.opacity = '1';
-            active.style.opacity = '0';
-          });
-        });
-      }).catch(() => undefined);
-
-      timerRef.current = window.setTimeout(() => {
-        active.pause();
-        active.currentTime = BREATH_INCOMING_OFFSET_SECONDS;
-        active.style.transition = 'none';
-        frontActiveRef.current = !frontActiveRef.current;
-        syncOpacity();
-        schedule();
-      }, BREATH_CROSSFADE_SECONDS * 1000 + 100);
-    };
-
-    const onMetadata = () => {
-      syncOpacity();
-      const active = frontActiveRef.current ? front : back;
-      if (active.currentTime < BREATH_INCOMING_OFFSET_SECONDS) active.currentTime = BREATH_INCOMING_OFFSET_SECONDS;
-      void active.play().catch(() => undefined);
-      schedule();
-    };
-
-    const onVisibility = () => {
-      if (document.hidden) {
-        clearTimer();
-        videos.forEach((video) => video.pause());
-      } else {
-        const active = frontActiveRef.current ? front : back;
-        void active.play().catch(() => undefined);
-        schedule();
-      }
-    };
-
-    front.addEventListener('loadedmetadata', onMetadata);
-    back.addEventListener('loadedmetadata', onMetadata);
-    document.addEventListener('visibilitychange', onVisibility);
-
-    if (front.readyState >= 1 && back.readyState >= 1) onMetadata();
-
-    return () => {
-      clearTimer();
-      front.removeEventListener('loadedmetadata', onMetadata);
-      back.removeEventListener('loadedmetadata', onMetadata);
-      document.removeEventListener('visibilitychange', onVisibility);
-      videos.forEach((video) => video.pause());
-    };
-  }, [src]);
-
+function LoopVideo({ src, fallbackSrc, className }: { src: string; fallbackSrc: string; className: string }) {
   return (
-    <span className={`${className} breathing-loop-layer`} aria-hidden="true">
-      <video ref={frontRef} className="breathing-loop-video breathing-loop-front" src={src} muted playsInline preload="auto" />
-      <video ref={backRef} className="breathing-loop-video breathing-loop-back" src={src} muted playsInline preload="auto" />
-    </span>
+    <video
+      className={className}
+      src={src}
+      autoPlay
+      muted
+      loop
+      playsInline
+      preload="auto"
+      onError={(event) => {
+        const video = event.currentTarget;
+        if (video.dataset.fallbackApplied === 'true') return;
+        video.dataset.fallbackApplied = 'true';
+        video.src = fallbackSrc;
+        void video.play().catch(() => undefined);
+      }}
+      aria-hidden="true"
+    />
   );
 }
 
@@ -371,6 +287,7 @@ export function ModuleViewport({
 }) {
   const key = videoFor(module);
   const videoUrl = key ? assetUrl(VIDEO_FILES[key]) : null;
+  const fallbackVideoUrl = key ? assetUrl(FALLBACK_VIDEO_FILES[key]) : null;
   const feedback = Math.max(0, Math.min(1, visualState.level));
   const visualMode = visualModeFor(module);
   const visualRecipe = visualRecipeFor(module);
@@ -385,12 +302,12 @@ export function ModuleViewport({
       data-color-profile={colorProfile}
       style={{ '--module-feedback': feedback } as CSSProperties}
     >
-      {module.enabled && videoUrl ? (
+      {module.enabled && videoUrl && fallbackVideoUrl ? (
         <div className="module-video-stage" aria-hidden="true">
-          <BreathingLoopLayer src={videoUrl} className="module-video module-video-base" />
-          <BreathingLoopLayer src={videoUrl} className="module-video module-video-fx module-video-fx-a" />
-          <BreathingLoopLayer src={videoUrl} className="module-video module-video-fx module-video-fx-b" />
-          <BreathingLoopLayer src={videoUrl} className="module-video module-video-fx module-video-fx-c" />
+          <LoopVideo src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-base" />
+          <LoopVideo src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-fx module-video-fx-a" />
+          <LoopVideo src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-fx module-video-fx-b" />
+          <LoopVideo src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-fx module-video-fx-c" />
         </div>
       ) : module.enabled ? (
         <div className="module-video-empty" aria-hidden="true">
