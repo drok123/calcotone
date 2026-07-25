@@ -4,10 +4,7 @@ import { getEffectiveMotionValue } from '../../ui/motion';
 import { getLatestVisualAudioState } from '../../visual/VisualEngine';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
 import { DreamFieldEngine } from './DreamFieldEngine';
-import {
-  preloadVideoWorlds,
-  type VideoWorldKey,
-} from './videoWorlds';
+import { loadVideoWorld, type VideoWorldKey } from './videoWorlds';
 import './DreamField.css';
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
@@ -113,11 +110,12 @@ function videoWorldsForModules(modules: ModuleState[]): Array<VideoWorldLayer & 
     .map(describeVideoWorld)
     .filter((world): world is VideoWorldLayer => world !== null);
   const totalEnergy = worlds.reduce((total, world) => total + world.energy, 0);
-  const blendGain = totalEnergy > 1.45 ? 1.45 / totalEnergy : 1;
+  const blendGain = totalEnergy > 1.7 ? 1.7 / totalEnergy : 1;
 
   return worlds.map((world) => ({
     ...world,
-    opacity: clamp01((0.14 + world.energy * 0.64) * blendGain),
+    // The source plate should read as the world, not as a faint texture underneath it.
+    opacity: clamp01((0.46 + world.energy * 0.50) * blendGain),
   }));
 }
 
@@ -181,20 +179,33 @@ export function XYSignalField({
   positionRef.current = position;
   draggingRef.current = dragging;
 
+  const worlds = videoWorldsForModules(modules);
+  const requestedWorldToken = Array.from(new Set(worlds.map((world) => world.key)))
+    .sort()
+    .join('|');
+
   useEffect(() => {
     let cancelled = false;
-    preloadVideoWorlds()
-      .then((urls) => {
-        if (!cancelled) setVideoUrls(urls);
-      })
-      .catch((error) => {
-        // The procedural Dream Field remains a complete fallback if a plate cannot load.
-        console.warn('CALCOTONE Dream Field video plates unavailable', error);
-      });
+    const keys = requestedWorldToken
+      ? (requestedWorldToken.split('|') as VideoWorldKey[])
+      : [];
+
+    for (const key of keys) {
+      // Load active worlds independently. One missing/corrupt plate must never block the rest.
+      loadVideoWorld(key)
+        .then((url) => {
+          if (cancelled) return;
+          setVideoUrls((current) => current[key] === url ? current : { ...current, [key]: url });
+        })
+        .catch((error) => {
+          console.warn(`CALCOTONE Dream Field ${key} plate unavailable`, error);
+        });
+    }
+
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [requestedWorldToken]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -285,14 +296,20 @@ export function XYSignalField({
       if (stack) {
         const x = (positionRef.current.x - 50) / 50;
         const y = (positionRef.current.y - 50) / 50;
-        const idleX = Math.sin(stamp * 0.00031 + audio.mid * 2.7) * (1.4 + audio.mid * 3.4);
-        const idleY = Math.cos(stamp * 0.00023 + audio.low * 2.2) * (1.0 + audio.low * 2.8);
-        const impulse = audio.transient * 0.018;
-        const scale = 1.075 + audio.low * 0.035 + impulse + (draggingRef.current ? 0.008 : 0);
-        const translateX = -x * 12 + idleX;
-        const translateY = y * 8 + idleY;
+        const idleX = Math.sin(stamp * 0.00031 + audio.mid * 2.7) * (2.2 + audio.mid * 5.4);
+        const idleY = Math.cos(stamp * 0.00023 + audio.low * 2.2) * (1.6 + audio.low * 4.0);
+        const impulse = audio.transient * 0.025;
+        const scale = 1.09 + audio.low * 0.055 + impulse + (draggingRef.current ? 0.012 : 0);
+        const translateX = -x * (18 + audio.low * 8) + idleX;
+        const translateY = y * (12 + audio.mid * 5) + idleY;
+        const brightness = 0.94 + audio.level * 0.22 + audio.transient * 0.18;
+        const contrast = 1.04 + audio.low * 0.10 + audio.transient * 0.08;
+        const saturation = 1.03 + audio.mid * 0.08 + audio.high * 0.22;
 
         stack.style.transform = `translate3d(${translateX.toFixed(2)}px, ${translateY.toFixed(2)}px, 0) scale(${scale.toFixed(4)})`;
+        stack.style.setProperty('--dream-bright', brightness.toFixed(3));
+        stack.style.setProperty('--dream-contrast', contrast.toFixed(3));
+        stack.style.setProperty('--dream-sat', saturation.toFixed(3));
         stack.style.setProperty('--dream-level', audio.level.toFixed(3));
         stack.style.setProperty('--dream-low', audio.low.toFixed(3));
         stack.style.setProperty('--dream-mid', audio.mid.toFixed(3));
@@ -326,11 +343,14 @@ export function XYSignalField({
     };
   }, []);
 
-  const worlds = videoWorldsForModules(modules);
   const visibleWorlds = worlds.filter((world) => videoUrls[world.key]);
 
   return (
-    <div className={`xy-signal-field-shell ${visibleWorlds.length ? 'has-video-world' : ''}`} aria-hidden="true">
+    <div
+      className={`xy-signal-field-shell ${visibleWorlds.length ? 'has-video-world' : ''}`}
+      data-video-worlds={visibleWorlds.map((world) => world.key).join(',')}
+      aria-hidden="true"
+    >
       <div ref={videoStackRef} className="dream-video-stack">
         {visibleWorlds.map((world) => (
           <video
@@ -343,6 +363,12 @@ export function XYSignalField({
             loop
             playsInline
             preload="auto"
+            onCanPlay={(event) => {
+              void event.currentTarget.play().catch(() => undefined);
+            }}
+            onError={() => {
+              console.warn(`CALCOTONE Dream Field ${world.key} video element failed to play`);
+            }}
           />
         ))}
       </div>
