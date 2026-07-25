@@ -5,6 +5,7 @@ import { DelayEffect } from './effects/Delay';
 import { BitcrusherEffect } from './effects/Bitcrusher';
 import { ReverbEffect } from './effects/Reverb';
 import { MediaEffect } from './effects/Media';
+import { attachPhysicalBehavior } from './PhysicalBehaviorRegistry';
 
 export type EffectId =
   | 'saturation'
@@ -19,19 +20,26 @@ export function createEffect(
   effectId: EffectId,
   context: AudioContext
 ): Effect | null {
+  let effect: Effect | null = null;
   switch (effectId) {
     case 'saturation':
-      return new SaturationEffect(context);
+      effect = new SaturationEffect(context);
+      break;
     case 'chorus':
-      return new ChorusEffect(context);
+      effect = new ChorusEffect(context);
+      break;
     case 'delay':
-      return new DelayEffect(context);
+      effect = new DelayEffect(context);
+      break;
     case 'bitcrusher':
-      return new BitcrusherEffect(context);
+      effect = new BitcrusherEffect(context);
+      break;
     case 'reverb':
-      return new ReverbEffect(context);
+      effect = new ReverbEffect(context);
+      break;
     case 'media':
-      return new MediaEffect(context);
+      effect = new MediaEffect(context);
+      break;
     case 'bypass':
       return null;
     default: {
@@ -39,4 +47,5 @@ export function createEffect(
       throw new Error(`Unsupported effect: ${String(exhaustiveCheck)}`);
     }
   }
+  return attachPhysicalBehavior(effect);
 }
