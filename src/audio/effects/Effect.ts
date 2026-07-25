@@ -11,6 +11,7 @@ export interface Effect {
   disconnect(): void;
   setParameter(parameterId: string, value: number): void;
   getParameter(parameterId: string): ParameterState | undefined;
+  getParameterValue(parameterId: string): number | undefined;
   getParameters(): ParameterState[];
   setBypassed(bypassed: boolean): void;
   isBypassed(): boolean;
@@ -157,6 +158,10 @@ export abstract class BaseEffect implements Effect {
     if (!definition) return undefined;
     const value = this.parameterValues.get(parameterId) ?? definition.defaultValue;
     return { ...definition, value, normalizedValue: normalizeParameter(value, definition) };
+  }
+
+  public getParameterValue(parameterId: string): number | undefined {
+    return this.parameterValues.get(parameterId);
   }
 
   public getParameters(): ParameterState[] {
