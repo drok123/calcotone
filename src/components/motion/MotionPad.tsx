@@ -1,6 +1,5 @@
 import type {
   ChangeEvent as ReactChangeEvent,
-  CSSProperties,
   PointerEvent as ReactPointerEvent,
   RefObject,
 } from 'react';
@@ -47,16 +46,11 @@ export function MotionPad({
 }: MotionPadProps) {
   const xRoutes = assignments.filter((assignment) => assignment.axis === 'x');
   const yRoutes = assignments.filter((assignment) => assignment.axis === 'y');
-  const padStyle = {
-    '--pad-x': `${position.x}%`,
-    '--pad-y': `${100 - position.y}%`,
-  } as CSSProperties;
 
   return (
     <>
       <div
         className={`xy-pad dream-pad ${dragging ? 'is-dragging' : ''} ${patchActive ? 'patch-target-active' : ''}`}
-        style={padStyle}
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId);
           onDraggingChange(true);
@@ -81,25 +75,6 @@ export function MotionPad({
           position={position}
           dragging={dragging || patchActive}
         />
-
-        <div className="dream-reticle horizontal" aria-hidden="true" />
-        <div className="dream-reticle vertical" aria-hidden="true" />
-        <div className="dream-position-guide x" aria-hidden="true" />
-        <div className="dream-position-guide y" aria-hidden="true" />
-        <div className="dream-origin" aria-hidden="true" />
-
-        <div
-          className="xy-cursor dream-cursor"
-          style={{ '--x': `${position.x}%`, '--y': `${100 - position.y}%` } as CSSProperties}
-          aria-hidden="true"
-        />
-
-        <div className="dream-hud" aria-hidden="true">
-          <span>DREAM FIELD</span>
-          <strong>X {Math.round(position.x).toString().padStart(3, '0')}</strong>
-          <strong>Y {Math.round(position.y).toString().padStart(3, '0')}</strong>
-          <em>{assignments.length ? `X${xRoutes.length} · Y${yRoutes.length}` : 'UNPATCHED'}</em>
-        </div>
       </div>
 
       <div
