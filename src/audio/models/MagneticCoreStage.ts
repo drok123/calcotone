@@ -1,5 +1,5 @@
 const magneticWorkletLoads = new WeakMap<AudioContext, Promise<void>>();
-const MAGNETIC_WORKLET_VERSION = '1.0.3-full-suspend';
+const MAGNETIC_WORKLET_VERSION = '1.1.0-deep-hysteresis';
 
 async function ensureMagneticWorklet(context: AudioContext): Promise<void> {
   const existing = magneticWorkletLoads.get(context);
