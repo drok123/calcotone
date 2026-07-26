@@ -39,8 +39,9 @@ function assetUrl(path: string): string {
 function videoFor(module: ModuleState): ModuleVideoKey | null {
   if (module.id === 'saturation') return 'ember';
   if (module.id === 'chorus') {
-    const mode = module.driftMode ?? 'chorus';
-    return ['liquid', 'orbit', 'doppler', 'rotary'].includes(mode) ? 'drift-alt' : 'drift';
+    // Doppler/Liquid/Orbit use the known-good Drift decoder source and keep their identity
+    // through color/recipe treatment. Rotary intentionally retains the alternate footage.
+    return (module.driftMode ?? 'chorus') === 'rotary' ? 'drift-alt' : 'drift';
   }
   if (module.id === 'delay') return 'halo';
   if (module.id === 'reverb') return 'atmos';
