@@ -1,4 +1,5 @@
 import { clampParameter } from '../Parameter';
+import { DriftClassicStage, type DriftClassicModel } from '../models/DriftClassicStage';
 import { BaseEffect } from './Effect';
 
 export type DriftMode =
@@ -15,12 +16,16 @@ export type DriftMode =
   | 'mxrflanger'
   | 'electricmistress'
   | 'adaflanger'
-  | 'bf2';
+  | 'bf2'
+  | 'biphase'
+  | 'smallstone'
+  | 'univibe'
+  | 'leslie';
 
 // Existing indices stay fixed for preset compatibility; new studies append only.
 export const DRIFT_MODE_ORDER: DriftMode[] = [
   'chorus','ensemble','dimension','vibrato','rotary','doppler','liquid','orbit','ce1','dimensiond',
-  'mxrflanger','electricmistress','adaflanger','bf2',
+  'mxrflanger','electricmistress','adaflanger','bf2','biphase','smallstone','univibe','leslie',
 ];
 
 const MODE = { id: 'mode', label: 'Mode', min: 0, max: DRIFT_MODE_ORDER.length - 1, defaultValue: 0, step: 1 };
@@ -56,6 +61,11 @@ function isFlangerMode(mode: DriftMode): mode is keyof typeof FLANGER_CURVES {
   return mode === 'mxrflanger' || mode === 'electricmistress' || mode === 'adaflanger' || mode === 'bf2';
 }
 
+function classicModel(mode: DriftMode): DriftClassicModel {
+  if (mode === 'biphase' || mode === 'smallstone' || mode === 'univibe' || mode === 'leslie') return mode;
+  return 'bypass';
+}
+
 export class ChorusEffect extends BaseEffect {
   public readonly id = 'chorus';
   public readonly name = 'Drift';
@@ -72,6 +82,9 @@ export class ChorusEffect extends BaseEffect {
   private readonly voiceGains: GainNode[] = [];
   private readonly feedbacks: GainNode[] = [];
   private readonly sum: GainNode;
+  private readonly standardGain: GainNode;
+  private readonly classicGain: GainNode;
+  private readonly classicStage: DriftClassicStage;
   private currentPreampCurve: Float32Array<ArrayBuffer> = IDENTITY_CURVE;
 
   private mode: DriftMode = 'chorus';
@@ -92,10 +105,18 @@ export class ChorusEffect extends BaseEffect {
     this.inputTone.Q.value = 0.45;
     this.splitter = context.createChannelSplitter(2);
     this.sum = context.createGain();
+    this.standardGain = context.createGain();
+    this.classicGain = context.createGain();
+    this.classicStage = new DriftClassicStage(context);
+    this.standardGain.gain.value = 1;
+    this.classicGain.gain.value = 0;
 
     this.input.connect(this.preamp);
     this.preamp.connect(this.inputTone);
     this.inputTone.connect(this.splitter);
+    this.input.connect(this.classicStage.input);
+    this.classicStage.connect(this.classicGain);
+    this.classicGain.connect(this.wetGain);
 
     for (let i = 0; i < 4; i += 1) {
       const delay = context.createDelay(0.09);
@@ -125,7 +146,6 @@ export class ChorusEffect extends BaseEffect {
       tone.connect(pan);
       pan.connect(voiceGain);
       voiceGain.connect(this.sum);
-      // Delayed feedback is safe and gives the flange studies their moving comb resonance.
       tone.connect(feedback);
       feedback.connect(delay);
       lfo.connect(depth);
@@ -142,7 +162,8 @@ export class ChorusEffect extends BaseEffect {
       this.feedbacks.push(feedback);
     }
 
-    this.sum.connect(this.wetGain);
+    this.sum.connect(this.standardGain);
+    this.standardGain.connect(this.wetGain);
     this.initializeParameters([MODE, RATE, DEPTH, SHAPE, SPREAD, MOTION, MIX]);
     this.apply();
     this.setWetDryMix(MIX.defaultValue);
@@ -230,6 +251,20 @@ export class ChorusEffect extends BaseEffect {
 
   private apply(): void {
     const now = this.context.currentTime;
+    const classic = classicModel(this.mode);
+    if (classic !== 'bypass') {
+      this.clearFeedback(now);
+      this.standardGain.gain.setTargetAtTime(0, now, 0.018);
+      this.classicGain.gain.setTargetAtTime(1, now, 0.018);
+      const normalizedRate = (this.rate - RATE.min) / (RATE.max - RATE.min);
+      const normalizedDepth = this.depth / DEPTH.max;
+      this.classicStage.configure(classic, normalizedRate, normalizedDepth, this.shape, this.spread, this.motion);
+      return;
+    }
+
+    this.classicStage.configure('bypass', 0, 0, this.shape, this.spread, this.motion);
+    this.standardGain.gain.setTargetAtTime(1, now, 0.018);
+    this.classicGain.gain.setTargetAtTime(0, now, 0.018);
 
     if (isFlangerMode(this.mode)) {
       this.applyFlanger(now);
@@ -313,7 +348,8 @@ export class ChorusEffect extends BaseEffect {
     for (const lfo of this.lfos) {
       try { lfo.stop(); } catch { /* already stopped */ }
     }
-    for (const node of [this.preamp, this.inputTone, this.splitter, this.sum, ...this.delays, ...this.lfos, ...this.depths, ...this.highpasses, ...this.tones, ...this.pans, ...this.voiceGains, ...this.feedbacks]) node.disconnect();
+    this.classicStage.dispose();
+    for (const node of [this.preamp, this.inputTone, this.splitter, this.sum, this.standardGain, this.classicGain, ...this.delays, ...this.lfos, ...this.depths, ...this.highpasses, ...this.tones, ...this.pans, ...this.voiceGains, ...this.feedbacks]) node.disconnect();
     super.dispose();
   }
 }
