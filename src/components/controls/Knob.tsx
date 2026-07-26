@@ -52,7 +52,6 @@ export function Knob({
     cleanupPatchRef.current?.();
   }, []);
 
-
   function handlePointerDown(event: ReactPointerEvent<HTMLSpanElement>): void {
     if (disabled || event.button !== 0) return;
     event.preventDefault();
@@ -76,8 +75,6 @@ export function Knob({
       if (!pending) return;
       pendingDragRef.current = null;
 
-      // Absolute-from-grab-point mapping prevents event-to-event acceleration,
-      // magnetic snapping and release momentum from making the knob "bounce".
       const vertical = dragRef.current.startY - pending.y;
       const horizontal = pending.x - dragRef.current.startX;
       const travel = vertical + horizontal * 0.10;
@@ -99,16 +96,12 @@ export function Knob({
         y: pointerEvent.clientY,
         fine: pointerEvent.shiftKey,
       };
-      if (dragFrameRef.current === null) {
-        dragFrameRef.current = requestAnimationFrame(applyPending);
-      }
+      if (dragFrameRef.current === null) dragFrameRef.current = requestAnimationFrame(applyPending);
     };
 
     const finish = (pointerEvent: PointerEvent): void => {
       if (pointerEvent.pointerId !== dragRef.current.pointerId) return;
       pointerEvent.preventDefault();
-
-      // Commit the last pointer sample before ending the gesture.
       pendingDragRef.current = {
         x: pointerEvent.clientX,
         y: pointerEvent.clientY,
@@ -158,12 +151,7 @@ export function Knob({
     const bounds = event.currentTarget.getBoundingClientRect();
     patchRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
     document.body.classList.add('patch-is-dragging');
-    onPatchStart(
-      bounds.left + bounds.width / 2,
-      bounds.top + bounds.height / 2,
-      event.clientX,
-      event.clientY
-    );
+    onPatchStart(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2, event.clientX, event.clientY);
 
     const move = (pointerEvent: PointerEvent): void => {
       if (pointerEvent.pointerId !== patchRef.current.pointerId) return;
@@ -188,8 +176,8 @@ export function Knob({
     const up = (pointerEvent: PointerEvent): void => finish(pointerEvent, false);
     const cancelPatch = (pointerEvent: PointerEvent): void => finish(pointerEvent, true);
     window.addEventListener('pointermove', move, { passive: false });
-    window.addEventListener('pointerup', up, { passive: false });
-    window.addEventListener('pointercancel', cancelPatch, { passive: false });
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancelPatch);
     cleanupPatchRef.current = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
@@ -220,6 +208,12 @@ export function Knob({
     }
   }
 
+  const faceStyle = {
+    transform: `rotate(${rotation}deg)`,
+    transition: isAdjusting ? 'none' : 'transform 220ms cubic-bezier(0.22, 0.8, 0.2, 1)',
+    willChange: 'transform',
+  } as CSSProperties;
+
   return (
     <div className={`knob-control ${assignment ? 'xy-assigned' : ''} ${isAdjusting ? 'is-adjusting' : ''}`}>
       <span className="knob-value" aria-hidden={!isAdjusting}>{display}</span>
@@ -240,7 +234,7 @@ export function Knob({
       >
         <span className="knob-modulation-ring" aria-hidden="true" />
         <span className="knob-effective-marker" aria-hidden="true" />
-        <span className="knob-face" style={{ transform: `rotate(${rotation}deg)` }} aria-hidden="true">
+        <span className="knob-face" style={faceStyle} aria-hidden="true">
           <span className="knob-indicator" />
         </span>
       </span>
@@ -260,4 +254,3 @@ export function Knob({
     </div>
   );
 }
-
