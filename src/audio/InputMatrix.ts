@@ -141,7 +141,6 @@ export class InputMatrix {
     let lr = 0;
     let rl = 0;
     let rr = 0;
-    const sum = Math.SQRT1_2;
 
     switch (this.mode) {
       case 'stereo':
@@ -158,10 +157,12 @@ export class InputMatrix {
         rr = 1;
         break;
       case 'sum-mono':
-        ll = sum;
-        rl = sum;
-        lr = sum;
-        rr = sum;
+        // Unity-safe coherent sum: average L/R instead of equal-power summing.
+        // This avoids a ~3 dB jump when both channels carry correlated material.
+        ll = 0.5;
+        rl = 0.5;
+        lr = 0.5;
+        rr = 0.5;
         break;
       case 'swap':
         lr = 1;
