@@ -337,7 +337,8 @@ class ReverbNetwork {
   }
 }
 
-const MAX_RETIRED_REVERB_NETWORKS = 2;
+// One active field plus one retiring field is enough for a continuous algorithm transition.
+const MAX_RETIRED_REVERB_NETWORKS = 1;
 const ATMOS_CROSSFADE_SECONDS = 0.82;
 const ATMOS_FADE_IN = createAtmosFade(true);
 const ATMOS_FADE_OUT = createAtmosFade(false);
@@ -363,6 +364,7 @@ export class ReverbEffect extends BaseEffect {
   private color = COLOR.defaultValue;
   private diffusion = DIFFUSION.defaultValue;
   private motion = MOTION.defaultValue;
+  private initialized = false;
 
   public constructor(context: AudioContext) {
     super(context);
@@ -375,20 +377,22 @@ export class ReverbEffect extends BaseEffect {
     this.setParameter('diffusion', DIFFUSION.defaultValue);
     this.setParameter('motion', MOTION.defaultValue);
     this.setParameter('mix', MIX.defaultValue);
+    this.initialized = true;
   }
 
   public setAlgorithm(algorithm: ReverbAlgorithm): void { const index = REVERB_ALGORITHM_ORDER.indexOf(algorithm); if (index >= 0) this.setParameter('algorithm', index); }
   public getAlgorithm(): ReverbAlgorithm { return this.algorithm; }
 
   public setParameter(parameterId: string, value: number): void {
+    if (this.initialized && this.parameterValues.get(parameterId) === value) return;
     switch (parameterId) {
-      case 'algorithm': { const nextIndex = Math.round(clampParameter(value, ALGORITHM)); this.parameterValues.set(parameterId, nextIndex); this.switchAlgorithm(REVERB_ALGORITHM_ORDER[nextIndex]); break; }
-      case 'decay': this.decay = clampParameter(value, DECAY); this.parameterValues.set(parameterId, this.decay); this.updateNetworks(); break;
-      case 'size': this.size = clampParameter(value, SIZE); this.parameterValues.set(parameterId, this.size); this.updateNetworks(); break;
-      case 'color': this.color = clampParameter(value, COLOR); this.parameterValues.set(parameterId, this.color); this.updateNetworks(); break;
-      case 'diffusion': this.diffusion = clampParameter(value, DIFFUSION); this.parameterValues.set(parameterId, this.diffusion); this.updateNetworks(); break;
-      case 'motion': this.motion = clampParameter(value, MOTION); this.parameterValues.set(parameterId, this.motion); this.updateNetworks(); break;
-      case 'mix': { const next = clampParameter(value, MIX); this.parameterValues.set(parameterId, next); this.setWetDryMix(next); break; }
+      case 'algorithm': { const nextIndex = Math.round(clampParameter(value, ALGORITHM)); if (this.initialized && this.parameterValues.get(parameterId) === nextIndex) return; this.parameterValues.set(parameterId, nextIndex); this.switchAlgorithm(REVERB_ALGORITHM_ORDER[nextIndex]); break; }
+      case 'decay': { const next = clampParameter(value, DECAY); if (this.initialized && this.decay === next) return; this.decay = next; this.parameterValues.set(parameterId, next); this.updateNetworks(); break; }
+      case 'size': { const next = clampParameter(value, SIZE); if (this.initialized && this.size === next) return; this.size = next; this.parameterValues.set(parameterId, next); this.updateNetworks(); break; }
+      case 'color': { const next = clampParameter(value, COLOR); if (this.initialized && this.color === next) return; this.color = next; this.parameterValues.set(parameterId, next); this.updateNetworks(); break; }
+      case 'diffusion': { const next = clampParameter(value, DIFFUSION); if (this.initialized && this.diffusion === next) return; this.diffusion = next; this.parameterValues.set(parameterId, next); this.updateNetworks(); break; }
+      case 'motion': { const next = clampParameter(value, MOTION); if (this.initialized && this.motion === next) return; this.motion = next; this.parameterValues.set(parameterId, next); this.updateNetworks(); break; }
+      case 'mix': { const next = clampParameter(value, MIX); if (this.initialized && this.parameterValues.get(parameterId) === next) return; this.parameterValues.set(parameterId, next); this.setWetDryMix(next); break; }
       default: console.warn(`Unknown parameter "${parameterId}" for ${this.name}.`);
     }
   }
@@ -405,7 +409,7 @@ export class ReverbEffect extends BaseEffect {
     if (algorithm === this.algorithm) return;
     const now = this.context.currentTime;
     const previous = this.active;
-    try { this.input.disconnect(previous.network.input); } catch { /* already disconnected */ }
+    // Keep the outgoing field live-fed throughout the crossfade. It is detached only when retired.
     const next = this.createNetwork(algorithm, 0);
     this.active = next; this.algorithm = algorithm;
     next.gain.gain.cancelScheduledValues(now); previous.gain.gain.cancelScheduledValues(now);
@@ -418,6 +422,24 @@ export class ReverbEffect extends BaseEffect {
 
   private updateNetworks(): void { this.active.network.update(this.decay, this.size, this.color, this.diffusion, this.motion); }
   private trimRetiringNetworks(): void { while (this.retiring.size > MAX_RETIRED_REVERB_NETWORKS) { const oldest = this.retiring.values().next().value as ActiveNetwork | undefined; if (!oldest) break; this.disposeRetiringNetwork(oldest); } }
-  private disposeRetiringNetwork(entry: ActiveNetwork): void { if (!this.retiring.delete(entry)) return; if (entry.disposeTimer !== null) globalThis.clearTimeout(entry.disposeTimer); entry.gain.disconnect(); entry.network.dispose(); }
-  public override dispose(): void { this.active.gain.disconnect(); this.active.network.dispose(); this.retiring.forEach((entry) => { if (entry.disposeTimer !== null) globalThis.clearTimeout(entry.disposeTimer); entry.gain.disconnect(); entry.network.dispose(); }); this.retiring.clear(); super.dispose(); }
+  private disposeRetiringNetwork(entry: ActiveNetwork): void {
+    if (!this.retiring.delete(entry)) return;
+    if (entry.disposeTimer !== null) globalThis.clearTimeout(entry.disposeTimer);
+    try { this.input.disconnect(entry.network.input); } catch { /* already detached */ }
+    entry.gain.disconnect();
+    entry.network.dispose();
+  }
+  public override dispose(): void {
+    try { this.input.disconnect(this.active.network.input); } catch { /* already detached */ }
+    this.active.gain.disconnect();
+    this.active.network.dispose();
+    this.retiring.forEach((entry) => {
+      if (entry.disposeTimer !== null) globalThis.clearTimeout(entry.disposeTimer);
+      try { this.input.disconnect(entry.network.input); } catch { /* already detached */ }
+      entry.gain.disconnect();
+      entry.network.dispose();
+    });
+    this.retiring.clear();
+    super.dispose();
+  }
 }
