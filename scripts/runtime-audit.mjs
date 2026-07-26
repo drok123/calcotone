@@ -24,6 +24,7 @@ const randomBridge = read('src/randomTransferBridge.ts');
 const haloPatch = read('src/haloStabilityPatch.ts');
 const artifactPatch = read('src/artifactStabilityPatch.ts');
 const modulePatch = read('src/moduleStabilityPatch.ts');
+const atmosPatch = read('src/atmosStabilityPatch.ts');
 const videoPatch = read('src/videoStabilityPatch.ts');
 const videoColor = read('src/components/effects/VideoColorStability.css');
 const media = read('src/audio/effects/Media.ts');
@@ -93,6 +94,12 @@ requireText(modulePatch, '__calcotoneBloomAttached === undefined', 'Grain initia
 requireText(modulePatch, 'this.input.connect(previous.network.input)', 'Atmos live-fed outgoing crossfade');
 requireText(modulePatch, 'while (this.retiring.size > 1)', 'Atmos retired-network cap');
 requireText(modulePatch, 'import.meta.hot.dispose(uninstall)', 'Remaining module patch HMR teardown');
+
+// Atmos should not walk its entire delay/diffusion graph for repeated identical control writes.
+requireText(main, "import './atmosStabilityPatch'", 'Atmos stability patch load');
+requireText(atmosPatch, 'const previous = this.parameterValues.get(parameterId)', 'Atmos previous-value lookup');
+requireText(atmosPatch, 'if (previous === value) return', 'Atmos redundant update suppression');
+requireText(atmosPatch, 'import.meta.hot.dispose(uninstall)', 'Atmos patch HMR teardown');
 
 // Ember's generic waveshaper cache must remain bounded during long RANDOM/XY sessions.
 requireText(ember, 'const MAX_CURVE_CACHE = 192', 'Ember bounded curve cache');
