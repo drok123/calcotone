@@ -151,12 +151,10 @@ export function syncPhysicalBehavior(effect: Effect): void {
     }
   } else if (effect.id === 'bitcrusher') {
     const mode = GRAIN_MODE_ORDER[index(effect, 'mode')] ?? 'reconstruct';
-    const bits = value(effect, 'bits', 0.75);
     const density = value(effect, 'density', 0.42);
     const pitch = value(effect, 'pitch', 0.38);
     const chaos = value(effect, 'chaos', 0.16);
     const bloom = value(effect, 'bloom', 0.36);
-    const converterStress = 1 - bits;
     switch (mode) {
       case 'reconstruct': behavior = spec('granular', 0.04 + density * 0.045, pitch, 0.54 + bloom * 0.18, bloom); break;
       case 'shatter': behavior = spec('fracture', 0.06 + chaos * 0.08, pitch, 0.6 + density * 0.16, bloom); break;
@@ -164,9 +162,7 @@ export function syncPhysicalBehavior(effect: Effect): void {
       case 'prism': behavior = spec('orbital', 0.05 + pitch * 0.06, chaos, 0.7 + density * 0.16, bloom); break;
       case 'stutter': behavior = spec('charge', 0.05 + density * 0.055, chaos, 0.64 + bloom * 0.16, bloom); break;
       case 'ruin': behavior = spec('fracture', 0.08 + chaos * 0.095, pitch, 0.82 + density * 0.12, bloom); break;
-      case 'sp1200': behavior = spec('converter', 0.045 + converterStress * 0.035 + density * 0.025, chaos, 0.62 + bloom * 0.14, bloom); break;
-      case 'mpc60': behavior = spec('converter', 0.035 + converterStress * 0.025 + density * 0.02, chaos, 0.54 + bloom * 0.12, bloom); break;
-      case 'mirage': behavior = spec('converter', 0.055 + converterStress * 0.045 + density * 0.025, pitch, 0.7 + bloom * 0.14, bloom); break;
+      case 'sp1200': case 'mpc60': case 'mirage': behavior = BYPASS; break;
     }
   } else if (effect.id === 'media') {
     const mode = MEDIA_MODE_ORDER[index(effect, 'mode')] ?? 'cassette';
