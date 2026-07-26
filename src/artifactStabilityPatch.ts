@@ -29,12 +29,12 @@ const prototype = MediaEffect.prototype as unknown as ArtifactPrototype;
 const originalApplyCharacter = prototype.applyCharacter;
 const globalState = globalThis as ArtifactPatchGlobal;
 
-function isInsertMode(mode: MediaMode): boolean {
+function canSuspendTransport(mode: MediaMode): boolean {
+  // ATR-102 still owns wow/flutter + hiss as part of its mechanism, so it must stay live.
   return mode === 'tascam424'
     || mode === 'Neve 1073'
     || mode === 'SSL 4000E'
-    || mode === 'API 1608'
-    || mode === 'Ampex ATR-102';
+    || mode === 'API 1608';
 }
 
 function detachUnusedBranches(effect: ArtifactPatchState): void {
@@ -58,7 +58,7 @@ function attachMediaBranches(effect: ArtifactPatchState): void {
 function stableApplyCharacter(this: ArtifactInternals): void {
   originalApplyCharacter.call(this);
   const effect = this as ArtifactPatchState;
-  if (isInsertMode(effect.mode)) detachUnusedBranches(effect);
+  if (canSuspendTransport(effect.mode)) detachUnusedBranches(effect);
   else attachMediaBranches(effect);
 }
 
