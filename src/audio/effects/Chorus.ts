@@ -86,6 +86,8 @@ export class ChorusEffect extends BaseEffect {
   private readonly classicGain: GainNode;
   private readonly classicStage: DriftClassicStage;
   private currentPreampCurve: Float32Array<ArrayBuffer> = IDENTITY_CURVE;
+  private standardAttached = true;
+  private standardDisconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
 
   private mode: DriftMode = 'chorus';
   private rate = RATE.defaultValue;
@@ -217,6 +219,30 @@ export class ChorusEffect extends BaseEffect {
     for (const feedback of this.feedbacks) feedback.gain.setTargetAtTime(0, now, 0.012);
   }
 
+  private clearStandardDisconnectTimer(): void {
+    if (this.standardDisconnectTimer === null) return;
+    globalThis.clearTimeout(this.standardDisconnectTimer);
+    this.standardDisconnectTimer = null;
+  }
+
+  private setStandardBranchAttached(shouldAttach: boolean): void {
+    this.clearStandardDisconnectTimer();
+    if (shouldAttach) {
+      if (!this.standardAttached) {
+        this.input.connect(this.preamp);
+        this.standardAttached = true;
+      }
+      return;
+    }
+    if (!this.standardAttached) return;
+    this.standardDisconnectTimer = globalThis.setTimeout(() => {
+      this.standardDisconnectTimer = null;
+      if (classicModel(this.mode) === 'bypass' || !this.standardAttached) return;
+      try { this.input.disconnect(this.preamp); } catch { /* already detached */ }
+      this.standardAttached = false;
+    }, 72);
+  }
+
   private applyFlanger(now: number): void {
     const mode = this.mode as keyof typeof FLANGER_CURVES;
     const settings = mode === 'mxrflanger'
@@ -256,12 +282,14 @@ export class ChorusEffect extends BaseEffect {
       this.clearFeedback(now);
       this.standardGain.gain.setTargetAtTime(0, now, 0.018);
       this.classicGain.gain.setTargetAtTime(1, now, 0.018);
+      this.setStandardBranchAttached(false);
       const normalizedRate = (this.rate - RATE.min) / (RATE.max - RATE.min);
       const normalizedDepth = this.depth / DEPTH.max;
       this.classicStage.configure(classic, normalizedRate, normalizedDepth, this.shape, this.spread, this.motion);
       return;
     }
 
+    this.setStandardBranchAttached(true);
     this.classicStage.configure('bypass', 0, 0, this.shape, this.spread, this.motion);
     this.standardGain.gain.setTargetAtTime(1, now, 0.018);
     this.classicGain.gain.setTargetAtTime(0, now, 0.018);
@@ -345,6 +373,7 @@ export class ChorusEffect extends BaseEffect {
   }
 
   public override dispose(): void {
+    this.clearStandardDisconnectTimer();
     for (const lfo of this.lfos) {
       try { lfo.stop(); } catch { /* already stopped */ }
     }
