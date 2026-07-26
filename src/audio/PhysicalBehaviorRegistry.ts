@@ -21,15 +21,12 @@ const attached = new WeakSet<Effect>();
 function value(effect: Effect, id: string, fallback = 0): number {
   return effect.getNormalizedParameterValue(id) ?? fallback;
 }
-
 function index(effect: Effect, id: string, fallback = 0): number {
   return Math.round(effect.getParameterValue(id) ?? fallback);
 }
-
 function mix(a: number, b: number, amount: number): number {
   return a + (b - a) * Math.max(0, Math.min(1, amount));
 }
-
 function spec(profile: BehaviorMemoryProfile, amount: number, motion: number, memory: number, color: number): BehaviorSpec {
   return {
     profile,
@@ -40,11 +37,6 @@ function spec(profile: BehaviorMemoryProfile, amount: number, motion: number, me
   };
 }
 
-/**
- * Wrap an effect instance once so ordinary parameter writes refresh its physical
- * behavior model. Mix changes are intentionally excluded because no physical
- * profile depends on wet/dry balance; this keeps the highest-rate UI path cheap.
- */
 export function attachPhysicalBehavior(effect: Effect): Effect {
   if (attached.has(effect)) return effect;
   attached.add(effect);
@@ -58,12 +50,8 @@ export function attachPhysicalBehavior(effect: Effect): Effect {
 }
 
 /**
- * Central behavioral-simulation registry.
- *
- * These are deliberately conservative theory-crafted relationships: known hardware
- * mechanisms where a mode represents hardware, and physically-inspired state models
- * for creative modes that never had a literal historical circuit. Dedicated hardware
- * worklets remain BYPASS here to avoid double-simulating the same mechanism.
+ * Central behavioral-simulation registry. Dedicated named hardware paths are BYPASS here
+ * whenever their effect already owns the mechanism; the shared residual only fills gaps.
  */
 export function syncPhysicalBehavior(effect: Effect): void {
   let behavior = BYPASS;
@@ -104,6 +92,11 @@ export function syncPhysicalBehavior(effect: Effect): void {
       case 'orbit': behavior = spec('orbital', 0.08 + motion * 0.075, mix(rate, spread, 0.42), 0.82 + depth * 0.14, shape); break;
       case 'ce1': behavior = spec('elastic', 0.04 + shape * 0.04, mix(rate, motion, 0.35), 0.62 + depth * 0.16, mix(0.42, spread, 0.18)); break;
       case 'dimensiond': behavior = spec('elastic', 0.038 + shape * 0.034, mix(rate, motion, 0.22), 0.84 + spread * 0.12, mix(0.48, depth, 0.14)); break;
+      // The flanger DSP owns the comb/feedback. Shared charge memory adds restrained BBD-like history.
+      case 'mxrflanger': behavior = spec('charge', 0.05 + shape * 0.055, mix(rate, motion, 0.34), 0.74 + depth * 0.18, mix(0.48, spread, 0.14)); break;
+      case 'electricmistress': behavior = spec('charge', 0.04 + shape * 0.045, mix(rate, motion, 0.28), 0.68 + depth * 0.16, 0.42); break;
+      case 'adaflanger': behavior = spec('charge', 0.055 + shape * 0.065, mix(rate, motion, 0.42), 0.78 + depth * 0.18, 0.58); break;
+      case 'bf2': behavior = spec('charge', 0.045 + shape * 0.05, mix(rate, motion, 0.32), 0.72 + depth * 0.16, 0.46); break;
     }
   } else if (effect.id === 'delay') {
     const mode = DELAY_ALGORITHM_ORDER[index(effect, 'algorithm')] ?? 'tape';
@@ -162,7 +155,7 @@ export function syncPhysicalBehavior(effect: Effect): void {
       case 'prism': behavior = spec('orbital', 0.05 + pitch * 0.06, chaos, 0.7 + density * 0.16, bloom); break;
       case 'stutter': behavior = spec('charge', 0.05 + density * 0.055, chaos, 0.64 + bloom * 0.16, bloom); break;
       case 'ruin': behavior = spec('fracture', 0.08 + chaos * 0.095, pitch, 0.82 + density * 0.12, bloom); break;
-      case 'sp1200': case 'mpc60': case 'mirage': behavior = BYPASS; break;
+      case 'sp1200': case 'mpc60': case 'mirage': case 's950': case 'emulator2': case 'fairlightiix': behavior = BYPASS; break;
     }
   } else if (effect.id === 'media') {
     const mode = MEDIA_MODE_ORDER[index(effect, 'mode')] ?? 'cassette';
