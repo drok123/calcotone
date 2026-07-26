@@ -31,16 +31,6 @@ const VIDEO_FILES: Record<ModuleVideoKey, string> = {
   grain: 'visuals/grain.mp4',
 };
 
-const PING_PONG_FILES: Record<ModuleVideoKey, string> = {
-  ember: 'visuals/ember-pingpong.mp4',
-  drift: 'visuals/drift-pingpong.mp4',
-  'drift-alt': 'visuals/drift-alt-pingpong.mp4',
-  halo: 'visuals/halo-pingpong.mp4',
-  artifact: 'visuals/artifact-pingpong.mp4',
-  atmos: 'visuals/atmos-pingpong.mp4',
-  grain: 'visuals/grain-pingpong.mp4',
-};
-
 function assetUrl(path: string): string {
   const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
   return `${base}${path}`;
@@ -188,15 +178,10 @@ function captionFor(module: ModuleState): string {
     : `ARTIFACT · ${mode.toUpperCase()}`;
 }
 
-function VideoLayer({ src, fallbackSrc, className }: { src: string; fallbackSrc: string; className: string }) {
+function VideoLayer({ src, className }: { src: string; className: string }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const recoveryTimerRef = useRef<number | null>(null);
-  const [usingFallback, setUsingFallback] = useState(false);
-  const activeSrc = usingFallback ? fallbackSrc : src;
-
-  useEffect(() => {
-    setUsingFallback(false);
-  }, [src, fallbackSrc]);
+  const retryCountRef = useRef(0);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -214,11 +199,9 @@ function VideoLayer({ src, fallbackSrc, className }: { src: string; fallbackSrc:
       void video.play().catch(() => undefined);
     };
 
-    const recover = (): void => {
-      if (!usingFallback) {
-        setUsingFallback(true);
-        return;
-      }
+    const reload = (): void => {
+      if (document.hidden || retryCountRef.current >= 2) return;
+      retryCountRef.current += 1;
       video.load();
       void video.play().catch(() => undefined);
     };
@@ -227,62 +210,67 @@ function VideoLayer({ src, fallbackSrc, className }: { src: string; fallbackSrc:
       if (recoveryTimerRef.current !== null) return;
       recoveryTimerRef.current = window.setTimeout(() => {
         recoveryTimerRef.current = null;
-        if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth === 0) recover();
+        if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth === 0) reload();
       }, 1400);
     };
 
+    const loaded = (): void => {
+      retryCountRef.current = 0;
+      play();
+    };
+
     const bootstrapTimer = window.setTimeout(() => {
-      if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth === 0) recover();
+      if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth === 0) reload();
       else play();
     }, 2200);
 
     const visibilityChange = (): void => {
-      if (!document.hidden) play();
+      if (!document.hidden) {
+        retryCountRef.current = 0;
+        play();
+      }
     };
 
-    video.addEventListener('loadeddata', play);
+    video.addEventListener('loadeddata', loaded);
     video.addEventListener('canplay', play);
     video.addEventListener('playing', clearRecovery);
     video.addEventListener('stalled', scheduleRecovery);
     video.addEventListener('waiting', scheduleRecovery);
+    video.addEventListener('error', reload);
     document.addEventListener('visibilitychange', visibilityChange);
     play();
 
     return () => {
       clearRecovery();
       window.clearTimeout(bootstrapTimer);
-      video.removeEventListener('loadeddata', play);
+      video.removeEventListener('loadeddata', loaded);
       video.removeEventListener('canplay', play);
       video.removeEventListener('playing', clearRecovery);
       video.removeEventListener('stalled', scheduleRecovery);
       video.removeEventListener('waiting', scheduleRecovery);
+      video.removeEventListener('error', reload);
       document.removeEventListener('visibilitychange', visibilityChange);
     };
-  }, [activeSrc, usingFallback]);
+  }, [src]);
 
   return (
     <video
       ref={videoRef}
       className={className}
-      src={activeSrc}
+      src={src}
       autoPlay
       muted
       loop
       playsInline
       preload="auto"
       aria-hidden="true"
-      onError={() => {
-        if (!usingFallback) setUsingFallback(true);
-      }}
     />
   );
 }
 
 export function ModuleViewport({ module, visualState }: { module: ModuleState; visualState: VisualAudioState }) {
   const key = videoFor(module);
-  // Prefer the plain loop for decoder reliability; ping-pong is retained as a fallback.
   const videoUrl = key ? assetUrl(VIDEO_FILES[key]) : null;
-  const fallbackVideoUrl = key ? assetUrl(PING_PONG_FILES[key]) : null;
   const feedback = Math.max(0, Math.min(1, visualState.level));
   const visualMode = visualModeFor(module);
   const visualRecipe = visualRecipeFor(module);
@@ -330,9 +318,9 @@ export function ModuleViewport({ module, visualState }: { module: ModuleState; v
       data-color-profile={colorProfile}
       style={{ '--module-feedback': feedback } as CSSProperties}
     >
-      {module.enabled && videoUrl && fallbackVideoUrl ? (
+      {module.enabled && videoUrl ? (
         <div className="module-video-stage" aria-hidden="true">
-          <VideoLayer src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-base" />
+          <VideoLayer src={videoUrl} className="module-video module-video-base" />
           <span className="module-video-transition-veil" />
         </div>
       ) : module.enabled ? (
