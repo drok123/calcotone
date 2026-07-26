@@ -37,6 +37,13 @@ requireText(randomBridge, 'smoothstep(step / RANDOM_MORPH_STEPS)', 'RANDOM eased
 requireText(randomBridge, 'await morphOneBatch', 'RANDOM module staging');
 forbidText(randomBridge, 'for (const entry of active) engine.setEffectBypassed(entry.id, true)', 'RANDOM bypass-all burst');
 
+// Topology-changing RANDOM moves must keep an audible dry bridge and must never power modules off.
+requireText(randomBridge, 'RANDOM_TOPOLOGY_SAFE_MIX', 'RANDOM topology dry bridge');
+requireText(randomBridge, "effectId === 'delay' || effectId === 'reverb'", 'RANDOM topology-sensitive modes');
+requireText(randomBridge, "applyRandomBatch(effect, new Map([['mix', RANDOM_TOPOLOGY_SAFE_MIX]]))", 'RANDOM pre-switch mix guard');
+requireText(randomBridge, 'Musical RANDOM never changes module power', 'RANDOM power-layout preservation');
+forbidText(randomBridge, 'directSetEffectBypassed.call(engine, effectId, bypassed)', 'RANDOM power mutation');
+
 // Visual scheduling must stay allocation-conscious and HMR-safe.
 requireText(scheduler, 'let callbackSnapshot: ViewportRenderCallback[] = []', 'Viewport stable callback snapshot');
 forbidText(scheduler, 'const callbacks = [...viewportRenderCallbacks]', 'Viewport per-frame callback allocation');
