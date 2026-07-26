@@ -14,9 +14,6 @@ const read = (relative) => {
 const requireText = (source, needle, label) => {
   if (!source.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
 };
-const forbidText = (source, needle, label) => {
-  if (source.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`);
-};
 
 const routing = read('src/routing/serialRouting.ts');
 const transform = read('build/serialRoutingTransform.ts');
@@ -29,14 +26,16 @@ requireText(routing, 'moveSerialModule(', 'cross-row move primitive');
 requireText(routing, 'nudgeSerialModule(', 'six-position keyboard primitive');
 requireText(routing, 'shuffledSerialOrder(', 'full-chain random primitive');
 requireText(routing, "next.push(next.shift()!)", 'SIGNAL RANDOM visible-change guard');
-requireText(routing, "top: normalized.slice(0, SERIAL_ROW_SIZE)", 'top row projection');
-requireText(routing, "bottom: normalized.slice(SERIAL_ROW_SIZE, SERIAL_SLOT_COUNT)", 'bottom row projection');
+requireText(routing, 'top: normalized.slice(0, SERIAL_ROW_SIZE)', 'top row projection');
+requireText(routing, 'bottom: normalized.slice(SERIAL_ROW_SIZE, SERIAL_SLOT_COUNT)', 'bottom row projection');
 
 requireText(transform, "from './routing/serialRouting'", 'App adapter uses routing owner');
 requireText(transform, 'moveSerialModule([...railAOrder, ...railBOrder]', 'drag delegates to routing owner');
 requireText(transform, 'nudgeSerialModule([...railAOrder, ...railBOrder]', 'nudge delegates to routing owner');
 requireText(transform, 'shuffledSerialOrder([...railAOrder, ...railBOrder]', 'signal random delegates to routing owner');
-forbidText(transform, "Modules stay on their three-slot rail in this routing version.", 'fixed-row routing lock removed');
+requireText(transform, 'if (!draggedModuleId) return;', 'cross-row drag-over acceptance');
+requireText(transform, 'cross-row lockout survived transform', 'adapter fail-closed guard');
+requireText(transform, 'replaceRegexRequired(', 'adapter uses robust source matching');
 
 requireText(vite, 'serialRoutingTransform()', 'temporary routing adapter enabled');
 
@@ -47,4 +46,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE routing audit passed (six-slot serial model + two-row projection).');
+console.log('CALCOTONE routing audit passed (six-slot serial model + cross-row drag adapter).');
