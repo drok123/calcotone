@@ -23,6 +23,7 @@ const driftStage = read('src/audio/models/DriftClassicStage.ts');
 const randomBridge = read('src/randomTransferBridge.ts');
 const haloPatch = read('src/haloStabilityPatch.ts');
 const artifactPatch = read('src/artifactStabilityPatch.ts');
+const modulePatch = read('src/moduleStabilityPatch.ts');
 const media = read('src/audio/effects/Media.ts');
 const main = read('src/main.tsx');
 const scheduler = read('src/components/effects/viewportScheduler.ts');
@@ -73,6 +74,22 @@ requireText(artifactPatch, '__calcotoneArtifactBranchesAttached === undefined', 
 requireText(artifactPatch, 'import.meta.hot.dispose(uninstall)', 'Artifact patch HMR teardown');
 requireText(media, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve cache');
 requireText(media, 'if (cache.size >= MAX_CURVE_CACHE)', 'Artifact curve cache eviction');
+
+// Remaining modules follow the same mechanism-ownership rule. Inactive parallel DSP branches
+// detach physically, and Atmos keeps its outgoing field alive through topology changes.
+requireText(main, "import './moduleStabilityPatch'", 'Remaining module stability patch load');
+requireText(modulePatch, 'emberUsesDedicatedBranch', 'Ember dedicated-branch ownership');
+requireText(modulePatch, 'state.hp.disconnect(state.shaper)', 'Ember generic shaper suspension');
+requireText(modulePatch, '__calcotoneGenericAttached === undefined', 'Ember initial branch-state guard');
+requireText(modulePatch, 'driftUsesClassicBranch', 'Drift classic-branch ownership');
+requireText(modulePatch, 'state.input.disconnect(state.preamp)', 'Drift standard network suspension');
+requireText(modulePatch, '__calcotoneStandardAttached === undefined', 'Drift initial branch-state guard');
+requireText(modulePatch, 'grainUsesBloom', 'Grain Bloom ownership');
+requireText(modulePatch, 'state.processor.disconnect(state.bloomFilter)', 'Grain hardware Bloom suspension');
+requireText(modulePatch, '__calcotoneBloomAttached === undefined', 'Grain initial branch-state guard');
+requireText(modulePatch, 'this.input.connect(previous.network.input)', 'Atmos live-fed outgoing crossfade');
+requireText(modulePatch, 'while (this.retiring.size > 1)', 'Atmos retired-network cap');
+requireText(modulePatch, 'import.meta.hot.dispose(uninstall)', 'Remaining module patch HMR teardown');
 
 // Visual scheduling must stay allocation-conscious and HMR-safe.
 requireText(scheduler, 'let callbackSnapshot: ViewportRenderCallback[] = []', 'Viewport stable callback snapshot');
