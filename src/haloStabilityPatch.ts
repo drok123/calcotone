@@ -9,7 +9,6 @@ type PitchShifterLike = {
   scheduleAhead(): void;
   setPitch(semitones: number, amount: number): void;
   __calcotoneTuned?: boolean;
-  __calcotoneOriginalSetPitch?: (semitones: number, amount: number) => void;
 };
 
 type DelayNetworkLike = {
@@ -21,12 +20,13 @@ type DelayNetworkEntry = {
   network: DelayNetworkLike;
 };
 
-type HaloInternals = DelayEffect & {
+// Runtime-only shape for DelayEffect internals. These members are TypeScript-private in the
+// effect class but compile to ordinary properties/methods; keeping this shape separate avoids
+// intersecting the class's private member declarations and makes the patch type-safe enough to build.
+type HaloInternals = {
   input: GainNode;
   active: DelayNetworkEntry;
   retiring: Set<DelayNetworkEntry>;
-  switchAlgorithm(algorithm: string): void;
-  disposeRetiringNetwork(entry: DelayNetworkEntry): void;
 };
 
 type HaloPrototype = {
@@ -34,13 +34,16 @@ type HaloPrototype = {
   disposeRetiringNetwork: (this: HaloInternals, entry: DelayNetworkEntry) => void;
 };
 
+type HaloPatchGlobal = typeof globalThis & {
+  __calcotoneHaloStabilityPatch?: boolean;
+};
+
 const PITCH_SCHEDULER_MS = 72;
 const PITCH_SLEEP_THRESHOLD = 0.001;
 const prototype = DelayEffect.prototype as unknown as HaloPrototype;
 const originalSwitchAlgorithm = prototype.switchAlgorithm;
 const originalDisposeRetiringNetwork = prototype.disposeRetiringNetwork;
-const installedKey = Symbol.for('calcotone.halo-stability-patch');
-const globalState = globalThis as typeof globalThis & { [installedKey]?: boolean };
+const globalState = globalThis as HaloPatchGlobal;
 
 function stopPitchScheduler(shifter: PitchShifterLike): void {
   if (shifter.timer === null) return;
@@ -60,7 +63,6 @@ function tunePitchShifter(shifter: PitchShifterLike): void {
   if (shifter.__calcotoneTuned) return;
   shifter.__calcotoneTuned = true;
   const originalSetPitch = shifter.setPitch.bind(shifter);
-  shifter.__calcotoneOriginalSetPitch = originalSetPitch;
 
   // The stock shifter wakes every 48 ms forever. Keep the generous 380 ms scheduling horizon,
   // but wake less often and sleep completely when pitch amount is effectively zero.
@@ -111,17 +113,17 @@ function stableSwitchAlgorithm(this: HaloInternals, algorithm: string): void {
 }
 
 function install(): void {
-  if (globalState[installedKey]) return;
-  globalState[installedKey] = true;
+  if (globalState.__calcotoneHaloStabilityPatch) return;
+  globalState.__calcotoneHaloStabilityPatch = true;
   prototype.switchAlgorithm = stableSwitchAlgorithm;
   prototype.disposeRetiringNetwork = stableDisposeRetiringNetwork;
 }
 
 function uninstall(): void {
-  if (!globalState[installedKey]) return;
+  if (!globalState.__calcotoneHaloStabilityPatch) return;
   prototype.switchAlgorithm = originalSwitchAlgorithm;
   prototype.disposeRetiringNetwork = originalDisposeRetiringNetwork;
-  delete globalState[installedKey];
+  delete globalState.__calcotoneHaloStabilityPatch;
 }
 
 install();
