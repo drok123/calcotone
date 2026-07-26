@@ -101,13 +101,16 @@ export class BitcrusherEffect extends BaseEffect {
     this.processor.onprocessorerror = () => console.error('CALCOTONE Grain AudioWorklet stopped unexpectedly.');
 
     this.initializeParameters([MODE, BITS, DENSITY, PITCH, CHAOS, BLOOM, MIX]);
-    this.setParameter('mode', MODE.defaultValue);
-    this.setParameter('bits', BITS.defaultValue);
-    this.setParameter('density', DENSITY.defaultValue);
-    this.setParameter('pitch', PITCH.defaultValue);
-    this.setParameter('chaos', CHAOS.defaultValue);
-    this.setParameter('bloom', BLOOM.defaultValue);
-    this.setParameter('mix', MIX.defaultValue);
+    const now = this.context.currentTime;
+    this.setWorkletParameter('mode', MODE.defaultValue, now);
+    this.setWorkletParameter('bits', BITS.defaultValue, now);
+    this.setWorkletParameter('density', DENSITY.defaultValue, now);
+    this.setWorkletParameter('pitch', PITCH.defaultValue, now);
+    this.setWorkletParameter('chaos', CHAOS.defaultValue, now);
+    this.setWorkletParameter('bloom', BLOOM.defaultValue, now);
+    this.bloomFilter.frequency.setTargetAtTime(2800 + BLOOM.defaultValue * 7600, now, 0.05);
+    this.updateWetBodyGain(now);
+    this.setWetDryMix(MIX.defaultValue);
   }
 
   public getProfilerStats(): GrainProfilerStats {
