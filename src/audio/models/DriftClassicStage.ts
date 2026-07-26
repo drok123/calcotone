@@ -9,7 +9,7 @@ const MODEL_INDEX: Record<DriftClassicModel, number> = {
 };
 
 const workletLoads = new WeakMap<AudioContext, Promise<void>>();
-const WORKLET_VERSION = '1.0.2-wet-only';
+const WORKLET_VERSION = '1.0.3-realtime-optimized';
 
 async function ensureWorklet(context: AudioContext): Promise<void> {
   const existing = workletLoads.get(context);
