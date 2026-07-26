@@ -30,15 +30,8 @@ export function signalLabUiTransform(): Plugin {
       next = replaceRequired(
         next,
         `  function getEngine(): AudioEngine {`,
-        `  function updateSignalLab(nextState: Partial<SignalLabState>): void {\n    setSignalLabState((current) => ({ ...current, ...nextState }));\n    engineRef.current?.setSignalLabState(nextState);\n  }\n\n  function getEngine(): AudioEngine {`,
+        `  function updateSignalLab(nextState: Partial<SignalLabState>): void {\n    // UI-only until Signal Lab has a native AudioEngine insert point.\n    setSignalLabState((current) => ({ ...current, ...nextState }));\n  }\n\n  function getEngine(): AudioEngine {`,
         'state updater',
-      );
-
-      next = replaceRequired(
-        next,
-        `      await engine.start({ performanceMode, inputMode });\n      engine.loadPreset(DEFAULT_PRESET);`,
-        `      await engine.start({ performanceMode, inputMode });\n      engine.setSignalLabState(signalLabState);\n      engine.loadPreset(DEFAULT_PRESET);`,
-        'startup sync',
       );
 
       next = replaceRequired(
