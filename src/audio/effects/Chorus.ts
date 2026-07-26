@@ -11,11 +11,16 @@ export type DriftMode =
   | 'liquid'
   | 'orbit'
   | 'ce1'
-  | 'dimensiond';
+  | 'dimensiond'
+  | 'mxrflanger'
+  | 'electricmistress'
+  | 'adaflanger'
+  | 'bf2';
 
-// Existing indices stay fixed for preset compatibility.
+// Existing indices stay fixed for preset compatibility; new studies append only.
 export const DRIFT_MODE_ORDER: DriftMode[] = [
   'chorus','ensemble','dimension','vibrato','rotary','doppler','liquid','orbit','ce1','dimensiond',
+  'mxrflanger','electricmistress','adaflanger','bf2',
 ];
 
 const MODE = { id: 'mode', label: 'Mode', min: 0, max: DRIFT_MODE_ORDER.length - 1, defaultValue: 0, step: 1 };
@@ -28,6 +33,12 @@ const MIX = { id: 'mix', label: 'Mix', min: 0, max: 1, defaultValue: 0.14, step:
 
 const IDENTITY_CURVE = makePreampCurve(0, 0);
 const DIMENSION_D_CURVE = makePreampCurve(0.018, 0.006);
+const FLANGER_CURVES = {
+  mxrflanger: makePreampCurve(0.042, 0.010),
+  electricmistress: makePreampCurve(0.028, 0.008),
+  adaflanger: makePreampCurve(0.052, 0.012),
+  bf2: makePreampCurve(0.036, 0.009),
+} as const;
 const CE1_CURVE_STEPS = 64;
 const CE1_CURVE_CACHE = new Map<number, Float32Array<ArrayBuffer>>();
 
@@ -39,6 +50,10 @@ function getCe1Curve(motion: number): Float32Array<ArrayBuffer> {
   const curve = makePreampCurve(0.018 + quantizedMotion * 0.09, 0.018);
   CE1_CURVE_CACHE.set(key, curve);
   return curve;
+}
+
+function isFlangerMode(mode: DriftMode): mode is keyof typeof FLANGER_CURVES {
+  return mode === 'mxrflanger' || mode === 'electricmistress' || mode === 'adaflanger' || mode === 'bf2';
 }
 
 export class ChorusEffect extends BaseEffect {
@@ -55,6 +70,7 @@ export class ChorusEffect extends BaseEffect {
   private readonly highpasses: BiquadFilterNode[] = [];
   private readonly pans: StereoPannerNode[] = [];
   private readonly voiceGains: GainNode[] = [];
+  private readonly feedbacks: GainNode[] = [];
   private readonly sum: GainNode;
   private currentPreampCurve: Float32Array<ArrayBuffer> = IDENTITY_CURVE;
 
@@ -89,6 +105,8 @@ export class ChorusEffect extends BaseEffect {
       const tone = context.createBiquadFilter();
       const pan = context.createStereoPanner();
       const voiceGain = context.createGain();
+      const feedback = context.createGain();
+
       delay.delayTime.value = 0.012 + i * 0.0031;
       lfo.type = i % 2 === 0 ? 'sine' : 'triangle';
       hp.type = 'highpass';
@@ -99,6 +117,7 @@ export class ChorusEffect extends BaseEffect {
       tone.Q.value = 0.5;
       pan.pan.value = (i % 2 ? 1 : -1) * (0.38 + i * 0.12);
       voiceGain.gain.value = 0;
+      feedback.gain.value = 0;
 
       this.splitter.connect(delay, i % 2);
       delay.connect(hp);
@@ -106,6 +125,9 @@ export class ChorusEffect extends BaseEffect {
       tone.connect(pan);
       pan.connect(voiceGain);
       voiceGain.connect(this.sum);
+      // Delayed feedback is safe and gives the flange studies their moving comb resonance.
+      tone.connect(feedback);
+      feedback.connect(delay);
       lfo.connect(depth);
       depth.connect(delay.delayTime);
       lfo.start(context.currentTime + i * 0.071);
@@ -117,6 +139,7 @@ export class ChorusEffect extends BaseEffect {
       this.tones.push(tone);
       this.pans.push(pan);
       this.voiceGains.push(voiceGain);
+      this.feedbacks.push(feedback);
     }
 
     this.sum.connect(this.wetGain);
@@ -153,7 +176,6 @@ export class ChorusEffect extends BaseEffect {
       console.warn(`Unknown parameter "${id}" for ${this.name}.`);
       return;
     }
-
     if (this.parameterValues.get(id) === next) return;
     this.parameterValues.set(id, next);
     if (id === 'rate') this.rate = next;
@@ -170,13 +192,53 @@ export class ChorusEffect extends BaseEffect {
     this.currentPreampCurve = curve;
   }
 
+  private clearFeedback(now: number): void {
+    for (const feedback of this.feedbacks) feedback.gain.setTargetAtTime(0, now, 0.012);
+  }
+
+  private applyFlanger(now: number): void {
+    const mode = this.mode as keyof typeof FLANGER_CURVES;
+    const settings = mode === 'mxrflanger'
+      ? { base: 0.00135, sweep: 0.0048, rate: 0.92, feedback: 0.58, hp: 45, lp: 13_500, voices: 2, phase: 0.985 }
+      : mode === 'electricmistress'
+        ? { base: 0.0018, sweep: 0.0037, rate: 0.63, feedback: 0.34, hp: 70, lp: 10_800, voices: 2, phase: 0.975 }
+        : mode === 'adaflanger'
+          ? { base: 0.00075, sweep: 0.0068, rate: 1.12, feedback: 0.72, hp: 38, lp: 15_800, voices: 2, phase: 0.968 }
+          : { base: 0.00155, sweep: 0.00425, rate: 0.78, feedback: 0.48, hp: 82, lp: 11_700, voices: 2, phase: 0.982 };
+
+    const normalizedDepth = this.depth / DEPTH.max;
+    const sweep = settings.sweep * (0.32 + normalizedDepth * 0.92);
+    const feedback = Math.min(0.82, settings.feedback * (0.5 + this.shape * 0.72));
+    const width = Math.min(0.98, 0.18 + this.spread * 0.8);
+    const rate = Math.max(0.035, this.rate * settings.rate * (0.72 + this.motion * 0.48));
+
+    this.setPreampCurve(FLANGER_CURVES[mode]);
+    this.inputTone.frequency.setTargetAtTime(settings.lp + (this.motion - 0.5) * 1800, now, 0.04);
+    this.sum.gain.setTargetAtTime(0.69, now, 0.025);
+    for (let i = 0; i < 4; i += 1) {
+      const active = i < settings.voices;
+      this.voiceGains[i].gain.setTargetAtTime(active ? 0.78 : 0, now, 0.025);
+      this.lfos[i].frequency.setTargetAtTime(rate * (i === 0 ? 1 : settings.phase), now, 0.035);
+      this.depths[i].gain.setTargetAtTime(active ? sweep * (i ? -0.94 : 1) : 0, now, 0.035);
+      this.delays[i].delayTime.setTargetAtTime(settings.base + i * 0.00024, now, 0.035);
+      this.highpasses[i].frequency.setTargetAtTime(settings.hp, now, 0.035);
+      this.tones[i].frequency.setTargetAtTime(settings.lp - i * 420, now, 0.04);
+      this.pans[i].pan.setTargetAtTime(i === 0 ? -width : width, now, 0.035);
+      this.feedbacks[i].gain.setTargetAtTime(active ? feedback * (i ? -0.965 : 1) : 0, now, 0.025);
+    }
+  }
+
   private apply(): void {
     const now = this.context.currentTime;
 
+    if (isFlangerMode(this.mode)) {
+      this.applyFlanger(now);
+      return;
+    }
+
+    this.clearFeedback(now);
+
     if (this.mode === 'ce1') {
-      // The CE-1 hardware center is still Shape=Intensity. The generic controls are
-      // deliberately restrained CALCOTONE extensions around that operating point so no
-      // faceplate knob becomes decorative in this mode.
       const intensity = this.shape;
       const rateTrim = Math.pow(2, (this.rate - RATE.defaultValue) * 0.22);
       const depthTrim = 0.75 + (this.depth / Math.max(DEPTH.defaultValue, 1e-6)) * 0.25;
@@ -200,8 +262,6 @@ export class ChorusEffect extends BaseEffect {
     }
 
     if (this.mode === 'dimensiond') {
-      // Shape remains the seven SDD-320 button combinations. The other controls act as
-      // conservative trims around the authentic center so the generic panel stays alive.
       const modeIndex = Math.max(0, Math.min(6, Math.floor(this.shape * 7)));
       const modeDepth = [0.34, 0.46, 0.60, 0.76, 0.84, 0.91, 0.98][modeIndex];
       const modeRate = [0.165, 0.185, 0.215, 0.245, 0.178, 0.205, 0.232][modeIndex];
@@ -253,7 +313,7 @@ export class ChorusEffect extends BaseEffect {
     for (const lfo of this.lfos) {
       try { lfo.stop(); } catch { /* already stopped */ }
     }
-    for (const node of [this.preamp, this.inputTone, this.splitter, this.sum, ...this.delays, ...this.lfos, ...this.depths, ...this.highpasses, ...this.tones, ...this.pans, ...this.voiceGains]) node.disconnect();
+    for (const node of [this.preamp, this.inputTone, this.splitter, this.sum, ...this.delays, ...this.lfos, ...this.depths, ...this.highpasses, ...this.tones, ...this.pans, ...this.voiceGains, ...this.feedbacks]) node.disconnect();
     super.dispose();
   }
 }
