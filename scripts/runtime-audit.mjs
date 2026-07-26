@@ -25,8 +25,9 @@ const enginePatch = read('src/engineStabilityPatch.ts');
 const inputMatrix = read('src/audio/InputMatrix.ts');
 const haloPatch = read('src/haloStabilityPatch.ts');
 const artifactPatch = read('src/artifactStabilityPatch.ts');
-const modulePatch = read('src/moduleStabilityPatch.ts');
 const reverb = read('src/audio/effects/Reverb.ts');
+const chorus = read('src/audio/effects/Chorus.ts');
+const grain = read('src/audio/effects/Bitcrusher.ts');
 const viewport = read('src/components/effects/ModuleViewport.tsx');
 const videoColor = read('src/components/effects/VideoColorStability.css');
 const media = read('src/audio/effects/Media.ts');
@@ -98,19 +99,19 @@ requireText(artifactPatch, 'import.meta.hot.dispose(uninstall)', 'Artifact patch
 requireText(media, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve cache');
 requireText(media, 'if (cache.size >= MAX_CURVE_CACHE)', 'Artifact curve cache eviction');
 
-// Ember, Drift and Grain still use the shared mechanism-ownership shim for now.
-requireText(main, "import './moduleStabilityPatch'", 'Remaining module stability patch load');
-requireText(modulePatch, 'emberUsesDedicatedBranch', 'Ember dedicated-branch ownership');
-requireText(modulePatch, 'state.hp.disconnect(state.shaper)', 'Ember generic shaper suspension');
-requireText(modulePatch, '__calcotoneGenericAttached === undefined', 'Ember initial branch-state guard');
-requireText(modulePatch, 'driftUsesClassicBranch', 'Drift classic-branch ownership');
-requireText(modulePatch, 'state.input.disconnect(state.preamp)', 'Drift standard network suspension');
-requireText(modulePatch, '__calcotoneStandardAttached === undefined', 'Drift initial branch-state guard');
-requireText(modulePatch, 'grainUsesBloom', 'Grain Bloom ownership');
-requireText(modulePatch, 'state.processor.disconnect(state.bloomFilter)', 'Grain hardware Bloom suspension');
-requireText(modulePatch, '__calcotoneBloomAttached === undefined', 'Grain initial branch-state guard');
-forbidText(modulePatch, 'stableAtmosSwitch', 'Atmos removed from shared patch');
-requireText(modulePatch, 'import.meta.hot.dispose(uninstall)', 'Remaining module patch HMR teardown');
+// Ember, Drift and Grain own mechanism routing natively; the shared monkey patch must stay gone.
+forbidText(main, "import './moduleStabilityPatch'", 'Removed module branch monkey patch');
+requireText(ember, 'private genericAttached = true', 'Ember native generic branch state');
+requireText(ember, 'this.setGenericBranchAttached(!(namedTube || magnetic))', 'Ember native dedicated-branch ownership');
+requireText(ember, 'this.hp.disconnect(this.shaper)', 'Ember native generic shaper detach');
+requireText(chorus, 'private standardAttached = true', 'Drift native standard branch state');
+requireText(chorus, 'this.setStandardBranchAttached(false)', 'Drift native classic ownership');
+requireText(chorus, 'this.input.disconnect(this.preamp)', 'Drift native standard branch detach');
+requireText(chorus, '}, 72);', 'Drift fade-before-detach timing');
+requireText(grain, 'private bloomAttached = true', 'Grain native Bloom branch state');
+requireText(grain, 'this.setBloomBranchAttached(false)', 'Grain native hardware ownership');
+requireText(grain, 'this.processor.disconnect(this.bloomFilter)', 'Grain native Bloom detach');
+requireText(grain, '}, 90);', 'Grain fade-before-detach timing');
 
 // Atmos owns its stability natively: initialize once, ignore redundant writes afterward,
 // keep the outgoing field live-fed during crossfade, and allow only one retiring field.
