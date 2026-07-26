@@ -36,12 +36,16 @@ const main = read('src/main.tsx');
 const scheduler = read('src/components/effects/viewportScheduler.ts');
 const engine = read('src/audio/AudioEngine.ts');
 
-// One dry/wet owner: classic modulation processors must return wet-only material.
-requireText(driftClassic, 'return [bL, bR]', 'Bi-Phase wet-only output');
-requireText(driftClassic, 'return [pL, pR]', 'Small Stone wet-only output');
-requireText(driftClassic, 'return [vibeL * tremL, vibeR * tremR]', 'Uni-Vibe wet-only output');
+// Drift classic stays wet-only, allocation-conscious, and coefficient-throttled.
+requireText(driftClassic, 'this.result = [0, 0]', 'Drift reusable stereo result');
+requireText(driftClassic, 'return this.result', 'Drift no per-sample stereo allocation');
+forbidText(driftClassic, 'return [bL, bR]', 'Bi-Phase per-sample allocation');
+forbidText(driftClassic, 'return [pL, pR]', 'Small Stone per-sample allocation');
+requireText(driftClassic, 'this.coefficientCountdown = 7', 'Drift coefficient refresh interval');
+requireText(driftClassic, 'updateCascadeCoefficients', 'Drift cached all-pass coefficients');
+requireText(driftClassic, 'cascadeWithCoefficients', 'Drift cached coefficient processing');
 forbidText(driftClassic, 'left * (1 - wet)', 'Drift classic duplicate dry mix');
-requireText(driftStage, "const WORKLET_VERSION = '1.0.2-wet-only'", 'Drift classic cache bust');
+requireText(driftStage, "const WORKLET_VERSION = '1.0.3-realtime-optimized'", 'Drift optimized cache bust');
 
 // MUSICAL RANDOM must morph rather than bypassing the rack and blasting one transaction.
 requireText(randomBridge, 'RANDOM_MORPH_STEPS', 'RANDOM staged morph');
