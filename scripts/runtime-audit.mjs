@@ -69,6 +69,7 @@ requireText(artifactPatch, "mode === 'API 1608'", 'Artifact API transport sleep'
 forbidText(artifactPatch, "|| mode === 'Ampex ATR-102'", 'Artifact ATR-102 transport must stay live');
 requireText(artifactPatch, 'cassetteNoise.disconnect', 'Artifact noise branch detach');
 requireText(artifactPatch, 'leftDepth.disconnect', 'Artifact modulation branch detach');
+requireText(artifactPatch, '__calcotoneArtifactBranchesAttached === undefined', 'Artifact initial branch-state guard');
 requireText(artifactPatch, 'import.meta.hot.dispose(uninstall)', 'Artifact patch HMR teardown');
 requireText(media, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve cache');
 requireText(media, 'if (cache.size >= MAX_CURVE_CACHE)', 'Artifact curve cache eviction');
