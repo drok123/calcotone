@@ -22,6 +22,8 @@ const driftClassic = read('public/drift-classic-processor.js');
 const driftStage = read('src/audio/models/DriftClassicStage.ts');
 const randomBridge = read('src/randomTransferBridge.ts');
 const haloPatch = read('src/haloStabilityPatch.ts');
+const artifactPatch = read('src/artifactStabilityPatch.ts');
+const media = read('src/audio/effects/Media.ts');
 const main = read('src/main.tsx');
 const scheduler = read('src/components/effects/viewportScheduler.ts');
 const engine = read('src/audio/AudioEngine.ts');
@@ -55,6 +57,21 @@ requireText(haloPatch, 'PITCH_SCHEDULER_MS = 72', 'Halo lower-rate pitch schedul
 requireText(haloPatch, 'PITCH_SLEEP_THRESHOLD', 'Halo pitch scheduler sleep');
 requireText(haloPatch, 'shifter.nextGrainTime = shifter.context.currentTime + 0.02', 'Halo no grain catch-up burst');
 requireText(haloPatch, 'import.meta.hot.dispose(uninstall)', 'Halo patch HMR teardown');
+
+// Artifact keeps transport/noise branches out of static insert/summing modes, but ATR-102 must
+// retain its mechanism-specific wow/flutter/hiss path. Curve caches remain explicitly bounded.
+requireText(main, "import './artifactStabilityPatch'", 'Artifact stability patch load');
+requireText(artifactPatch, 'function canSuspendTransport', 'Artifact transport ownership');
+requireText(artifactPatch, "mode === 'tascam424'", 'Artifact Tascam transport sleep');
+requireText(artifactPatch, "mode === 'Neve 1073'", 'Artifact Neve transport sleep');
+requireText(artifactPatch, "mode === 'SSL 4000E'", 'Artifact SSL transport sleep');
+requireText(artifactPatch, "mode === 'API 1608'", 'Artifact API transport sleep');
+forbidText(artifactPatch, "|| mode === 'Ampex ATR-102'", 'Artifact ATR-102 transport must stay live');
+requireText(artifactPatch, 'cassetteNoise.disconnect', 'Artifact noise branch detach');
+requireText(artifactPatch, 'leftDepth.disconnect', 'Artifact modulation branch detach');
+requireText(artifactPatch, 'import.meta.hot.dispose(uninstall)', 'Artifact patch HMR teardown');
+requireText(media, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve cache');
+requireText(media, 'if (cache.size >= MAX_CURVE_CACHE)', 'Artifact curve cache eviction');
 
 // Visual scheduling must stay allocation-conscious and HMR-safe.
 requireText(scheduler, 'let callbackSnapshot: ViewportRenderCallback[] = []', 'Viewport stable callback snapshot');
