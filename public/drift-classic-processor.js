@@ -78,8 +78,8 @@ class CalcotoneDriftClassicProcessor extends AudioWorkletProcessor {
     const bR = this.cascade(aR, centerB * 0.988, 6, this.phaseStateR, 6, 1 - spread);
     this.phaseFeedbackL = bL;
     this.phaseFeedbackR = bR;
-    const wet = 0.48 + motion * 0.28;
-    return [left * (1 - wet) + bL * wet, right * (1 - wet) + bR * wet];
+    // Wet-only. BaseEffect owns the single dry/wet crossfade for every Drift mode.
+    return [bL, bR];
   }
 
   processSmallStone(left, right, rate, depth, shape, spread, motion) {
@@ -97,8 +97,7 @@ class CalcotoneDriftClassicProcessor extends AudioWorkletProcessor {
     const pR = this.cascade(xR, centerR, 4, this.phaseStateR, 0, motion);
     this.phaseFeedbackL = pL;
     this.phaseFeedbackR = pR;
-    const wet = 0.46 + motion * 0.32;
-    return [left * (1 - wet) + pL * wet, right * (1 - wet) + pR * wet];
+    return [pL, pR];
   }
 
   processUniVibe(left, right, rate, depth, shape, spread, motion) {
@@ -117,8 +116,7 @@ class CalcotoneDriftClassicProcessor extends AudioWorkletProcessor {
     const vibeR = this.cascade(right, centerR, 4, this.phaseStateR, 0, shape);
     const tremL = 0.86 + this.lamp * (0.08 + shape * 0.09);
     const tremR = 0.86 + this.lampR * (0.08 + shape * 0.09);
-    const wet = 0.52 + motion * 0.22;
-    return [left * (1 - wet) + vibeL * wet * tremL, right * (1 - wet) + vibeR * wet * tremR];
+    return [vibeL * tremL, vibeR * tremR];
   }
 
   readDelay(buffer, delaySamples) {
