@@ -5,75 +5,21 @@ import { formatAlgorithmName } from '../../ui/formatting';
 import './ModuleViewportVideo.css';
 
 type ModuleVideoKey = 'ember' | 'drift' | 'drift-alt' | 'halo' | 'artifact' | 'atmos' | 'grain';
-
 type VisualRecipe =
-  | 'mirror'
-  | 'columns'
-  | 'quad'
-  | 'rotary'
-  | 'recursive'
-  | 'slices'
-  | 'portal'
-  | 'cross'
-  | 'shatter'
-  | 'prism'
-  | 'smear'
-  | 'hardware'
-  | 'abyss'
-  | 'freeze'
-  | 'cinema'
-  | 'artifact'
-  | 'halo-rings'
-  | 'halo-echo'
-  | 'halo-star'
-  | 'atmos-vault'
-  | 'atmos-cloud'
-  | 'atmos-aurora'
-  | 'grain-grid'
-  | 'grain-shards'
-  | 'grain-raster'
-  | 'grain-checker'
-  | 'grain-diamond'
-  | 'grain-brick'
-  | 'grain-hex';
+  | 'mirror' | 'columns' | 'quad' | 'rotary' | 'recursive' | 'slices' | 'portal'
+  | 'cross' | 'shatter' | 'prism' | 'smear' | 'hardware' | 'abyss' | 'freeze'
+  | 'cinema' | 'artifact' | 'halo-rings' | 'halo-echo' | 'halo-star' | 'atmos-vault'
+  | 'atmos-cloud' | 'atmos-aurora' | 'grain-grid' | 'grain-shards' | 'grain-raster'
+  | 'grain-checker' | 'grain-diamond' | 'grain-brick' | 'grain-hex';
 
 type ColorProfile =
-  | 'neutral'
-  | 'ember-dark'
-  | 'ember-gold'
-  | 'drift-cyan'
-  | 'drift-blue'
-  | 'drift-teal'
-  | 'drift-violet'
-  | 'halo-ice'
-  | 'halo-blue'
-  | 'halo-cyan'
-  | 'halo-violet'
-  | 'halo-green'
-  | 'halo-gold'
-  | 'atmos-blue'
-  | 'atmos-cyan'
-  | 'atmos-violet'
-  | 'atmos-aurora'
-  | 'atmos-deep'
-  | 'atmos-warm'
-  | 'grain-ice'
-  | 'grain-red'
-  | 'grain-violet'
-  | 'grain-magenta'
-  | 'grain-cyan'
-  | 'grain-amber'
-  | 'grain-green'
-  | 'artifact-amber'
-  | 'artifact-gold'
-  | 'artifact-violet'
-  | 'artifact-magenta'
-  | 'artifact-green'
-  | 'artifact-sepia'
-  | 'artifact-red'
-  | 'artifact-cyan'
-  | 'artifact-teal'
-  | 'artifact-blue';
+  | 'neutral' | 'ember-dark' | 'ember-gold' | 'drift-cyan' | 'drift-blue' | 'drift-teal'
+  | 'drift-violet' | 'halo-ice' | 'halo-blue' | 'halo-cyan' | 'halo-violet' | 'halo-green'
+  | 'halo-gold' | 'atmos-blue' | 'atmos-cyan' | 'atmos-violet' | 'atmos-aurora' | 'atmos-deep'
+  | 'atmos-warm' | 'grain-ice' | 'grain-red' | 'grain-violet' | 'grain-magenta' | 'grain-cyan'
+  | 'grain-amber' | 'grain-green' | 'artifact-amber' | 'artifact-gold' | 'artifact-violet'
+  | 'artifact-magenta' | 'artifact-green' | 'artifact-sepia' | 'artifact-red' | 'artifact-cyan'
+  | 'artifact-teal' | 'artifact-blue';
 
 const VIDEO_FILES: Record<ModuleVideoKey, string> = {
   ember: 'visuals/ember.mp4',
@@ -123,7 +69,6 @@ function visualRecipeFor(module: ModuleState): VisualRecipe {
     if (mode === 'broken') return 'shatter';
     return 'hardware';
   }
-
   if (module.id === 'chorus') {
     const mode = module.driftMode ?? 'chorus';
     if (mode === 'chorus') return 'mirror';
@@ -134,39 +79,22 @@ function visualRecipeFor(module: ModuleState): VisualRecipe {
     if (mode === 'liquid') return 'recursive';
     return 'portal';
   }
-
   if (module.id === 'delay') {
     const mode = module.delayAlgorithm ?? 'tape';
-    if (mode === 'clean') return 'halo-rings';
-    if (mode === 'tape') return 'halo-echo';
-    if (mode === 'bbd') return 'halo-rings';
-    if (mode === 'pingpong') return 'halo-star';
-    if (mode === 'diffuse') return 'halo-rings';
-    if (mode === 'scatter') return 'halo-star';
-    if (mode === 'constellation') return 'halo-star';
-    if (mode === 're201') return 'halo-echo';
-    if (mode === 'EP-3 Echoplex') return 'halo-echo';
-    if (mode === 'Binson Echorec') return 'halo-rings';
-    if (mode === 'Deluxe Memory Man') return 'halo-rings';
+    if (['clean', 'bbd', 'diffuse', 'Binson Echorec', 'Deluxe Memory Man'].includes(mode)) return 'halo-rings';
+    if (['tape', 're201', 'EP-3 Echoplex'].includes(mode)) return 'halo-echo';
     return 'halo-star';
   }
-
   if (module.id === 'reverb') {
     const mode = module.algorithm ?? 'hall';
-    if (mode === 'room') return 'atmos-vault';
+    if (['room', 'hall', 'emt140'].includes(mode)) return 'atmos-vault';
     if (mode === 'plate') return 'quad';
-    if (mode === 'hall') return 'atmos-vault';
     if (mode === 'cinema') return 'cinema';
-    if (mode === 'cloud') return 'atmos-cloud';
     if (mode === 'freeze') return 'freeze';
-    if (mode === 'celestial') return 'atmos-aurora';
-    if (mode === 'aurora') return 'atmos-aurora';
-    if (mode === 'nebula') return 'atmos-cloud';
+    if (['celestial', 'aurora'].includes(mode)) return 'atmos-aurora';
     if (mode === 'abyss') return 'abyss';
-    if (mode === 'emt140') return 'atmos-vault';
     return 'atmos-cloud';
   }
-
   if (module.id === 'bitcrusher') {
     const mode = module.grainMode ?? 'reconstruct';
     if (mode === 'reconstruct') return 'grain-checker';
@@ -179,16 +107,11 @@ function visualRecipeFor(module: ModuleState): VisualRecipe {
     if (mode === 'mpc60') return 'grain-brick';
     return 'grain-diamond';
   }
-
   return 'artifact';
 }
 
 function colorProfileFor(module: ModuleState): ColorProfile {
-  if (module.id === 'saturation') {
-    const mode = module.emberMode ?? 'velvet';
-    return mode === 'goldlion' ? 'ember-gold' : 'ember-dark';
-  }
-
+  if (module.id === 'saturation') return (module.emberMode ?? 'velvet') === 'goldlion' ? 'ember-gold' : 'ember-dark';
   if (module.id === 'chorus') {
     const mode = module.driftMode ?? 'chorus';
     if (['chorus', 'doppler'].includes(mode)) return 'drift-cyan';
@@ -196,39 +119,26 @@ function colorProfileFor(module: ModuleState): ColorProfile {
     if (['ensemble', 'liquid', 'ce1'].includes(mode)) return 'drift-teal';
     return 'drift-violet';
   }
-
   if (module.id === 'delay') {
     const mode = module.delayAlgorithm ?? 'tape';
     if (mode === 'clean') return 'halo-ice';
-    if (mode === 'tape') return 'halo-gold';
-    if (mode === 'bbd') return 'halo-green';
-    if (mode === 'pingpong') return 'halo-cyan';
-    if (mode === 'diffuse') return 'halo-violet';
-    if (mode === 'scatter') return 'halo-violet';
+    if (['tape', 're201', 'EP-3 Echoplex'].includes(mode)) return 'halo-gold';
+    if (['bbd', 'Deluxe Memory Man'].includes(mode)) return 'halo-green';
+    if (['pingpong', 'Binson Echorec'].includes(mode)) return 'halo-cyan';
+    if (['diffuse', 'scatter'].includes(mode)) return 'halo-violet';
     if (mode === 'constellation') return 'halo-blue';
-    if (mode === 're201') return 'halo-gold';
-    if (mode === 'EP-3 Echoplex') return 'halo-gold';
-    if (mode === 'Binson Echorec') return 'halo-cyan';
-    if (mode === 'Deluxe Memory Man') return 'halo-green';
     return 'halo-ice';
   }
-
   if (module.id === 'reverb') {
     const mode = module.algorithm ?? 'hall';
-    if (mode === 'room') return 'atmos-warm';
-    if (mode === 'plate') return 'atmos-cyan';
+    if (['room', 'cinema', 'emt140'].includes(mode)) return 'atmos-warm';
+    if (['plate', 'cloud', 'freeze'].includes(mode)) return 'atmos-cyan';
     if (mode === 'hall') return 'atmos-blue';
-    if (mode === 'cinema') return 'atmos-warm';
-    if (mode === 'cloud') return 'atmos-cyan';
-    if (mode === 'freeze') return 'atmos-cyan';
-    if (mode === 'celestial') return 'atmos-violet';
+    if (['celestial', 'nebula'].includes(mode)) return 'atmos-violet';
     if (mode === 'aurora') return 'atmos-aurora';
-    if (mode === 'nebula') return 'atmos-violet';
     if (mode === 'abyss') return 'atmos-deep';
-    if (mode === 'emt140') return 'atmos-warm';
     return 'atmos-blue';
   }
-
   if (module.id === 'bitcrusher') {
     const mode = module.grainMode ?? 'reconstruct';
     if (mode === 'reconstruct') return 'grain-ice';
@@ -236,12 +146,10 @@ function colorProfileFor(module: ModuleState): ColorProfile {
     if (mode === 'smear') return 'grain-violet';
     if (mode === 'prism') return 'grain-magenta';
     if (mode === 'stutter') return 'grain-cyan';
-    if (mode === 'ruin') return 'grain-amber';
-    if (mode === 'sp1200') return 'grain-amber';
+    if (['ruin', 'sp1200'].includes(mode)) return 'grain-amber';
     if (mode === 'mpc60') return 'grain-green';
     return 'grain-violet';
   }
-
   const mode = module.mediaMode ?? 'cassette';
   if (mode === 'cassette') return 'artifact-amber';
   if (mode === 'reel') return 'artifact-gold';
@@ -281,37 +189,100 @@ function captionFor(module: ModuleState): string {
 }
 
 function VideoLayer({ src, fallbackSrc, className }: { src: string; fallbackSrc: string; className: string }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const recoveryTimerRef = useRef<number | null>(null);
+  const [usingFallback, setUsingFallback] = useState(false);
+  const activeSrc = usingFallback ? fallbackSrc : src;
+
+  useEffect(() => {
+    setUsingFallback(false);
+  }, [src, fallbackSrc]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const clearRecovery = (): void => {
+      if (recoveryTimerRef.current !== null) {
+        window.clearTimeout(recoveryTimerRef.current);
+        recoveryTimerRef.current = null;
+      }
+    };
+
+    const play = (): void => {
+      clearRecovery();
+      void video.play().catch(() => undefined);
+    };
+
+    const recover = (): void => {
+      if (!usingFallback) {
+        setUsingFallback(true);
+        return;
+      }
+      video.load();
+      void video.play().catch(() => undefined);
+    };
+
+    const scheduleRecovery = (): void => {
+      if (recoveryTimerRef.current !== null) return;
+      recoveryTimerRef.current = window.setTimeout(() => {
+        recoveryTimerRef.current = null;
+        if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth === 0) recover();
+      }, 1400);
+    };
+
+    const bootstrapTimer = window.setTimeout(() => {
+      if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth === 0) recover();
+      else play();
+    }, 2200);
+
+    const visibilityChange = (): void => {
+      if (!document.hidden) play();
+    };
+
+    video.addEventListener('loadeddata', play);
+    video.addEventListener('canplay', play);
+    video.addEventListener('playing', clearRecovery);
+    video.addEventListener('stalled', scheduleRecovery);
+    video.addEventListener('waiting', scheduleRecovery);
+    document.addEventListener('visibilitychange', visibilityChange);
+    play();
+
+    return () => {
+      clearRecovery();
+      window.clearTimeout(bootstrapTimer);
+      video.removeEventListener('loadeddata', play);
+      video.removeEventListener('canplay', play);
+      video.removeEventListener('playing', clearRecovery);
+      video.removeEventListener('stalled', scheduleRecovery);
+      video.removeEventListener('waiting', scheduleRecovery);
+      document.removeEventListener('visibilitychange', visibilityChange);
+    };
+  }, [activeSrc, usingFallback]);
+
   return (
     <video
+      ref={videoRef}
       className={className}
-      src={src}
+      src={activeSrc}
       autoPlay
       muted
       loop
       playsInline
-      preload="metadata"
+      preload="auto"
       aria-hidden="true"
-      onError={(event) => {
-        const video = event.currentTarget;
-        if (video.dataset.fallbackApplied === 'true') return;
-        video.dataset.fallbackApplied = 'true';
-        video.src = fallbackSrc;
-        void video.play().catch(() => undefined);
+      onError={() => {
+        if (!usingFallback) setUsingFallback(true);
       }}
     />
   );
 }
 
-export function ModuleViewport({
-  module,
-  visualState,
-}: {
-  module: ModuleState;
-  visualState: VisualAudioState;
-}) {
+export function ModuleViewport({ module, visualState }: { module: ModuleState; visualState: VisualAudioState }) {
   const key = videoFor(module);
-  const videoUrl = key ? assetUrl(PING_PONG_FILES[key]) : null;
-  const fallbackVideoUrl = key ? assetUrl(VIDEO_FILES[key]) : null;
+  // Prefer the plain loop for decoder reliability; ping-pong is retained as a fallback.
+  const videoUrl = key ? assetUrl(VIDEO_FILES[key]) : null;
+  const fallbackVideoUrl = key ? assetUrl(PING_PONG_FILES[key]) : null;
   const feedback = Math.max(0, Math.min(1, visualState.level));
   const visualMode = visualModeFor(module);
   const visualRecipe = visualRecipeFor(module);
@@ -319,21 +290,30 @@ export function ModuleViewport({
   const signature = `${visualMode}|${visualRecipe}|${colorProfile}`;
   const previousSignatureRef = useRef(signature);
   const transitionTimerRef = useRef<number | null>(null);
+  const transitionFrameRef = useRef<number | null>(null);
   const [transitioning, setTransitioning] = useState(false);
 
   useEffect(() => {
     if (previousSignatureRef.current === signature) return;
     previousSignatureRef.current = signature;
     setTransitioning(false);
-    requestAnimationFrame(() => setTransitioning(true));
+    if (transitionFrameRef.current !== null) cancelAnimationFrame(transitionFrameRef.current);
+    transitionFrameRef.current = requestAnimationFrame(() => {
+      transitionFrameRef.current = null;
+      setTransitioning(true);
+    });
 
     if (transitionTimerRef.current !== null) window.clearTimeout(transitionTimerRef.current);
     transitionTimerRef.current = window.setTimeout(() => {
       setTransitioning(false);
       transitionTimerRef.current = null;
-    }, 950);
+    }, 620);
 
     return () => {
+      if (transitionFrameRef.current !== null) {
+        cancelAnimationFrame(transitionFrameRef.current);
+        transitionFrameRef.current = null;
+      }
       if (transitionTimerRef.current !== null) {
         window.clearTimeout(transitionTimerRef.current);
         transitionTimerRef.current = null;
@@ -353,18 +333,11 @@ export function ModuleViewport({
       {module.enabled && videoUrl && fallbackVideoUrl ? (
         <div className="module-video-stage" aria-hidden="true">
           <VideoLayer src={videoUrl} fallbackSrc={fallbackVideoUrl} className="module-video module-video-base" />
-          <span className="module-video module-video-fx module-video-fx-a" />
-          <span className="module-video module-video-fx module-video-fx-b" />
-          <span className="module-video module-video-fx module-video-fx-c" />
-          <span className="module-video-void-mask" />
           <span className="module-video-transition-veil" />
         </div>
       ) : module.enabled ? (
-        <div className="module-video-empty" aria-hidden="true">
-          <span>VIDEO SOURCE NEEDED</span>
-        </div>
+        <div className="module-video-empty" aria-hidden="true"><span>VIDEO SOURCE NEEDED</span></div>
       ) : null}
-
       {module.enabled && <span className="viewport-caption">{captionFor(module)}</span>}
     </div>
   );
