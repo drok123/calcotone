@@ -1,7 +1,7 @@
 class CalcotoneGrainProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
-      { name: 'mode', defaultValue: 0, minValue: 0, maxValue: 8, automationRate: 'k-rate' },
+      { name: 'mode', defaultValue: 0, minValue: 0, maxValue: 11, automationRate: 'k-rate' },
       { name: 'bits', defaultValue: 13, minValue: 4, maxValue: 16, automationRate: 'k-rate' },
       { name: 'density', defaultValue: 0.42, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
       { name: 'pitch', defaultValue: 0.38, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
@@ -31,8 +31,6 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     this.makeupGain = 1;
     this.randomState = 0x6d2b79f5;
 
-    // Hardware-sampler conversion state. These modes intentionally bypass the grain cloud
-    // and behave like a live A/D -> memory clock -> D/A coloration path.
     this.hardwarePhase = 0;
     this.hardwareHeldL = 0;
     this.hardwareHeldR = 0;
@@ -40,6 +38,9 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     this.hardwareFilterL = [0, 0, 0, 0];
     this.hardwareFilterR = [0, 0, 0, 0];
     this.hardwarePreviousMode = -1;
+    this.hardwareClockMemory = 0;
+    this.hardwareApertureL = 0;
+    this.hardwareApertureR = 0;
 
     this.profileBlocks = 0;
     this.profileTotalMs = 0;
@@ -76,7 +77,6 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     const modeGrainScale = [1.0, 0.50, 2.15, 1.15, 0.42, 0.68][mode] || 1;
     const grainMs = (34 + (1 - density) * 118 + this.random() * (26 + chaos * 30)) * modeGrainScale;
     const length = Math.max(72, Math.floor(sampleRate * grainMs / 1000));
-
     let historySeconds = 0.018 + this.random() * (0.07 + density * 0.12 + chaos * 0.42);
     if (mode === 1) historySeconds *= 1.5;
     if (mode === 2) historySeconds = 0.08 + this.random() * 0.55;
@@ -87,31 +87,20 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     if (mode === 5) historySeconds *= 1.9;
     const history = Math.floor(sampleRate * historySeconds);
 
-    const sets = [
-      [0,0,0,0,2,-2],
-      [0,0,3,-3,5,-5],
-      [0,0,5,-5,7,-7],
-      [0,7,-7,12,-12,5,-5],
-      [0,12,-12,7,-7,19,-19],
-    ];
+    const sets = [[0,0,0,0,2,-2],[0,0,3,-3,5,-5],[0,0,5,-5,7,-7],[0,7,-7,12,-12,5,-5],[0,12,-12,7,-7,19,-19]];
     const setIndex = Math.min(sets.length - 1, Math.floor(pitch * sets.length));
     let intervals = pitchLocked ? [0] : sets[setIndex];
-
     if (!pitchLocked) {
       if (mode === 3) {
         const prismSets = [[0,0,7,-5],[0,4,7,-12],[0,3,7,12],[0,5,7,12,-12],[0,7,12,19,-12]];
         intervals = prismSets[setIndex];
-      } else if (mode === 4) {
-        intervals = [0,0,0,0, pitch > .55 ? 12 : 0, pitch > .75 ? -12 : 0];
-      } else if (mode === 5) {
-        intervals = [0,-12,12,-7,7,-19,19];
-      }
+      } else if (mode === 4) intervals = [0,0,0,0, pitch > .55 ? 12 : 0, pitch > .75 ? -12 : 0];
+      else if (mode === 5) intervals = [0,-12,12,-7,7,-19,19];
     }
 
     let semitones = intervals[(this.random() * intervals.length) | 0];
     const fineSpread = pitchLocked ? 0 : mode === 3 ? pitch * 0.18 : pitch * (0.16 + chaos * 1.45);
     semitones += (this.random() * 2 - 1) * fineSpread;
-
     let step = Math.pow(2, semitones / 12);
     const reverseChance = mode === 1 ? 0.20 + chaos * 0.42 : mode === 5 ? 0.34 + chaos * 0.48 : chaos * 0.30;
     if (this.random() < reverseChance) step *= -1;
@@ -150,14 +139,20 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
   }
 
   quantizeNonlinear12(value) {
-    // MPC60 stores a proprietary nonlinear 12-bit representation after its input A/D.
-    // The exact companding law is not public, so use a conservative reversible log law
-    // rather than pretending ordinary linear 12-bit truncation is the original machine.
     const sign = value < 0 ? -1 : 1;
     const magnitude = Math.min(1, Math.abs(value));
     const mu = 7.5;
     const encoded = Math.log1p(mu * magnitude) / Math.log1p(mu);
     const quantized = Math.round(encoded * 2047) / 2047;
+    return sign * Math.expm1(quantized * Math.log1p(mu)) / mu;
+  }
+
+  quantizeCompanded8(value, strength) {
+    const sign = value < 0 ? -1 : 1;
+    const magnitude = Math.min(1, Math.abs(value));
+    const mu = 15 + strength * 24;
+    const encoded = Math.log1p(mu * magnitude) / Math.log1p(mu);
+    const quantized = Math.round(encoded * 127) / 127;
     return sign * Math.expm1(quantized * Math.log1p(mu)) / mu;
   }
 
@@ -182,6 +177,9 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     this.hardwareHeldL = 0;
     this.hardwareHeldR = 0;
     this.hardwareEnvelope = 0;
+    this.hardwareClockMemory = 0;
+    this.hardwareApertureL = 0;
+    this.hardwareApertureR = 0;
     this.hardwareFilterL.fill(0);
     this.hardwareFilterR.fill(0);
   }
@@ -195,31 +193,47 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     let bitDepth = 12;
     let inputDrive = 0.9 + density * 1.2;
     if (mode === 7) {
-      targetRate = 40000;
-      bitDepth = 12;
-      inputDrive = 0.88 + density * 0.52;
+      targetRate = 40000; bitDepth = 12; inputDrive = 0.88 + density * 0.52;
     } else if (mode === 8) {
-      targetRate = pitch <= 0.005 ? 32000 : 10000 + pitch * 23000;
-      bitDepth = 8;
-      inputDrive = 0.8 + density * 1.45;
+      targetRate = pitch <= 0.005 ? 32000 : 10000 + pitch * 23000; bitDepth = 8; inputDrive = 0.8 + density * 1.45;
+    } else if (mode === 9) {
+      // S950: 12-bit linear converter with genuinely variable record clock (7.5-48 kHz).
+      targetRate = 7500 + pitch * 40500; bitDepth = 12; inputDrive = 0.84 + density * 0.82;
+    } else if (mode === 10) {
+      // Emulator II: fixed ~27 kHz, 8-bit storage feeding a resonant 24 dB/oct reconstruction path.
+      targetRate = 27000; bitDepth = 8; inputDrive = 0.86 + density * 0.74;
+    } else if (mode === 11) {
+      // Fairlight IIx study: early 8-bit sampling around a 32 kHz ceiling with simple reconstruction.
+      targetRate = 24000 + pitch * 8000; bitDepth = 8; inputDrive = 0.82 + density * 0.66;
     }
 
-    this.hardwarePhase += targetRate / sampleRate;
+    // Small deterministic aperture/clock memory keeps the converter from behaving like an ideal sample-and-hold.
+    this.hardwareClockMemory += (targetRate - this.hardwareClockMemory) * 0.00035;
+    const effectiveRate = Math.max(6000, this.hardwareClockMemory || targetRate);
+    this.hardwarePhase += effectiveRate / sampleRate;
     if (this.hardwarePhase >= 1) {
       this.hardwarePhase -= Math.floor(this.hardwarePhase);
       const headroom = mode === 7 ? 0.98 - ((bitsControl - 4) / 12) * 0.12 : 1;
       const shapedL = Math.tanh((dryL / headroom) * inputDrive) / Math.max(1, inputDrive * 0.72);
       const shapedR = Math.tanh((dryR / headroom) * inputDrive) / Math.max(1, inputDrive * 0.72);
-      this.hardwareHeldL = mode === 7 ? this.quantizeNonlinear12(shapedL) : this.quantize(shapedL, bitDepth);
-      this.hardwareHeldR = mode === 7 ? this.quantizeNonlinear12(shapedR) : this.quantize(shapedR, bitDepth);
+      this.hardwareApertureL += (shapedL - this.hardwareApertureL) * (0.82 - chaos * 0.12);
+      this.hardwareApertureR += (shapedR - this.hardwareApertureR) * (0.82 - chaos * 0.12);
+      if (mode === 7) {
+        this.hardwareHeldL = this.quantizeNonlinear12(this.hardwareApertureL);
+        this.hardwareHeldR = this.quantizeNonlinear12(this.hardwareApertureR);
+      } else if (mode === 10 || mode === 11) {
+        this.hardwareHeldL = this.quantizeCompanded8(this.hardwareApertureL, mode === 10 ? 0.7 : 0.35);
+        this.hardwareHeldR = this.quantizeCompanded8(this.hardwareApertureR, mode === 10 ? 0.7 : 0.35);
+      } else {
+        this.hardwareHeldL = this.quantize(this.hardwareApertureL, bitDepth);
+        this.hardwareHeldR = this.quantize(this.hardwareApertureR, bitDepth);
+      }
     }
 
     let outL = this.hardwareHeldL;
     let outR = this.hardwareHeldR;
 
     if (mode === 6) {
-      // SP-1200: four output-pair families. Pair 1/2 is the dynamic SSM2044-style path,
-      // 3/4 and 5/6 are progressively more open fixed filters, 7/8 is effectively raw.
       const pair = Math.max(0, Math.min(3, Math.floor(((bitsControl - 4) / 12) * 4)));
       if (pair === 0) {
         const cutoff = 3600 + bloom * 5600 + this.hardwareEnvelope * (1800 + chaos * 3200);
@@ -235,22 +249,35 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
         outR = this.onePole(outR, cutoff, this.hardwareFilterR, 0);
       }
       const imaging = Math.sin(this.writeIndex * (26040 / sampleRate) * Math.PI * 2) * (0.0015 + chaos * 0.0035);
-      outL += imaging;
-      outR -= imaging * 0.82;
+      outL += imaging; outR -= imaging * 0.82;
     } else if (mode === 7) {
-      // MPC60: intentionally cleaner 40 kHz / 12-bit conversion with a fixed reconstruction path.
       const cutoff = 15_500 + bloom * 2_600;
       outL = this.onePole(this.onePole(outL, cutoff, this.hardwareFilterL, 0), cutoff, this.hardwareFilterL, 1);
       outR = this.onePole(this.onePole(outR, cutoff, this.hardwareFilterR, 0), cutoff, this.hardwareFilterR, 1);
       const converterTexture = (chaos - 0.5) * 0.006;
-      outL = Math.tanh(outL * (1 + converterTexture));
-      outR = Math.tanh(outR * (1 + converterTexture));
-    } else {
-      // Mirage: 8-bit converter into a resonant four-pole analog-style low-pass path.
+      outL = Math.tanh(outL * (1 + converterTexture)); outR = Math.tanh(outR * (1 + converterTexture));
+    } else if (mode === 8) {
       const cutoff = 700 + bloom * 13_500;
       const resonance = 0.05 + chaos * 0.72;
       outL = this.fourPole(outL, cutoff, resonance, this.hardwareFilterL);
       outR = this.fourPole(outR, cutoff * 0.992, resonance, this.hardwareFilterR);
+    } else if (mode === 9) {
+      // S950 bandwidth follows record rate rather than remaining a fixed post-filter.
+      const bandwidth = Math.min(19_200, effectiveRate * 0.40);
+      const cutoff = Math.max(1600, bandwidth * (0.74 + bloom * 0.24));
+      outL = this.onePole(this.onePole(outL, cutoff, this.hardwareFilterL, 0), cutoff, this.hardwareFilterL, 1);
+      outR = this.onePole(this.onePole(outR, cutoff * 0.994, this.hardwareFilterR, 0), cutoff * 0.994, this.hardwareFilterR, 1);
+    } else if (mode === 10) {
+      const cutoff = 1800 + bloom * 10_600 + this.hardwareEnvelope * 900;
+      const resonance = 0.10 + chaos * 0.56;
+      outL = this.fourPole(outL, cutoff, resonance, this.hardwareFilterL);
+      outR = this.fourPole(outR, cutoff * 0.987, resonance, this.hardwareFilterR);
+    } else if (mode === 11) {
+      const cutoff = 3900 + bloom * 8200;
+      outL = this.onePole(this.onePole(outL, cutoff, this.hardwareFilterL, 0), cutoff * 0.86, this.hardwareFilterL, 1);
+      outR = this.onePole(this.onePole(outR, cutoff * 0.991, this.hardwareFilterR, 0), cutoff * 0.85, this.hardwareFilterR, 1);
+      const edge = (outL - outR) * chaos * 0.018;
+      outL += edge; outR -= edge;
     }
 
     return [Math.max(-1.15, Math.min(1.15, outL)), Math.max(-1.15, Math.min(1.15, outR))];
@@ -263,12 +290,9 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     this.guardStressBlocks = stressed ? this.guardStressBlocks + 1 : 0;
     this.guardRecoveryBlocks = relaxed ? this.guardRecoveryBlocks + 1 : 0;
     if (this.guardStressBlocks >= 2 && this.effectiveVoiceLimit > 2) {
-      this.effectiveVoiceLimit -= 1;
-      this.guardStressBlocks = 0;
-      this.guardRecoveryBlocks = 0;
+      this.effectiveVoiceLimit -= 1; this.guardStressBlocks = 0; this.guardRecoveryBlocks = 0;
     } else if (this.guardRecoveryBlocks >= 220 && this.effectiveVoiceLimit < this.maxVoices) {
-      this.effectiveVoiceLimit += 1;
-      this.guardRecoveryBlocks = 0;
+      this.effectiveVoiceLimit += 1; this.guardRecoveryBlocks = 0;
     }
   }
 
@@ -280,7 +304,7 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     const inR = input?.[1] || inL;
     const outL = output[0];
     const outR = output[1] || output[0];
-    const mode = Math.max(0, Math.min(8, Math.round(parameters.mode[0])));
+    const mode = Math.max(0, Math.min(11, Math.round(parameters.mode[0])));
     const bits = Math.max(4, Math.min(16, parameters.bits[0]));
     const targetDensity = Math.max(0, Math.min(1, parameters.density[0]));
     const targetPitch = Math.max(0, Math.min(1, parameters.pitch[0]));
@@ -309,8 +333,7 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
         const processed = this.processHardware(dryL, dryR, mode, bits, density, pitch, chaos, bloom);
         this.outputL += (processed[0] - this.outputL) * 0.88;
         this.outputR += (processed[1] - this.outputR) * 0.88;
-        outL[i] = this.outputL;
-        outR[i] = this.outputR;
+        outL[i] = this.outputL; outR[i] = this.outputR;
         this.writeIndex = (this.writeIndex + 1) & this.mask;
         continue;
       }
@@ -335,8 +358,7 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
         const toneCoefficient = mode === 2 ? 0.12 + voice.tone * 0.38 : mode === 5 ? 0.10 + voice.tone * 0.76 : 0.22 + voice.tone * 0.66;
         voice.lastL += (sampleL - voice.lastL) * toneCoefficient;
         voice.lastR += (sampleR - voice.lastR) * toneCoefficient;
-        sampleL = voice.lastL;
-        sampleR = voice.lastR;
+        sampleL = voice.lastL; sampleR = voice.lastR;
         const movingPan = Math.max(-1, Math.min(1, voice.pan + Math.sin(normalized * Math.PI * 2) * voice.panDrift));
         const leftGain = Math.sqrt((1 - movingPan) * 0.5);
         const rightGain = Math.sqrt((1 + movingPan) * 0.5);
@@ -362,14 +384,12 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
         if ((this.writeIndex % hold) !== 0) { processedL = this.outputL; processedR = this.outputR; }
       } else if (mode === 2) {
         const mid = (processedL + processedR) * 0.5;
-        processedL = processedL * 0.72 + mid * 0.28;
-        processedR = processedR * 0.72 + mid * 0.28;
+        processedL = processedL * 0.72 + mid * 0.28; processedR = processedR * 0.72 + mid * 0.28;
       } else if (mode === 4) {
         const cell = Math.max(64, Math.floor(sampleRate * (0.018 + (1-density) * 0.055)));
         const phase = (this.writeIndex % cell) / cell;
         const gate = 0.62 + 0.38 * Math.sin(Math.PI * phase);
-        processedL *= gate;
-        processedR *= gate;
+        processedL *= gate; processedR *= gate;
       } else if (mode === 5) {
         const fold = 1.1 + chaos * 1.8;
         processedL = Math.tanh(processedL * fold + processedR * 0.08 * chaos);
@@ -388,14 +408,12 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       this.wetEnergy += (wetPower - this.wetEnergy) * 0.0018;
       const targetMakeup = Math.max(0.82, Math.min(1.72, Math.sqrt((this.inputEnergy + 1e-6) / (this.wetEnergy + 1e-6))));
       this.makeupGain += (targetMakeup - this.makeupGain) * 0.0012;
-      safeL *= this.makeupGain;
-      safeR *= this.makeupGain;
+      safeL *= this.makeupGain; safeR *= this.makeupGain;
       this.outputL += (safeL - this.outputL) * 0.82;
       this.outputR += (safeR - this.outputR) * 0.82;
       if (Math.abs(this.outputL) < 1e-20) this.outputL = 0;
       if (Math.abs(this.outputR) < 1e-20) this.outputR = 0;
-      outL[i] = this.outputL;
-      outR[i] = this.outputR;
+      outL[i] = this.outputL; outR[i] = this.outputR;
       this.writeIndex = (this.writeIndex + 1) & this.mask;
     }
 
@@ -418,10 +436,7 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
         callbackJitterMs: Math.sqrt(variance), activeVoices, maxVoices: this.maxVoices,
         effectiveVoiceLimit: this.effectiveVoiceLimit, overruns: this.profileOverruns, droppedSpawns: this.profileDroppedSpawns,
       });
-      this.profileBlocks = 0;
-      this.profileTotalMs = 0;
-      this.profileTotalSquaredMs = 0;
-      this.profileWorstMs = 0;
+      this.profileBlocks = 0; this.profileTotalMs = 0; this.profileTotalSquaredMs = 0; this.profileWorstMs = 0;
     }
     return true;
   }
