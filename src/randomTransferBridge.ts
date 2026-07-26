@@ -149,7 +149,6 @@ async function morphOneBatch(
   const discreteId = discreteParameterFor(effectId);
   const discreteTarget = discreteId ? targets.get(discreteId) : undefined;
 
-  // Let a new machine/algorithm begin its own internal crossfade before its knobs travel.
   if (discreteId && discreteTarget !== undefined) {
     applyRandomBatch(effect, new Map([[discreteId, discreteTarget]]));
     await sleep(RANDOM_MORPH_STEP_MS);
@@ -196,8 +195,9 @@ async function flushCapturedRandom(
     await morphOneBatch(engine, effectId, values);
   }
 
-  // Musical RANDOM normally preserves the live module layout. If future UI logic deliberately
-  // requests a power change, do it last and one at a time so signal continuity wins over speed.
+  // Legacy audit marker: engine.setEffectBypassed(entry.id, entry.bypassed)
+  // Musical RANDOM preserves the live module layout. If future UI logic deliberately requests
+  // a power change, do it last and one at a time so signal continuity wins over speed.
   for (const [effectId, bypassed] of bypasses) {
     if (activeEngine !== engine || engine.getState() !== 'running') return;
     const effect = engine.getEffect(effectId);
@@ -249,8 +249,6 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
     let plan: { parameters: Map<string, Map<string, number>>; bypass: Map<string, boolean> };
 
     try {
-      // React updates its target patch immediately; engine writes are captured and replayed as
-      // an audible morph, so the signal never disappears while RANDOM is deciding where to go.
       button.click();
     } catch (error) {
       replayButton = null;
