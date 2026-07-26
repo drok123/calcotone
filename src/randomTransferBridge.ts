@@ -2,10 +2,12 @@ import { AudioEngine } from './audio/AudioEngine';
 import { applyRandomBatch } from './perf/randomBatch';
 import { beginViewportPerformanceHold } from './components/effects/viewportScheduler';
 
-const RANDOM_PREP_MS = 72;
-const RANDOM_SETTLE_MS = 18;
+const RANDOM_PREP_MS = 18;
+const RANDOM_MODULE_STEP_MS = 28;
+const RANDOM_POWER_STEP_MS = 36;
+const RANDOM_SETTLE_MS = 42;
 const SIGNAL_LOCK_MS = 90;
-const RANDOM_BATCH_ORDER = ['chorus', 'bitcrusher', 'saturation', 'media', 'delay', 'reverb'] as const;
+const RANDOM_BATCH_ORDER = ['saturation', 'chorus', 'bitcrusher', 'media', 'delay', 'reverb'] as const;
 
 let activeEngine: AudioEngine | null = null;
 let randomBusy = false;
@@ -13,8 +15,10 @@ let replayButton: HTMLButtonElement | null = null;
 let signalBusyUntil = 0;
 let captureEngine: AudioEngine | null = null;
 let capturedParameters = new Map<string, Map<string, number>>();
+let capturedBypass = new Map<string, boolean>();
 
 const directSetEffectParameter = AudioEngine.prototype.setEffectParameter;
+const directSetEffectBypassed = AudioEngine.prototype.setEffectBypassed;
 const originalStart = AudioEngine.prototype.start;
 const originalStop = AudioEngine.prototype.stop;
 
@@ -36,6 +40,18 @@ const capturedSetEffectParameter = function (
   directSetEffectParameter.call(this, effectId, parameterId, value);
 };
 
+const capturedSetEffectBypassed = function (
+  this: AudioEngine,
+  effectId: string,
+  bypassed: boolean,
+): void {
+  if (captureEngine === this) {
+    capturedBypass.set(effectId, bypassed);
+    return;
+  }
+  directSetEffectBypassed.call(this, effectId, bypassed);
+};
+
 const trackedStart = async function (
   this: AudioEngine,
   ...args: Parameters<AudioEngine['start']>
@@ -55,6 +71,7 @@ const trackedStop = async function (
     if (captureEngine === this) {
       captureEngine = null;
       capturedParameters.clear();
+      capturedBypass.clear();
     }
   }
 };
@@ -76,43 +93,69 @@ function markBusy(button: HTMLButtonElement, busy: boolean): void {
   }
 }
 
-function yieldMainThread(): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, 0));
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 function beginParameterCapture(engine: AudioEngine): void {
   captureEngine = engine;
   capturedParameters = new Map<string, Map<string, number>>();
+  capturedBypass = new Map<string, boolean>();
 }
 
-function finishParameterCapture(engine: AudioEngine): Map<string, Map<string, number>> {
-  if (captureEngine !== engine) return new Map();
-  const result = capturedParameters;
+function finishParameterCapture(engine: AudioEngine): {
+  parameters: Map<string, Map<string, number>>;
+  bypass: Map<string, boolean>;
+} {
+  if (captureEngine !== engine) {
+    return { parameters: new Map(), bypass: new Map() };
+  }
+  const result = { parameters: capturedParameters, bypass: capturedBypass };
   captureEngine = null;
   capturedParameters = new Map();
+  capturedBypass = new Map();
   return result;
+}
+
+async function applyOneBatch(
+  engine: AudioEngine,
+  effectId: string,
+  values: Map<string, number>,
+): Promise<void> {
+  if (!values.size || activeEngine !== engine || engine.getState() !== 'running') return;
+  const effect = engine.getEffect(effectId);
+  if (!effect) return;
+
+  // Existing effect setters already smooth continuous controls and crossfade heavy algorithm
+  // switches. Giving each module its own short time slice keeps those transitions audible and
+  // prevents RANDOM from becoming one giant synchronous DSP transaction.
+  applyRandomBatch(effect, values);
+  await sleep(RANDOM_MODULE_STEP_MS);
 }
 
 async function flushCapturedRandom(
   engine: AudioEngine,
   batches: Map<string, Map<string, number>>,
+  bypasses: Map<string, boolean>,
 ): Promise<void> {
   for (const effectId of RANDOM_BATCH_ORDER) {
     const values = batches.get(effectId);
-    if (!values?.size) continue;
-    if (activeEngine !== engine || engine.getState() !== 'running') return;
-
-    await yieldMainThread();
-    const effect = engine.getEffect(effectId);
-    if (effect) applyRandomBatch(effect, values);
+    if (values) await applyOneBatch(engine, effectId, values);
   }
 
   for (const [effectId, values] of batches) {
-    if ((RANDOM_BATCH_ORDER as readonly string[]).includes(effectId) || !values.size) continue;
+    if ((RANDOM_BATCH_ORDER as readonly string[]).includes(effectId)) continue;
+    await applyOneBatch(engine, effectId, values);
+  }
+
+  // Power-state changes happen last and one at a time. The currently audible patch therefore
+  // morphs first; only after the new DSP values have settled do modules enter or leave the chain.
+  for (const [effectId, bypassed] of bypasses) {
     if (activeEngine !== engine || engine.getState() !== 'running') return;
-    await yieldMainThread();
     const effect = engine.getEffect(effectId);
-    if (effect) applyRandomBatch(effect, values);
+    if (!effect || effect.isBypassed() === bypassed) continue;
+    directSetEffectBypassed.call(engine, effectId, bypassed);
+    await sleep(RANDOM_POWER_STEP_MS);
   }
 }
 
@@ -142,19 +185,10 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
   const engine = activeEngine;
   if (!engine || engine.getState() !== 'running') return;
 
-  const snapshot = engine.getEffectOrder().map((id) => ({
-    id,
-    bypassed: engine.getEffect(id)?.isBypassed() ?? true,
-  }));
-  const active = snapshot.filter((entry) => !entry.bypassed);
-  if (active.length === 0) return;
-
   consumeClick(event);
   randomBusy = true;
   markBusy(button, true);
   const releaseViewportHold = beginViewportPerformanceHold();
-
-  for (const entry of active) engine.setEffectBypassed(entry.id, true);
 
   window.setTimeout(() => {
     if (activeEngine !== engine || engine.getState() !== 'running') {
@@ -166,27 +200,28 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
 
     replayButton = button;
     beginParameterCapture(engine);
-    let batches: Map<string, Map<string, number>>;
+    let plan: {
+      parameters: Map<string, Map<string, number>>;
+      bypass: Map<string, boolean>;
+    };
+
     try {
-      // Existing RANDOM logic still chooses exactly the same patch and updates UI.
-      // Only its DSP setter calls are captured and collapsed into module batches.
+      // The UI chooses exactly the same RANDOM patch, but all engine writes are captured first.
+      // Nothing audible is interrupted during planning.
       button.click();
     } catch (error) {
       replayButton = null;
       console.error('CALCOTONE RANDOM planning failed.', error);
     } finally {
-      batches = finishParameterCapture(engine);
+      plan = finishParameterCapture(engine);
     }
 
-    void flushCapturedRandom(engine, batches)
-      .then(() => new Promise<void>((resolve) => window.setTimeout(resolve, RANDOM_SETTLE_MS)))
+    void flushCapturedRandom(engine, plan.parameters, plan.bypass)
+      .then(() => sleep(RANDOM_SETTLE_MS))
       .catch((error) => {
-        console.error('CALCOTONE RANDOM batch transfer failed.', error);
+        console.error('CALCOTONE RANDOM staged morph failed.', error);
       })
       .finally(() => {
-        if (activeEngine === engine && engine.getState() === 'running') {
-          for (const entry of snapshot) engine.setEffectBypassed(entry.id, entry.bypassed);
-        }
         randomBusy = false;
         markBusy(button, false);
         releaseViewportHold();
@@ -210,6 +245,7 @@ function onRandomizerClick(event: MouseEvent): void {
 
 function installBridge(): void {
   AudioEngine.prototype.setEffectParameter = capturedSetEffectParameter;
+  AudioEngine.prototype.setEffectBypassed = capturedSetEffectBypassed;
   AudioEngine.prototype.start = trackedStart;
   AudioEngine.prototype.stop = trackedStop;
   document.addEventListener('click', onRandomizerClick, true);
@@ -220,11 +256,15 @@ function uninstallBridge(): void {
   if (AudioEngine.prototype.setEffectParameter === capturedSetEffectParameter) {
     AudioEngine.prototype.setEffectParameter = directSetEffectParameter;
   }
+  if (AudioEngine.prototype.setEffectBypassed === capturedSetEffectBypassed) {
+    AudioEngine.prototype.setEffectBypassed = directSetEffectBypassed;
+  }
   if (AudioEngine.prototype.start === trackedStart) AudioEngine.prototype.start = originalStart;
   if (AudioEngine.prototype.stop === trackedStop) AudioEngine.prototype.stop = originalStop;
   activeEngine = null;
   captureEngine = null;
   capturedParameters.clear();
+  capturedBypass.clear();
   replayButton = null;
   randomBusy = false;
 }
