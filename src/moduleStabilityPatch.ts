@@ -1,7 +1,6 @@
 import { SaturationEffect, type EmberMode } from './audio/effects/Saturation';
 import { ChorusEffect, type DriftMode } from './audio/effects/Chorus';
 import { BitcrusherEffect } from './audio/effects/Bitcrusher';
-import { ReverbEffect } from './audio/effects/Reverb';
 
 type EmberInternals = {
   mode: EmberMode;
@@ -27,30 +26,16 @@ type GrainInternals = {
 type GrainPrototype = { updateWetBodyGain: (this: GrainInternals, now: number) => void };
 type GrainState = GrainInternals & { __calcotoneBloomAttached?: boolean };
 
-type AtmosNetworkEntry = { network: { input: AudioNode } };
-type AtmosInternals = {
-  input: GainNode;
-  active: AtmosNetworkEntry;
-  retiring: Set<AtmosNetworkEntry>;
-};
-type AtmosPrototype = {
-  switchAlgorithm: (this: AtmosInternals, algorithm: string) => void;
-  disposeRetiringNetwork: (this: AtmosInternals, entry: AtmosNetworkEntry) => void;
-};
-
 type PatchGlobal = typeof globalThis & { __calcotoneModuleStabilityPatch?: boolean };
 const globalState = globalThis as PatchGlobal;
 
 const emberProto = SaturationEffect.prototype as unknown as EmberPrototype;
 const driftProto = ChorusEffect.prototype as unknown as DriftPrototype;
 const grainProto = BitcrusherEffect.prototype as unknown as GrainPrototype;
-const atmosProto = ReverbEffect.prototype as unknown as AtmosPrototype;
 
 const originalEmberApply = emberProto.apply;
 const originalDriftApply = driftProto.apply;
 const originalGrainBody = grainProto.updateWetBodyGain;
-const originalAtmosSwitch = atmosProto.switchAlgorithm;
-const originalAtmosDispose = atmosProto.disposeRetiringNetwork;
 
 function emberUsesDedicatedBranch(mode: EmberMode): boolean {
   return mode === 'transformer' || mode === 'goldlion' || mode === 'mullard'
@@ -104,34 +89,12 @@ function stableGrainBody(this: GrainInternals, now: number): void {
   state.__calcotoneBloomAttached = shouldAttach;
 }
 
-function stableAtmosDispose(this: AtmosInternals, entry: AtmosNetworkEntry): void {
-  try { this.input.disconnect(entry.network.input); } catch { /* already detached */ }
-  originalAtmosDispose.call(this, entry);
-}
-
-function stableAtmosSwitch(this: AtmosInternals, algorithm: string): void {
-  const previous = this.active;
-  originalAtmosSwitch.call(this, algorithm);
-  if (this.active === previous || !this.retiring.has(previous)) return;
-  // Keep the outgoing field excited for the full fade instead of crossfading a dying tail
-  // against a newly-created reverb that has not built energy yet.
-  try { this.input.connect(previous.network.input); } catch { /* already connected */ }
-  // A single retiring field is enough for continuity and bounds rapid RANDOM/dropdown overlap.
-  while (this.retiring.size > 1) {
-    const oldest = this.retiring.values().next().value as AtmosNetworkEntry | undefined;
-    if (!oldest || oldest === previous) break;
-    stableAtmosDispose.call(this, oldest);
-  }
-}
-
 function install(): void {
   if (globalState.__calcotoneModuleStabilityPatch) return;
   globalState.__calcotoneModuleStabilityPatch = true;
   emberProto.apply = stableEmberApply;
   driftProto.apply = stableDriftApply;
   grainProto.updateWetBodyGain = stableGrainBody;
-  atmosProto.switchAlgorithm = stableAtmosSwitch;
-  atmosProto.disposeRetiringNetwork = stableAtmosDispose;
 }
 
 function uninstall(): void {
@@ -139,8 +102,6 @@ function uninstall(): void {
   emberProto.apply = originalEmberApply;
   driftProto.apply = originalDriftApply;
   grainProto.updateWetBodyGain = originalGrainBody;
-  atmosProto.switchAlgorithm = originalAtmosSwitch;
-  atmosProto.disposeRetiringNetwork = originalAtmosDispose;
   delete globalState.__calcotoneModuleStabilityPatch;
 }
 
