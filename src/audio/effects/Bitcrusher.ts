@@ -56,6 +56,8 @@ export class BitcrusherEffect extends BaseEffect {
   private readonly directGain: GainNode;
   private readonly workletValues = new Map<string, number>();
   private mode: GrainMode = 'reconstruct';
+  private bloomAttached = true;
+  private bloomDisconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private profilerStats: GrainProfilerStats = { averageCallbackMs: 0, worstCallbackMs: 0, callbackBudgetMs: 0, cpuLoad: 0, callbackJitterMs: 0, activeVoices: 0, maxVoices: 0, effectiveVoiceLimit: 0, overruns: 0, droppedSpawns: 0 };
 
   public constructor(context: AudioContext) {
@@ -193,14 +195,41 @@ export class BitcrusherEffect extends BaseEffect {
       || this.mode === 's950' || this.mode === 'emulator2' || this.mode === 'fairlightiix';
   }
 
+  private clearBloomDisconnectTimer(): void {
+    if (this.bloomDisconnectTimer === null) return;
+    globalThis.clearTimeout(this.bloomDisconnectTimer);
+    this.bloomDisconnectTimer = null;
+  }
+
+  private setBloomBranchAttached(shouldAttach: boolean): void {
+    this.clearBloomDisconnectTimer();
+    if (shouldAttach) {
+      if (!this.bloomAttached) {
+        this.processor.connect(this.bloomFilter);
+        this.bloomAttached = true;
+      }
+      return;
+    }
+    if (!this.bloomAttached) return;
+    // Let the 40 ms Bloom gain ramp finish before removing the branch from the render graph.
+    this.bloomDisconnectTimer = globalThis.setTimeout(() => {
+      this.bloomDisconnectTimer = null;
+      if (!this.isHardwareMode() || !this.bloomAttached) return;
+      try { this.processor.disconnect(this.bloomFilter); } catch { /* already detached */ }
+      this.bloomAttached = false;
+    }, 90);
+  }
+
   private updateWetBodyGain(now: number): void {
     const bloom = this.parameterValues.get('bloom') ?? BLOOM.defaultValue;
     const modeIndex = GRAIN_MODE_ORDER.indexOf(this.mode);
     if (this.isHardwareMode()) {
       this.directGain.gain.setTargetAtTime(1.04, now, 0.04);
       this.bloomGain.gain.setTargetAtTime(0, now, 0.04);
+      this.setBloomBranchAttached(false);
       return;
     }
+    this.setBloomBranchAttached(true);
     const modeGain = [1.10, 1.15, 1.12, 1.08, 1.13, 1.17][modeIndex] ?? 1.10;
     this.directGain.gain.setTargetAtTime(modeGain - bloom * 0.04, now, 0.04);
     this.bloomGain.gain.setTargetAtTime(bloom * 0.46, now, 0.04);
@@ -215,6 +244,7 @@ export class BitcrusherEffect extends BaseEffect {
   }
 
   public override dispose(): void {
+    this.clearBloomDisconnectTimer();
     this.processor.onprocessorerror = null;
     this.processor.port.close();
     this.processor.disconnect();
