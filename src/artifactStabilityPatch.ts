@@ -56,8 +56,15 @@ function attachMediaBranches(effect: ArtifactPatchState): void {
 }
 
 function stableApplyCharacter(this: ArtifactInternals): void {
-  originalApplyCharacter.call(this);
   const effect = this as ArtifactPatchState;
+  // MediaEffect's constructor builds these four connections before its first applyCharacter().
+  // Treat an unseen instance as already attached so the default cassette initialization cannot
+  // accidentally duplicate source/modulation edges.
+  if (effect.__calcotoneArtifactBranchesAttached === undefined) {
+    effect.__calcotoneArtifactBranchesAttached = true;
+  }
+
+  originalApplyCharacter.call(this);
   if (canSuspendTransport(effect.mode)) detachUnusedBranches(effect);
   else attachMediaBranches(effect);
 }
