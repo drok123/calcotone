@@ -1,0 +1,54 @@
+import type { Plugin } from 'vite';
+
+function replaceRequired(source: string, before: string, after: string, label: string): string {
+  if (!source.includes(before)) throw new Error(`CALCOTONE Signal Lab transform: ${label} pattern not found`);
+  return source.replace(before, after);
+}
+
+export function signalLabUiTransform(): Plugin {
+  return {
+    name: 'calcotone-signal-lab-ui',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!/[/\\]src[/\\]App\.tsx(?:\?|$)/.test(id)) return null;
+      let next = code;
+
+      next = replaceRequired(
+        next,
+        `import { MotionPad } from './components/motion/MotionPad';`,
+        `import { MotionPad } from './components/motion/MotionPad';\nimport { SignalLabPanel } from './components/signal/SignalLabPanel';\nimport { DEFAULT_SIGNAL_LAB_STATE, type SignalLabState } from './audio/SignalLab';`,
+        'imports',
+      );
+
+      next = replaceRequired(
+        next,
+        `  const [modules, setModules] = useState<ModuleState[]>(INITIAL_MODULES);`,
+        `  const [modules, setModules] = useState<ModuleState[]>(INITIAL_MODULES);\n  const [signalLabState, setSignalLabState] = useState<SignalLabState>({ ...DEFAULT_SIGNAL_LAB_STATE });`,
+        'state',
+      );
+
+      next = replaceRequired(
+        next,
+        `  function getEngine(): AudioEngine {`,
+        `  function updateSignalLab(nextState: Partial<SignalLabState>): void {\n    setSignalLabState((current) => ({ ...current, ...nextState }));\n    engineRef.current?.setSignalLabState(nextState);\n  }\n\n  function getEngine(): AudioEngine {`,
+        'state updater',
+      );
+
+      next = replaceRequired(
+        next,
+        `      await engine.start({ performanceMode, inputMode });\n      engine.loadPreset(DEFAULT_PRESET);`,
+        `      await engine.start({ performanceMode, inputMode });\n      engine.setSignalLabState(signalLabState);\n      engine.loadPreset(DEFAULT_PRESET);`,
+        'startup sync',
+      );
+
+      next = replaceRequired(
+        next,
+        `            />\n\n\n            <RecorderPanel`,
+        `            />\n\n            <SignalLabPanel\n              state={signalLabState}\n              running={isRunning}\n              onChange={updateSignalLab}\n            />\n\n            <RecorderPanel`,
+        'panel placement',
+      );
+
+      return { code: next, map: null };
+    },
+  };
+}
