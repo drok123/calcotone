@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   DEFAULT_SERIAL_ORDER,
   describeSerialOrder,
@@ -15,7 +15,7 @@ export interface SerialRoutingState {
   topRow: string[];
   bottomRow: string[];
   description: string;
-  setOrder: (order: SerialOrder) => void;
+  setOrder: (order: SerialOrder) => string[];
   move: (sourceId: string, targetId: string) => string[];
   nudge: (moduleId: string, direction: -1 | 1) => string[];
   reset: () => string[];
@@ -23,44 +23,34 @@ export interface SerialRoutingState {
 }
 
 export function useSerialRouting(initialOrder: SerialOrder = DEFAULT_SERIAL_ORDER): SerialRoutingState {
-  const [order, setOrderState] = useState<string[]>(() => normalizeSerialOrder(initialOrder));
+  const initial = normalizeSerialOrder(initialOrder);
+  const orderRef = useRef<string[]>(initial);
+  const [order, setOrderState] = useState<string[]>(initial);
 
-  const setOrder = useCallback((nextOrder: SerialOrder) => {
-    setOrderState(normalizeSerialOrder(nextOrder));
-  }, []);
-
-  const move = useCallback((sourceId: string, targetId: string) => {
-    let next: string[] = [];
-    setOrderState((current) => {
-      next = moveSerialModule(current, sourceId, targetId);
-      return next;
-    });
-    return next;
-  }, []);
-
-  const nudge = useCallback((moduleId: string, direction: -1 | 1) => {
-    let next: string[] = [];
-    setOrderState((current) => {
-      next = nudgeSerialModule(current, moduleId, direction);
-      return next;
-    });
-    return next;
-  }, []);
-
-  const reset = useCallback(() => {
-    const next = [...DEFAULT_SERIAL_ORDER];
+  const commitOrder = useCallback((nextOrder: SerialOrder): string[] => {
+    const next = normalizeSerialOrder(nextOrder);
+    orderRef.current = next;
     setOrderState(next);
     return next;
   }, []);
 
+  const setOrder = useCallback((nextOrder: SerialOrder) => commitOrder(nextOrder), [commitOrder]);
+
+  const move = useCallback((sourceId: string, targetId: string) => {
+    return commitOrder(moveSerialModule(orderRef.current, sourceId, targetId));
+  }, [commitOrder]);
+
+  const nudge = useCallback((moduleId: string, direction: -1 | 1) => {
+    return commitOrder(nudgeSerialModule(orderRef.current, moduleId, direction));
+  }, [commitOrder]);
+
+  const reset = useCallback(() => {
+    return commitOrder(DEFAULT_SERIAL_ORDER);
+  }, [commitOrder]);
+
   const randomize = useCallback(() => {
-    let next: string[] = [];
-    setOrderState((current) => {
-      next = shuffledSerialOrder(current);
-      return next;
-    });
-    return next;
-  }, []);
+    return commitOrder(shuffledSerialOrder(orderRef.current));
+  }, [commitOrder]);
 
   const rows = useMemo(() => serialRows(order), [order]);
   const description = useMemo(() => describeSerialOrder(order), [order]);
