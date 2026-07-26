@@ -4,9 +4,10 @@ export interface DreamBufferStats {
   inputPeak: number;
   captures: number;
   activeRoutes: number;
+  memoryAgeSeconds: [number, number, number];
 }
 
-export type DreamHead = 'short' | 'medium' | 'long';
+export type DreamHead = 'now' | 'echo' | 'ghost';
 
 interface DreamRoute {
   readonly head: DreamHead;
@@ -20,17 +21,24 @@ interface DreamRoute {
   disconnectTimer: ReturnType<typeof setTimeout> | null;
 }
 
-/** Shared stereo memory core for the Dream Engine. */
+/**
+ * Shared stereo acoustic memory for the Dream Engine.
+ *
+ * V12 separates the system conceptually into:
+ * CAPTURE -> MEMORY -> AGE HEADS (NOW / ECHO / GHOST) -> RECALL -> SAFETY.
+ * The AudioWorklet owns the fixed-size ring and moving interpolated heads; this class
+ * owns bounded sends, recall routing, filtering, suspension, and the protected return.
+ */
 export class DreamBuffer {
   public readonly node: AudioWorkletNode;
-  public readonly short: GainNode;
-  public readonly medium: GainNode;
-  public readonly long: GainNode;
+  public readonly now: GainNode;
+  public readonly echo: GainNode;
+  public readonly ghost: GainNode;
   public readonly returnMix: GainNode;
 
-  private readonly shortFilter: BiquadFilterNode;
-  private readonly mediumFilter: BiquadFilterNode;
-  private readonly longFilter: BiquadFilterNode;
+  private readonly nowFilter: BiquadFilterNode;
+  private readonly echoFilter: BiquadFilterNode;
+  private readonly ghostFilter: BiquadFilterNode;
   private readonly returnClipper: WaveShaperNode;
   private readonly safetyCurve: Float32Array<ArrayBuffer>;
 
@@ -45,6 +53,7 @@ export class DreamBuffer {
     historySeconds: 8,
     inputPeak: 0,
     captures: 0,
+    memoryAgeSeconds: [0.07, 0.48, 4.2],
   };
 
   public constructor(context: AudioContext) {
@@ -59,45 +68,55 @@ export class DreamBuffer {
       channelInterpretation: 'speakers',
     });
 
-    this.short = context.createGain();
-    this.medium = context.createGain();
-    this.long = context.createGain();
+    this.now = context.createGain();
+    this.echo = context.createGain();
+    this.ghost = context.createGain();
     this.returnMix = context.createGain();
-    this.shortFilter = context.createBiquadFilter();
-    this.mediumFilter = context.createBiquadFilter();
-    this.longFilter = context.createBiquadFilter();
+    this.nowFilter = context.createBiquadFilter();
+    this.echoFilter = context.createBiquadFilter();
+    this.ghostFilter = context.createBiquadFilter();
     this.returnClipper = context.createWaveShaper();
 
-    this.short.gain.value = 0.014;
-    this.medium.gain.value = 0.009;
-    this.long.gain.value = 0.006;
-    this.returnMix.gain.value = 0.62;
+    // Memory is support infrastructure, not a seventh effect. Direct return remains
+    // deliberately tiny while routed recalls provide the audible cross-module behavior.
+    this.now.gain.value = 0.013;
+    this.echo.gain.value = 0.008;
+    this.ghost.gain.value = 0.0045;
+    this.returnMix.gain.value = 0.58;
 
-    for (const filter of [this.shortFilter, this.mediumFilter, this.longFilter]) {
+    for (const filter of [this.nowFilter, this.echoFilter, this.ghostFilter]) {
       filter.type = 'bandpass';
       filter.Q.value = 0.52;
     }
-    this.shortFilter.frequency.value = 4100;
-    this.mediumFilter.frequency.value = 2350;
-    this.longFilter.frequency.value = 1280;
+    this.nowFilter.frequency.value = 4300;
+    this.echoFilter.frequency.value = 2450;
+    this.ghostFilter.frequency.value = 1120;
     this.returnClipper.curve = this.safetyCurve;
     this.returnClipper.oversample = '2x';
 
-    this.node.connect(this.short, 0, 0);
-    this.node.connect(this.medium, 1, 0);
-    this.node.connect(this.long, 2, 0);
-    this.short.connect(this.shortFilter);
-    this.medium.connect(this.mediumFilter);
-    this.long.connect(this.longFilter);
-    this.shortFilter.connect(this.returnMix);
-    this.mediumFilter.connect(this.returnMix);
-    this.longFilter.connect(this.returnMix);
+    this.node.connect(this.now, 0, 0);
+    this.node.connect(this.echo, 1, 0);
+    this.node.connect(this.ghost, 2, 0);
+    this.now.connect(this.nowFilter);
+    this.echo.connect(this.echoFilter);
+    this.ghost.connect(this.ghostFilter);
+    this.nowFilter.connect(this.returnMix);
+    this.echoFilter.connect(this.returnMix);
+    this.ghostFilter.connect(this.returnMix);
     this.returnMix.connect(this.returnClipper);
 
-    this.node.port.onmessage = (event: MessageEvent<Omit<DreamBufferStats, 'activeRoutes'> & { type?: string }>) => {
+    this.node.port.onmessage = (event: MessageEvent<Partial<Omit<DreamBufferStats, 'activeRoutes'>> & { type?: string }>) => {
       if (event.data?.type !== 'profile') return;
-      const { type: _type, ...stats } = event.data;
-      this.stats = stats;
+      const nextAges = event.data.memoryAgeSeconds;
+      this.stats = {
+        fillRatio: Number(event.data.fillRatio ?? this.stats.fillRatio),
+        historySeconds: Number(event.data.historySeconds ?? this.stats.historySeconds),
+        inputPeak: Number(event.data.inputPeak ?? this.stats.inputPeak),
+        captures: Number(event.data.captures ?? this.stats.captures),
+        memoryAgeSeconds: Array.isArray(nextAges) && nextAges.length >= 3
+          ? [Number(nextAges[0]) || 0, Number(nextAges[1]) || 0, Number(nextAges[2]) || 0]
+          : this.stats.memoryAgeSeconds,
+      };
     };
     this.node.onprocessorerror = () => {
       console.error('CALCOTONE Dream Buffer AudioWorklet stopped unexpectedly.');
@@ -165,12 +184,7 @@ export class DreamBuffer {
     }
   }
 
-  public attachRoute(
-    id: string,
-    head: DreamHead,
-    destination: AudioNode,
-    amount: number,
-  ): void {
+  public attachRoute(id: string, head: DreamHead, destination: AudioNode, amount: number): void {
     this.detachRoute(id);
 
     const gain = this.context.createGain();
@@ -181,10 +195,10 @@ export class DreamBuffer {
 
     gain.gain.value = safeAmount;
     highpass.type = 'highpass';
-    highpass.frequency.value = head === 'long' ? 150 : head === 'medium' ? 120 : 95;
+    highpass.frequency.value = head === 'ghost' ? 170 : head === 'echo' ? 125 : 90;
     highpass.Q.value = 0.55;
     lowpass.type = 'lowpass';
-    lowpass.frequency.value = head === 'long' ? 4200 : head === 'medium' ? 6500 : 9200;
+    lowpass.frequency.value = head === 'ghost' ? 3600 : head === 'echo' ? 6500 : 9800;
     lowpass.Q.value = 0.5;
     saturator.curve = this.safetyCurve;
     saturator.oversample = 'none';
@@ -210,7 +224,7 @@ export class DreamBuffer {
 
   private connectRoute(route: DreamRoute): void {
     if (route.connected) return;
-    const outputIndex = route.head === 'short' ? 0 : route.head === 'medium' ? 1 : 2;
+    const outputIndex = route.head === 'now' ? 0 : route.head === 'echo' ? 1 : 2;
     this.node.connect(route.gain, outputIndex, 0);
     route.saturator.connect(route.destination);
     route.connected = true;
@@ -262,7 +276,7 @@ export class DreamBuffer {
   }
 
   public getStats(): DreamBufferStats {
-    return { ...this.stats, activeRoutes: [...this.routes.values()].filter((route) => route.connected).length };
+    return { ...this.stats, memoryAgeSeconds: [...this.stats.memoryAgeSeconds] as [number, number, number], activeRoutes: [...this.routes.values()].filter((route) => route.connected).length };
   }
 
   public dispose(): void {
@@ -273,12 +287,12 @@ export class DreamBuffer {
     this.node.onprocessorerror = null;
     this.node.port.close();
     this.node.disconnect();
-    this.short.disconnect();
-    this.medium.disconnect();
-    this.long.disconnect();
-    this.shortFilter.disconnect();
-    this.mediumFilter.disconnect();
-    this.longFilter.disconnect();
+    this.now.disconnect();
+    this.echo.disconnect();
+    this.ghost.disconnect();
+    this.nowFilter.disconnect();
+    this.echoFilter.disconnect();
+    this.ghostFilter.disconnect();
     this.returnMix.disconnect();
     this.returnClipper.disconnect();
   }
