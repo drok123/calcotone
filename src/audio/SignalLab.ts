@@ -1,17 +1,16 @@
-export type SignalLabMode = 'octaver' | 'ringmod' | 'freqshift' | 'envelope' | 'tremolo' | 'autopan';
+export type SignalLabMode = 'octaver' | 'ringmod' | 'tremolo' | 'autopan' | 'wavefolder';
 export type SignalLabPosition = 'pre' | 'post';
 
 export const SIGNAL_LAB_MODES: readonly SignalLabMode[] = [
-  'octaver', 'ringmod', 'freqshift', 'envelope', 'tremolo', 'autopan',
+  'octaver', 'ringmod', 'tremolo', 'autopan', 'wavefolder',
 ] as const;
 
 export const SIGNAL_LAB_LABELS: Record<SignalLabMode, string> = {
-  octaver: 'OCTAVER',
+  octaver: 'OCTAVE UP',
   ringmod: 'RING MOD',
-  freqshift: 'FREQ SHIFT',
-  envelope: 'ENVELOPE',
   tremolo: 'TREMOLO',
   autopan: 'AUTO PAN',
+  wavefolder: 'WAVEFOLDER',
 };
 
 export interface SignalLabState {
@@ -34,11 +33,7 @@ export const DEFAULT_SIGNAL_LAB_STATE: SignalLabState = {
   mix: 0.5,
 };
 
-/**
- * Compact utility processor that lives outside the six-module rack.
- * v1 intentionally uses native WebAudio nodes only: zero AudioWorklet scheduler
- * pressure, bounded node count, click-smoothed bypass/mode changes.
- */
+/** Compact utility processor outside the six-module rack. */
 export class SignalLab {
   public readonly input: GainNode;
   public readonly output: GainNode;
@@ -47,14 +42,18 @@ export class SignalLab {
   private readonly dry: GainNode;
   private readonly wet: GainNode;
   private readonly processorIn: GainNode;
-  private readonly processorOut: GainNode;
-  private readonly filter: BiquadFilterNode;
-  private readonly tremolo: GainNode;
+  private readonly tone: BiquadFilterNode;
+  private readonly octave: WaveShaperNode;
+  private readonly folder: WaveShaperNode;
+  private readonly ringVca: GainNode;
+  private readonly tremoloVca: GainNode;
   private readonly panner: StereoPannerNode;
-  private readonly lfo: OscillatorNode;
-  private readonly lfoDepth: GainNode;
   private readonly ringCarrier: OscillatorNode;
   private readonly ringDepth: GainNode;
+  private readonly tremLfo: OscillatorNode;
+  private readonly tremDepth: GainNode;
+  private readonly panLfo: OscillatorNode;
+  private readonly panDepth: GainNode;
   private state: SignalLabState = { ...DEFAULT_SIGNAL_LAB_STATE };
   private disposed = false;
 
@@ -65,52 +64,65 @@ export class SignalLab {
     this.dry = context.createGain();
     this.wet = context.createGain();
     this.processorIn = context.createGain();
-    this.processorOut = context.createGain();
-    this.filter = context.createBiquadFilter();
-    this.tremolo = context.createGain();
+    this.tone = context.createBiquadFilter();
+    this.octave = context.createWaveShaper();
+    this.folder = context.createWaveShaper();
+    this.ringVca = context.createGain();
+    this.tremoloVca = context.createGain();
     this.panner = context.createStereoPanner();
-    this.lfo = context.createOscillator();
-    this.lfoDepth = context.createGain();
     this.ringCarrier = context.createOscillator();
     this.ringDepth = context.createGain();
+    this.tremLfo = context.createOscillator();
+    this.tremDepth = context.createGain();
+    this.panLfo = context.createOscillator();
+    this.panDepth = context.createGain();
 
     this.input.connect(this.dry);
     this.dry.connect(this.output);
     this.input.connect(this.processorIn);
-    this.processorIn.connect(this.filter);
-    this.filter.connect(this.tremolo);
-    this.tremolo.connect(this.panner);
-    this.panner.connect(this.processorOut);
-    this.processorOut.connect(this.wet);
+    this.tone.connect(this.wet);
     this.wet.connect(this.output);
 
-    this.filter.type = 'lowpass';
-    this.filter.Q.value = 0.7;
-    this.tremolo.gain.value = 1;
+    this.tone.type = 'lowpass';
+    this.tone.Q.value = 0.7;
+    this.octave.curve = createOctaveUpCurve();
+    this.folder.curve = createFoldCurve(0.5);
+    this.octave.oversample = '2x';
+    this.folder.oversample = '2x';
+    this.ringVca.gain.value = 0;
+    this.tremoloVca.gain.value = 1;
     this.panner.pan.value = 0;
-
-    this.lfo.type = 'sine';
-    this.lfo.frequency.value = 2;
-    this.lfoDepth.gain.value = 0;
-    this.lfo.connect(this.lfoDepth);
-    this.lfoDepth.connect(this.tremolo.gain);
-    this.lfoDepth.connect(this.panner.pan);
 
     this.ringCarrier.type = 'sine';
     this.ringCarrier.frequency.value = 120;
-    this.ringDepth.gain.value = 0;
+    this.ringDepth.gain.value = 1;
     this.ringCarrier.connect(this.ringDepth);
-    this.ringDepth.connect(this.tremolo.gain);
+    this.ringDepth.connect(this.ringVca.gain);
 
-    this.lfo.start();
+    this.tremLfo.type = 'sine';
+    this.tremLfo.frequency.value = 2;
+    this.tremDepth.gain.value = 0;
+    this.tremLfo.connect(this.tremDepth);
+    this.tremDepth.connect(this.tremoloVca.gain);
+
+    this.panLfo.type = 'sine';
+    this.panLfo.frequency.value = 2;
+    this.panDepth.gain.value = 0;
+    this.panLfo.connect(this.panDepth);
+    this.panDepth.connect(this.panner.pan);
+
     this.ringCarrier.start();
-    this.applyState(this.state, true);
+    this.tremLfo.start();
+    this.panLfo.start();
+    this.rebuildMode();
+    this.applyState(true);
   }
 
   public getState(): SignalLabState { return { ...this.state }; }
 
   public setState(next: Partial<SignalLabState>): void {
     if (this.disposed) return;
+    const previousMode = this.state.mode;
     this.state = {
       ...this.state,
       ...next,
@@ -119,65 +131,99 @@ export class SignalLab {
       motion: clamp01(next.motion ?? this.state.motion),
       mix: clamp01(next.mix ?? this.state.mix),
     };
-    this.applyState(this.state, false);
+    if (this.state.mode !== previousMode) this.rebuildMode();
+    this.applyState(false);
   }
 
-  private applyState(state: SignalLabState, immediate: boolean): void {
-    const now = this.context.currentTime;
-    const tau = immediate ? 0.001 : 0.025;
-    const activeMix = state.enabled ? state.mix : 0;
-    const dry = Math.cos(activeMix * Math.PI * 0.5);
-    const wet = Math.sin(activeMix * Math.PI * 0.5);
-    this.dry.gain.setTargetAtTime(dry, now, tau);
-    this.wet.gain.setTargetAtTime(wet, now, tau);
+  private rebuildMode(): void {
+    try { this.processorIn.disconnect(); } catch { /* no edge */ }
+    try { this.octave.disconnect(); } catch { /* no edge */ }
+    try { this.folder.disconnect(); } catch { /* no edge */ }
+    try { this.ringVca.disconnect(); } catch { /* no edge */ }
+    try { this.tremoloVca.disconnect(); } catch { /* no edge */ }
+    try { this.panner.disconnect(); } catch { /* no edge */ }
 
-    const toneHz = 500 + Math.pow(state.tone, 1.6) * 17500;
-    this.filter.frequency.setTargetAtTime(toneHz, now, tau);
-
-    const rate = 0.08 + Math.pow(state.motion, 2) * 11.92;
-    this.lfo.frequency.setTargetAtTime(rate, now, tau);
-    this.ringCarrier.frequency.setTargetAtTime(25 + Math.pow(state.amount, 2) * 1975, now, tau);
-
-    let tremDepth = 0;
-    let panDepth = 0;
-    let ringDepth = 0;
-    switch (state.mode) {
-      case 'tremolo': tremDepth = 0.05 + state.amount * 0.9; break;
-      case 'autopan': panDepth = 0.1 + state.amount * 0.9; break;
-      case 'ringmod': ringDepth = 0.08 + state.amount * 0.72; break;
-      case 'envelope':
-        // v1 envelope mode is a resonant signal-shaping filter; a true envelope
-        // follower can replace this branch later without changing the panel API.
-        this.filter.Q.setTargetAtTime(1 + state.amount * 14, now, tau);
-        break;
+    switch (this.state.mode) {
       case 'octaver':
-      case 'freqshift':
-        // Reserved modes deliberately remain conservative until the dedicated
-        // pitch/frequency worklet lands. They still honor tone + wet/dry safely.
-        this.filter.Q.setTargetAtTime(0.7, now, tau);
+        this.processorIn.connect(this.octave);
+        this.octave.connect(this.tone);
+        break;
+      case 'ringmod':
+        this.processorIn.connect(this.ringVca);
+        this.ringVca.connect(this.tone);
+        break;
+      case 'tremolo':
+        this.processorIn.connect(this.tremoloVca);
+        this.tremoloVca.connect(this.tone);
+        break;
+      case 'autopan':
+        this.processorIn.connect(this.panner);
+        this.panner.connect(this.tone);
+        break;
+      case 'wavefolder':
+        this.processorIn.connect(this.folder);
+        this.folder.connect(this.tone);
         break;
     }
-    if (state.mode !== 'envelope') this.filter.Q.setTargetAtTime(0.7, now, tau);
-    this.lfoDepth.gain.setTargetAtTime(tremDepth, now, tau);
-    this.panner.pan.setTargetAtTime(0, now, tau);
-    // Pan modulation shares the LFO but is scaled independently by reconnecting
-    // through the same depth node; keep tremolo and pan mutually exclusive.
-    if (panDepth > 0) this.lfoDepth.gain.setTargetAtTime(panDepth, now, tau);
-    this.ringDepth.gain.setTargetAtTime(ringDepth, now, tau);
+  }
+
+  private applyState(immediate: boolean): void {
+    const now = this.context.currentTime;
+    const tau = immediate ? 0.001 : 0.025;
+    const activeMix = this.state.enabled ? this.state.mix : 0;
+    this.dry.gain.setTargetAtTime(Math.cos(activeMix * Math.PI * 0.5), now, tau);
+    this.wet.gain.setTargetAtTime(Math.sin(activeMix * Math.PI * 0.5), now, tau);
+    this.tone.frequency.setTargetAtTime(600 + Math.pow(this.state.tone, 1.55) * 17400, now, tau);
+
+    const rate = 0.08 + Math.pow(this.state.motion, 2) * 11.92;
+    this.tremLfo.frequency.setTargetAtTime(rate, now, tau);
+    this.panLfo.frequency.setTargetAtTime(rate, now, tau);
+    this.ringCarrier.frequency.setTargetAtTime(20 + Math.pow(this.state.motion, 2) * 1980, now, tau);
+
+    this.ringDepth.gain.setTargetAtTime(0.15 + this.state.amount * 0.85, now, tau);
+    this.tremoloVca.gain.setTargetAtTime(1 - this.state.amount * 0.5, now, tau);
+    this.tremDepth.gain.setTargetAtTime(this.state.mode === 'tremolo' ? this.state.amount * 0.5 : 0, now, tau);
+    this.panDepth.gain.setTargetAtTime(this.state.mode === 'autopan' ? this.state.amount : 0, now, tau);
+    if (this.state.mode !== 'autopan') this.panner.pan.setTargetAtTime(0, now, tau);
+
+    if (this.state.mode === 'wavefolder') this.folder.curve = createFoldCurve(this.state.amount);
   }
 
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    try { this.lfo.stop(); } catch { /* already stopped */ }
-    try { this.ringCarrier.stop(); } catch { /* already stopped */ }
+    for (const oscillator of [this.ringCarrier, this.tremLfo, this.panLfo]) {
+      try { oscillator.stop(); } catch { /* already stopped */ }
+      oscillator.disconnect();
+    }
     this.input.disconnect(); this.output.disconnect(); this.dry.disconnect(); this.wet.disconnect();
-    this.processorIn.disconnect(); this.processorOut.disconnect(); this.filter.disconnect();
-    this.tremolo.disconnect(); this.panner.disconnect(); this.lfo.disconnect(); this.lfoDepth.disconnect();
-    this.ringCarrier.disconnect(); this.ringDepth.disconnect();
+    this.processorIn.disconnect(); this.tone.disconnect(); this.octave.disconnect(); this.folder.disconnect();
+    this.ringVca.disconnect(); this.tremoloVca.disconnect(); this.panner.disconnect();
+    this.ringDepth.disconnect(); this.tremDepth.disconnect(); this.panDepth.disconnect();
   }
 }
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
+}
+
+function createOctaveUpCurve(): Float32Array<ArrayBuffer> {
+  const curve = new Float32Array(2048);
+  for (let i = 0; i < curve.length; i += 1) {
+    const x = (i / (curve.length - 1)) * 2 - 1;
+    curve[i] = Math.min(1, Math.abs(x) * 1.7) * 2 - 1;
+  }
+  return curve;
+}
+
+function createFoldCurve(amount: number): Float32Array<ArrayBuffer> {
+  const curve = new Float32Array(2048);
+  const drive = 1 + clamp01(amount) * 7;
+  for (let i = 0; i < curve.length; i += 1) {
+    let x = ((i / (curve.length - 1)) * 2 - 1) * drive;
+    x = ((x + 1) % 4 + 4) % 4 - 1;
+    if (x > 1) x = 2 - x;
+    curve[i] = Math.max(-1, Math.min(1, x));
+  }
+  return curve;
 }
