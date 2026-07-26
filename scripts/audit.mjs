@@ -39,6 +39,7 @@ function extractUiParameters(source, moduleId) {
 }
 
 const app = read('src/App.tsx');
+const audioEngine = read('src/audio/AudioEngine.ts');
 const effect = read('src/audio/effects/Effect.ts');
 const graph = read('src/audio/AudioGraph.ts');
 const dreamBuffer = read('src/audio/DreamBuffer.ts');
@@ -86,6 +87,16 @@ requireText(graph, 'private serialEdges', 'AudioGraph serial-edge ownership');
 requireText(dreamBuffer, 'this.disconnectSourceFeed(id)', 'Dream source suspension');
 requireText(dreamBuffer, 'this.disconnectRouteFeed(route)', 'Dream route suspension');
 requireText(dreamProcessor, 'this.silentFrames >= this.maxHeadOffset', 'Dream idle tail flush');
+
+// All modules OFF must be a truly raw audible route: no master DC filter, waveshaper,
+// limiter, or Dream return is allowed to sit between AudioGraph and the output.
+requireText(audioEngine, 'private hasActiveProcessing(): boolean', 'Raw master active-state detector');
+requireText(audioEngine, 'if (!this.hasActiveProcessing())', 'Raw master all-off branch');
+requireText(audioEngine, 'this.graph.output.connect(this.analyser)', 'Raw master direct graph route');
+requireText(audioEngine, 'this.analyser.connect(this.outputGain)', 'Raw master analyser/output route');
+requireText(audioEngine, 'this.graph.output.connect(this.dcBlock)', 'Processed master safety route');
+requireText(audioEngine, 'this.dreamBuffer.connectReturn(this.dcBlock)', 'Dream return stays on processed path');
+requireText(audioEngine, 'this.connectMasterChain();', 'Master topology refresh hook');
 
 requireText(factory, 'attachPhysicalBehavior(effect)', 'EffectFactory physical registry attachment');
 requireText(registry, 'effect.getNormalizedParameterValue(id)', 'Physical registry allocation-free reads');
@@ -155,7 +166,6 @@ requireText(driftEffect, "mode === 'adaflanger'", 'A/DA Flanger mode');
 requireText(driftEffect, "mode === 'bf2'", 'Boss BF-2 mode');
 requireText(registry, "case 'mxrflanger': behavior = spec('charge'", 'MXR physical charge memory');
 
-// Dedicated classic modulation modes must stay on their own mechanism-specific worklet.
 for (const [needle, label] of [
   ["| 'biphase'", 'Bi-Phase mode'],
   ["| 'smallstone'", 'Small Stone mode'],
