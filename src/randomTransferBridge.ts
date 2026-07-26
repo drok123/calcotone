@@ -2,14 +2,14 @@ import { AudioEngine } from './audio/AudioEngine';
 import { applyRandomBatch } from './perf/randomBatch';
 import { beginViewportPerformanceHold } from './components/effects/viewportScheduler';
 
-const RANDOM_PREP_MS = 18;
-const RANDOM_MORPH_STEPS = 6;
-const RANDOM_MORPH_STEP_MS = 24;
-const RANDOM_MODULE_GAP_MS = 18;
-const RANDOM_TOPOLOGY_GUARD_MS = 42;
-const RANDOM_TOPOLOGY_SETTLE_MS = 64;
+const RANDOM_PREP_MS = 12;
+const RANDOM_MORPH_STEPS = 5;
+const RANDOM_MORPH_STEP_MS = 22;
+const RANDOM_MODULE_GAP_MS = 8;
+const RANDOM_TOPOLOGY_GUARD_MS = 34;
+const RANDOM_TOPOLOGY_SETTLE_MS = 52;
 const RANDOM_TOPOLOGY_SAFE_MIX = 0.08;
-const RANDOM_SETTLE_MS = 42;
+const RANDOM_SETTLE_MS = 24;
 const SIGNAL_LOCK_MS = 90;
 const RANDOM_BATCH_ORDER = ['saturation', 'chorus', 'bitcrusher', 'media', 'delay', 'reverb'] as const;
 
@@ -88,6 +88,7 @@ function consumeClick(event: MouseEvent): void {
 
 function markBusy(button: HTMLButtonElement, busy: boolean): void {
   button.classList.toggle('transfer-busy', busy);
+  document.documentElement.classList.toggle('random-morphing', busy);
   if (busy) {
     button.setAttribute('aria-busy', 'true');
     button.style.pointerEvents = 'none';
@@ -211,15 +212,18 @@ async function flushCapturedRandom(
   batches: Map<string, Map<string, number>>,
   _bypasses: Map<string, boolean>,
 ): Promise<void> {
+  // All active machines travel together. This keeps RANDOM feeling like one physical
+  // gesture, matches the knob sweep, and shortens the lockout enough to perform with it.
+  const orderedJobs: Promise<void>[] = [];
   for (const effectId of RANDOM_BATCH_ORDER) {
     const values = batches.get(effectId);
-    if (values) await morphOneBatch(engine, effectId, values);
+    if (values) orderedJobs.push(morphOneBatch(engine, effectId, values));
   }
-
   for (const [effectId, values] of batches) {
     if ((RANDOM_BATCH_ORDER as readonly string[]).includes(effectId)) continue;
-    await morphOneBatch(engine, effectId, values);
+    orderedJobs.push(morphOneBatch(engine, effectId, values));
   }
+  await Promise.all(orderedJobs);
 
   // Legacy audit marker: engine.setEffectBypassed(entry.id, entry.bypassed)
   // Musical RANDOM never changes module power. The user's active rack is the continuity anchor;
@@ -309,6 +313,7 @@ function installBridge(): void {
 
 function uninstallBridge(): void {
   document.removeEventListener('click', onRandomizerClick, true);
+  document.documentElement.classList.remove('random-morphing');
   if (AudioEngine.prototype.setEffectParameter === capturedSetEffectParameter) {
     AudioEngine.prototype.setEffectParameter = directSetEffectParameter;
   }
@@ -326,7 +331,4 @@ function uninstallBridge(): void {
 }
 
 installBridge();
-
-if (import.meta.hot) {
-  import.meta.hot.dispose(() => uninstallBridge());
-}
+if (import.meta.hot) import.meta.hot.dispose(uninstallBridge);
