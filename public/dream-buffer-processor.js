@@ -25,7 +25,11 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
     // expensive transcendental math in process(): just envelope/history state.
     this.fastEnvelope = 0;
     this.slowEnvelope = 0;
+    this.detailEnvelope = 0;
     this.previousMono = 0;
+    this.nowIntentState = 0.18;
+    this.echoIntentState = 0.16;
+    this.ghostIntentState = 0.08;
 
     // V12 memory ages: NOW stays close to the present, ECHO revisits the recent
     // phrase, and GHOST deliberately reaches deep enough to justify the 8 s store.
@@ -145,26 +149,30 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
       const amplitude = Math.abs(mono);
       this.fastEnvelope += (amplitude - this.fastEnvelope) * 0.075;
       this.slowEnvelope += (amplitude - this.slowEnvelope) * 0.0025;
+      this.detailEnvelope += (Math.abs(mono - this.previousMono) - this.detailEnvelope) * 0.018;
       const transient = this.clamp01((this.fastEnvelope - this.slowEnvelope * 1.18) * 8.5);
       const sustained = this.clamp01(this.slowEnvelope * 5.2);
-      const brightness = this.clamp01(Math.abs(mono - this.previousMono) * 5.5);
+      const brightness = this.clamp01(this.detailEnvelope * 5.5);
       this.previousMono = mono;
 
-      // NOW favors attacks and detail; ECHO favors body and continuity; GHOST
-      // remembers fewer but more meaningful events: either a clear onset or a
-      // sustained phrase with enough internal movement to remain interesting.
-      const nowIntent = this.clamp01(0.18 + transient * 0.54 + brightness * 0.24 + sustained * 0.10);
-      const echoIntent = this.clamp01(0.16 + sustained * 0.52 + transient * 0.18 + brightness * 0.12);
-      const ghostIntent = this.clamp01(0.08 + transient * 0.34 + sustained * 0.38 + brightness * sustained * 0.28);
+      const nowTarget = this.clamp01(0.18 + transient * 0.54 + brightness * 0.24 + sustained * 0.10);
+      const echoTarget = this.clamp01(0.16 + sustained * 0.52 + transient * 0.18 + brightness * 0.12);
+      const ghostTarget = this.clamp01(0.08 + transient * 0.34 + sustained * 0.38 + brightness * sustained * 0.28);
+
+      // Store musical importance as a phrase-scale envelope, not waveform-rate
+      // modulation. GHOST is intentionally the slowest judge of what matters.
+      this.nowIntentState += (nowTarget - this.nowIntentState) * 0.0045;
+      this.echoIntentState += (echoTarget - this.echoIntentState) * 0.0022;
+      this.ghostIntentState += (ghostTarget - this.ghostIntentState) * 0.0009;
 
       this.left[this.writeIndex] = l;
       this.right[this.writeIndex] = r;
-      this.intentNow[this.writeIndex] = Math.round(nowIntent * 255);
-      this.intentEcho[this.writeIndex] = Math.round(echoIntent * 255);
-      this.intentGhost[this.writeIndex] = Math.round(ghostIntent * 255);
-      if (nowIntent > this.profileIntent[0]) this.profileIntent[0] = nowIntent;
-      if (echoIntent > this.profileIntent[1]) this.profileIntent[1] = echoIntent;
-      if (ghostIntent > this.profileIntent[2]) this.profileIntent[2] = ghostIntent;
+      this.intentNow[this.writeIndex] = Math.round(this.nowIntentState * 255);
+      this.intentEcho[this.writeIndex] = Math.round(this.echoIntentState * 255);
+      this.intentGhost[this.writeIndex] = Math.round(this.ghostIntentState * 255);
+      if (this.nowIntentState > this.profileIntent[0]) this.profileIntent[0] = this.nowIntentState;
+      if (this.echoIntentState > this.profileIntent[1]) this.profileIntent[1] = this.echoIntentState;
+      if (this.ghostIntentState > this.profileIntent[2]) this.profileIntent[2] = this.ghostIntentState;
 
       const absPeak = Math.max(Math.abs(l), Math.abs(r));
       if (absPeak > this.profilePeak) this.profilePeak = absPeak;
@@ -220,7 +228,11 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
       this.profilePeak = 0;
       this.fastEnvelope = 0;
       this.slowEnvelope = 0;
+      this.detailEnvelope = 0;
       this.previousMono = 0;
+      this.nowIntentState = 0.18;
+      this.echoIntentState = 0.16;
+      this.ghostIntentState = 0.08;
     }
 
     this.publishProfile(frames);
