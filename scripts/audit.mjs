@@ -61,6 +61,7 @@ const behaviorStage = read('src/audio/models/BehaviorMemoryStage.ts');
 const tubeProcessor = read('public/ember-tube-processor.js');
 const magneticProcessor = read('public/magnetic-core-processor.js');
 const behaviorProcessor = read('public/behavior-memory-processor.js');
+const grainProcessor = read('public/grain-processor.js');
 const dreamProcessor = read('public/dream-buffer-processor.js');
 
 for (const file of [
@@ -113,6 +114,47 @@ for (const [source, label] of [
   requireText(source, "event.data?.type === 'reset'", label);
   requireText(source, 'resetState()', label);
 }
+
+// Deep simulation invariants: the shared residual stage must model different stored
+// energies rather than collapsing every profile into a static transfer curve.
+for (const [needle, label] of [
+  ['thermal: 0', 'Behavior thermal memory'],
+  ['rail: 1', 'Behavior rail recovery'],
+  ['absorption: 0', 'Behavior dielectric/acoustic absorption'],
+  ['slew: 0', 'Behavior slew memory'],
+  ['fatigue: 0', 'Behavior long-term stress memory'],
+  ['s.absorption +=', 'Behavior absorption dynamics'],
+  ['s.thermal +=', 'Behavior thermal dynamics'],
+  ['s.rail +=', 'Behavior rail dynamics'],
+]) requireText(behaviorProcessor, needle, label);
+
+// Dedicated transformer simulation owns its magnetic mechanism. It must keep minor-loop,
+// thermal permeability and deep-saturation memory, while the generic registry stays out.
+for (const [needle, label] of [
+  ['this.dcFluxL = 0', 'Magnetic DC flux memory'],
+  ['this.saturationMemoryL = 0', 'Magnetic saturation history'],
+  ['const permeability =', 'Magnetic thermal permeability'],
+  ['const minorLoop =', 'Magnetic minor-loop behavior'],
+  ['const dynamicCoercivity =', 'Magnetic dynamic coercivity'],
+]) requireText(magneticProcessor, needle, label);
+requireText(registry, "case 'transformer': behavior = BYPASS", 'No double transformer simulation');
+requireText(registry, "case 'goldlion': case 'mullard': case 'telefunken': case 'bugleboy': case 'rcablack': behavior = BYPASS", 'No double tube simulation');
+
+// Registry mappings should use secondary physical controls, not only one amount knob.
+requireText(registry, "const spread = value(effect, 'spread'", 'Drift physical spread mapping');
+requireText(registry, "const time = value(effect, 'time'", 'Halo stored-energy time mapping');
+requireText(registry, 'const storedEnergy = Math.min(1, feedback', 'Halo feedback/time memory coupling');
+requireText(registry, "const bits = value(effect, 'bits'", 'Grain converter bit-depth mapping');
+requireText(registry, 'const converterStress = 1 - bits', 'Grain converter stress mapping');
+requireText(registry, 'const ageMemory = Math.min(1, wear', 'Artifact wear/noise aging coupling');
+
+// Dedicated sampler studies must remain conversion paths instead of falling back into the
+// creative grain-cloud engine.
+requireText(grainProcessor, 'const hardwareMode = mode >= 6', 'Grain hardware-mode branch');
+requireText(grainProcessor, 'this.processHardware(dryL, dryR, mode, bits, density, pitch, chaos, bloom)', 'Grain hardware conversion path');
+requireText(grainProcessor, 'quantizeNonlinear12', 'MPC60 nonlinear converter study');
+requireText(grainProcessor, 'SP-1200: four output-pair families', 'SP-1200 output filter study');
+requireText(grainProcessor, 'Mirage: 8-bit converter', 'Mirage converter/filter study');
 
 requireText(grainEffect, 'stats.cpuLoad = Number.NaN', 'Grain fake timing guard');
 requireText(visualEngine, 'if (!running || !analyser)', 'Idle visual sleep');
