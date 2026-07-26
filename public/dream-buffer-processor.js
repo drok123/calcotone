@@ -11,15 +11,14 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
     this.profilePeak = 0;
     this.captures = 0;
     this.silentFrames = 0;
-    this.memoryAgeSeconds = [0, 0, 0];
+    this.memoryAgeSeconds = new Float32Array(3);
 
     // V12 memory ages: NOW stays close to the present, ECHO revisits the recent
     // phrase, and GHOST deliberately reaches deep enough to justify the 8 s store.
-    // Left/right offsets differ slightly so recalls retain width without a chorus-like wobble.
     this.heads = [
-      { baseL: 0.061, baseR: 0.079, depthL: 0.014, depthR: 0.017, rate: 0.071, phase: 0.37 },
-      { baseL: 0.43, baseR: 0.53, depthL: 0.085, depthR: 0.105, rate: 0.031, phase: 1.41 },
-      { baseL: 3.85, baseR: 4.55, depthL: 1.10, depthR: 1.28, rate: 0.009, phase: 2.27 },
+      { baseL: 0.061, baseR: 0.079, depthL: 0.014, depthR: 0.017, rate: 0.071, phase: 0.37, targetL: 0, targetR: 0 },
+      { baseL: 0.43, baseR: 0.53, depthL: 0.085, depthR: 0.105, rate: 0.031, phase: 1.41, targetL: 0, targetR: 0 },
+      { baseL: 3.85, baseR: 4.55, depthL: 1.10, depthR: 1.28, rate: 0.009, phase: 2.27, targetL: 0, targetR: 0 },
     ];
     this.offsetsL = new Float64Array(3);
     this.offsetsR = new Float64Array(3);
@@ -27,6 +26,8 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
       const config = this.heads[head];
       this.offsetsL[head] = config.baseL * sampleRate;
       this.offsetsR[head] = config.baseR * sampleRate;
+      config.targetL = this.offsetsL[head];
+      config.targetR = this.offsetsR[head];
     }
     this.maxRecallSeconds = 6.2;
     this.maxRecallSamples = Math.ceil(this.maxRecallSeconds * sampleRate);
@@ -68,7 +69,7 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
       historySeconds: this.historySeconds,
       inputPeak: this.profilePeak,
       captures: this.captures,
-      memoryAgeSeconds: [...this.memoryAgeSeconds],
+      memoryAgeSeconds: [this.memoryAgeSeconds[0], this.memoryAgeSeconds[1], this.memoryAgeSeconds[2]],
     });
     this.profilePeak = 0;
   }
@@ -80,8 +81,6 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
     const frames = outputs[0]?.[0]?.length || 128;
     const hasInput = Boolean(inL || inR);
 
-    // When no source is connected and every readable memory age has been overwritten
-    // by silence, the worklet becomes effectively idle until a source reconnects.
     if (!hasInput && this.samplesWritten === 0) {
       this.publishProfile(frames);
       return true;
@@ -105,9 +104,6 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
       let r = inR ? inR[i] || 0 : l;
       if (!Number.isFinite(l)) l = 0;
       if (!Number.isFinite(r)) r = 0;
-
-      // Capture stays intentionally close to linear. This is memory infrastructure,
-      // not another saturation effect; tanh only catches pathological summed sends.
       if (Math.abs(l) > 1.25) l = Math.tanh(l);
       if (Math.abs(r) > 1.25) r = Math.tanh(r);
       if (Math.abs(l) < 1e-20) l = 0;
@@ -118,23 +114,23 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
       const absPeak = Math.max(Math.abs(l), Math.abs(r));
       if (absPeak > this.profilePeak) this.profilePeak = absPeak;
 
-      const offsetsL = [
-        startL0 + stepL0 * i,
-        startL1 + stepL1 * i,
-        startL2 + stepL2 * i,
-      ];
-      const offsetsR = [
-        startR0 + stepR0 * i,
-        startR1 + stepR1 * i,
-        startR2 + stepR2 * i,
-      ];
-      for (let head = 0; head < 3; head += 1) {
-        const out = outputs[head];
-        if (!out) continue;
-        const outL = out[0];
-        const outR = out[1] || out[0];
-        if (outL) outL[i] = this.readInterpolated(this.left, this.writeIndex, offsetsL[head]);
-        if (outR) outR[i] = this.readInterpolated(this.right, this.writeIndex, offsetsR[head]);
+      const out0 = outputs[0];
+      if (out0) {
+        const oL = out0[0], oR = out0[1] || out0[0];
+        if (oL) oL[i] = this.readInterpolated(this.left, this.writeIndex, startL0 + stepL0 * i);
+        if (oR) oR[i] = this.readInterpolated(this.right, this.writeIndex, startR0 + stepR0 * i);
+      }
+      const out1 = outputs[1];
+      if (out1) {
+        const oL = out1[0], oR = out1[1] || out1[0];
+        if (oL) oL[i] = this.readInterpolated(this.left, this.writeIndex, startL1 + stepL1 * i);
+        if (oR) oR[i] = this.readInterpolated(this.right, this.writeIndex, startR1 + stepR1 * i);
+      }
+      const out2 = outputs[2];
+      if (out2) {
+        const oL = out2[0], oR = out2[1] || out2[0];
+        if (oL) oL[i] = this.readInterpolated(this.left, this.writeIndex, startL2 + stepL2 * i);
+        if (oR) oR[i] = this.readInterpolated(this.right, this.writeIndex, startR2 + stepR2 * i);
       }
 
       this.writeIndex += 1;
