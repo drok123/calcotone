@@ -4,10 +4,12 @@ export interface DreamBufferStats {
   inputPeak: number;
   captures: number;
   activeRoutes: number;
-  memoryAgeSeconds: [number, number, number];
+  memoryAgeSeconds?: [number, number, number];
 }
 
 export type DreamHead = 'now' | 'echo' | 'ghost';
+type LegacyDreamHead = 'short' | 'medium' | 'long';
+type DreamHeadInput = DreamHead | LegacyDreamHead;
 
 interface DreamRoute {
   readonly head: DreamHead;
@@ -77,8 +79,6 @@ export class DreamBuffer {
     this.ghostFilter = context.createBiquadFilter();
     this.returnClipper = context.createWaveShaper();
 
-    // Memory is support infrastructure, not a seventh effect. Direct return remains
-    // deliberately tiny while routed recalls provide the audible cross-module behavior.
     this.now.gain.value = 0.013;
     this.echo.gain.value = 0.008;
     this.ghost.gain.value = 0.0045;
@@ -184,8 +184,9 @@ export class DreamBuffer {
     }
   }
 
-  public attachRoute(id: string, head: DreamHead, destination: AudioNode, amount: number): void {
+  public attachRoute(id: string, headInput: DreamHeadInput, destination: AudioNode, amount: number): void {
     this.detachRoute(id);
+    const head = normalizeDreamHead(headInput);
 
     const gain = this.context.createGain();
     const highpass = this.context.createBiquadFilter();
@@ -276,7 +277,12 @@ export class DreamBuffer {
   }
 
   public getStats(): DreamBufferStats {
-    return { ...this.stats, memoryAgeSeconds: [...this.stats.memoryAgeSeconds] as [number, number, number], activeRoutes: [...this.routes.values()].filter((route) => route.connected).length };
+    const ages = this.stats.memoryAgeSeconds;
+    return {
+      ...this.stats,
+      memoryAgeSeconds: ages ? [...ages] as [number, number, number] : undefined,
+      activeRoutes: [...this.routes.values()].filter((route) => route.connected).length,
+    };
   }
 
   public dispose(): void {
@@ -296,6 +302,13 @@ export class DreamBuffer {
     this.returnMix.disconnect();
     this.returnClipper.disconnect();
   }
+}
+
+function normalizeDreamHead(head: DreamHeadInput): DreamHead {
+  if (head === 'short') return 'now';
+  if (head === 'medium') return 'echo';
+  if (head === 'long') return 'ghost';
+  return head;
 }
 
 function clampRouteAmount(value: number): number {
