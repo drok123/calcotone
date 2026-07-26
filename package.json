@@ -11,9 +11,10 @@
     "audit:dropdowns": "node scripts/dropdown-audit.mjs",
     "audit:routing": "node scripts/routing-audit.mjs",
     "audit:signal": "node scripts/signal-lab-audit.mjs",
+    "audit:dream": "node scripts/dream-buffer-audit.mjs",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "check": "npm run audit && npm run audit:visual && npm run audit:runtime && npm run audit:dropdowns && npm run audit:routing && npm run audit:signal && npm run lint && npm run build",
+    "check": "npm run audit && npm run audit:visual && npm run audit:runtime && npm run audit:dropdowns && npm run audit:routing && npm run audit:signal && npm run audit:dream && npm run lint && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {
