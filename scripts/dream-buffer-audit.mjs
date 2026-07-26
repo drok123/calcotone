@@ -43,10 +43,14 @@ requireText(worklet, 'this.intentEcho = new Uint8Array(this.length)', 'Dream com
 requireText(worklet, 'this.intentGhost = new Uint8Array(this.length)', 'Dream compact GHOST memory tags');
 requireText(worklet, 'this.fastEnvelope', 'Dream transient envelope state');
 requireText(worklet, 'this.slowEnvelope', 'Dream sustained envelope state');
-requireText(worklet, 'const brightness = this.clamp01(Math.abs(mono - this.previousMono)', 'Dream cheap brightness proxy');
-requireText(worklet, 'const nowIntent =', 'Dream NOW capture intent');
-requireText(worklet, 'const echoIntent =', 'Dream ECHO capture intent');
-requireText(worklet, 'const ghostIntent =', 'Dream GHOST capture intent');
+requireText(worklet, 'this.detailEnvelope', 'Dream smoothed brightness/detail state');
+requireText(worklet, 'this.detailEnvelope += (Math.abs(mono - this.previousMono) - this.detailEnvelope) * 0.018', 'Dream smoothed brightness proxy');
+requireText(worklet, 'const nowTarget =', 'Dream NOW capture target');
+requireText(worklet, 'const echoTarget =', 'Dream ECHO capture target');
+requireText(worklet, 'const ghostTarget =', 'Dream GHOST capture target');
+requireText(worklet, 'this.nowIntentState += (nowTarget - this.nowIntentState) * 0.0045', 'Dream fast NOW phrase envelope');
+requireText(worklet, 'this.echoIntentState += (echoTarget - this.echoIntentState) * 0.0022', 'Dream medium ECHO phrase envelope');
+requireText(worklet, 'this.ghostIntentState += (ghostTarget - this.ghostIntentState) * 0.0009', 'Dream slow GHOST phrase envelope');
 requireText(worklet, 'this.intentGhost[this.writeIndex]', 'Dream historical Ghost tagging');
 requireText(worklet, 'this.readIntent(this.intentGhost', 'Dream historical Ghost recall weighting');
 requireText(worklet, 'const intent = 0.28 +', 'Dream Ghost minimum recall floor');
