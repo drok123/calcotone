@@ -21,6 +21,7 @@ const forbidText = (source, needle, label) => {
 const driftClassic = read('public/drift-classic-processor.js');
 const driftStage = read('src/audio/models/DriftClassicStage.ts');
 const randomBridge = read('src/randomTransferBridge.ts');
+const enginePatch = read('src/engineStabilityPatch.ts');
 const haloPatch = read('src/haloStabilityPatch.ts');
 const artifactPatch = read('src/artifactStabilityPatch.ts');
 const modulePatch = read('src/moduleStabilityPatch.ts');
@@ -52,6 +53,16 @@ requireText(randomBridge, "effectId === 'delay' || effectId === 'reverb'", 'RAND
 requireText(randomBridge, "applyRandomBatch(effect, new Map([['mix', RANDOM_TOPOLOGY_SAFE_MIX]]))", 'RANDOM pre-switch mix guard');
 requireText(randomBridge, 'Musical RANDOM never changes module power', 'RANDOM power-layout preservation');
 forbidText(randomBridge, 'directSetEffectBypassed.call(engine, effectId, bypassed)', 'RANDOM power mutation');
+
+// Global engine quality should become more transparent as quality increases, and hidden diagnostics
+// must not keep doing FFT work while the DSP panel is closed.
+requireText(main, "import './engineStabilityPatch'", 'Engine stability patch load');
+requireText(enginePatch, "mode === 'studio' ? -0.75", 'Studio transparent limiter threshold');
+requireText(enginePatch, "mode === 'studio' ? 4", 'Studio transparent limiter ratio');
+requireText(enginePatch, "document.querySelector('.dsp-profiler')", 'Profiler visibility guard');
+requireText(enginePatch, 'const stats = grainStats(this)', 'Adaptive Grain-only health read');
+requireText(enginePatch, 'spectralCentroidHz: 0', 'Hidden profiler avoids spectrum work');
+requireText(enginePatch, 'import.meta.hot.dispose(uninstall)', 'Engine patch HMR teardown');
 
 // Halo mode changes keep the outgoing network fed until retirement, limit overlap, and keep
 // pitch-grain schedulers from waking forever or catch-up bursting after an idle period.
