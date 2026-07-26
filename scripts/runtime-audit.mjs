@@ -22,6 +22,7 @@ const driftClassic = read('public/drift-classic-processor.js');
 const driftStage = read('src/audio/models/DriftClassicStage.ts');
 const randomBridge = read('src/randomTransferBridge.ts');
 const enginePatch = read('src/engineStabilityPatch.ts');
+const inputPatch = read('src/inputStabilityPatch.ts');
 const haloPatch = read('src/haloStabilityPatch.ts');
 const artifactPatch = read('src/artifactStabilityPatch.ts');
 const modulePatch = read('src/moduleStabilityPatch.ts');
@@ -63,6 +64,12 @@ requireText(enginePatch, "document.querySelector('.dsp-profiler')", 'Profiler vi
 requireText(enginePatch, 'const stats = grainStats(this)', 'Adaptive Grain-only health read');
 requireText(enginePatch, 'spectralCentroidHz: 0', 'Hidden profiler avoids spectrum work');
 requireText(enginePatch, 'import.meta.hot.dispose(uninstall)', 'Engine patch HMR teardown');
+
+// Input mode changes must remain click-smoothed and summed mono must not add ~3 dB on correlated stereo.
+requireText(main, "import './inputStabilityPatch'", 'Input stability patch load');
+requireText(inputPatch, "mode !== 'sum-mono'", 'Sum-mono special handling');
+requireText(inputPatch, 'internal.setGain(route.gain, 0.5, false)', 'Unity-safe sum-mono averaging');
+requireText(inputPatch, 'import.meta.hot.dispose(uninstall)', 'Input patch HMR teardown');
 
 // Halo mode changes keep the outgoing network fed until retirement, limit overlap, and keep
 // pitch-grain schedulers from waking forever or catch-up bursting after an idle period.
