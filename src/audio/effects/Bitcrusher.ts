@@ -11,11 +11,15 @@ export type GrainMode =
   | 'ruin'
   | 'sp1200'
   | 'mpc60'
-  | 'mirage';
+  | 'mirage'
+  | 's950'
+  | 'emulator2'
+  | 'fairlightiix';
 
-// Existing creative-mode indices stay fixed for preset compatibility.
+// Existing indices stay fixed for preset compatibility; hardware studies append only.
 export const GRAIN_MODE_ORDER: GrainMode[] = [
   'reconstruct','shatter','smear','prism','stutter','ruin','sp1200','mpc60','mirage',
+  's950','emulator2','fairlightiix',
 ];
 
 export interface GrainProfilerStats {
@@ -108,9 +112,6 @@ export class BitcrusherEffect extends BaseEffect {
 
   public getProfilerStats(): GrainProfilerStats {
     const stats = { ...this.profilerStats };
-    // AudioWorklet does not expose a trustworthy synchronous wall-clock timer here.
-    // The processor currently reports zero-duration callbacks, so mark timing-derived
-    // fields unavailable instead of letting a fake 0% CPU load drive adaptive quality.
     if (stats.callbackBudgetMs > 0 && stats.averageCallbackMs === 0 && stats.worstCallbackMs === 0) {
       stats.cpuLoad = Number.NaN;
       stats.callbackJitterMs = Number.NaN;
@@ -128,49 +129,56 @@ export class BitcrusherEffect extends BaseEffect {
     switch (parameterId) {
       case 'mode': {
         const next = Math.round(clampParameter(value, MODE));
+        if (this.parameterValues.get(parameterId) === next) return;
         this.parameterValues.set(parameterId, next);
         this.mode = GRAIN_MODE_ORDER[next] ?? 'reconstruct';
         this.setWorkletParameter('mode', next, now);
         this.updateWetBodyGain(now);
-        break;
+        return;
       }
       case 'bits': {
         const next = Math.round(clampParameter(value, BITS));
+        if (this.parameterValues.get(parameterId) === next) return;
         this.parameterValues.set(parameterId, next);
         this.setWorkletParameter('bits', next, now);
-        break;
+        return;
       }
       case 'density': {
         const next = clampParameter(value, DENSITY);
+        if (this.parameterValues.get(parameterId) === next) return;
         this.parameterValues.set(parameterId, next);
         this.setWorkletParameter('density', next, now);
-        break;
+        return;
       }
       case 'pitch': {
         const next = clampParameter(value, PITCH);
+        if (this.parameterValues.get(parameterId) === next) return;
         this.parameterValues.set(parameterId, next);
         this.setWorkletParameter('pitch', next, now);
-        break;
+        return;
       }
       case 'chaos': {
         const next = clampParameter(value, CHAOS);
+        if (this.parameterValues.get(parameterId) === next) return;
         this.parameterValues.set(parameterId, next);
         this.setWorkletParameter('chaos', next, now);
-        break;
+        return;
       }
       case 'bloom': {
         const next = clampParameter(value, BLOOM);
+        if (this.parameterValues.get(parameterId) === next) return;
         this.parameterValues.set(parameterId, next);
         this.setWorkletParameter('bloom', next, now);
         this.bloomFilter.frequency.setTargetAtTime(2800 + next * 7600, now, 0.05);
         this.updateWetBodyGain(now);
-        break;
+        return;
       }
       case 'mix': {
         const next = clampParameter(value, MIX);
+        if (this.parameterValues.get(parameterId) === next) return;
         this.parameterValues.set(parameterId, next);
         this.setWetDryMix(next);
-        break;
+        return;
       }
       default:
         console.warn(`Unknown parameter "${parameterId}" for ${this.name}.`);
@@ -178,7 +186,8 @@ export class BitcrusherEffect extends BaseEffect {
   }
 
   private isHardwareMode(): boolean {
-    return this.mode === 'sp1200' || this.mode === 'mpc60' || this.mode === 'mirage';
+    return this.mode === 'sp1200' || this.mode === 'mpc60' || this.mode === 'mirage'
+      || this.mode === 's950' || this.mode === 'emulator2' || this.mode === 'fairlightiix';
   }
 
   private updateWetBodyGain(now: number): void {
