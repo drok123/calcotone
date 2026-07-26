@@ -94,9 +94,9 @@ requireText(randomBridge, '.finally(() => {', 'RANDOM transactional cleanup');
 requireText(randomBridge, 'import.meta.hot.dispose', 'RANDOM HMR cleanup');
 requireText(randomBridge, "document.removeEventListener('click', onRandomizerClick, true)", 'RANDOM HMR listener cleanup');
 
-requireText(tubeStage, "ember-tube-processor.js?v=", 'Tube worklet loader');
-requireText(magneticStage, "magnetic-core-processor.js?v=", 'Magnetic worklet loader');
-requireText(behaviorStage, "behavior-memory-processor.js?v=", 'Behavior worklet loader');
+requireText(tubeStage, 'ember-tube-processor.js?v=', 'Tube worklet loader');
+requireText(magneticStage, 'magnetic-core-processor.js?v=', 'Magnetic worklet loader');
+requireText(behaviorStage, 'behavior-memory-processor.js?v=', 'Behavior worklet loader');
 for (const [source, label] of [
   [tubeStage, 'Tube worklet suspend/resume'],
   [magneticStage, 'Magnetic worklet suspend/resume'],
@@ -115,8 +115,6 @@ for (const [source, label] of [
   requireText(source, 'resetState()', label);
 }
 
-// Deep simulation invariants: the shared residual stage must model different stored
-// energies rather than collapsing every profile into a static transfer curve.
 for (const [needle, label] of [
   ['thermal: 0', 'Behavior thermal memory'],
   ['rail: 1', 'Behavior rail recovery'],
@@ -128,8 +126,6 @@ for (const [needle, label] of [
   ['s.rail +=', 'Behavior rail dynamics'],
 ]) requireText(behaviorProcessor, needle, label);
 
-// Dedicated transformer simulation owns its magnetic mechanism. It must keep minor-loop,
-// thermal permeability and deep-saturation memory, while the generic registry stays out.
 for (const [needle, label] of [
   ['this.dcFluxL = 0', 'Magnetic DC flux memory'],
   ['this.saturationMemoryL = 0', 'Magnetic saturation history'],
@@ -140,20 +136,31 @@ for (const [needle, label] of [
 requireText(registry, "case 'transformer': behavior = BYPASS", 'No double transformer simulation');
 requireText(registry, "case 'goldlion': case 'mullard': case 'telefunken': case 'bugleboy': case 'rcablack': behavior = BYPASS", 'No double tube simulation');
 
-// Registry mappings should use secondary physical controls, not only one amount knob.
 requireText(registry, "const spread = value(effect, 'spread'", 'Drift physical spread mapping');
 requireText(registry, "const time = value(effect, 'time'", 'Halo stored-energy time mapping');
 requireText(registry, 'const storedEnergy = Math.min(1, feedback', 'Halo feedback/time memory coupling');
 requireText(registry, 'const ageMemory = Math.min(1, wear', 'Artifact wear/noise aging coupling');
 
-// Dedicated sampler studies must remain conversion paths instead of falling back into the
-// creative grain-cloud engine or receiving a second generic converter simulation.
+// New Drift hardware modes must retain actual delayed feedback instead of degenerating
+// into static short chorus presets.
+requireText(driftEffect, 'private readonly feedbacks: GainNode[]', 'Drift flange feedback network');
+requireText(driftEffect, 'feedback.connect(delay)', 'Drift delayed feedback loop');
+requireText(driftEffect, "mode === 'mxrflanger'", 'MXR Flanger mode');
+requireText(driftEffect, "mode === 'electricmistress'", 'Electric Mistress mode');
+requireText(driftEffect, "mode === 'adaflanger'", 'A/DA Flanger mode');
+requireText(driftEffect, "mode === 'bf2'", 'Boss BF-2 mode');
+requireText(registry, "case 'mxrflanger': behavior = spec('charge'", 'MXR physical charge memory');
+
+// Dedicated sampler studies must remain A/D -> clock/memory -> D/A paths and must not
+// receive a second generic converter residual after their dedicated hardware simulation.
 requireText(grainProcessor, 'const hardwareMode = mode >= 6', 'Grain hardware-mode branch');
 requireText(grainProcessor, 'this.processHardware(dryL, dryR, mode, bits, density, pitch, chaos, bloom)', 'Grain hardware conversion path');
 requireText(grainProcessor, 'quantizeNonlinear12', 'MPC60 nonlinear converter study');
-requireText(grainProcessor, 'SP-1200: four output-pair families', 'SP-1200 output filter study');
-requireText(grainProcessor, 'Mirage: 8-bit converter', 'Mirage converter/filter study');
-requireText(registry, "case 'sp1200': case 'mpc60': case 'mirage': behavior = BYPASS", 'No double sampler converter simulation');
+requireText(grainProcessor, 'targetRate = 7500 + pitch * 40500', 'S950 variable record clock');
+requireText(grainProcessor, 'targetRate = 27000', 'Emulator II 27k study');
+requireText(grainProcessor, 'targetRate = 24000 + pitch * 8000', 'Fairlight IIx sample-clock study');
+requireText(grainProcessor, 'quantizeCompanded8', 'Vintage 8-bit companding study');
+requireText(registry, "case 'sp1200': case 'mpc60': case 'mirage': case 's950': case 'emulator2': case 'fairlightiix': behavior = BYPASS", 'No double sampler converter simulation');
 
 requireText(grainEffect, 'stats.cpuLoad = Number.NaN', 'Grain fake timing guard');
 requireText(visualEngine, 'if (!running || !analyser)', 'Idle visual sleep');
@@ -161,7 +168,6 @@ requireText(visualEngine, 'const reactInterval = 1000 / 20', 'React visual caden
 requireText(recorder, 'this.disconnectNodes();', 'Recorder processor-error cleanup');
 requireText(app, 'auditUiAgainstEngine(engine, modules)', 'Runtime UI/DSP control self-check');
 
-// Every visible front-panel knob must correspond to a real effect parameter definition.
 const controlContracts = [
   ['saturation', emberEffect, ['drive','tone','heat','character','dynamics','mix']],
   ['chorus', driftEffect, ['rate','depth','shape','spread','motion','mix']],
@@ -172,18 +178,12 @@ const controlContracts = [
 ];
 for (const [moduleId, source, expected] of controlContracts) {
   const uiParameters = extractUiParameters(app, moduleId);
-  if (uiParameters.join('|') !== expected.join('|')) {
-    failures.push(`${moduleId}: UI control contract changed (${uiParameters.join(', ')})`);
-  }
+  if (uiParameters.join('|') !== expected.join('|')) failures.push(`${moduleId}: UI control contract changed (${uiParameters.join(', ')})`);
   for (const parameterId of expected) {
-    if (!source.includes(`id: '${parameterId}'`) && !source.includes(`id:'${parameterId}'`)) {
-      failures.push(`${moduleId}.${parameterId}: visible knob has no effect parameter definition`);
-    }
+    if (!source.includes(`id: '${parameterId}'`) && !source.includes(`id:'${parameterId}'`)) failures.push(`${moduleId}.${parameterId}: visible knob has no effect parameter definition`);
   }
 }
 
-// Hardware-study modes keep their authentic center points, but Calcotone's generic panel
-// must never expose a decorative/dead control.
 forbidText(driftEffect, "this.mode === 'ce1' && (id === 'rate'", 'Drift CE-1 dead controls');
 forbidText(driftEffect, "this.mode === 'dimensiond' && id !== 'shape'", 'Drift Dimension-D dead controls');
 forbidText(driftEffect, "this.mode === 'orbit' && id === 'spread'", 'Drift Orbit dead spread');
@@ -191,8 +191,6 @@ requireText(driftEffect, 'const rateTrim = Math.pow', 'Drift hardware rate trims
 requireText(driftEffect, 'const panWidth = Math.min', 'Drift hardware spread trims');
 requireText(driftEffect, 'const orbitWidth = Math.min', 'Drift Orbit spread control');
 
-// Artifact's nonlinear stages must stay bounded/cached; live XY should not allocate a new
-// 2K-4K waveshaper curve for every pointer event.
 requireText(mediaEffect, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve cache');
 requireText(mediaEffect, 'function cacheCurve(', 'Artifact curve cache');
 requireText(mediaEffect, 'this.setPreampCurve(getOpAmpCurve', 'Artifact cached op-amp stage');
@@ -230,5 +228,4 @@ if (failures.length) {
   console.error('');
   process.exit(1);
 }
-
 console.log('CALCOTONE structural audit passed.');
