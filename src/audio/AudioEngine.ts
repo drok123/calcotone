@@ -20,7 +20,6 @@ export type PerformanceMode = 'live' | 'balanced' | 'studio';
 const WORKLET_BUILD_VERSION = '8.4.31-hardware-calibration-a';
 export type EngineHealth = 'offline' | 'healthy' | 'warm' | 'critical';
 
-
 export interface DspProfilerSnapshot {
   contextState: AudioContextState | 'offline';
   sampleRate: number;
@@ -119,7 +118,6 @@ export class AudioEngine {
     };
   }
 
-
   public setAdaptiveMode(enabled: boolean): void {
     this.adaptiveMode = enabled;
     this.overloadWindows = 0;
@@ -190,17 +188,8 @@ export class AudioEngine {
     return { centroidHz: total > 1e-9 ? weighted / total : 0, energy: Math.min(1, total / Math.max(1, this.spectralData.length) * 12) };
   }
 
-  public getLatency(): {
-    baseLatency: number | null;
-    outputLatency: number | null;
-  } {
-    if (!this.context) {
-      return {
-        baseLatency: null,
-        outputLatency: null,
-      };
-    }
-
+  public getLatency(): { baseLatency: number | null; outputLatency: number | null } {
+    if (!this.context) return { baseLatency: null, outputLatency: null };
     return {
       baseLatency: this.context.baseLatency ?? null,
       outputLatency: this.context.outputLatency ?? null,
@@ -208,27 +197,19 @@ export class AudioEngine {
   }
 
   public async start(options: StartAudioOptions = {}): Promise<void> {
-    if (this.state === 'starting') {
-      return;
-    }
-
+    if (this.state === 'starting') return;
     if (this.state === 'running') {
       await this.resume();
       return;
     }
 
     this.state = 'starting';
-
     try {
       this.assertBrowserSupport();
-
       this.performanceMode = options.performanceMode ?? this.performanceMode;
-
       this.context = new AudioContext({
-        latencyHint:
-          this.performanceMode === 'studio' ? 'playback' : 'interactive',
+        latencyHint: this.performanceMode === 'studio' ? 'playback' : 'interactive',
       });
-
       await this.loadAudioWorklets(this.context);
 
       this.graph = new AudioGraph(this.context);
@@ -255,21 +236,14 @@ export class AudioEngine {
         video: false,
         audio: {
           deviceId: options.deviceId ? { exact: options.deviceId } : undefined,
-
           echoCancellation: options.echoCancellation ?? false,
-
           noiseSuppression: options.noiseSuppression ?? false,
-
           autoGainControl: options.autoGainControl ?? false,
-
-          channelCount: {
-            ideal: 2,
-          },
+          channelCount: { ideal: 2 },
         },
       });
 
       this.source = this.context.createMediaStreamSource(this.stream);
-
       this.inputMode = options.inputMode ?? this.inputMode;
       this.inputMatrix.setMode(this.inputMode);
       this.inputMatrix.setWidth(this.inputWidth);
@@ -281,63 +255,38 @@ export class AudioEngine {
 
       this.connectMasterChain();
       this.outputGain.connect(this.context.destination);
-      // Dream Buffer returns join immediately before the global DC/safety path.
-      // This is a quiet parallel memory layer, never a recursive graph cycle.
+      // Dream Buffer always returns to the processed safety path. When every module is
+      // bypassed that path is disconnected from the analyser/output, so no memory can bleed
+      // into the truly raw all-off route.
       this.dreamBuffer.connectReturn(this.dcBlock);
 
       this.inputGain.gain.value = 1;
       this.outputGain.gain.value = 0.72;
 
-      if (this.context.state === 'suspended') {
-        await this.context.resume();
-      }
-
+      if (this.context.state === 'suspended') await this.context.resume();
       this.state = 'running';
     } catch (error) {
       this.state = 'error';
       await this.stop();
-
       throw normalizeAudioError(error);
     }
   }
 
   public async resume(): Promise<void> {
-    if (!this.context) {
-      throw new Error('The audio engine has not been started.');
-    }
-
-    if (this.context.state === 'suspended') {
-      await this.context.resume();
-    }
-
+    if (!this.context) throw new Error('The audio engine has not been started.');
+    if (this.context.state === 'suspended') await this.context.resume();
     this.state = 'running';
   }
 
   public async suspend(): Promise<void> {
-    if (!this.context) {
-      return;
-    }
-
-    if (this.context.state === 'running') {
-      await this.context.suspend();
-    }
-
+    if (!this.context) return;
+    if (this.context.state === 'running') await this.context.suspend();
     this.state = 'suspended';
   }
 
   public setPerformanceMode(mode: PerformanceMode): void {
     this.performanceMode = mode;
-
-    if (
-      !this.context ||
-      !this.graph ||
-      !this.analyser ||
-      !this.outputGain ||
-      !this.limiter
-    ) {
-      return;
-    }
-
+    if (!this.context || !this.graph || !this.analyser || !this.outputGain || !this.limiter) return;
     this.configureQualityMode();
 
     const grain = this.effects.get('bitcrusher');
@@ -347,11 +296,8 @@ export class AudioEngine {
 
     const saturation = this.effects.get('saturation');
     if (saturation && 'setOversampling' in saturation) {
-      const target =
-        mode === 'studio' ? '4x' : mode === 'balanced' ? '2x' : 'none';
-      (
-        saturation as Effect & { setOversampling(value: OverSampleType): void }
-      ).setOversampling(target);
+      const target = mode === 'studio' ? '4x' : mode === 'balanced' ? '2x' : 'none';
+      (saturation as Effect & { setOversampling(value: OverSampleType): void }).setOversampling(target);
     }
   }
 
@@ -388,8 +334,7 @@ export class AudioEngine {
     const track = this.stream?.getAudioTracks()[0];
     const settings = track?.getSettings();
     return {
-      inputChannels:
-        settings?.channelCount ?? this.source?.channelCount ?? null,
+      inputChannels: settings?.channelCount ?? this.source?.channelCount ?? null,
       destinationChannels: this.context?.destination.channelCount ?? null,
       destinationMaxChannels: this.context?.destination.maxChannelCount ?? null,
       sampleRate: this.context?.sampleRate ?? null,
@@ -397,45 +342,25 @@ export class AudioEngine {
   }
 
   public setInputGain(value: number): void {
-    if (!this.context || !this.inputGain) {
-      return;
-    }
-
+    if (!this.context || !this.inputGain) return;
     const gain = Math.min(4, Math.max(0, value));
-
     this.inputGain.gain.setTargetAtTime(gain, this.context.currentTime, 0.01);
   }
 
   public setOutputGain(value: number): void {
-    if (!this.context || !this.outputGain) {
-      return;
-    }
-
+    if (!this.context || !this.outputGain) return;
     const gain = Math.min(1.2, Math.max(0, value));
-
     this.outputGain.gain.setTargetAtTime(gain, this.context.currentTime, 0.01);
   }
 
   public addEffect(effectId: EffectId): Effect | null {
-    if (!this.context || !this.graph) {
-      throw new Error('Start the audio engine before adding effects.');
-    }
-
-    if (effectId === 'bypass') {
-      return null;
-    }
-
+    if (!this.context || !this.graph) throw new Error('Start the audio engine before adding effects.');
+    if (effectId === 'bypass') return null;
     const existingEffect = this.effects.get(effectId);
-
-    if (existingEffect) {
-      return existingEffect;
-    }
+    if (existingEffect) return existingEffect;
 
     const effect = createEffect(effectId, this.context);
-
-    if (!effect) {
-      return null;
-    }
+    if (!effect) return null;
 
     this.effects.set(effect.id, effect);
     this.attachDreamSource(effect);
@@ -444,24 +369,19 @@ export class AudioEngine {
     }
     this.graph.addEffect(effect);
     this.rebuildDreamRoutes();
-
+    this.connectMasterChain();
     return effect;
   }
 
   public removeEffect(effectId: string): void {
-    if (!this.graph) {
-      return;
-    }
-
+    if (!this.graph) return;
     const removedEffect = this.graph.removeEffect(effectId);
-
-    if (!removedEffect) {
-      return;
-    }
+    if (!removedEffect) return;
 
     this.dreamBuffer?.detachSource(effectId);
     this.effects.delete(effectId);
     this.rebuildDreamRoutes();
+    this.connectMasterChain();
     removedEffect.dispose();
   }
 
@@ -473,37 +393,25 @@ export class AudioEngine {
     return this.graph?.getEffects().map((effect) => effect.id) ?? [];
   }
 
-  public setEffectParameter(
-    effectId: string,
-    parameterId: string,
-    value: number
-  ): void {
+  public setEffectParameter(effectId: string, parameterId: string, value: number): void {
     const effect = this.effects.get(effectId);
-
-    if (!effect) {
-      throw new Error(`Effect "${effectId}" is not currently loaded.`);
-    }
-
+    if (!effect) throw new Error(`Effect "${effectId}" is not currently loaded.`);
     const parameter = effect.getParameter(parameterId);
-    if (!parameter) {
-      throw new Error(`Effect "${effectId}" has no parameter "${parameterId}".`);
-    }
-    if (!Number.isFinite(value)) {
-      throw new Error(`Effect "${effectId}" parameter "${parameterId}" received a non-finite value.`);
-    }
+    if (!parameter) throw new Error(`Effect "${effectId}" has no parameter "${parameterId}".`);
+    if (!Number.isFinite(value)) throw new Error(`Effect "${effectId}" parameter "${parameterId}" received a non-finite value.`);
     effect.setParameter(parameterId, value);
   }
 
   public setEffectBypassed(effectId: string, bypassed: boolean): void {
     const effect = this.effects.get(effectId);
-
-    if (!effect) {
-      return;
-    }
+    if (!effect) return;
 
     effect.setBypassed(bypassed);
     this.dreamBuffer?.setSendAmount(effectId, bypassed ? 0 : getDreamSendAmount(effectId));
     this.updateDreamRouteForEffect(effectId);
+    // Master protection is only part of the signal path while at least one module is active.
+    // With all modules off the graph is routed straight to the analyser/output gain.
+    this.connectMasterChain();
   }
 
   public reorderEffects(effectIds: string[]): void {
@@ -520,21 +428,16 @@ export class AudioEngine {
 
   private async performClickSafeReorder(effectIds: string[]): Promise<void> {
     if (!this.graph || !this.context) return;
-
     const current = this.graph.getEffects().map((effect) => effect.id);
-    if (current.length === effectIds.length && current.every((id, index) => id === effectIds[index])) {
-      return;
-    }
+    if (current.length === effectIds.length && current.every((id, index) => id === effectIds[index])) return;
 
     const gain = this.graph.output.gain;
     const fadeOutSeconds = 0.012;
     const fadeInSeconds = 0.026;
     const now = this.context.currentTime;
-
     gain.cancelScheduledValues(now);
     gain.setValueAtTime(gain.value, now);
     gain.linearRampToValueAtTime(0.0001, now + fadeOutSeconds);
-
     await sleepMilliseconds(15);
 
     try {
@@ -548,26 +451,16 @@ export class AudioEngine {
   }
 
   public loadPreset(preset: Preset): void {
-    if (!this.context || !this.graph) {
-      throw new Error('Start the audio engine before loading a preset.');
-    }
-
+    if (!this.context || !this.graph) throw new Error('Start the audio engine before loading a preset.');
     const oldEffects = [...this.effects.values()];
-
     this.effects.clear();
-
     const presetEffects: Effect[] = [];
 
     for (const presetEffect of preset.effects) {
       const effect = createEffect(presetEffect.id, this.context);
+      if (!effect) continue;
 
-      if (!effect) {
-        continue;
-      }
-
-      for (const [parameterId, value] of Object.entries(
-        presetEffect.parameters
-      )) {
+      for (const [parameterId, value] of Object.entries(presetEffect.parameters)) {
         if (!effect.getParameter(parameterId)) {
           effect.dispose();
           throw new Error(`Preset "${preset.name}" references unknown parameter "${presetEffect.id}.${parameterId}".`);
@@ -580,7 +473,6 @@ export class AudioEngine {
       }
 
       effect.setBypassed(!presetEffect.enabled);
-
       this.effects.set(effect.id, effect);
       this.attachDreamSource(effect);
       if ('setQualityMode' in effect) {
@@ -591,11 +483,8 @@ export class AudioEngine {
 
     this.graph.setEffects(presetEffects);
     this.rebuildDreamRoutes();
-
-    for (const oldEffect of oldEffects) {
-      oldEffect.dispose();
-    }
-
+    this.connectMasterChain();
+    for (const oldEffect of oldEffects) oldEffect.dispose();
     this.setInputGain(preset.inputGain);
     this.setOutputGain(preset.outputGain);
   }
@@ -604,22 +493,13 @@ export class AudioEngine {
     if (!this.context || !this.outputGain || this.state !== 'running') {
       throw new Error('Start the audio engine before recording a sample.');
     }
-
-    if (!this.recorder) {
-      this.recorder = new WavRecorder(this.context, this.outputGain);
-    }
-
+    if (!this.recorder) this.recorder = new WavRecorder(this.context, this.outputGain);
     this.recorder.start();
-    return {
-      sampleRate: this.context.sampleRate,
-      maxDurationSeconds: this.recorder.maxDurationSeconds,
-    };
+    return { sampleRate: this.context.sampleRate, maxDurationSeconds: this.recorder.maxDurationSeconds };
   }
 
   public async stopRecording(): Promise<RecordedWav> {
-    if (!this.recorder?.isRecording) {
-      throw new Error('No sample is currently being recorded.');
-    }
+    if (!this.recorder?.isRecording) throw new Error('No sample is currently being recorded.');
     return this.recorder.stop();
   }
 
@@ -634,26 +514,17 @@ export class AudioEngine {
   public async stop(): Promise<void> {
     this.recorder?.dispose();
     this.recorder = null;
-
     this.dreamBuffer?.dispose();
     this.dreamBuffer = null;
-
     this.source?.disconnect();
     this.inputMatrix?.dispose();
     this.source = null;
     this.inputMatrix = null;
-
-    for (const track of this.stream?.getTracks() ?? []) {
-      track.stop();
-    }
-
+    for (const track of this.stream?.getTracks() ?? []) track.stop();
     this.stream = null;
 
-    // AudioGraph.dispose() disconnects and disposes its effects.
     this.graph?.dispose();
     this.graph = null;
-
-    // Clear references without disposing the effects a second time.
     this.effects.clear();
 
     this.inputGain?.disconnect();
@@ -662,7 +533,6 @@ export class AudioEngine {
     this.safetyClipper?.disconnect();
     this.limiter?.disconnect();
     this.analyser?.disconnect();
-
     this.inputGain = null;
     this.outputGain = null;
     this.dcBlock = null;
@@ -670,27 +540,35 @@ export class AudioEngine {
     this.limiter = null;
     this.analyser = null;
 
-    if (this.context && this.context.state !== 'closed') {
-      await this.context.close();
-    }
-
+    if (this.context && this.context.state !== 'closed') await this.context.close();
     this.context = null;
+    if (this.state !== 'error') this.state = 'stopped';
+  }
 
-    if (this.state !== 'error') {
-      this.state = 'stopped';
+  private hasActiveProcessing(): boolean {
+    for (const effect of this.effects.values()) {
+      if (!effect.isBypassed()) return true;
     }
+    return false;
   }
 
   private connectMasterChain(): void {
-    if (!this.graph || !this.dcBlock || !this.safetyClipper || !this.limiter || !this.analyser || !this.outputGain) {
+    if (!this.graph || !this.dcBlock || !this.safetyClipper || !this.limiter || !this.analyser || !this.outputGain) return;
+
+    // Own every master edge explicitly before rebuilding either topology.
+    try { this.graph.output.disconnect(); } catch { /* already disconnected */ }
+    try { this.dcBlock.disconnect(); } catch { /* already disconnected */ }
+    try { this.safetyClipper.disconnect(); } catch { /* already disconnected */ }
+    try { this.limiter.disconnect(); } catch { /* already disconnected */ }
+    try { this.analyser.disconnect(); } catch { /* already disconnected */ }
+
+    if (!this.hasActiveProcessing()) {
+      // TRUE RAW MODE: no DC filter, waveshaper, limiter, or Dream return reaches output.
+      // AnalyserNode is observational only; outputGain remains the explicit user level control.
+      this.graph.output.connect(this.analyser);
+      this.analyser.connect(this.outputGain);
       return;
     }
-
-    this.graph.output.disconnect();
-    this.dcBlock.disconnect();
-    this.safetyClipper.disconnect();
-    this.limiter.disconnect();
-    this.analyser.disconnect();
 
     this.graph.output.connect(this.dcBlock);
     this.dcBlock.connect(this.safetyClipper);
@@ -702,28 +580,12 @@ export class AudioEngine {
   private configureQualityMode(): void {
     if (!this.analyser || !this.limiter) return;
     if (this.safetyClipper) {
-      this.safetyClipper.oversample =
-        this.performanceMode === 'studio'
-          ? '4x'
-          : '2x';
+      this.safetyClipper.oversample = this.performanceMode === 'studio' ? '4x' : '2x';
     }
-    this.analyser.fftSize =
-      this.performanceMode === 'studio'
-        ? 1024
-        : this.performanceMode === 'balanced'
-        ? 512
-        : 256;
-    this.analyser.smoothingTimeConstant =
-      this.performanceMode === 'live' ? 0.72 : 0.8;
-    // Keep topology fixed. Live mode merely makes the safety stage gentler.
-    this.limiter.threshold.setValueAtTime(
-      this.performanceMode === 'live' ? -1.2 : -3,
-      this.context?.currentTime ?? 0
-    );
-    this.limiter.ratio.setValueAtTime(
-      this.performanceMode === 'live' ? 6 : 12,
-      this.context?.currentTime ?? 0
-    );
+    this.analyser.fftSize = this.performanceMode === 'studio' ? 1024 : this.performanceMode === 'balanced' ? 512 : 256;
+    this.analyser.smoothingTimeConstant = this.performanceMode === 'live' ? 0.72 : 0.8;
+    this.limiter.threshold.setValueAtTime(this.performanceMode === 'live' ? -1.2 : -3, this.context?.currentTime ?? 0);
+    this.limiter.ratio.setValueAtTime(this.performanceMode === 'live' ? 6 : 12, this.context?.currentTime ?? 0);
   }
 
   private configureLimiter(limiter: DynamicsCompressorNode): void {
@@ -774,43 +636,12 @@ export class AudioEngine {
     const drift = this.effects.get('chorus');
     const artifact = this.effects.get('media');
 
-
-    // SHORT -> Drift: recent memory subtly perturbs the movement field.
     if (drift) this.dreamBuffer.attachRoute('memory-to-chorus','short',drift.input,drift.isBypassed()?0:0.009);
-    // MEDIUM -> Ember: remembered harmonics are re-heated at a nearly subliminal level.
     if (ember) this.dreamBuffer.attachRoute('memory-to-saturation','medium',ember.input,ember.isBypassed()?0:0.007);
-    // LONG -> Artifact: old program material becomes ghost/print-through memory.
     if (artifact) this.dreamBuffer.attachRoute('memory-to-media','long',artifact.input,artifact.isBypassed()?0:0.011);
-
-    // SHORT -> Atmos: recent fragments become early spatial energy.
-    if (reverb) {
-      this.dreamBuffer.attachRoute(
-        'memory-to-reverb',
-        'short',
-        reverb.input,
-        reverb.isBypassed() ? 0 : 0.026,
-      );
-    }
-
-    // MEDIUM -> Grain: older material can be reconstructed as fragments.
-    if (grain) {
-      this.dreamBuffer.attachRoute(
-        'memory-to-bitcrusher',
-        'medium',
-        grain.input,
-        grain.isBypassed() ? 0 : 0.014,
-      );
-    }
-
-    // LONG -> Halo: distant memory quietly re-enters the echo field.
-    if (delay) {
-      this.dreamBuffer.attachRoute(
-        'memory-to-delay',
-        'long',
-        delay.input,
-        delay.isBypassed() ? 0 : 0.019,
-      );
-    }
+    if (reverb) this.dreamBuffer.attachRoute('memory-to-reverb','short',reverb.input,reverb.isBypassed()?0:0.026);
+    if (grain) this.dreamBuffer.attachRoute('memory-to-bitcrusher','medium',grain.input,grain.isBypassed()?0:0.014);
+    if (delay) this.dreamBuffer.attachRoute('memory-to-delay','long',delay.input,delay.isBypassed()?0:0.019);
   }
 
   private updateDreamRouteForEffect(effectId: string): void {
@@ -822,14 +653,9 @@ export class AudioEngine {
   }
 
   private assertBrowserSupport(): void {
-    if (!window.AudioContext) {
-      throw new Error('This browser does not support the Web Audio API.');
-    }
-
+    if (!window.AudioContext) throw new Error('This browser does not support the Web Audio API.');
     if (!navigator.mediaDevices?.getUserMedia) {
-      throw new Error(
-        'Audio input is unavailable. Open the app through HTTPS and grant microphone permission.'
-      );
+      throw new Error('Audio input is unavailable. Open the app through HTTPS and grant microphone permission.');
     }
   }
 }
@@ -862,37 +688,22 @@ function sleepMilliseconds(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
-
 function normalizeAudioError(error: unknown): Error {
   if (error instanceof DOMException) {
     switch (error.name) {
       case 'NotAllowedError':
-        return new Error(
-          'Audio-input permission was denied. Allow microphone access and try again.'
-        );
-
+        return new Error('Audio-input permission was denied. Allow microphone access and try again.');
       case 'NotFoundError':
         return new Error('No usable audio-input device was found.');
-
       case 'NotReadableError':
-        return new Error(
-          'The audio input is busy or could not be opened. Close other audio applications and try again.'
-        );
-
+        return new Error('The audio input is busy or could not be opened. Close other audio applications and try again.');
       case 'OverconstrainedError':
-        return new Error(
-          'The selected audio device does not support the requested settings.'
-        );
-
+        return new Error('The selected audio device does not support the requested settings.');
       default:
         return new Error(`Audio device error: ${error.message}`);
     }
   }
-
-  if (error instanceof Error) {
-    return error;
-  }
-
+  if (error instanceof Error) return error;
   return new Error('An unknown audio error occurred.');
 }
 
