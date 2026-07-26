@@ -11,7 +11,6 @@ import './components/signal/SignalLabPanel.css'
 import './engineStabilityPatch'
 import './haloStabilityPatch'
 import './artifactStabilityPatch'
-import './signalLabEngineBridge'
 import './randomTransferBridge'
 import App from './App.tsx'
 
