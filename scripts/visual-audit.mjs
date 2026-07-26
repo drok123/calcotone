@@ -23,28 +23,26 @@ const viewport = read('src/components/effects/ModuleViewport.tsx');
 const videoTags = (viewport.match(/<video\b/g) ?? []).length;
 if (videoTags !== 1) failures.push(`ModuleViewport must own exactly one decoder template; found ${videoTags}`);
 
-// A playable full-frame video is the default. Decorative geometry may tint/scale it,
-// but black bars and masks are not allowed to cover the picture.
+// The viewport stays full-frame. Black bars/masks and sliced duplicate layers are not allowed.
 forbidText(viewport, 'module-video-void-mask', 'Viewport black-mask overlay');
 forbidText(viewport, 'module-video-fx-a', 'Viewport sliced overlay A');
 forbidText(viewport, 'module-video-fx-b', 'Viewport sliced overlay B');
 forbidText(viewport, 'module-video-fx-c', 'Viewport sliced overlay C');
+forbidText(viewport, 'PING_PONG_FILES', 'Dead ping-pong asset dependency');
 
 // Decoder recovery must handle stalls/no-frame states, not only a formal error event.
 requireText(viewport, 'preload="auto"', 'Viewport eager media preload');
 requireText(viewport, "video.addEventListener('stalled', scheduleRecovery)", 'Viewport stalled recovery');
 requireText(viewport, "video.addEventListener('waiting', scheduleRecovery)", 'Viewport waiting recovery');
+requireText(viewport, "video.addEventListener('error', reload)", 'Viewport media-error recovery');
 requireText(viewport, 'video.videoWidth === 0', 'Viewport no-frame recovery');
-requireText(viewport, 'setUsingFallback(true)', 'Viewport fallback switch');
-requireText(viewport, 'const videoUrl = key ? assetUrl(VIDEO_FILES[key]) : null', 'Viewport reliable primary loop');
-requireText(viewport, 'const fallbackVideoUrl = key ? assetUrl(PING_PONG_FILES[key]) : null', 'Viewport ping-pong fallback');
+requireText(viewport, 'video.load()', 'Viewport decoder reload');
+requireText(viewport, 'const videoUrl = key ? assetUrl(VIDEO_FILES[key]) : null', 'Viewport direct known-good source');
 requireText(viewport, 'visibilitychange', 'Viewport resume-after-background recovery');
 
 for (const name of ['ember', 'drift', 'drift-alt', 'halo', 'artifact', 'atmos', 'grain']) {
-  for (const suffix of ['', '-pingpong']) {
-    const file = `public/visuals/${name}${suffix}.mp4`;
-    if (!existsSync(resolve(root, file))) failures.push(`Missing visual asset: ${file}`);
-  }
+  const file = `public/visuals/${name}.mp4`;
+  if (!existsSync(resolve(root, file))) failures.push(`Missing visual asset: ${file}`);
 }
 
 if (failures.length) {
