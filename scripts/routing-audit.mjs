@@ -16,6 +16,7 @@ const requireText = (source, needle, label) => {
 };
 
 const routing = read('src/routing/serialRouting.ts');
+const hook = read('src/routing/useSerialRouting.ts');
 const transform = read('build/serialRoutingTransform.ts');
 const vite = read('vite.config.ts');
 
@@ -29,10 +30,15 @@ requireText(routing, "next.push(next.shift()!)", 'SIGNAL RANDOM visible-change g
 requireText(routing, 'top: normalized.slice(0, SERIAL_ROW_SIZE)', 'top row projection');
 requireText(routing, 'bottom: normalized.slice(SERIAL_ROW_SIZE, SERIAL_SLOT_COUNT)', 'bottom row projection');
 
-requireText(transform, "from './routing/serialRouting'", 'App adapter uses routing owner');
-requireText(transform, 'moveSerialModule([...railAOrder, ...railBOrder]', 'drag delegates to routing owner');
-requireText(transform, 'nudgeSerialModule([...railAOrder, ...railBOrder]', 'nudge delegates to routing owner');
-requireText(transform, 'shuffledSerialOrder([...railAOrder, ...railBOrder]', 'signal random delegates to routing owner');
+requireText(hook, 'orderRef = useRef<string[]>(initial)', 'native routing hook owns immediate order');
+requireText(hook, 'orderRef.current = next', 'routing ref updates synchronously');
+requireText(hook, 'moveSerialModule(orderRef.current', 'hook delegates drag to serial model');
+requireText(hook, 'nudgeSerialModule(orderRef.current', 'hook delegates nudge to serial model');
+requireText(hook, 'shuffledSerialOrder(orderRef.current)', 'hook delegates SIGNAL RANDOM to serial model');
+requireText(hook, 'topRow: rows.top', 'hook projects top row');
+requireText(hook, 'bottomRow: rows.bottom', 'hook projects bottom row');
+
+requireText(transform, "from './routing/serialRouting'", 'temporary App adapter uses routing owner');
 requireText(transform, 'if (!draggedModuleId) return;', 'cross-row drag-over acceptance');
 requireText(transform, 'cross-row lockout survived transform', 'adapter fail-closed guard');
 requireText(transform, 'replaceRegexRequired(', 'adapter uses robust source matching');
@@ -46,4 +52,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE routing audit passed (six-slot serial model + cross-row drag adapter).');
+console.log('CALCOTONE routing audit passed (native routing owner + temporary App wiring adapter).');
