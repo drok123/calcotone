@@ -20,20 +20,14 @@ const forbidText = (source, needle, label) => {
 
 const core = read('src/audio/SignalLab.ts');
 const panel = read('src/components/signal/SignalLabPanel.tsx');
-const bridge = read('src/signalLabEngineBridge.ts');
 const transform = read('build/signalLabUiTransform.ts');
 const main = read('src/main.tsx');
 const vite = read('vite.config.ts');
 
 requireText(core, "'octaver', 'ringmod', 'tremolo', 'autopan', 'wavefolder'", 'real v1 machine list');
 forbidText(core, "'freqshift'", 'placeholder frequency shift removed');
-requireText(core, "this.dcBlock.frequency.value = 24", 'octave rectifier DC protection');
+requireText(core, 'this.dcBlock.frequency.value = 24', 'octave rectifier DC protection');
 requireText(core, 'FOLD_CURVE_CACHE_LIMIT = 64', 'bounded wavefolder curve cache');
-requireText(core, "this.processorIn.connect(this.octave)", 'octave-up DSP branch');
-requireText(core, "this.processorIn.connect(this.ringVca)", 'ring-mod DSP branch');
-requireText(core, "this.processorIn.connect(this.tremoloVca)", 'tremolo DSP branch');
-requireText(core, "this.processorIn.connect(this.panner)", 'auto-pan DSP branch');
-requireText(core, "this.processorIn.connect(this.folder)", 'wavefolder DSP branch');
 
 requireText(panel, '<strong>SIGNAL</strong>', 'Signal panel heading');
 requireText(panel, "onChange({ position: 'pre' })", 'PRE insert control');
@@ -41,14 +35,10 @@ requireText(panel, "onChange({ position: 'post' })", 'POST insert control');
 requireText(panel, 'label="Amount"', 'Amount control');
 requireText(panel, 'label="Mix"', 'Mix control');
 
-requireText(bridge, "runtime.state.position === 'pre'", 'PRE engine routing');
-requireText(bridge, "runtime.state.position === 'post'", 'POST engine routing');
-requireText(bridge, 'originalHasActiveProcessing.call(this) || Boolean(runtimeFor(this)?.state.enabled)', 'Signal counts as active processing');
-requireText(bridge, 'runtime.lab.dispose()', 'Signal engine teardown');
-requireText(main, "import './signalLabEngineBridge'", 'Signal engine bridge loaded');
-
 requireText(transform, '<SignalLabPanel', 'Signal panel mounted');
-requireText(transform, 'engine.setSignalLabState(signalLabState);', 'power-up state sync');
+requireText(transform, 'UI-only until Signal Lab has a native AudioEngine insert point.', 'safe UI-only mode');
+forbidText(transform, 'engine.setSignalLabState(', 'Signal UI must not touch AudioEngine before native insertion');
+forbidText(main, "import './signalLabEngineBridge'", 'experimental Signal bridge must stay out of startup');
 requireText(vite, 'signalLabUiTransform()', 'Signal UI transform enabled');
 
 if (failures.length) {
@@ -58,4 +48,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE Signal Lab audit passed (UI + PRE/POST engine insert + realtime guards).');
+console.log('CALCOTONE Signal Lab audit passed (UI mounted; audio graph untouched).');
