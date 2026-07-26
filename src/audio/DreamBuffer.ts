@@ -5,6 +5,7 @@ export interface DreamBufferStats {
   captures: number;
   activeRoutes: number;
   memoryAgeSeconds?: [number, number, number];
+  memoryIntent?: [number, number, number];
 }
 
 export type DreamHead = 'now' | 'echo' | 'ghost';
@@ -28,8 +29,9 @@ interface DreamRoute {
  *
  * V12 separates the system conceptually into:
  * CAPTURE -> MEMORY -> AGE HEADS (NOW / ECHO / GHOST) -> RECALL -> SAFETY.
- * The AudioWorklet owns the fixed-size ring and moving interpolated heads; this class
- * owns bounded sends, recall routing, filtering, suspension, and the protected return.
+ * The AudioWorklet owns the fixed-size ring, content-aware memory tags, and moving
+ * interpolated heads; this class owns bounded sends, recall routing, filtering,
+ * suspension, diagnostics, and the protected return.
  */
 export class DreamBuffer {
   public readonly node: AudioWorkletNode;
@@ -56,6 +58,7 @@ export class DreamBuffer {
     inputPeak: 0,
     captures: 0,
     memoryAgeSeconds: [0.07, 0.48, 4.2],
+    memoryIntent: [0.18, 0.16, 0.08],
   };
 
   public constructor(context: AudioContext) {
@@ -108,6 +111,7 @@ export class DreamBuffer {
     this.node.port.onmessage = (event: MessageEvent<Partial<Omit<DreamBufferStats, 'activeRoutes'>> & { type?: string }>) => {
       if (event.data?.type !== 'profile') return;
       const nextAges = event.data.memoryAgeSeconds;
+      const nextIntent = event.data.memoryIntent;
       this.stats = {
         fillRatio: Number(event.data.fillRatio ?? this.stats.fillRatio),
         historySeconds: Number(event.data.historySeconds ?? this.stats.historySeconds),
@@ -116,6 +120,9 @@ export class DreamBuffer {
         memoryAgeSeconds: Array.isArray(nextAges) && nextAges.length >= 3
           ? [Number(nextAges[0]) || 0, Number(nextAges[1]) || 0, Number(nextAges[2]) || 0]
           : this.stats.memoryAgeSeconds,
+        memoryIntent: Array.isArray(nextIntent) && nextIntent.length >= 3
+          ? [clamp01(Number(nextIntent[0])), clamp01(Number(nextIntent[1])), clamp01(Number(nextIntent[2]))]
+          : this.stats.memoryIntent,
       };
     };
     this.node.onprocessorerror = () => {
@@ -278,9 +285,11 @@ export class DreamBuffer {
 
   public getStats(): DreamBufferStats {
     const ages = this.stats.memoryAgeSeconds;
+    const intent = this.stats.memoryIntent;
     return {
       ...this.stats,
       memoryAgeSeconds: ages ? [...ages] as [number, number, number] : undefined,
+      memoryIntent: intent ? [...intent] as [number, number, number] : undefined,
       activeRoutes: [...this.routes.values()].filter((route) => route.connected).length,
     };
   }
@@ -314,6 +323,11 @@ function normalizeDreamHead(head: DreamHeadInput): DreamHead {
 function clampRouteAmount(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(0.06, value));
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
 }
 
 function createMemorySafetyCurve(): Float32Array<ArrayBuffer> {
