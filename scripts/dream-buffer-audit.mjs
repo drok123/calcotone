@@ -36,6 +36,24 @@ requireText(worklet, 'const blockSeconds = frames / sampleRate', 'Dream block-ra
 forbidText(worklet, 'const offsetsL = [', 'Dream per-sample left offset allocation');
 forbidText(worklet, 'const offsetsR = [', 'Dream per-sample right offset allocation');
 
+// V12 capture intelligence travels with the remembered audio. Keep the metadata compact,
+// deterministic and cheap enough to stay permanently inside the realtime worklet.
+requireText(worklet, 'this.intentNow = new Uint8Array(this.length)', 'Dream compact NOW memory tags');
+requireText(worklet, 'this.intentEcho = new Uint8Array(this.length)', 'Dream compact ECHO memory tags');
+requireText(worklet, 'this.intentGhost = new Uint8Array(this.length)', 'Dream compact GHOST memory tags');
+requireText(worklet, 'this.fastEnvelope', 'Dream transient envelope state');
+requireText(worklet, 'this.slowEnvelope', 'Dream sustained envelope state');
+requireText(worklet, 'const brightness = this.clamp01(Math.abs(mono - this.previousMono)', 'Dream cheap brightness proxy');
+requireText(worklet, 'const nowIntent =', 'Dream NOW capture intent');
+requireText(worklet, 'const echoIntent =', 'Dream ECHO capture intent');
+requireText(worklet, 'const ghostIntent =', 'Dream GHOST capture intent');
+requireText(worklet, 'this.intentGhost[this.writeIndex]', 'Dream historical Ghost tagging');
+requireText(worklet, 'this.readIntent(this.intentGhost', 'Dream historical Ghost recall weighting');
+requireText(worklet, 'const intent = 0.28 +', 'Dream Ghost minimum recall floor');
+forbidText(worklet, 'Math.random()', 'Dream nondeterministic memory selection');
+forbidText(worklet, 'getFloatFrequencyData', 'Dream FFT inside realtime memory core');
+forbidText(worklet, 'new Array(', 'Dream realtime Array allocation');
+
 // Capture / recall safety and idle retirement remain hard invariants.
 requireText(worklet, 'if (Math.abs(l) > 1.25) l = Math.tanh(l)', 'Dream capture poison guard');
 requireText(worklet, 'if (!hasInput && this.samplesWritten === 0)', 'Dream idle fast path');
