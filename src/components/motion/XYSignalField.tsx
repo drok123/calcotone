@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ModuleState, XYAssignment } from '../../ui/types';
 import type { SignalLabState } from '../../audio/SignalLab';
 import { getEffectiveMotionValue } from '../../ui/motion';
@@ -54,7 +54,7 @@ export function XYSignalField({ modules, assignments, position, dragging, signal
   const positionRef = useRef(position);
   const draggingRef = useRef(dragging);
   const signalLabRef = useRef(signalLab);
-  const engineRef = useRef<DreamFieldEngine | null>(null);
+  const videoAvailableRef = useRef(false);
   const [videoAvailable, setVideoAvailable] = useState(false);
 
   modulesRef.current = modules;
@@ -63,13 +63,17 @@ export function XYSignalField({ modules, assignments, position, dragging, signal
   draggingRef.current = dragging;
   signalLabRef.current = signalLab;
 
+  const handleVideoAvailability = useCallback((available: boolean) => {
+    videoAvailableRef.current = available;
+    setVideoAvailable(available);
+  }, []);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const context = canvas.getContext('2d', { alpha: true });
     if (!context) return;
     const engine = new DreamFieldEngine();
-    engineRef.current = engine;
     let width = 1, height = 1;
     let dpr = Math.min(1.75, window.devicePixelRatio || 1);
     let faulted = false;
@@ -103,6 +107,8 @@ export function XYSignalField({ modules, assignments, position, dragging, signal
       context.fillStyle = 'rgba(10, 3, 3, 0.96)'; context.fillRect(0, 0, width, height);
     };
     const render: ViewportRenderCallback = (stamp) => {
+      // Video worlds are the primary art system. Keep Dream as a zero-cost fallback while video is healthy.
+      if (videoAvailableRef.current) return;
       if (faulted) { drawFault(); return; }
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
       try {
@@ -113,11 +119,11 @@ export function XYSignalField({ modules, assignments, position, dragging, signal
       } catch (error) { faulted = true; console.error('CALCOTONE Dream Engine render failed', error); drawFault(); }
     };
     const unsubscribe = subscribeViewportAnimation(render);
-    return () => { unsubscribe(); observer.disconnect(); engineRef.current = null; };
+    return () => { unsubscribe(); observer.disconnect(); };
   }, []);
 
   return <div className={`xy-visual-stack ${videoAvailable ? 'has-video-world' : 'uses-dream-fallback'}`}>
-    <VideoLandscapeEngine modules={modules} position={position} dragging={dragging} signalLab={signalLab} onAvailabilityChange={setVideoAvailable} />
+    <VideoLandscapeEngine modules={modules} position={position} dragging={dragging} signalLab={signalLab} onAvailabilityChange={handleVideoAvailability} />
     <canvas ref={canvasRef} className="xy-signal-field xy-dream-fallback" aria-hidden="true" />
   </div>;
 }
