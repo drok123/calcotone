@@ -25,7 +25,7 @@ const MODEL_INDEX: Record<TubeColorModel, number> = {
 };
 
 const tubeWorkletLoads = new WeakMap<AudioContext, Promise<void>>();
-const TUBE_WORKLET_VERSION = '9.1.3-full-suspend';
+const TUBE_WORKLET_VERSION = '10.0.0-electrical-profiles';
 
 async function ensureTubeWorklet(context: AudioContext): Promise<void> {
   const existing = tubeWorkletLoads.get(context);
