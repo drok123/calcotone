@@ -8,6 +8,7 @@ import './components/layout/SignalRailBackplane.css'
 import './components/layout/PanelTheme.css'
 import './haloStabilityPatch'
 import './artifactStabilityPatch'
+import './moduleStabilityPatch'
 import './randomTransferBridge'
 import App from './App.tsx'
 
