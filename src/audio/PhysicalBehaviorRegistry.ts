@@ -92,11 +92,12 @@ export function syncPhysicalBehavior(effect: Effect): void {
       case 'orbit': behavior = spec('orbital', 0.08 + motion * 0.075, mix(rate, spread, 0.42), 0.82 + depth * 0.14, shape); break;
       case 'ce1': behavior = spec('elastic', 0.04 + shape * 0.04, mix(rate, motion, 0.35), 0.62 + depth * 0.16, mix(0.42, spread, 0.18)); break;
       case 'dimensiond': behavior = spec('elastic', 0.038 + shape * 0.034, mix(rate, motion, 0.22), 0.84 + spread * 0.12, mix(0.48, depth, 0.14)); break;
-      // The flanger DSP owns the comb/feedback. Shared charge memory adds restrained BBD-like history.
       case 'mxrflanger': behavior = spec('charge', 0.05 + shape * 0.055, mix(rate, motion, 0.34), 0.74 + depth * 0.18, mix(0.48, spread, 0.14)); break;
       case 'electricmistress': behavior = spec('charge', 0.04 + shape * 0.045, mix(rate, motion, 0.28), 0.68 + depth * 0.16, 0.42); break;
       case 'adaflanger': behavior = spec('charge', 0.055 + shape * 0.065, mix(rate, motion, 0.42), 0.78 + depth * 0.18, 0.58); break;
       case 'bf2': behavior = spec('charge', 0.045 + shape * 0.05, mix(rate, motion, 0.32), 0.72 + depth * 0.16, 0.46); break;
+      // These four own their full physical mechanisms in DriftClassicStage.
+      case 'biphase': case 'smallstone': case 'univibe': case 'leslie': behavior = BYPASS; break;
     }
   } else if (effect.id === 'delay') {
     const mode = DELAY_ALGORITHM_ORDER[index(effect, 'algorithm')] ?? 'tape';
