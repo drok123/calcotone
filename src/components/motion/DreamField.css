@@ -1,9 +1,35 @@
+.xy-visual-stack {
+  position:absolute;
+  inset:0;
+  overflow:hidden;
+  border-radius:inherit;
+  pointer-events:none;
+}
+
+.xy-visual-stack .xy-video-world,
+.xy-visual-stack .xy-signal-field {
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+}
+
 .xy-signal-field {
   filter:
     brightness(1.72)
     contrast(1.03)
     saturate(0.98)
     drop-shadow(0 0 5px rgba(210, 226, 216, 0.16));
+  opacity:1;
+  transition:opacity 520ms ease;
+}
+
+.xy-visual-stack.has-video-world .xy-dream-fallback {
+  opacity:0;
+}
+
+.xy-visual-stack.uses-dream-fallback .xy-video-world {
+  opacity:0;
 }
 
 .xy-pad.is-dragging .xy-signal-field,
