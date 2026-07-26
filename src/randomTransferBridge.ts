@@ -3,7 +3,9 @@ import { applyRandomBatch } from './perf/randomBatch';
 import { beginViewportPerformanceHold } from './components/effects/viewportScheduler';
 
 const RANDOM_PREP_MS = 18;
-const RANDOM_MODULE_STEP_MS = 28;
+const RANDOM_MORPH_STEPS = 6;
+const RANDOM_MORPH_STEP_MS = 24;
+const RANDOM_MODULE_GAP_MS = 18;
 const RANDOM_POWER_STEP_MS = 36;
 const RANDOM_SETTLE_MS = 42;
 const SIGNAL_LOCK_MS = 90;
@@ -107,9 +109,7 @@ function finishParameterCapture(engine: AudioEngine): {
   parameters: Map<string, Map<string, number>>;
   bypass: Map<string, boolean>;
 } {
-  if (captureEngine !== engine) {
-    return { parameters: new Map(), bypass: new Map() };
-  }
+  if (captureEngine !== engine) return { parameters: new Map(), bypass: new Map() };
   const result = { parameters: capturedParameters, bypass: capturedBypass };
   captureEngine = null;
   capturedParameters = new Map();
@@ -117,20 +117,68 @@ function finishParameterCapture(engine: AudioEngine): {
   return result;
 }
 
-async function applyOneBatch(
+function discreteParameterFor(effectId: string): string | null {
+  switch (effectId) {
+    case 'saturation':
+    case 'chorus':
+    case 'bitcrusher':
+    case 'media':
+      return 'mode';
+    case 'delay':
+    case 'reverb':
+      return 'algorithm';
+    default:
+      return null;
+  }
+}
+
+function smoothstep(value: number): number {
+  const x = Math.max(0, Math.min(1, value));
+  return x * x * (3 - 2 * x);
+}
+
+async function morphOneBatch(
   engine: AudioEngine,
   effectId: string,
-  values: Map<string, number>,
+  targets: Map<string, number>,
 ): Promise<void> {
-  if (!values.size || activeEngine !== engine || engine.getState() !== 'running') return;
+  if (!targets.size || activeEngine !== engine || engine.getState() !== 'running') return;
   const effect = engine.getEffect(effectId);
   if (!effect) return;
 
-  // Existing effect setters already smooth continuous controls and crossfade heavy algorithm
-  // switches. Giving each module its own short time slice keeps those transitions audible and
-  // prevents RANDOM from becoming one giant synchronous DSP transaction.
-  applyRandomBatch(effect, values);
-  await sleep(RANDOM_MODULE_STEP_MS);
+  const discreteId = discreteParameterFor(effectId);
+  const discreteTarget = discreteId ? targets.get(discreteId) : undefined;
+
+  // Let a new machine/algorithm begin its own internal crossfade before its knobs travel.
+  if (discreteId && discreteTarget !== undefined) {
+    applyRandomBatch(effect, new Map([[discreteId, discreteTarget]]));
+    await sleep(RANDOM_MORPH_STEP_MS);
+  }
+
+  const continuousTargets = [...targets.entries()].filter(([id]) => id !== discreteId);
+  if (continuousTargets.length === 0) {
+    await sleep(RANDOM_MODULE_GAP_MS);
+    return;
+  }
+
+  const starts = new Map<string, number>();
+  for (const [parameterId, target] of continuousTargets) {
+    starts.set(parameterId, effect.getParameterValue(parameterId) ?? target);
+  }
+
+  for (let step = 1; step <= RANDOM_MORPH_STEPS; step += 1) {
+    if (activeEngine !== engine || engine.getState() !== 'running') return;
+    const eased = smoothstep(step / RANDOM_MORPH_STEPS);
+    const intermediate = new Map<string, number>();
+    for (const [parameterId, target] of continuousTargets) {
+      const start = starts.get(parameterId) ?? target;
+      intermediate.set(parameterId, start + (target - start) * eased);
+    }
+    applyRandomBatch(effect, intermediate);
+    await sleep(RANDOM_MORPH_STEP_MS);
+  }
+
+  await sleep(RANDOM_MODULE_GAP_MS);
 }
 
 async function flushCapturedRandom(
@@ -140,16 +188,16 @@ async function flushCapturedRandom(
 ): Promise<void> {
   for (const effectId of RANDOM_BATCH_ORDER) {
     const values = batches.get(effectId);
-    if (values) await applyOneBatch(engine, effectId, values);
+    if (values) await morphOneBatch(engine, effectId, values);
   }
 
   for (const [effectId, values] of batches) {
     if ((RANDOM_BATCH_ORDER as readonly string[]).includes(effectId)) continue;
-    await applyOneBatch(engine, effectId, values);
+    await morphOneBatch(engine, effectId, values);
   }
 
-  // Power-state changes happen last and one at a time. The currently audible patch therefore
-  // morphs first; only after the new DSP values have settled do modules enter or leave the chain.
+  // Musical RANDOM normally preserves the live module layout. If future UI logic deliberately
+  // requests a power change, do it last and one at a time so signal continuity wins over speed.
   for (const [effectId, bypassed] of bypasses) {
     if (activeEngine !== engine || engine.getState() !== 'running') return;
     const effect = engine.getEffect(effectId);
@@ -165,7 +213,6 @@ function handleSignalRandom(button: HTMLButtonElement, event: MouseEvent): void 
     consumeClick(event);
     return;
   }
-
   signalBusyUntil = stamp + SIGNAL_LOCK_MS;
   markBusy(button, true);
   window.setTimeout(() => markBusy(button, false), SIGNAL_LOCK_MS);
@@ -176,7 +223,6 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
     replayButton = null;
     return;
   }
-
   if (randomBusy) {
     consumeClick(event);
     return;
@@ -200,14 +246,11 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
 
     replayButton = button;
     beginParameterCapture(engine);
-    let plan: {
-      parameters: Map<string, Map<string, number>>;
-      bypass: Map<string, boolean>;
-    };
+    let plan: { parameters: Map<string, Map<string, number>>; bypass: Map<string, boolean> };
 
     try {
-      // The UI chooses exactly the same RANDOM patch, but all engine writes are captured first.
-      // Nothing audible is interrupted during planning.
+      // React updates its target patch immediately; engine writes are captured and replayed as
+      // an audible morph, so the signal never disappears while RANDOM is deciding where to go.
       button.click();
     } catch (error) {
       replayButton = null;
@@ -218,9 +261,7 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
 
     void flushCapturedRandom(engine, plan.parameters, plan.bypass)
       .then(() => sleep(RANDOM_SETTLE_MS))
-      .catch((error) => {
-        console.error('CALCOTONE RANDOM staged morph failed.', error);
-      })
+      .catch((error) => console.error('CALCOTONE RANDOM staged morph failed.', error))
       .finally(() => {
         randomBusy = false;
         markBusy(button, false);
@@ -234,12 +275,10 @@ function onRandomizerClick(event: MouseEvent): void {
   if (!(target instanceof Element)) return;
   const button = target.closest<HTMLButtonElement>('button.randomizer-toggle');
   if (!button) return;
-
   if (button.classList.contains('signal-randomizer-toggle')) {
     handleSignalRandom(button, event);
     return;
   }
-
   handleMusicalRandom(button, event);
 }
 
