@@ -6,7 +6,9 @@ const RANDOM_PREP_MS = 18;
 const RANDOM_MORPH_STEPS = 6;
 const RANDOM_MORPH_STEP_MS = 24;
 const RANDOM_MODULE_GAP_MS = 18;
-const RANDOM_POWER_STEP_MS = 36;
+const RANDOM_TOPOLOGY_GUARD_MS = 42;
+const RANDOM_TOPOLOGY_SETTLE_MS = 64;
+const RANDOM_TOPOLOGY_SAFE_MIX = 0.08;
 const RANDOM_SETTLE_MS = 42;
 const SIGNAL_LOCK_MS = 90;
 const RANDOM_BATCH_ORDER = ['saturation', 'chorus', 'bitcrusher', 'media', 'delay', 'reverb'] as const;
@@ -132,6 +134,10 @@ function discreteParameterFor(effectId: string): string | null {
   }
 }
 
+function isTopologySensitive(effectId: string): boolean {
+  return effectId === 'delay' || effectId === 'reverb';
+}
+
 function smoothstep(value: number): number {
   const x = Math.max(0, Math.min(1, value));
   return x * x * (3 - 2 * x);
@@ -148,10 +154,30 @@ async function morphOneBatch(
 
   const discreteId = discreteParameterFor(effectId);
   const discreteTarget = discreteId ? targets.get(discreteId) : undefined;
+  const currentDiscrete = discreteId ? effect.getParameterValue(discreteId) : undefined;
+  const discreteChanging =
+    discreteId !== null &&
+    discreteTarget !== undefined &&
+    currentDiscrete !== undefined &&
+    Math.round(discreteTarget) !== Math.round(currentDiscrete);
+
+  // Halo and Atmos rebuild their internal networks when algorithms change. During RANDOM,
+  // briefly lean the module toward its dry path before asking for a topology swap. This gives
+  // the listener a continuous bridge while a brand-new delay/reverb network is still empty.
+  // The target Mix is then restored naturally by the eased continuous morph below.
+  if (discreteChanging && isTopologySensitive(effectId)) {
+    const currentMix = effect.getParameterValue('mix');
+    if (currentMix !== undefined && currentMix > RANDOM_TOPOLOGY_SAFE_MIX) {
+      applyRandomBatch(effect, new Map([['mix', RANDOM_TOPOLOGY_SAFE_MIX]]));
+      await sleep(RANDOM_TOPOLOGY_GUARD_MS);
+    }
+  }
 
   if (discreteId && discreteTarget !== undefined) {
     applyRandomBatch(effect, new Map([[discreteId, discreteTarget]]));
-    await sleep(RANDOM_MORPH_STEP_MS);
+    await sleep(discreteChanging && isTopologySensitive(effectId)
+      ? RANDOM_TOPOLOGY_SETTLE_MS
+      : RANDOM_MORPH_STEP_MS);
   }
 
   const continuousTargets = [...targets.entries()].filter(([id]) => id !== discreteId);
@@ -183,7 +209,7 @@ async function morphOneBatch(
 async function flushCapturedRandom(
   engine: AudioEngine,
   batches: Map<string, Map<string, number>>,
-  bypasses: Map<string, boolean>,
+  _bypasses: Map<string, boolean>,
 ): Promise<void> {
   for (const effectId of RANDOM_BATCH_ORDER) {
     const values = batches.get(effectId);
@@ -196,15 +222,8 @@ async function flushCapturedRandom(
   }
 
   // Legacy audit marker: engine.setEffectBypassed(entry.id, entry.bypassed)
-  // Musical RANDOM preserves the live module layout. If future UI logic deliberately requests
-  // a power change, do it last and one at a time so signal continuity wins over speed.
-  for (const [effectId, bypassed] of bypasses) {
-    if (activeEngine !== engine || engine.getState() !== 'running') return;
-    const effect = engine.getEffect(effectId);
-    if (!effect || effect.isBypassed() === bypassed) continue;
-    directSetEffectBypassed.call(engine, effectId, bypassed);
-    await sleep(RANDOM_POWER_STEP_MS);
-  }
+  // Musical RANDOM never changes module power. The user's active rack is the continuity anchor;
+  // RANDOM is allowed to reshape machines inside that rack, but it may not create an all-off state.
 }
 
 function handleSignalRandom(button: HTMLButtonElement, event: MouseEvent): void {
