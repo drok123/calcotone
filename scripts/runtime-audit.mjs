@@ -35,6 +35,7 @@ const ember = read('src/audio/effects/Saturation.ts');
 const main = read('src/main.tsx');
 const scheduler = read('src/components/effects/viewportScheduler.ts');
 const engine = read('src/audio/AudioEngine.ts');
+const knob = read('src/components/controls/Knob.tsx');
 
 // Drift classic stays wet-only, allocation-conscious, and coefficient-throttled.
 requireText(driftClassic, 'this.result = [0, 0]', 'Drift reusable stereo result');
@@ -47,10 +48,14 @@ requireText(driftClassic, 'cascadeWithCoefficients', 'Drift cached coefficient p
 forbidText(driftClassic, 'left * (1 - wet)', 'Drift classic duplicate dry mix');
 requireText(driftStage, "const WORKLET_VERSION = '1.0.3-realtime-optimized'", 'Drift optimized cache bust');
 
-// MUSICAL RANDOM must morph rather than bypassing the rack and blasting one transaction.
-requireText(randomBridge, 'RANDOM_MORPH_STEPS', 'RANDOM staged morph');
+// MUSICAL RANDOM is one fast physical gesture: all active machines morph concurrently,
+// knobs sweep to the same destination, and the rack is available again quickly.
+requireText(randomBridge, 'RANDOM_MORPH_STEPS = 5', 'RANDOM short morph');
+requireText(randomBridge, 'RANDOM_MORPH_STEP_MS = 22', 'RANDOM fast morph cadence');
 requireText(randomBridge, 'smoothstep(step / RANDOM_MORPH_STEPS)', 'RANDOM eased motion');
-requireText(randomBridge, 'await morphOneBatch', 'RANDOM module staging');
+requireText(randomBridge, 'await Promise.all(orderedJobs)', 'RANDOM parallel module morph');
+requireText(randomBridge, "document.documentElement.classList.toggle('random-morphing', busy)", 'RANDOM visual morph state');
+requireText(knob, 'transform 165ms cubic-bezier(0.2, 0.82, 0.22, 1)', 'RANDOM-friendly knob travel');
 forbidText(randomBridge, 'for (const entry of active) engine.setEffectBypassed(entry.id, true)', 'RANDOM bypass-all burst');
 
 // Topology-changing RANDOM moves must keep an audible dry bridge and must never power modules off.
