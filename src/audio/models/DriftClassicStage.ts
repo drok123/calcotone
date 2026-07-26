@@ -9,7 +9,7 @@ const MODEL_INDEX: Record<DriftClassicModel, number> = {
 };
 
 const workletLoads = new WeakMap<AudioContext, Promise<void>>();
-const WORKLET_VERSION = '1.0.0-classic-wave';
+const WORKLET_VERSION = '1.0.1-model-reset';
 
 async function ensureWorklet(context: AudioContext): Promise<void> {
   const existing = workletLoads.get(context);
@@ -66,12 +66,16 @@ export class DriftClassicStage {
   }
 
   public configure(model: DriftClassicModel, rate: number, depth: number, shape: number, spread: number, motion: number): void {
+    const modelChanged = this.model !== model;
     this.model = model;
-    this.rate = Math.max(0, Math.min(1, rate));
-    this.depth = Math.max(0, Math.min(1, depth));
+    this.rate = clamp01(rate);
+    this.depth = clamp01(depth);
     this.shape = clamp01(shape);
     this.spread = clamp01(spread);
     this.motion = clamp01(motion);
+    if (modelChanged && this.processor && this.connected && model !== 'bypass') {
+      this.processor.port.postMessage({ type: 'reset' });
+    }
     this.sync();
   }
 
