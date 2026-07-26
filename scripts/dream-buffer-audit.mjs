@@ -54,6 +54,10 @@ requireText(worklet, 'this.ghostIntentState += (ghostTarget - this.ghostIntentSt
 requireText(worklet, 'this.intentGhost[this.writeIndex]', 'Dream historical Ghost tagging');
 requireText(worklet, 'this.readIntent(this.intentGhost', 'Dream historical Ghost recall weighting');
 requireText(worklet, 'const intent = 0.28 +', 'Dream Ghost minimum recall floor');
+requireText(worklet, 'memoryIntent: [this.profileIntent[0]', 'Dream intent profile publication');
+requireText(owner, 'memoryIntent?: [number, number, number]', 'Dream intent diagnostic type');
+requireText(owner, 'const nextIntent = event.data.memoryIntent', 'Dream intent profile ingestion');
+requireText(owner, 'memoryIntent: intent ? [...intent]', 'Dream intent diagnostic snapshot');
 forbidText(worklet, 'Math.random()', 'Dream nondeterministic memory selection');
 forbidText(worklet, 'getFloatFrequencyData', 'Dream FFT inside realtime memory core');
 forbidText(worklet, 'new Array(', 'Dream realtime Array allocation');
