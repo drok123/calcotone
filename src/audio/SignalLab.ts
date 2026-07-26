@@ -33,6 +33,9 @@ export const DEFAULT_SIGNAL_LAB_STATE: SignalLabState = {
   mix: 0.5,
 };
 
+const FOLD_CURVE_CACHE_LIMIT = 64;
+const foldCurveCache = new Map<number, Float32Array<ArrayBuffer>>();
+
 /** Compact utility processor outside the six-module rack. */
 export class SignalLab {
   public readonly input: GainNode;
@@ -42,6 +45,7 @@ export class SignalLab {
   private readonly dry: GainNode;
   private readonly wet: GainNode;
   private readonly processorIn: GainNode;
+  private readonly dcBlock: BiquadFilterNode;
   private readonly tone: BiquadFilterNode;
   private readonly octave: WaveShaperNode;
   private readonly folder: WaveShaperNode;
@@ -64,6 +68,7 @@ export class SignalLab {
     this.dry = context.createGain();
     this.wet = context.createGain();
     this.processorIn = context.createGain();
+    this.dcBlock = context.createBiquadFilter();
     this.tone = context.createBiquadFilter();
     this.octave = context.createWaveShaper();
     this.folder = context.createWaveShaper();
@@ -80,13 +85,17 @@ export class SignalLab {
     this.input.connect(this.dry);
     this.dry.connect(this.output);
     this.input.connect(this.processorIn);
+    this.dcBlock.connect(this.tone);
     this.tone.connect(this.wet);
     this.wet.connect(this.output);
 
+    this.dcBlock.type = 'highpass';
+    this.dcBlock.frequency.value = 24;
+    this.dcBlock.Q.value = 0.5;
     this.tone.type = 'lowpass';
     this.tone.Q.value = 0.7;
     this.octave.curve = createOctaveUpCurve();
-    this.folder.curve = createFoldCurve(0.5);
+    this.folder.curve = getFoldCurve(0.5);
     this.octave.oversample = '2x';
     this.folder.oversample = '2x';
     this.ringVca.gain.value = 0;
@@ -146,23 +155,23 @@ export class SignalLab {
     switch (this.state.mode) {
       case 'octaver':
         this.processorIn.connect(this.octave);
-        this.octave.connect(this.tone);
+        this.octave.connect(this.dcBlock);
         break;
       case 'ringmod':
         this.processorIn.connect(this.ringVca);
-        this.ringVca.connect(this.tone);
+        this.ringVca.connect(this.dcBlock);
         break;
       case 'tremolo':
         this.processorIn.connect(this.tremoloVca);
-        this.tremoloVca.connect(this.tone);
+        this.tremoloVca.connect(this.dcBlock);
         break;
       case 'autopan':
         this.processorIn.connect(this.panner);
-        this.panner.connect(this.tone);
+        this.panner.connect(this.dcBlock);
         break;
       case 'wavefolder':
         this.processorIn.connect(this.folder);
-        this.folder.connect(this.tone);
+        this.folder.connect(this.dcBlock);
         break;
     }
   }
@@ -186,7 +195,7 @@ export class SignalLab {
     this.panDepth.gain.setTargetAtTime(this.state.mode === 'autopan' ? this.state.amount : 0, now, tau);
     if (this.state.mode !== 'autopan') this.panner.pan.setTargetAtTime(0, now, tau);
 
-    if (this.state.mode === 'wavefolder') this.folder.curve = createFoldCurve(this.state.amount);
+    if (this.state.mode === 'wavefolder') this.folder.curve = getFoldCurve(this.state.amount);
   }
 
   public dispose(): void {
@@ -197,7 +206,7 @@ export class SignalLab {
       oscillator.disconnect();
     }
     this.input.disconnect(); this.output.disconnect(); this.dry.disconnect(); this.wet.disconnect();
-    this.processorIn.disconnect(); this.tone.disconnect(); this.octave.disconnect(); this.folder.disconnect();
+    this.processorIn.disconnect(); this.dcBlock.disconnect(); this.tone.disconnect(); this.octave.disconnect(); this.folder.disconnect();
     this.ringVca.disconnect(); this.tremoloVca.disconnect(); this.panner.disconnect();
     this.ringDepth.disconnect(); this.tremDepth.disconnect(); this.panDepth.disconnect();
   }
@@ -211,8 +220,21 @@ function createOctaveUpCurve(): Float32Array<ArrayBuffer> {
   const curve = new Float32Array(2048);
   for (let i = 0; i < curve.length; i += 1) {
     const x = (i / (curve.length - 1)) * 2 - 1;
-    curve[i] = Math.min(1, Math.abs(x) * 1.7) * 2 - 1;
+    curve[i] = Math.min(1, Math.abs(x) * 1.55);
   }
+  return curve;
+}
+
+function getFoldCurve(amount: number): Float32Array<ArrayBuffer> {
+  const key = Math.round(clamp01(amount) * 63);
+  const cached = foldCurveCache.get(key);
+  if (cached) return cached;
+  if (foldCurveCache.size >= FOLD_CURVE_CACHE_LIMIT) {
+    const oldest = foldCurveCache.keys().next().value as number | undefined;
+    if (oldest !== undefined) foldCurveCache.delete(oldest);
+  }
+  const curve = createFoldCurve(key / 63);
+  foldCurveCache.set(key, curve);
   return curve;
 }
 
