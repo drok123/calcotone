@@ -19,6 +19,7 @@ const forbidText = (source, needle, label) => {
 };
 
 const viewport = read('src/components/effects/ModuleViewport.tsx');
+const main = read('src/main.tsx');
 
 const videoTags = (viewport.match(/<video\b/g) ?? []).length;
 if (videoTags !== 1) failures.push(`ModuleViewport must own exactly one decoder template; found ${videoTags}`);
@@ -39,6 +40,11 @@ requireText(viewport, 'video.videoWidth === 0', 'Viewport no-frame recovery');
 requireText(viewport, 'video.load()', 'Viewport decoder reload');
 requireText(viewport, 'const videoUrl = key ? assetUrl(VIDEO_FILES[key]) : null', 'Viewport direct known-good source');
 requireText(viewport, 'visibilitychange', 'Viewport resume-after-background recovery');
+
+// Drift source stability is native: only Rotary intentionally uses drift-alt.
+forbidText(main, "import './videoStabilityPatch'", 'Removed video repair monkey patch');
+requireText(viewport, "return (module.driftMode ?? 'chorus') === 'rotary' ? 'drift-alt' : 'drift';", 'Native Drift stable video selection');
+forbidText(viewport, "['liquid', 'orbit', 'doppler', 'rotary'].includes(mode) ? 'drift-alt' : 'drift'", 'Old unstable Drift video mapping');
 
 for (const name of ['ember', 'drift', 'drift-alt', 'halo', 'artifact', 'atmos', 'grain']) {
   const file = `public/visuals/${name}.mp4`;
