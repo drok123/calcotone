@@ -8,9 +8,10 @@
     "audit": "node scripts/audit.mjs",
     "audit:visual": "node scripts/visual-audit.mjs",
     "audit:runtime": "node scripts/runtime-audit.mjs",
+    "audit:dropdowns": "node scripts/dropdown-audit.mjs",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "check": "npm run audit && npm run audit:visual && npm run audit:runtime && npm run lint && npm run build",
+    "check": "npm run audit && npm run audit:visual && npm run audit:runtime && npm run audit:dropdowns && npm run lint && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -20,7 +21,7 @@
   "devDependencies": {
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
+    "@types/react-dom": "^19.2.17",
     "@vitejs/plugin-react": "^6.0.3",
     "oxlint": "^1.74.0",
     "typescript": "~6.0.2",
