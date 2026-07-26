@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ModuleState, XYAssignment } from '../../ui/types';
 import type { SignalLabState } from '../../audio/SignalLab';
 import { getEffectiveMotionValue } from '../../ui/motion';
@@ -6,16 +6,15 @@ import { getLatestVisualAudioState } from '../../visual/VisualEngine';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
 import { DreamFieldEngine } from './DreamFieldEngine';
 import { drawSignalFieldArt } from './SignalFieldArt';
+import { VideoLandscapeEngine } from './VideoLandscapeEngine';
 import './DreamField.css';
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 
 function visualEnergy(module: ModuleState): number {
-  const value = (id: string, fallback = 0) =>
-    module.parameters.find((parameter) => parameter.id === id)?.value ?? fallback;
+  const value = (id: string, fallback = 0) => module.parameters.find((parameter) => parameter.id === id)?.value ?? fallback;
   const mix = value('mix', 0);
   if (mix <= 0) return 0;
-
   let character = 0.5;
   switch (module.id) {
     case 'saturation': character = value('drive') * 0.55 + value('heat') * 0.30 + value('character') * 0.15; break;
@@ -56,6 +55,7 @@ export function XYSignalField({ modules, assignments, position, dragging, signal
   const draggingRef = useRef(dragging);
   const signalLabRef = useRef(signalLab);
   const engineRef = useRef<DreamFieldEngine | null>(null);
+  const [videoAvailable, setVideoAvailable] = useState(false);
 
   modulesRef.current = modules;
   assignmentsRef.current = assignments;
@@ -68,7 +68,6 @@ export function XYSignalField({ modules, assignments, position, dragging, signal
     if (!canvas) return;
     const context = canvas.getContext('2d', { alpha: true });
     if (!context) return;
-
     const engine = new DreamFieldEngine();
     engineRef.current = engine;
     let width = 1, height = 1;
@@ -82,8 +81,7 @@ export function XYSignalField({ modules, assignments, position, dragging, signal
     const getVisualModules = () => {
       const nextPosition = positionRef.current;
       if (visualModuleSource !== modulesRef.current || visualAssignmentSource !== assignmentsRef.current || visualX !== nextPosition.x || visualY !== nextPosition.y) {
-        visualModuleSource = modulesRef.current;
-        visualAssignmentSource = assignmentsRef.current;
+        visualModuleSource = modulesRef.current; visualAssignmentSource = assignmentsRef.current;
         visualX = nextPosition.x; visualY = nextPosition.y;
         visualModules = modulesForDreamEngine(modulesRef.current, assignmentsRef.current, nextPosition);
       }
@@ -91,11 +89,9 @@ export function XYSignalField({ modules, assignments, position, dragging, signal
     };
 
     const resize = () => {
-      const bounds = canvas.getBoundingClientRect();
-      width = Math.max(1, bounds.width); height = Math.max(1, bounds.height);
+      const bounds = canvas.getBoundingClientRect(); width = Math.max(1, bounds.width); height = Math.max(1, bounds.height);
       dpr = Math.min(1.75, window.devicePixelRatio || 1);
-      const pixelWidth = Math.max(1, Math.round(width * dpr));
-      const pixelHeight = Math.max(1, Math.round(height * dpr));
+      const pixelWidth = Math.max(1, Math.round(width * dpr)); const pixelHeight = Math.max(1, Math.round(height * dpr));
       if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) { canvas.width = pixelWidth; canvas.height = pixelHeight; }
       engine.resize(width, height);
     };
@@ -105,27 +101,23 @@ export function XYSignalField({ modules, assignments, position, dragging, signal
     const drawFault = () => {
       context.setTransform(dpr, 0, 0, dpr, 0, 0); context.clearRect(0, 0, width, height);
       context.fillStyle = 'rgba(10, 3, 3, 0.96)'; context.fillRect(0, 0, width, height);
-      context.strokeStyle = 'rgba(220, 118, 90, 0.85)'; context.lineWidth = 1; context.strokeRect(8.5, 8.5, Math.max(1, width - 17), Math.max(1, height - 17));
-      context.fillStyle = 'rgba(238, 188, 166, 0.92)'; context.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace'; context.fillText('DREAM ENGINE FAULT', 18, 28);
     };
-
     const render: ViewportRenderCallback = (stamp) => {
       if (faulted) { drawFault(); return; }
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
       try {
-        const visualAudio = getLatestVisualAudioState();
-        const effectiveModules = getVisualModules();
+        const visualAudio = getLatestVisualAudioState(); const effectiveModules = getVisualModules();
         engine.render(context, { modules: effectiveModules, assignments: assignmentsRef.current, x: positionRef.current.x / 100, y: positionRef.current.y / 100, dragging: draggingRef.current, time: stamp / 1000, audio: visualAudio });
         const signal = signalLabRef.current;
         if (signal?.enabled) drawSignalFieldArt(context, width, height, { state: signal, modules: effectiveModules, x: positionRef.current.x / 100, y: positionRef.current.y / 100, time: stamp / 1000, audio: visualAudio });
-      } catch (error) {
-        faulted = true; console.error('CALCOTONE Dream Engine render failed', error); drawFault();
-      }
+      } catch (error) { faulted = true; console.error('CALCOTONE Dream Engine render failed', error); drawFault(); }
     };
-
     const unsubscribe = subscribeViewportAnimation(render);
     return () => { unsubscribe(); observer.disconnect(); engineRef.current = null; };
   }, []);
 
-  return <canvas ref={canvasRef} className="xy-signal-field" aria-hidden="true" />;
+  return <div className={`xy-visual-stack ${videoAvailable ? 'has-video-world' : 'uses-dream-fallback'}`}>
+    <VideoLandscapeEngine modules={modules} position={position} dragging={dragging} signalLab={signalLab} onAvailabilityChange={setVideoAvailable} />
+    <canvas ref={canvasRef} className="xy-signal-field xy-dream-fallback" aria-hidden="true" />
+  </div>;
 }
