@@ -7,6 +7,7 @@ import './components/effects/HardwareIdentity.css'
 import './components/layout/SignalRailBackplane.css'
 import './components/layout/PanelTheme.css'
 import './haloStabilityPatch'
+import './artifactStabilityPatch'
 import './randomTransferBridge'
 import App from './App.tsx'
 
