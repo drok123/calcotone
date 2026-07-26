@@ -1,14 +1,5 @@
-import { SaturationEffect, type EmberMode } from './audio/effects/Saturation';
 import { ChorusEffect, type DriftMode } from './audio/effects/Chorus';
 import { BitcrusherEffect } from './audio/effects/Bitcrusher';
-
-type EmberInternals = {
-  mode: EmberMode;
-  hp: BiquadFilterNode;
-  shaper: WaveShaperNode;
-};
-type EmberPrototype = { apply: (this: EmberInternals, now?: number) => void };
-type EmberState = EmberInternals & { __calcotoneGenericAttached?: boolean };
 
 type DriftInternals = {
   mode: DriftMode;
@@ -29,31 +20,11 @@ type GrainState = GrainInternals & { __calcotoneBloomAttached?: boolean };
 type PatchGlobal = typeof globalThis & { __calcotoneModuleStabilityPatch?: boolean };
 const globalState = globalThis as PatchGlobal;
 
-const emberProto = SaturationEffect.prototype as unknown as EmberPrototype;
 const driftProto = ChorusEffect.prototype as unknown as DriftPrototype;
 const grainProto = BitcrusherEffect.prototype as unknown as GrainPrototype;
 
-const originalEmberApply = emberProto.apply;
 const originalDriftApply = driftProto.apply;
 const originalGrainBody = grainProto.updateWetBodyGain;
-
-function emberUsesDedicatedBranch(mode: EmberMode): boolean {
-  return mode === 'transformer' || mode === 'goldlion' || mode === 'mullard'
-    || mode === 'telefunken' || mode === 'bugleboy' || mode === 'rcablack';
-}
-
-function stableEmberApply(this: EmberInternals, now?: number): void {
-  originalEmberApply.call(this, now);
-  const state = this as EmberState;
-  if (state.__calcotoneGenericAttached === undefined) state.__calcotoneGenericAttached = true;
-  const shouldAttach = !emberUsesDedicatedBranch(state.mode);
-  if (shouldAttach === state.__calcotoneGenericAttached) return;
-  if (shouldAttach) state.hp.connect(state.shaper);
-  else {
-    try { state.hp.disconnect(state.shaper); } catch { /* already detached */ }
-  }
-  state.__calcotoneGenericAttached = shouldAttach;
-}
 
 function driftUsesClassicBranch(mode: DriftMode): boolean {
   return mode === 'biphase' || mode === 'smallstone' || mode === 'univibe' || mode === 'leslie';
@@ -92,14 +63,12 @@ function stableGrainBody(this: GrainInternals, now: number): void {
 function install(): void {
   if (globalState.__calcotoneModuleStabilityPatch) return;
   globalState.__calcotoneModuleStabilityPatch = true;
-  emberProto.apply = stableEmberApply;
   driftProto.apply = stableDriftApply;
   grainProto.updateWetBodyGain = stableGrainBody;
 }
 
 function uninstall(): void {
   if (!globalState.__calcotoneModuleStabilityPatch) return;
-  emberProto.apply = originalEmberApply;
   driftProto.apply = originalDriftApply;
   grainProto.updateWetBodyGain = originalGrainBody;
   delete globalState.__calcotoneModuleStabilityPatch;
