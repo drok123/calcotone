@@ -15,16 +15,24 @@ function chooseWorld(modules: ModuleState[]): VideoWorld {
   const active = modules.filter((module) => module.enabled && module.available); if (!active.length) return 'base'; const ids = new Set(active.map((module) => module.id)); const modes = active.map(modeName).join(' ');
   if (ids.has('media') || /broken|digital|glitch|vhs|cyber/.test(modes)) return 'cyber'; if (ids.has('reverb') || /storm|shimmer|cloud|space/.test(modes)) return 'storm'; if (ids.has('saturation') || /tube|furnace|goldlion|mullard|transformer/.test(modes)) return 'solar'; if (ids.has('chorus') || /liquid|orbit|doppler/.test(modes)) return 'dream'; if (ids.has('bitcrusher')) return 'night'; return 'base';
 }
+function variantForMode(mode: string) {
+  if (!mode) return { hue: 0, saturation: 0 };
+  let hash = 2166136261;
+  for (let index = 0; index < mode.length; index += 1) { hash ^= mode.charCodeAt(index); hash = Math.imul(hash, 16777619); }
+  return { hue: ((hash >>> 3) % 15) - 7, saturation: (((hash >>> 9) % 7) - 3) * 0.008 };
+}
 function chooseGrade(modules: ModuleState[]): Grade {
   const active = modules.filter((module) => module.enabled && module.available); if (!active.length) return GRADES.neutral; const module = active[active.length - 1]; const mode = modeName(module);
-  if (module.id === 'saturation') { if (/goldlion|telefunken|exciter/.test(mode)) return GRADES.gold; if (/tube|mullard|bugleboy|rcablack/.test(mode)) return GRADES.tube; return GRADES.ember; }
-  if (module.id === 'chorus') return GRADES.drift; if (module.id === 'delay') return GRADES.halo; if (module.id === 'reverb') return GRADES.atmos; if (module.id === 'bitcrusher') return GRADES.grain; if (module.id === 'media') return GRADES.artifact; return GRADES.neutral;
+  let base = GRADES.neutral;
+  if (module.id === 'saturation') base = /goldlion|telefunken|exciter/.test(mode) ? GRADES.gold : /tube|mullard|bugleboy|rcablack/.test(mode) ? GRADES.tube : GRADES.ember;
+  else if (module.id === 'chorus') base = GRADES.drift; else if (module.id === 'delay') base = GRADES.halo; else if (module.id === 'reverb') base = GRADES.atmos; else if (module.id === 'bitcrusher') base = GRADES.grain; else if (module.id === 'media') base = GRADES.artifact;
+  const variant = variantForMode(mode);
+  return { ...base, hue: base.hue + variant.hue, saturation: Math.max(0.92, Math.min(1.12, base.saturation + variant.saturation)) };
 }
 function syncVideo(video: HTMLVideoElement, phase: number) { if (!Number.isFinite(video.duration) || video.duration <= 0) return; const target = phase * video.duration; if (Math.abs(video.currentTime - target) > 0.22) video.currentTime = target; }
 
 export function VideoLandscapeEngine({ modules, position, dragging, signalLab, onAvailabilityChange }: { modules: ModuleState[]; position: { x: number; y: number }; dragging: boolean; signalLab?: SignalLabState; onAvailabilityChange?: (available: boolean) => void; }) {
-  const desiredWorld = useMemo(() => chooseWorld(modules), [modules]); const grade = useMemo(() => chooseGrade(modules), [modules]); const [worldA, setWorldA] = useState<VideoWorld>(desiredWorld); const [worldB, setWorldB] = useState<VideoWorld>(desiredWorld); const [frontIsA, setFrontIsA] = useState(true); const [ready, setReady] = useState(false); const aRef = useRef<HTMLVideoElement | null>(null); const bRef = useRef<HTMLVideoElement | null>(null); const phaseRef = useRef(0);
-  const currentWorld = frontIsA ? worldA : worldB;
+  const desiredWorld = useMemo(() => chooseWorld(modules), [modules]); const grade = useMemo(() => chooseGrade(modules), [modules]); const [worldA, setWorldA] = useState<VideoWorld>(desiredWorld); const [worldB, setWorldB] = useState<VideoWorld>(desiredWorld); const [frontIsA, setFrontIsA] = useState(true); const [ready, setReady] = useState(false); const aRef = useRef<HTMLVideoElement | null>(null); const bRef = useRef<HTMLVideoElement | null>(null); const phaseRef = useRef(0); const currentWorld = frontIsA ? worldA : worldB;
   useEffect(() => { onAvailabilityChange?.(ready); }, [ready, onAvailabilityChange]);
   useEffect(() => {
     if (desiredWorld === currentWorld) return; const incoming = frontIsA ? bRef.current : aRef.current; const outgoing = frontIsA ? aRef.current : bRef.current; if (!incoming || !outgoing) return;
