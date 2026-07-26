@@ -28,6 +28,13 @@ export function serialRoutingTransform(): Plugin {
 
       next = replaceRequired(
         next,
+        `  function railForModule(moduleId: string): RoutingRail | null {\n    if (railAOrder.includes(moduleId)) return 'A';\n    if (railBOrder.includes(moduleId)) return 'B';\n    return null;\n  }\n\n`,
+        '',
+        'remove obsolete fixed-rail membership helper',
+      );
+
+      next = replaceRequired(
+        next,
         `  function reorderWithinRail(sourceId: string, targetId: string): void {\n    if (sourceId === targetId) return;\n    const sourceRail = railForModule(sourceId);\n    const targetRail = railForModule(targetId);\n\n    if (!sourceRail || sourceRail !== targetRail) {\n      setMessage('Modules stay on their three-slot rail in this routing version.');\n      return;\n    }\n\n    const current = sourceRail === 'A' ? railAOrder : railBOrder;\n    const next = [...current];\n    const from = next.indexOf(sourceId);\n    const to = next.indexOf(targetId);\n    if (from < 0 || to < 0) return;\n\n    next.splice(from, 1);\n    next.splice(to, 0, sourceId);\n\n    const nextA = sourceRail === 'A' ? next : railAOrder;\n    const nextB = sourceRail === 'B' ? next : railBOrder;\n\n    if (sourceRail === 'A') setRailAOrder(next);\n    else setRailBOrder(next);\n\n    void applyRoutingOrder(nextA, nextB);\n  }`,
         `  function reorderWithinRail(sourceId: string, targetId: string): void {\n    if (sourceId === targetId) return;\n    const current = [...railAOrder, ...railBOrder];\n    const from = current.indexOf(sourceId);\n    const to = current.indexOf(targetId);\n    if (from < 0 || to < 0) return;\n\n    const next = [...current];\n    next.splice(from, 1);\n    next.splice(to, 0, sourceId);\n    const nextA = next.slice(0, 3);\n    const nextB = next.slice(3, 6);\n\n    setRailAOrder(nextA);\n    setRailBOrder(nextB);\n    void applyRoutingOrder(nextA, nextB);\n  }`,
         'cross-row drag reorder',
