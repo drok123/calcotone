@@ -21,6 +21,8 @@ const forbidText = (source, needle, label) => {
 const driftClassic = read('public/drift-classic-processor.js');
 const driftStage = read('src/audio/models/DriftClassicStage.ts');
 const randomBridge = read('src/randomTransferBridge.ts');
+const haloPatch = read('src/haloStabilityPatch.ts');
+const main = read('src/main.tsx');
 const scheduler = read('src/components/effects/viewportScheduler.ts');
 const engine = read('src/audio/AudioEngine.ts');
 
@@ -43,6 +45,16 @@ requireText(randomBridge, "effectId === 'delay' || effectId === 'reverb'", 'RAND
 requireText(randomBridge, "applyRandomBatch(effect, new Map([['mix', RANDOM_TOPOLOGY_SAFE_MIX]]))", 'RANDOM pre-switch mix guard');
 requireText(randomBridge, 'Musical RANDOM never changes module power', 'RANDOM power-layout preservation');
 forbidText(randomBridge, 'directSetEffectBypassed.call(engine, effectId, bypassed)', 'RANDOM power mutation');
+
+// Halo mode changes keep the outgoing network fed until retirement, limit overlap, and keep
+// pitch-grain schedulers from waking forever or catch-up bursting after an idle period.
+requireText(main, "import './haloStabilityPatch'", 'Halo stability patch load');
+requireText(haloPatch, 'this.input.connect(previous.network.input)', 'Halo live-fed outgoing crossfade');
+requireText(haloPatch, 'while (this.retiring.size > 1)', 'Halo retired-network cap');
+requireText(haloPatch, 'PITCH_SCHEDULER_MS = 72', 'Halo lower-rate pitch scheduler');
+requireText(haloPatch, 'PITCH_SLEEP_THRESHOLD', 'Halo pitch scheduler sleep');
+requireText(haloPatch, 'shifter.nextGrainTime = shifter.context.currentTime + 0.02', 'Halo no grain catch-up burst');
+requireText(haloPatch, 'import.meta.hot.dispose(uninstall)', 'Halo patch HMR teardown');
 
 // Visual scheduling must stay allocation-conscious and HMR-safe.
 requireText(scheduler, 'let callbackSnapshot: ViewportRenderCallback[] = []', 'Viewport stable callback snapshot');
