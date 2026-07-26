@@ -11,7 +11,6 @@ import './engineStabilityPatch'
 import './haloStabilityPatch'
 import './artifactStabilityPatch'
 import './moduleStabilityPatch'
-import './videoStabilityPatch'
 import './randomTransferBridge'
 import App from './App.tsx'
 
