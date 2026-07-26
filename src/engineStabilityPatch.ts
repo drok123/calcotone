@@ -2,7 +2,7 @@ import { AudioEngine, type DspProfilerSnapshot, type EngineHealth, type Performa
 import type { Effect } from './audio/effects/Effect';
 import type { GrainProfilerStats } from './audio/effects/Bitcrusher';
 
-type EngineInternals = AudioEngine & {
+type EngineInternals = {
   limiter: DynamicsCompressorNode | null;
   context: AudioContext | null;
   adaptiveAction: string;
@@ -29,6 +29,10 @@ const originalUpdateAdaptivePerformance = prototype.updateAdaptivePerformance;
 const originalGetProfilerSnapshot = prototype.getProfilerSnapshot;
 const globalState = globalThis as PatchGlobal;
 
+function internals(engine: AudioEngine): EngineInternals {
+  return engine as unknown as EngineInternals;
+}
+
 function grainStats(engine: AudioEngine): GrainProfilerStats {
   const grain = engine.getEffect('bitcrusher');
   return grain && 'getProfilerStats' in grain
@@ -37,7 +41,7 @@ function grainStats(engine: AudioEngine): GrainProfilerStats {
 }
 
 function configureTransparentLimiter(engine: AudioEngine, mode: PerformanceMode): void {
-  const internal = engine as EngineInternals;
+  const internal = internals(engine);
   const limiter = internal.limiter;
   const context = internal.context;
   if (!limiter || !context) return;
@@ -61,7 +65,7 @@ function stableSetPerformanceMode(this: AudioEngine, mode: PerformanceMode): voi
 
 function stableAdaptivePerformance(this: AudioEngine): void {
   if (!this.getAdaptiveMode() || this.getState() !== 'running') return;
-  const internal = this as EngineInternals;
+  const internal = internals(this);
   const stats = grainStats(this);
   const newOverrun = stats.overruns > internal.lastOverrunCount;
   internal.lastOverrunCount = stats.overruns;
@@ -107,7 +111,7 @@ function stableProfilerSnapshot(this: AudioEngine): DspProfilerSnapshot {
     return originalGetProfilerSnapshot.call(this);
   }
 
-  const internal = this as EngineInternals;
+  const internal = internals(this);
   const context = this.getContext();
   const stats = grainStats(this);
   const health: EngineHealth = !context || context.state !== 'running'
