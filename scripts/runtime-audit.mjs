@@ -24,7 +24,10 @@ const randomBridge = read('src/randomTransferBridge.ts');
 const haloPatch = read('src/haloStabilityPatch.ts');
 const artifactPatch = read('src/artifactStabilityPatch.ts');
 const modulePatch = read('src/moduleStabilityPatch.ts');
+const videoPatch = read('src/videoStabilityPatch.ts');
+const videoColor = read('src/components/effects/VideoColorStability.css');
 const media = read('src/audio/effects/Media.ts');
+const ember = read('src/audio/effects/Saturation.ts');
 const main = read('src/main.tsx');
 const scheduler = read('src/components/effects/viewportScheduler.ts');
 const engine = read('src/audio/AudioEngine.ts');
@@ -90,6 +93,21 @@ requireText(modulePatch, '__calcotoneBloomAttached === undefined', 'Grain initia
 requireText(modulePatch, 'this.input.connect(previous.network.input)', 'Atmos live-fed outgoing crossfade');
 requireText(modulePatch, 'while (this.retiring.size > 1)', 'Atmos retired-network cap');
 requireText(modulePatch, 'import.meta.hot.dispose(uninstall)', 'Remaining module patch HMR teardown');
+
+// Ember's generic waveshaper cache must remain bounded during long RANDOM/XY sessions.
+requireText(ember, 'const MAX_CURVE_CACHE = 192', 'Ember bounded curve cache');
+requireText(ember, 'if (curveCache.size >= MAX_CURVE_CACHE)', 'Ember curve cache eviction');
+
+// Video identity is color-only: Drift's unstable alternate source is avoided for the affected modes,
+// while brightness/contrast modulation is forbidden from the stabilization layer.
+requireText(main, "import './videoStabilityPatch'", 'Video stability patch load');
+requireText(main, "import './components/effects/VideoColorStability.css'", 'Video color stability stylesheet load');
+requireText(videoPatch, "'drift-doppler', 'drift-liquid', 'drift-orbit'", 'Stable Drift video modes');
+requireText(videoPatch, 'visuals/drift.mp4', 'Stable Drift video source');
+requireText(videoPatch, 'import.meta.hot.dispose(uninstall)', 'Video patch HMR teardown');
+forbidText(videoColor, 'brightness(', 'Video brightness modulation');
+forbidText(videoColor, 'contrast(', 'Video contrast modulation');
+requireText(videoColor, '.module-video-transition-veil { display: none !important; }', 'Video transition veil disabled');
 
 // Visual scheduling must stay allocation-conscious and HMR-safe.
 requireText(scheduler, 'let callbackSnapshot: ViewportRenderCallback[] = []', 'Viewport stable callback snapshot');
