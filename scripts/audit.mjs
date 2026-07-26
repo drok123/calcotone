@@ -144,17 +144,16 @@ requireText(registry, "case 'goldlion': case 'mullard': case 'telefunken': case 
 requireText(registry, "const spread = value(effect, 'spread'", 'Drift physical spread mapping');
 requireText(registry, "const time = value(effect, 'time'", 'Halo stored-energy time mapping');
 requireText(registry, 'const storedEnergy = Math.min(1, feedback', 'Halo feedback/time memory coupling');
-requireText(registry, "const bits = value(effect, 'bits'", 'Grain converter bit-depth mapping');
-requireText(registry, 'const converterStress = 1 - bits', 'Grain converter stress mapping');
 requireText(registry, 'const ageMemory = Math.min(1, wear', 'Artifact wear/noise aging coupling');
 
 // Dedicated sampler studies must remain conversion paths instead of falling back into the
-// creative grain-cloud engine.
+// creative grain-cloud engine or receiving a second generic converter simulation.
 requireText(grainProcessor, 'const hardwareMode = mode >= 6', 'Grain hardware-mode branch');
 requireText(grainProcessor, 'this.processHardware(dryL, dryR, mode, bits, density, pitch, chaos, bloom)', 'Grain hardware conversion path');
 requireText(grainProcessor, 'quantizeNonlinear12', 'MPC60 nonlinear converter study');
 requireText(grainProcessor, 'SP-1200: four output-pair families', 'SP-1200 output filter study');
 requireText(grainProcessor, 'Mirage: 8-bit converter', 'Mirage converter/filter study');
+requireText(registry, "case 'sp1200': case 'mpc60': case 'mirage': behavior = BYPASS", 'No double sampler converter simulation');
 
 requireText(grainEffect, 'stats.cpuLoad = Number.NaN', 'Grain fake timing guard');
 requireText(visualEngine, 'if (!running || !analyser)', 'Idle visual sleep');
