@@ -1,7 +1,3 @@
-.module-video-viewport .module-video {
-  brightness: 1;
-}
-
 /* Preserve source luminance/contrast. Mode identity comes from hue/saturation only. */
 .module-video-viewport[data-color-profile='neutral'] .module-video { filter: none !important; }
 .module-video-viewport[data-color-profile='ember-dark'] .module-video { filter: sepia(.30) hue-rotate(-38deg) saturate(1.90) !important; }
