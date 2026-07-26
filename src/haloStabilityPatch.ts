@@ -1,7 +1,24 @@
 import { DelayEffect } from './audio/effects/Delay';
 
+type PitchShifterLike = {
+  context: AudioContext;
+  timer: number | null;
+  nextGrainTime: number;
+  amount: number;
+  disposed: boolean;
+  scheduleAhead(): void;
+  setPitch(semitones: number, amount: number): void;
+  __calcotoneTuned?: boolean;
+  __calcotoneOriginalSetPitch?: (semitones: number, amount: number) => void;
+};
+
+type DelayNetworkLike = {
+  input: AudioNode;
+  pitchShifters?: Array<PitchShifterLike | null>;
+};
+
 type DelayNetworkEntry = {
-  network: { input: AudioNode };
+  network: DelayNetworkLike;
 };
 
 type HaloInternals = DelayEffect & {
@@ -17,11 +34,50 @@ type HaloPrototype = {
   disposeRetiringNetwork: (this: HaloInternals, entry: DelayNetworkEntry) => void;
 };
 
+const PITCH_SCHEDULER_MS = 72;
+const PITCH_SLEEP_THRESHOLD = 0.001;
 const prototype = DelayEffect.prototype as unknown as HaloPrototype;
 const originalSwitchAlgorithm = prototype.switchAlgorithm;
 const originalDisposeRetiringNetwork = prototype.disposeRetiringNetwork;
 const installedKey = Symbol.for('calcotone.halo-stability-patch');
 const globalState = globalThis as typeof globalThis & { [installedKey]?: boolean };
+
+function stopPitchScheduler(shifter: PitchShifterLike): void {
+  if (shifter.timer === null) return;
+  globalThis.clearInterval(shifter.timer);
+  shifter.timer = null;
+}
+
+function startPitchScheduler(shifter: PitchShifterLike): void {
+  if (shifter.timer !== null || shifter.disposed || shifter.amount <= PITCH_SLEEP_THRESHOLD) return;
+  // Restart from "now" instead of trying to catch up on grains that would have occurred while
+  // sleeping. Catch-up loops are exactly the kind of scheduler burst that can rough up audio.
+  shifter.nextGrainTime = shifter.context.currentTime + 0.02;
+  shifter.timer = globalThis.setInterval(() => shifter.scheduleAhead(), PITCH_SCHEDULER_MS);
+}
+
+function tunePitchShifter(shifter: PitchShifterLike): void {
+  if (shifter.__calcotoneTuned) return;
+  shifter.__calcotoneTuned = true;
+  const originalSetPitch = shifter.setPitch.bind(shifter);
+  shifter.__calcotoneOriginalSetPitch = originalSetPitch;
+
+  // The stock shifter wakes every 48 ms forever. Keep the generous 380 ms scheduling horizon,
+  // but wake less often and sleep completely when pitch amount is effectively zero.
+  stopPitchScheduler(shifter);
+  shifter.setPitch = (semitones: number, amount: number): void => {
+    originalSetPitch(semitones, amount);
+    if (shifter.amount <= PITCH_SLEEP_THRESHOLD) stopPitchScheduler(shifter);
+    else startPitchScheduler(shifter);
+  };
+  if (shifter.amount > PITCH_SLEEP_THRESHOLD) startPitchScheduler(shifter);
+}
+
+function tuneNetwork(entry: DelayNetworkEntry): void {
+  entry.network.pitchShifters?.forEach((shifter) => {
+    if (shifter) tunePitchShifter(shifter);
+  });
+}
 
 function stableDisposeRetiringNetwork(this: HaloInternals, entry: DelayNetworkEntry): void {
   // Retired networks stay live-fed during their audible fade. Remove that source edge only
@@ -36,7 +92,9 @@ function stableSwitchAlgorithm(this: HaloInternals, algorithm: string): void {
   originalSwitchAlgorithm.call(this, algorithm);
 
   // No switch happened (same algorithm), so there is nothing to repair.
-  if (this.active === previous || !this.retiring.has(previous)) return;
+  if (this.active === previous) return;
+  tuneNetwork(this.active);
+  if (!this.retiring.has(previous)) return;
 
   // DelayEffect's native switch intentionally crossfades old -> new, but historically
   // disconnected the old network's input before the fade. Re-feed it until retirement so
