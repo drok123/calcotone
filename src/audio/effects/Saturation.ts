@@ -30,6 +30,7 @@ const CHARACTER = { id: 'character', label: 'Character', min: 0, max: 1, default
 const DYNAMICS = { id: 'dynamics', label: 'Dynamics', min: 0, max: 1, defaultValue: 0.38, step: 0.01 };
 const MIX = { id: 'mix', label: 'Mix', min: 0, max: 1, defaultValue: 0.22, step: 0.01 };
 
+const MAX_CURVE_CACHE = 192;
 const curveCache = new Map<string, Float32Array<ArrayBuffer>>();
 
 const NAMED_TUBE_MODEL: Partial<Record<EmberMode, TubeColorModel>> = {
@@ -52,31 +53,11 @@ interface TubePostProfile {
 }
 
 const TUBE_POST: Record<Exclude<TubeColorModel, 'bypass'>, TubePostProfile> = {
-  goldlion: {
-    toneScale: 1.06, toneHeat: 0.035, presenceHz: 3600, presenceSpan: 1900,
-    presenceBase: 0.25, presenceCharacter: 1.35, thresholdBase: -0.8, thresholdDynamics: 1.8,
-    ratioBase: 1.01, ratioDynamics: 0.24, postBase: 1.00, postDrive: 0.015,
-  },
-  mullard: {
-    toneScale: 0.88, toneHeat: 0.095, presenceHz: 2100, presenceSpan: 900,
-    presenceBase: -0.45, presenceCharacter: 0.75, thresholdBase: -1.9, thresholdDynamics: 4.8,
-    ratioBase: 1.05, ratioDynamics: 0.82, postBase: 0.985, postDrive: 0.040,
-  },
-  telefunken: {
-    toneScale: 1.12, toneHeat: 0.025, presenceHz: 4100, presenceSpan: 2200,
-    presenceBase: 0.10, presenceCharacter: 0.85, thresholdBase: -0.55, thresholdDynamics: 1.35,
-    ratioBase: 1.005, ratioDynamics: 0.18, postBase: 1.005, postDrive: 0.010,
-  },
-  bugleboy: {
-    toneScale: 1.00, toneHeat: 0.055, presenceHz: 2850, presenceSpan: 1250,
-    presenceBase: 0.55, presenceCharacter: 1.70, thresholdBase: -1.25, thresholdDynamics: 2.9,
-    ratioBase: 1.025, ratioDynamics: 0.48, postBase: 0.995, postDrive: 0.026,
-  },
-  rcablack: {
-    toneScale: 0.78, toneHeat: 0.13, presenceHz: 1450, presenceSpan: 650,
-    presenceBase: 0.10, presenceCharacter: 0.55, thresholdBase: -2.6, thresholdDynamics: 5.8,
-    ratioBase: 1.08, ratioDynamics: 1.05, postBase: 0.97, postDrive: 0.052,
-  },
+  goldlion: { toneScale: 1.06, toneHeat: 0.035, presenceHz: 3600, presenceSpan: 1900, presenceBase: 0.25, presenceCharacter: 1.35, thresholdBase: -0.8, thresholdDynamics: 1.8, ratioBase: 1.01, ratioDynamics: 0.24, postBase: 1.00, postDrive: 0.015 },
+  mullard: { toneScale: 0.88, toneHeat: 0.095, presenceHz: 2100, presenceSpan: 900, presenceBase: -0.45, presenceCharacter: 0.75, thresholdBase: -1.9, thresholdDynamics: 4.8, ratioBase: 1.05, ratioDynamics: 0.82, postBase: 0.985, postDrive: 0.040 },
+  telefunken: { toneScale: 1.12, toneHeat: 0.025, presenceHz: 4100, presenceSpan: 2200, presenceBase: 0.10, presenceCharacter: 0.85, thresholdBase: -0.55, thresholdDynamics: 1.35, ratioBase: 1.005, ratioDynamics: 0.18, postBase: 1.005, postDrive: 0.010 },
+  bugleboy: { toneScale: 1.00, toneHeat: 0.055, presenceHz: 2850, presenceSpan: 1250, presenceBase: 0.55, presenceCharacter: 1.70, thresholdBase: -1.25, thresholdDynamics: 2.9, ratioBase: 1.025, ratioDynamics: 0.48, postBase: 0.995, postDrive: 0.026 },
+  rcablack: { toneScale: 0.78, toneHeat: 0.13, presenceHz: 1450, presenceSpan: 650, presenceBase: 0.10, presenceCharacter: 0.55, thresholdBase: -2.6, thresholdDynamics: 5.8, ratioBase: 1.08, ratioDynamics: 1.05, postBase: 0.97, postDrive: 0.052 },
 };
 
 export class SaturationEffect extends BaseEffect {
@@ -200,5 +181,9 @@ function getCurve(mode: EmberMode, drive: number, heat: number, character: numbe
   const cached = curveCache.get(key); if (cached) return cached;
   const size = 4096; const curve = new Float32Array(size); const gain = 1 + drive * 7 + heat * 3;
   for (let i=0;i<size;i+=1) { const x=(i/(size-1))*2-1; if (drive <= 0.0001 && heat <= 0.0001) curve[i]=x; else { const bias=(character-0.5)*0.06; const zero=Math.tanh(bias*gain); curve[i]=(Math.tanh((x+bias)*gain)-zero)/Math.max(1,gain*0.55); } }
+  if (curveCache.size >= MAX_CURVE_CACHE) {
+    const oldest = curveCache.keys().next().value as string | undefined;
+    if (oldest !== undefined) curveCache.delete(oldest);
+  }
   curveCache.set(key, curve); return curve;
 }
