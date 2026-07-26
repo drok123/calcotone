@@ -27,7 +27,7 @@ const haloPatch = read('src/haloStabilityPatch.ts');
 const artifactPatch = read('src/artifactStabilityPatch.ts');
 const modulePatch = read('src/moduleStabilityPatch.ts');
 const reverb = read('src/audio/effects/Reverb.ts');
-const videoPatch = read('src/videoStabilityPatch.ts');
+const viewport = read('src/components/effects/ModuleViewport.tsx');
 const videoColor = read('src/components/effects/VideoColorStability.css');
 const media = read('src/audio/effects/Media.ts');
 const ember = read('src/audio/effects/Saturation.ts');
@@ -125,13 +125,11 @@ requireText(reverb, 'this.input.disconnect(entry.network.input)', 'Atmos disconn
 requireText(ember, 'const MAX_CURVE_CACHE = 192', 'Ember bounded curve cache');
 requireText(ember, 'if (curveCache.size >= MAX_CURVE_CACHE)', 'Ember curve cache eviction');
 
-// Video identity is color-only: Drift's unstable alternate source is avoided for the affected modes,
-// while brightness/contrast modulation is forbidden from the stabilization layer.
-requireText(main, "import './videoStabilityPatch'", 'Video stability patch load');
+// Video identity is native and color-only: only Rotary keeps the alternate Drift footage.
+forbidText(main, "import './videoStabilityPatch'", 'Removed video repair monkey patch');
 requireText(main, "import './components/effects/VideoColorStability.css'", 'Video color stability stylesheet load');
-requireText(videoPatch, "'drift-doppler', 'drift-liquid', 'drift-orbit'", 'Stable Drift video modes');
-requireText(videoPatch, 'visuals/drift.mp4', 'Stable Drift video source');
-requireText(videoPatch, 'import.meta.hot.dispose(uninstall)', 'Video patch HMR teardown');
+requireText(viewport, "return (module.driftMode ?? 'chorus') === 'rotary' ? 'drift-alt' : 'drift';", 'Native stable Drift video mapping');
+forbidText(viewport, "['liquid', 'orbit', 'doppler', 'rotary'].includes(mode) ? 'drift-alt' : 'drift'", 'Old Drift alternate mapping');
 forbidText(videoColor, 'brightness(', 'Video brightness modulation');
 forbidText(videoColor, 'contrast(', 'Video contrast modulation');
 requireText(videoColor, '.module-video-transition-veil { display: none !important; }', 'Video transition veil disabled');
