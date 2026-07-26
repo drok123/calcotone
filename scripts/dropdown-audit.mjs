@@ -32,6 +32,11 @@ const requireOrder = (source, constName, expected, label) => {
   }
   if (new Set(actual).size !== actual.length) failures.push(`${label}: duplicate dropdown entries`);
 };
+const requireObjectKey = (source, key, label) => {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`(?:^|\\n)\\s*(?:${escaped}|'${escaped}')\\s*:\\s*\\{`);
+  if (!pattern.test(source)) failures.push(`${label}: missing config key ${JSON.stringify(key)}`);
+};
 
 const ember = read('src/audio/effects/Saturation.ts');
 const drift = read('src/audio/effects/Chorus.ts');
@@ -66,22 +71,23 @@ requireText(ember, 'const MAX_CURVE_CACHE = 192', 'Ember bounded curve cache');
 for (const mode of ['mxrflanger','electricmistress','adaflanger','bf2']) requireText(drift, mode, `Drift ${mode} implementation`);
 for (const mode of ['biphase','smallstone','univibe','leslie']) requireText(drift, `mode === '${mode}'`, `Drift ${mode} classic mapping`);
 requireText(drift, 'this.setStandardBranchAttached(false)', 'Drift classic standard-network suspension');
-requireText(driftClassic, 'COEFFICIENT_UPDATE_INTERVAL = 8', 'Drift classic coefficient throttling');
+requireText(driftClassic, 'this.coefficientCountdown = 7', 'Drift classic coefficient throttling');
 requireText(driftClassic, 'this.result = [0, 0]', 'Drift classic reusable result buffer');
 forbidText(driftClassic, 'return [bL, bR]', 'Bi-Phase per-sample array allocation');
 forbidText(driftClassic, 'return [pL, pR]', 'Small Stone per-sample array allocation');
+forbidText(driftClassic, 'return [vibeL * tremL, vibeR * tremR]', 'Uni-Vibe per-sample array allocation');
 
-// Halo: every non-RE-201 entry owns a config; RE-201 stays a dedicated network. Heavy pitch modes use the sleeping scheduler patch.
-for (const mode of HALO.filter((mode) => mode !== 're201')) requireText(halo, `${JSON.stringify(mode).replaceAll('"', "'")}: {`, `Halo ${mode} config`);
+// Halo: every non-RE-201 entry owns a config; RE-201 stays a dedicated network.
+for (const mode of HALO.filter((mode) => mode !== 're201')) requireObjectKey(halo, mode, `Halo ${mode}`);
 requireText(halo, "algorithm === 're201'", 'Halo RE-201 dedicated path');
 requireText(halo, 'class DualGrainPitchShifter', 'Halo pitch mechanism');
 
 // Atmos: every dropdown entry owns a reverb configuration and network changes are bounded/live-fed natively.
-for (const mode of ATMOS) requireText(atmos, `${mode}: {`, `Atmos ${mode} config`);
+for (const mode of ATMOS) requireObjectKey(atmos, mode, `Atmos ${mode}`);
 requireText(atmos, 'const MAX_RETIRED_REVERB_NETWORKS = 1', 'Atmos retiring network cap');
 forbidText(atmos, 'this.input.disconnect(previous.network.input)', 'Atmos premature outgoing disconnect');
 
-// Grain: creative modes share the bounded voice engine; hardware modes use dedicated converter/reconstruction logic.
+// Grain: creative modes share a bounded voice engine; hardware modes use dedicated converter/reconstruction logic.
 requireText(grainProcessor, 'this.voices = Array.from({ length: 8 }', 'Grain bounded voice pool');
 for (const mode of [6,7,8,9,10,11]) requireText(grainProcessor, `mode === ${mode}`, `Grain hardware mode ${mode} branch`);
 requireText(grain, 'this.setBloomBranchAttached(false)', 'Grain hardware Bloom suspension');
