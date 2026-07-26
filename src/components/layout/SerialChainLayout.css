@@ -22,6 +22,7 @@
 
 .routing-grid .effect-module {
   counter-increment: calcotone-signal-slot;
+  z-index: 2;
 }
 
 /* Replace legacy A1/B1 legends with the actual serial position. */
@@ -60,19 +61,4 @@
 
 .modules-section {
   padding-bottom: 34px !important;
-}
-
-/* Give the two visual rows a single-machine rhythm without fake parallel lanes. */
-.routing-grid .effect-module {
-  z-index: 2;
-}
-
-@media (max-width: 1200px) {
-  .routing-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-
-  .routing-grid::after {
-    content: "SERIAL  ·  1 → 2 → 3 → 4 → 5 → 6";
-  }
 }
