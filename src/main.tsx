@@ -10,7 +10,6 @@ import './components/layout/PanelTheme.css'
 import './engineStabilityPatch'
 import './haloStabilityPatch'
 import './artifactStabilityPatch'
-import './moduleStabilityPatch'
 import './randomTransferBridge'
 import App from './App.tsx'
 
