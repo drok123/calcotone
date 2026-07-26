@@ -210,7 +210,7 @@ export function Knob({
 
   const faceStyle = {
     transform: `rotate(${rotation}deg)`,
-    transition: isAdjusting ? 'none' : 'transform 220ms cubic-bezier(0.22, 0.8, 0.2, 1)',
+    transition: isAdjusting ? 'none' : 'transform 165ms cubic-bezier(0.2, 0.82, 0.22, 1)',
     willChange: 'transform',
   } as CSSProperties;
 
