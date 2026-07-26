@@ -58,9 +58,11 @@ const mediaEffect = read('src/audio/effects/Media.ts');
 const tubeStage = read('src/audio/models/TubeColorStage.ts');
 const magneticStage = read('src/audio/models/MagneticCoreStage.ts');
 const behaviorStage = read('src/audio/models/BehaviorMemoryStage.ts');
+const driftClassicStage = read('src/audio/models/DriftClassicStage.ts');
 const tubeProcessor = read('public/ember-tube-processor.js');
 const magneticProcessor = read('public/magnetic-core-processor.js');
 const behaviorProcessor = read('public/behavior-memory-processor.js');
+const driftClassicProcessor = read('public/drift-classic-processor.js');
 const grainProcessor = read('public/grain-processor.js');
 const dreamProcessor = read('public/dream-buffer-processor.js');
 
@@ -70,6 +72,7 @@ for (const file of [
   'public/ember-tube-processor.js',
   'public/magnetic-core-processor.js',
   'public/behavior-memory-processor.js',
+  'public/drift-classic-processor.js',
 ]) read(file);
 
 requireText(effect, 'this.wetGain.connect(this.behaviorStage.input)', 'BaseEffect physical chassis');
@@ -97,10 +100,12 @@ requireText(randomBridge, "document.removeEventListener('click', onRandomizerCli
 requireText(tubeStage, 'ember-tube-processor.js?v=', 'Tube worklet loader');
 requireText(magneticStage, 'magnetic-core-processor.js?v=', 'Magnetic worklet loader');
 requireText(behaviorStage, 'behavior-memory-processor.js?v=', 'Behavior worklet loader');
+requireText(driftClassicStage, 'drift-classic-processor.js?v=', 'Drift classic worklet loader');
 for (const [source, label] of [
   [tubeStage, 'Tube worklet suspend/resume'],
   [magneticStage, 'Magnetic worklet suspend/resume'],
   [behaviorStage, 'Behavior worklet suspend/resume'],
+  [driftClassicStage, 'Drift classic worklet suspend/resume'],
 ]) {
   requireText(source, "postMessage({ type: 'reset' })", label);
   requireText(source, 'this.processor.connect(this.processedGain)', label);
@@ -110,6 +115,7 @@ for (const [source, label] of [
   [tubeProcessor, 'Tube processor reset handler'],
   [magneticProcessor, 'Magnetic processor reset handler'],
   [behaviorProcessor, 'Behavior processor reset handler'],
+  [driftClassicProcessor, 'Drift classic processor reset handler'],
 ]) {
   requireText(source, "event.data?.type === 'reset'", label);
   requireText(source, 'resetState()', label);
@@ -141,8 +147,6 @@ requireText(registry, "const time = value(effect, 'time'", 'Halo stored-energy t
 requireText(registry, 'const storedEnergy = Math.min(1, feedback', 'Halo feedback/time memory coupling');
 requireText(registry, 'const ageMemory = Math.min(1, wear', 'Artifact wear/noise aging coupling');
 
-// New Drift hardware modes must retain actual delayed feedback instead of degenerating
-// into static short chorus presets.
 requireText(driftEffect, 'private readonly feedbacks: GainNode[]', 'Drift flange feedback network');
 requireText(driftEffect, 'feedback.connect(delay)', 'Drift delayed feedback loop');
 requireText(driftEffect, "mode === 'mxrflanger'", 'MXR Flanger mode');
@@ -151,8 +155,26 @@ requireText(driftEffect, "mode === 'adaflanger'", 'A/DA Flanger mode');
 requireText(driftEffect, "mode === 'bf2'", 'Boss BF-2 mode');
 requireText(registry, "case 'mxrflanger': behavior = spec('charge'", 'MXR physical charge memory');
 
-// Dedicated sampler studies must remain A/D -> clock/memory -> D/A paths and must not
-// receive a second generic converter residual after their dedicated hardware simulation.
+// Dedicated classic modulation modes must stay on their own mechanism-specific worklet.
+for (const [needle, label] of [
+  ["| 'biphase'", 'Bi-Phase mode'],
+  ["| 'smallstone'", 'Small Stone mode'],
+  ["| 'univibe'", 'Uni-Vibe mode'],
+  ["| 'leslie'", 'Leslie mode'],
+  ['private readonly classicStage: DriftClassicStage', 'Drift classic branch'],
+  ["this.classicStage.configure(classic", 'Drift classic parameter routing'],
+]) requireText(driftEffect, needle, label);
+requireText(driftClassicProcessor, 'processBiPhase', 'Bi-Phase dual-bank all-pass engine');
+requireText(driftClassicProcessor, 'this.cascade(inputL, centerA, 6', 'Bi-Phase six-stage bank');
+requireText(driftClassicProcessor, 'processSmallStone', 'Small Stone phase engine');
+requireText(driftClassicProcessor, 'this.cascade(xL, centerL, 4', 'Small Stone four-stage network');
+requireText(driftClassicProcessor, 'processUniVibe', 'Uni-Vibe photo-optical engine');
+requireText(driftClassicProcessor, 'const rise =', 'Uni-Vibe asymmetric lamp response');
+requireText(driftClassicProcessor, 'processLeslie', 'Leslie rotor engine');
+requireText(driftClassicProcessor, 'this.rotorHornSpeed +=', 'Leslie horn motor inertia');
+requireText(driftClassicProcessor, 'this.rotorDrumSpeed +=', 'Leslie drum motor inertia');
+requireText(registry, "case 'biphase': case 'smallstone': case 'univibe': case 'leslie': behavior = BYPASS", 'No double Drift classic simulation');
+
 requireText(grainProcessor, 'const hardwareMode = mode >= 6', 'Grain hardware-mode branch');
 requireText(grainProcessor, 'this.processHardware(dryL, dryR, mode, bits, density, pitch, chaos, bloom)', 'Grain hardware conversion path');
 requireText(grainProcessor, 'quantizeNonlinear12', 'MPC60 nonlinear converter study');
