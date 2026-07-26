@@ -5,6 +5,7 @@ import { landscapeIdentity, videoUrl, type VideoWorld } from './VideoLandscapeCa
 import './VideoLandscapeEngine.css';
 
 type Slot = 'a' | 'b';
+const CROSSFADE_SETTLE_MS = 760;
 
 function syncVideo(incoming: HTMLVideoElement, outgoing: HTMLVideoElement): void {
   if (!Number.isFinite(incoming.duration) || incoming.duration <= 0) return;
@@ -30,11 +31,19 @@ export function VideoLandscapeEngine({ modules, position, dragging, signalLab, o
   const bRef = useRef<HTMLVideoElement | null>(null);
   const requestedWorldRef = useRef<VideoWorld>(identity.world);
   const activeSlotRef = useRef<Slot>('a');
+  const pauseTimerRef = useRef<number | null>(null);
 
   activeSlotRef.current = activeSlot;
   requestedWorldRef.current = identity.world;
   const currentWorld = activeSlot === 'a' ? worldA : worldB;
 
+  const clearPauseTimer = (): void => {
+    if (pauseTimerRef.current === null) return;
+    window.clearTimeout(pauseTimerRef.current);
+    pauseTimerRef.current = null;
+  };
+
+  useEffect(() => () => clearPauseTimer(), []);
   useEffect(() => { onAvailabilityChange?.(activeReady); }, [activeReady, onAvailabilityChange]);
   useEffect(() => {
     if (identity.world === currentWorld || failedWorlds.has(identity.world)) return;
@@ -46,11 +55,18 @@ export function VideoLandscapeEngine({ modules, position, dragging, signalLab, o
     const incoming = slot === 'a' ? aRef.current : bRef.current;
     const outgoing = activeSlotRef.current === 'a' ? aRef.current : bRef.current;
     if (!incoming) return;
+    clearPauseTimer();
     if (outgoing && incoming !== outgoing) syncVideo(incoming, outgoing);
     incoming.playbackRate = dragging ? 0.72 : 0.48;
     void incoming.play().catch(() => undefined);
     setActiveReady(true);
     setActiveSlot(slot);
+    if (outgoing && incoming !== outgoing) {
+      pauseTimerRef.current = window.setTimeout(() => {
+        pauseTimerRef.current = null;
+        if (outgoing !== (activeSlotRef.current === 'a' ? aRef.current : bRef.current)) outgoing.pause();
+      }, CROSSFADE_SETTLE_MS);
+    }
   };
 
   const markError = (slot: Slot, world: VideoWorld): void => {
@@ -62,11 +78,11 @@ export function VideoLandscapeEngine({ modules, position, dragging, signalLab, o
   };
 
   useEffect(() => {
-    for (const video of [aRef.current, bRef.current].filter(Boolean) as HTMLVideoElement[]) {
-      video.playbackRate = dragging ? 0.72 : 0.48;
-      if (activeReady) void video.play().catch(() => undefined);
-    }
-  }, [dragging, activeReady]);
+    const active = activeSlot === 'a' ? aRef.current : bRef.current;
+    if (!active) return;
+    active.playbackRate = dragging ? 0.72 : 0.48;
+    if (activeReady) void active.play().catch(() => undefined);
+  }, [dragging, activeReady, activeSlot]);
 
   useEffect(() => {
     const onVisible = () => {
@@ -90,12 +106,12 @@ export function VideoLandscapeEngine({ modules, position, dragging, signalLab, o
 
   return (
     <div className="xy-video-world" style={style} aria-hidden="true" data-world={currentWorld} data-module={identity.moduleId ?? 'raw'} data-mode={identity.mode}>
-      <video ref={aRef} className={`xy-world-video ${activeSlot === 'a' ? 'is-front' : 'is-back'}`} src={videoUrl(worldA)} muted loop playsInline preload={activeSlot === 'a' ? 'auto' : 'metadata'}
+      <video ref={aRef} className={`xy-world-video ${activeSlot === 'a' ? 'is-front' : 'is-back'}`} src={videoUrl(worldA)} muted loop playsInline preload="auto"
         onCanPlay={(event) => {
           if (activeSlotRef.current === 'a') { if (!activeReady) { setActiveReady(true); void event.currentTarget.play().catch(() => undefined); } return; }
           if (worldA !== currentWorld) activate('a', worldA);
         }} onError={() => markError('a', worldA)} />
-      <video ref={bRef} className={`xy-world-video ${activeSlot === 'b' ? 'is-front' : 'is-back'}`} src={videoUrl(worldB)} muted loop playsInline preload={activeSlot === 'b' ? 'auto' : 'metadata'}
+      <video ref={bRef} className={`xy-world-video ${activeSlot === 'b' ? 'is-front' : 'is-back'}`} src={videoUrl(worldB)} muted loop playsInline preload="auto"
         onCanPlay={(event) => {
           if (activeSlotRef.current === 'b') { if (!activeReady) { setActiveReady(true); void event.currentTarget.play().catch(() => undefined); } return; }
           if (worldB !== currentWorld) activate('b', worldB);
