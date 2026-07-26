@@ -83,6 +83,7 @@ export class SaturationEffect extends BaseEffect {
   private character = 0.22;
   private dynamics = 0.38;
   private toneHz = 9500;
+  private genericAttached = true;
 
   public constructor(context: AudioContext) {
     super(context);
@@ -123,10 +124,20 @@ export class SaturationEffect extends BaseEffect {
     this.apply(now);
   }
 
+  private setGenericBranchAttached(shouldAttach: boolean): void {
+    if (shouldAttach === this.genericAttached) return;
+    if (shouldAttach) this.hp.connect(this.shaper);
+    else {
+      try { this.hp.disconnect(this.shaper); } catch { /* already detached */ }
+    }
+    this.genericAttached = shouldAttach;
+  }
+
   private apply(now = this.context.currentTime): void {
     const tubeModel = NAMED_TUBE_MODEL[this.mode] ?? 'bypass';
     const namedTube = tubeModel !== 'bypass';
     const magnetic = this.mode === 'transformer';
+    this.setGenericBranchAttached(!(namedTube || magnetic));
     this.tubeStage.setModel(tubeModel); this.tubeStage.setParameters(this.drive, this.heat, this.character, this.dynamics);
     this.magneticStage.setEnabled(magnetic); this.magneticStage.setParameters(this.drive, this.heat, this.character, this.dynamics);
 
