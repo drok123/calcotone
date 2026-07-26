@@ -26,7 +26,7 @@ const inputMatrix = read('src/audio/InputMatrix.ts');
 const haloPatch = read('src/haloStabilityPatch.ts');
 const artifactPatch = read('src/artifactStabilityPatch.ts');
 const modulePatch = read('src/moduleStabilityPatch.ts');
-const atmosPatch = read('src/atmosStabilityPatch.ts');
+const reverb = read('src/audio/effects/Reverb.ts');
 const videoPatch = read('src/videoStabilityPatch.ts');
 const videoColor = read('src/components/effects/VideoColorStability.css');
 const media = read('src/audio/effects/Media.ts');
@@ -98,8 +98,7 @@ requireText(artifactPatch, 'import.meta.hot.dispose(uninstall)', 'Artifact patch
 requireText(media, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve cache');
 requireText(media, 'if (cache.size >= MAX_CURVE_CACHE)', 'Artifact curve cache eviction');
 
-// Remaining modules follow the same mechanism-ownership rule. Inactive parallel DSP branches
-// detach physically, and Atmos keeps its outgoing field alive through topology changes.
+// Ember, Drift and Grain still use the shared mechanism-ownership shim for now.
 requireText(main, "import './moduleStabilityPatch'", 'Remaining module stability patch load');
 requireText(modulePatch, 'emberUsesDedicatedBranch', 'Ember dedicated-branch ownership');
 requireText(modulePatch, 'state.hp.disconnect(state.shaper)', 'Ember generic shaper suspension');
@@ -110,15 +109,17 @@ requireText(modulePatch, '__calcotoneStandardAttached === undefined', 'Drift ini
 requireText(modulePatch, 'grainUsesBloom', 'Grain Bloom ownership');
 requireText(modulePatch, 'state.processor.disconnect(state.bloomFilter)', 'Grain hardware Bloom suspension');
 requireText(modulePatch, '__calcotoneBloomAttached === undefined', 'Grain initial branch-state guard');
-requireText(modulePatch, 'this.input.connect(previous.network.input)', 'Atmos live-fed outgoing crossfade');
-requireText(modulePatch, 'while (this.retiring.size > 1)', 'Atmos retired-network cap');
+forbidText(modulePatch, 'stableAtmosSwitch', 'Atmos removed from shared patch');
 requireText(modulePatch, 'import.meta.hot.dispose(uninstall)', 'Remaining module patch HMR teardown');
 
-// Atmos should not walk its entire delay/diffusion graph for repeated identical control writes.
-requireText(main, "import './atmosStabilityPatch'", 'Atmos stability patch load');
-requireText(atmosPatch, 'const previous = this.parameterValues.get(parameterId)', 'Atmos previous-value lookup');
-requireText(atmosPatch, 'if (previous === value) return', 'Atmos redundant update suppression');
-requireText(atmosPatch, 'import.meta.hot.dispose(uninstall)', 'Atmos patch HMR teardown');
+// Atmos owns its stability natively: initialize once, ignore redundant writes afterward,
+// keep the outgoing field live-fed during crossfade, and allow only one retiring field.
+forbidText(main, "import './atmosStabilityPatch'", 'Removed Atmos monkey patch');
+requireText(reverb, 'private initialized = false', 'Atmos native initialization boundary');
+requireText(reverb, 'if (this.initialized && this.parameterValues.get(parameterId) === value) return', 'Atmos native redundant-write guard');
+requireText(reverb, 'const MAX_RETIRED_REVERB_NETWORKS = 1', 'Atmos native retiring-field cap');
+forbidText(reverb, 'this.input.disconnect(previous.network.input)', 'Atmos outgoing feed preserved during switch');
+requireText(reverb, 'this.input.disconnect(entry.network.input)', 'Atmos disconnects field only at retirement');
 
 // Ember's generic waveshaper cache must remain bounded during long RANDOM/XY sessions.
 requireText(ember, 'const MAX_CURVE_CACHE = 192', 'Ember bounded curve cache');
