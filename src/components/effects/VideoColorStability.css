@@ -1,0 +1,44 @@
+.module-video-viewport .module-video {
+  brightness: 1;
+}
+
+/* Preserve source luminance/contrast. Mode identity comes from hue/saturation only. */
+.module-video-viewport[data-color-profile='neutral'] .module-video { filter: none !important; }
+.module-video-viewport[data-color-profile='ember-dark'] .module-video { filter: sepia(.30) hue-rotate(-38deg) saturate(1.90) !important; }
+.module-video-viewport[data-color-profile='ember-gold'] .module-video { filter: sepia(.46) hue-rotate(-2deg) saturate(1.48) !important; }
+.module-video-viewport[data-color-profile='drift-cyan'] .module-video { filter: hue-rotate(150deg) saturate(1.44) !important; }
+.module-video-viewport[data-color-profile='drift-blue'] .module-video { filter: hue-rotate(190deg) saturate(1.40) !important; }
+.module-video-viewport[data-color-profile='drift-teal'] .module-video { filter: hue-rotate(118deg) saturate(1.42) !important; }
+.module-video-viewport[data-color-profile='drift-violet'] .module-video { filter: hue-rotate(230deg) saturate(1.45) !important; }
+.module-video-viewport[data-color-profile='halo-ice'] .module-video { filter: hue-rotate(166deg) saturate(1.24) !important; }
+.module-video-viewport[data-color-profile='halo-blue'] .module-video { filter: hue-rotate(190deg) saturate(1.44) !important; }
+.module-video-viewport[data-color-profile='halo-cyan'] .module-video { filter: hue-rotate(148deg) saturate(1.50) !important; }
+.module-video-viewport[data-color-profile='halo-violet'] .module-video { filter: hue-rotate(232deg) saturate(1.52) !important; }
+.module-video-viewport[data-color-profile='halo-green'] .module-video { filter: hue-rotate(84deg) saturate(1.42) !important; }
+.module-video-viewport[data-color-profile='halo-gold'] .module-video { filter: sepia(.34) hue-rotate(-5deg) saturate(1.42) !important; }
+.module-video-viewport[data-color-profile='atmos-blue'] .module-video { filter: hue-rotate(190deg) saturate(1.34) !important; }
+.module-video-viewport[data-color-profile='atmos-cyan'] .module-video { filter: hue-rotate(150deg) saturate(1.38) !important; }
+.module-video-viewport[data-color-profile='atmos-violet'] .module-video { filter: hue-rotate(230deg) saturate(1.46) !important; }
+.module-video-viewport[data-color-profile='atmos-aurora'] .module-video { filter: hue-rotate(270deg) saturate(1.50) !important; }
+.module-video-viewport[data-color-profile='atmos-deep'] .module-video { filter: hue-rotate(172deg) saturate(1.28) !important; }
+.module-video-viewport[data-color-profile='atmos-warm'] .module-video { filter: sepia(.22) hue-rotate(-8deg) saturate(1.28) !important; }
+.module-video-viewport[data-color-profile='grain-ice'] .module-video { filter: hue-rotate(166deg) saturate(1.30) !important; }
+.module-video-viewport[data-color-profile='grain-red'] .module-video { filter: hue-rotate(-32deg) saturate(1.90) !important; }
+.module-video-viewport[data-color-profile='grain-violet'] .module-video { filter: hue-rotate(230deg) saturate(1.72) !important; }
+.module-video-viewport[data-color-profile='grain-magenta'] .module-video { filter: hue-rotate(282deg) saturate(1.82) !important; }
+.module-video-viewport[data-color-profile='grain-cyan'] .module-video { filter: hue-rotate(148deg) saturate(1.75) !important; }
+.module-video-viewport[data-color-profile='grain-amber'] .module-video { filter: sepia(.36) hue-rotate(-7deg) saturate(1.50) !important; }
+.module-video-viewport[data-color-profile='grain-green'] .module-video { filter: hue-rotate(82deg) saturate(1.58) !important; }
+.module-video-viewport[data-color-profile='artifact-amber'] .module-video { filter: sepia(.30) hue-rotate(-8deg) saturate(1.34) !important; }
+.module-video-viewport[data-color-profile='artifact-gold'] .module-video { filter: sepia(.40) saturate(1.44) !important; }
+.module-video-viewport[data-color-profile='artifact-violet'] .module-video { filter: hue-rotate(232deg) saturate(1.38) !important; }
+.module-video-viewport[data-color-profile='artifact-magenta'] .module-video { filter: hue-rotate(278deg) saturate(1.50) !important; }
+.module-video-viewport[data-color-profile='artifact-green'] .module-video { filter: hue-rotate(84deg) saturate(1.36) !important; }
+.module-video-viewport[data-color-profile='artifact-sepia'] .module-video { filter: sepia(.58) saturate(1.18) !important; }
+.module-video-viewport[data-color-profile='artifact-red'] .module-video { filter: hue-rotate(-28deg) saturate(1.58) !important; }
+.module-video-viewport[data-color-profile='artifact-cyan'] .module-video { filter: hue-rotate(145deg) saturate(1.44) !important; }
+.module-video-viewport[data-color-profile='artifact-teal'] .module-video { filter: hue-rotate(116deg) saturate(1.40) !important; }
+.module-video-viewport[data-color-profile='artifact-blue'] .module-video { filter: hue-rotate(190deg) saturate(1.42) !important; }
+
+.module-video-viewport.is-reconfiguring .module-video-stage { filter: none !important; }
+.module-video-viewport .module-video-transition-veil { display: none !important; }
