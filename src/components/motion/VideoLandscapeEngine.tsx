@@ -1,47 +1,127 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { ModuleState } from '../../ui/types';
 import type { SignalLabState } from '../../audio/SignalLab';
+import { landscapeIdentity, videoUrl, type VideoWorld } from './VideoLandscapeCatalog';
 import './VideoLandscapeEngine.css';
 
-export type VideoWorld = 'base' | 'cyber' | 'storm' | 'solar' | 'dream' | 'night';
-type Grade = { hue: number; saturation: number; tint: string; tintOpacity: number };
-const WORLD_VIDEO: Record<VideoWorld, string> = { base: '/xy-worlds/cyber-mountain/base.mp4', cyber: '/xy-worlds/cyber-mountain/cyber.mp4', storm: '/xy-worlds/cyber-mountain/storm.mp4', solar: '/xy-worlds/cyber-mountain/solar.mp4', dream: '/xy-worlds/cyber-mountain/dream.mp4', night: '/xy-worlds/cyber-mountain/night.mp4' };
-const GRADES: Record<string, Grade> = {
-  neutral: { hue: 0, saturation: 1, tint: 'rgb(110 150 170)', tintOpacity: 0 }, ember: { hue: -7, saturation: 1.08, tint: 'rgb(205 116 62)', tintOpacity: 0.055 }, tube: { hue: -11, saturation: 1.04, tint: 'rgb(188 103 67)', tintOpacity: 0.06 }, gold: { hue: -18, saturation: 1.10, tint: 'rgb(211 160 72)', tintOpacity: 0.065 },
-  drift: { hue: 7, saturation: 1.02, tint: 'rgb(82 151 174)', tintOpacity: 0.045 }, halo: { hue: 12, saturation: 1.04, tint: 'rgb(104 130 190)', tintOpacity: 0.05 }, atmos: { hue: 5, saturation: 0.98, tint: 'rgb(115 139 160)', tintOpacity: 0.045 }, grain: { hue: -3, saturation: 0.96, tint: 'rgb(158 144 119)', tintOpacity: 0.04 }, artifact: { hue: 18, saturation: 1.08, tint: 'rgb(105 104 188)', tintOpacity: 0.05 },
-};
-function modeName(module: ModuleState): string { return String(module.emberMode ?? module.driftMode ?? module.delayAlgorithm ?? module.algorithm ?? module.grainMode ?? module.mediaMode ?? '').toLowerCase(); }
-function chooseWorld(modules: ModuleState[]): VideoWorld {
-  const active = modules.filter((module) => module.enabled && module.available); if (!active.length) return 'base'; const ids = new Set(active.map((module) => module.id)); const modes = active.map(modeName).join(' ');
-  if (ids.has('media') || /broken|digital|glitch|vhs|cyber/.test(modes)) return 'cyber'; if (ids.has('reverb') || /storm|shimmer|cloud|space/.test(modes)) return 'storm'; if (ids.has('saturation') || /tube|furnace|goldlion|mullard|transformer/.test(modes)) return 'solar'; if (ids.has('chorus') || /liquid|orbit|doppler/.test(modes)) return 'dream'; if (ids.has('bitcrusher')) return 'night'; return 'base';
-}
-function variantForMode(mode: string) {
-  if (!mode) return { hue: 0, saturation: 0 };
-  let hash = 2166136261;
-  for (let index = 0; index < mode.length; index += 1) { hash ^= mode.charCodeAt(index); hash = Math.imul(hash, 16777619); }
-  return { hue: ((hash >>> 3) % 15) - 7, saturation: (((hash >>> 9) % 7) - 3) * 0.008 };
-}
-function chooseGrade(modules: ModuleState[]): Grade {
-  const active = modules.filter((module) => module.enabled && module.available); if (!active.length) return GRADES.neutral; const module = active[active.length - 1]; const mode = modeName(module);
-  let base = GRADES.neutral;
-  if (module.id === 'saturation') base = /goldlion|telefunken|exciter/.test(mode) ? GRADES.gold : /tube|mullard|bugleboy|rcablack/.test(mode) ? GRADES.tube : GRADES.ember;
-  else if (module.id === 'chorus') base = GRADES.drift; else if (module.id === 'delay') base = GRADES.halo; else if (module.id === 'reverb') base = GRADES.atmos; else if (module.id === 'bitcrusher') base = GRADES.grain; else if (module.id === 'media') base = GRADES.artifact;
-  const variant = variantForMode(mode);
-  return { ...base, hue: base.hue + variant.hue, saturation: Math.max(0.92, Math.min(1.12, base.saturation + variant.saturation)) };
-}
-function syncVideo(video: HTMLVideoElement, phase: number) { if (!Number.isFinite(video.duration) || video.duration <= 0) return; const target = phase * video.duration; if (Math.abs(video.currentTime - target) > 0.22) video.currentTime = target; }
+type Slot = 'a' | 'b';
 
-export function VideoLandscapeEngine({ modules, position, dragging, signalLab, onAvailabilityChange }: { modules: ModuleState[]; position: { x: number; y: number }; dragging: boolean; signalLab?: SignalLabState; onAvailabilityChange?: (available: boolean) => void; }) {
-  const desiredWorld = useMemo(() => chooseWorld(modules), [modules]); const grade = useMemo(() => chooseGrade(modules), [modules]); const [worldA, setWorldA] = useState<VideoWorld>(desiredWorld); const [worldB, setWorldB] = useState<VideoWorld>(desiredWorld); const [frontIsA, setFrontIsA] = useState(true); const [ready, setReady] = useState(false); const aRef = useRef<HTMLVideoElement | null>(null); const bRef = useRef<HTMLVideoElement | null>(null); const phaseRef = useRef(0); const currentWorld = frontIsA ? worldA : worldB;
-  useEffect(() => { onAvailabilityChange?.(ready); }, [ready, onAvailabilityChange]);
+function syncVideo(incoming: HTMLVideoElement, outgoing: HTMLVideoElement): void {
+  if (!Number.isFinite(incoming.duration) || incoming.duration <= 0) return;
+  const phase = Number.isFinite(outgoing.duration) && outgoing.duration > 0
+    ? (outgoing.currentTime / outgoing.duration) % 1
+    : 0;
+  const target = phase * incoming.duration;
+  if (Math.abs(incoming.currentTime - target) > 0.18) incoming.currentTime = target;
+}
+
+export function VideoLandscapeEngine({ modules, position, dragging, signalLab, onAvailabilityChange }: {
+  modules: ModuleState[];
+  position: { x: number; y: number };
+  dragging: boolean;
+  signalLab?: SignalLabState;
+  onAvailabilityChange?: (available: boolean) => void;
+}) {
+  const identity = useMemo(() => landscapeIdentity(modules), [modules]);
+  const [worldA, setWorldA] = useState<VideoWorld>(identity.world);
+  const [worldB, setWorldB] = useState<VideoWorld>(identity.world);
+  const [activeSlot, setActiveSlot] = useState<Slot>('a');
+  const [activeReady, setActiveReady] = useState(false);
+  const [failedWorlds, setFailedWorlds] = useState<ReadonlySet<VideoWorld>>(() => new Set());
+  const aRef = useRef<HTMLVideoElement | null>(null);
+  const bRef = useRef<HTMLVideoElement | null>(null);
+  const requestedWorldRef = useRef<VideoWorld>(identity.world);
+  const activeSlotRef = useRef<Slot>('a');
+
+  activeSlotRef.current = activeSlot;
+  requestedWorldRef.current = identity.world;
+
+  const currentWorld = activeSlot === 'a' ? worldA : worldB;
+
+  useEffect(() => { onAvailabilityChange?.(activeReady); }, [activeReady, onAvailabilityChange]);
+
   useEffect(() => {
-    if (desiredWorld === currentWorld) return; const incoming = frontIsA ? bRef.current : aRef.current; const outgoing = frontIsA ? aRef.current : bRef.current; if (!incoming || !outgoing) return;
-    if (frontIsA) setWorldB(desiredWorld); else setWorldA(desiredWorld);
-    const apply = () => { const duration = outgoing.duration; phaseRef.current = Number.isFinite(duration) && duration > 0 ? (outgoing.currentTime / duration) % 1 : phaseRef.current; syncVideo(incoming, phaseRef.current); void incoming.play().catch(() => undefined); requestAnimationFrame(() => setFrontIsA((value) => !value)); };
-    if (incoming.readyState >= 2) apply(); else incoming.addEventListener('loadeddata', apply, { once: true });
-  }, [desiredWorld, currentWorld, frontIsA]);
-  useEffect(() => { for (const video of [aRef.current, bRef.current].filter(Boolean) as HTMLVideoElement[]) { video.playbackRate = dragging ? 0.34 : 0.18; void video.play().catch(() => undefined); } }, [dragging, worldA, worldB]);
-  const x = position.x / 100; const y = position.y / 100; const signalDepth = signalLab?.enabled ? 0.004 + signalLab.mix * 0.008 : 0;
-  const style = { '--video-pan-x': `${(x - 0.5) * 1.4}%`, '--video-pan-y': `${(0.5 - y) * 0.8}%`, '--video-scale': 1.025 + Math.abs(y - 0.5) * 0.018, '--grade-hue': `${grade.hue}deg`, '--grade-sat': grade.saturation, '--grade-tint': grade.tint, '--grade-tint-opacity': grade.tintOpacity + signalDepth } as CSSProperties;
-  return <div className="xy-video-world" style={style} aria-hidden="true"><video ref={aRef} className={`xy-world-video ${frontIsA ? 'is-front' : 'is-back'}`} src={WORLD_VIDEO[worldA]} muted loop playsInline preload="auto" onLoadedData={() => setReady(true)} onError={() => setReady(false)} /><video ref={bRef} className={`xy-world-video ${frontIsA ? 'is-back' : 'is-front'}`} src={WORLD_VIDEO[worldB]} muted loop playsInline preload="auto" onLoadedData={() => setReady(true)} /><div className="xy-world-grade" /><div className="xy-world-vignette" /></div>;
+    if (identity.world === currentWorld || failedWorlds.has(identity.world)) return;
+    if (activeSlot === 'a') setWorldB(identity.world);
+    else setWorldA(identity.world);
+  }, [identity.world, currentWorld, activeSlot, failedWorlds]);
+
+  const activate = (slot: Slot, world: VideoWorld): void => {
+    if (world !== requestedWorldRef.current) return;
+    const incoming = slot === 'a' ? aRef.current : bRef.current;
+    const outgoing = activeSlotRef.current === 'a' ? aRef.current : bRef.current;
+    if (!incoming) return;
+    if (outgoing && incoming !== outgoing) syncVideo(incoming, outgoing);
+    incoming.playbackRate = dragging ? 0.72 : 0.48;
+    void incoming.play().catch(() => undefined);
+    setActiveReady(true);
+    setActiveSlot(slot);
+  };
+
+  const markError = (slot: Slot, world: VideoWorld): void => {
+    setFailedWorlds((previous) => {
+      if (previous.has(world)) return previous;
+      const next = new Set(previous); next.add(world); return next;
+    });
+    if (slot === activeSlotRef.current) setActiveReady(false);
+  };
+
+  useEffect(() => {
+    for (const video of [aRef.current, bRef.current].filter(Boolean) as HTMLVideoElement[]) {
+      video.playbackRate = dragging ? 0.72 : 0.48;
+      if (activeReady) void video.play().catch(() => undefined);
+    }
+  }, [dragging, activeReady]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.hidden) return;
+      const active = activeSlotRef.current === 'a' ? aRef.current : bRef.current;
+      if (activeReady && active) void active.play().catch(() => undefined);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [activeReady]);
+
+  const x = position.x / 100;
+  const y = position.y / 100;
+  const signalDepth = signalLab?.enabled ? Math.min(0.012, 0.003 + signalLab.mix * 0.008) : 0;
+  const style = {
+    '--video-pan-x': `${(x - 0.5) * 1.15}%`,
+    '--video-pan-y': `${(0.5 - y) * 0.68}%`,
+    '--video-scale': 1.022 + Math.abs(y - 0.5) * 0.016,
+    '--grade-hue': `${identity.grade.hue}deg`,
+    '--grade-sat': identity.grade.saturation,
+    '--grade-tint': identity.grade.tint,
+    '--grade-tint-opacity': identity.grade.tintOpacity + signalDepth,
+  } as CSSProperties;
+
+  return (
+    <div className="xy-video-world" style={style} aria-hidden="true" data-world={currentWorld} data-module={identity.moduleId ?? 'raw'} data-mode={identity.mode}>
+      <video
+        ref={aRef}
+        className={`xy-world-video ${activeSlot === 'a' ? 'is-front' : 'is-back'}`}
+        src={videoUrl(worldA)}
+        muted loop playsInline preload={activeSlot === 'a' ? 'auto' : 'metadata'}
+        onCanPlay={(event) => {
+          if (activeSlotRef.current === 'a' && !activeReady) { setActiveReady(true); void event.currentTarget.play().catch(() => undefined); return; }
+          if (activeSlotRef.current !== 'a') activate('a', worldA);
+        }}
+        onError={() => markError('a', worldA)}
+      />
+      <video
+        ref={bRef}
+        className={`xy-world-video ${activeSlot === 'b' ? 'is-front' : 'is-back'}`}
+        src={videoUrl(worldB)}
+        muted loop playsInline preload={activeSlot === 'b' ? 'auto' : 'metadata'}
+        onCanPlay={(event) => {
+          if (activeSlotRef.current === 'b' && !activeReady) { setActiveReady(true); void event.currentTarget.play().catch(() => undefined); return; }
+          if (activeSlotRef.current !== 'b') activate('b', worldB);
+        }}
+        onError={() => markError('b', worldB)}
+      />
+      <div className="xy-world-grade" />
+      <div className="xy-world-vignette" />
+    </div>
+  );
 }
