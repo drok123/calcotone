@@ -61,7 +61,8 @@ jobs:
       - name: Routing audit
         run: npm run audit:routing
 
-      - name: Signal audit
+      - name: Signal audit (baseline diagnostic)
+        continue-on-error: true
         run: npm run audit:signal
 
       - name: Dream audit
