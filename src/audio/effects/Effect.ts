@@ -239,9 +239,18 @@ export abstract class BaseEffect implements Effect {
       this.converterStage = null;
     }
 
-    if (next === 'bbd' && !this.bbdStage) this.bbdStage = new BBDStage(this.context);
-    if (next === 'tape' && !this.tapeStage) this.tapeStage = new TapeTransportStage(this.context);
-    if (next === 'converter' && !this.converterStage) this.converterStage = new EarlyConverterStage(this.context);
+    if (next === 'bbd' && !this.bbdStage) {
+      this.bbdStage = new BBDStage(this.context);
+      this.bbdStage.setEnabled(true);
+    }
+    if (next === 'tape' && !this.tapeStage) {
+      this.tapeStage = new TapeTransportStage(this.context);
+      this.tapeStage.setEnabled(true);
+    }
+    if (next === 'converter' && !this.converterStage) {
+      this.converterStage = new EarlyConverterStage(this.context);
+      this.converterStage.setEnabled(true);
+    }
 
     this.activeDedicatedHardware = next;
     this.rebuildHardwarePath();
@@ -281,9 +290,9 @@ export abstract class BaseEffect implements Effect {
     if (enabled) {
       if (!this.springStage) {
         this.springStage = new SpringTankStage(this.context);
+        this.springStage.setEnabled(true);
         this.rebuildHardwarePath();
       }
-      this.springStage.setEnabled(true);
       this.springStage.configure(decay, size, color, drive);
       return;
     }
