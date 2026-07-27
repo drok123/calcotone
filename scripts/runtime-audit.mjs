@@ -54,7 +54,7 @@ requireText(driftStage, "const WORKLET_VERSION = '1.0.3-realtime-optimized'", 'D
 requireText(randomBridge, 'RANDOM_DSP_STAGGER_MS = 18', 'RANDOM DSP staggering');
 requireText(randomBridge, 'RANDOM_TOPOLOGY_SETTLE_MS = 76', 'RANDOM topology settle window');
 requireText(randomBridge, 'applyRandomBatch(effect, targets);', 'RANDOM single destination commit');
-requireText(randomBridge, 'await commitOneBatch(engine, effectId, values)', 'RANDOM serialized module commit');
+requireText(randomBridge, 'chain = chain.then(() => commitOneBatch(engine, effectId, values))', 'RANDOM serialized module commit');
 requireText(randomBridge, 'The UI already owns the visible 165 ms knob animation', 'RANDOM UI/DSP decoupling');
 requireText(randomBridge, "document.documentElement.classList.toggle('random-morphing', busy)", 'RANDOM visual morph state');
 requireText(knob, 'transform 165ms cubic-bezier(0.2, 0.82, 0.22, 1)', 'RANDOM-friendly knob travel');
@@ -145,7 +145,7 @@ requireText(ember, 'if (curveCache.size >= MAX_CURVE_CACHE)', 'Ember curve cache
 forbidText(main, "import './videoStabilityPatch'", 'Removed video repair monkey patch');
 requireText(main, "import './components/effects/VideoColorStability.css'", 'Video color stability stylesheet load');
 requireText(viewport, "return (module.driftMode ?? 'chorus') === 'rotary' ? 'drift-alt' : 'drift';", 'Native stable Drift video mapping');
-forbidText(viewport, "['liquid', 'orbit', 'doppler', 'rotary'].includes(mode) ? 'drift-alt' : 'drift'", 'Old Drift alternate mapping');
+forbidText(viewport, "['liquid', 'orbit', 'doppler', 'rotary'].includes(mode) ? 'drift-alt' : 'drift'", 'Old unstable Drift video mapping');
 forbidText(videoColor, 'brightness(', 'Video brightness modulation');
 forbidText(videoColor, 'contrast(', 'Video contrast modulation');
 requireText(videoColor, '.module-video-transition-veil { display: none !important; }', 'Video transition veil disabled');
