@@ -31,6 +31,8 @@ const VIDEO_FILES: Record<ModuleVideoKey, string> = {
   grain: 'visuals/grain.mp4',
 };
 
+const MODULE_PLAYBACK_RATE = 0.20;
+
 function assetUrl(path: string): string {
   const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
   return `${base}${path}`;
@@ -197,6 +199,7 @@ function VideoLayer({ src, className }: { src: string; className: string }) {
 
     const play = (): void => {
       clearRecovery();
+      video.playbackRate = MODULE_PLAYBACK_RATE;
       void video.play().catch(() => undefined);
     };
 
@@ -204,6 +207,7 @@ function VideoLayer({ src, className }: { src: string; className: string }) {
       if (document.hidden || retryCountRef.current >= 2) return;
       retryCountRef.current += 1;
       video.load();
+      video.playbackRate = MODULE_PLAYBACK_RATE;
       void video.play().catch(() => undefined);
     };
 
