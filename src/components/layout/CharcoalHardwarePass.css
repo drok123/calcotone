@@ -46,6 +46,13 @@
   left: 20px;
 }
 
+/* RAW / CLEAN / LOUD now occupy the selector row directly; the old MASTER label is gone. */
+.recorder-master-selector-buttons-only {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+}
+
 /* PRESSURE uses the same cream chassis / charcoal hardware language as the rack modules. */
 .pressure-panel {
   border-color: var(--cream-outline, rgba(244,239,220,.62)) !important;
