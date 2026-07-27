@@ -28,7 +28,6 @@ export class CompanderStage {
   private readonly compressor: DynamicsCompressorNode;
   private readonly makeup: GainNode;
   private readonly expander: WaveShaperNode;
-  private enabled = false;
   private curveAmount = -1;
 
   public constructor(context: AudioContext) {
@@ -64,7 +63,6 @@ export class CompanderStage {
   public connect(destination: AudioNode): void { this.output.connect(destination); }
 
   public setEnabled(enabled: boolean): void {
-    this.enabled = enabled;
     const now = this.context.currentTime;
     this.bypass.gain.setTargetAtTime(enabled ? 0 : 1, now, 0.014);
     this.processed.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.014);
