@@ -7,8 +7,8 @@ import './VideoLandscapeEngine.css';
 
 type Slot = 'a' | 'b';
 const CROSSFADE_SETTLE_MS = 760;
-const IDLE_PLAYBACK_RATE = 0.20;
-const DRAG_PLAYBACK_RATE = 0.35;
+const IDLE_PLAYBACK_RATE = 0.40;
+const DRAG_PLAYBACK_RATE = 0.40;
 
 function syncVideo(incoming: HTMLVideoElement, outgoing: HTMLVideoElement): void {
   if (!Number.isFinite(incoming.duration) || incoming.duration <= 0) return;
