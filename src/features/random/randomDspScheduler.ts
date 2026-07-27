@@ -3,10 +3,15 @@ import type { Effect } from '../../audio/effects/Effect';
 import { applyRandomBatch } from '../../perf/randomBatch';
 
 const RANDOM_DSP_STAGGER_MS = 18;
-const RANDOM_DISCRETE_SETTLE_MS = 42;
-const RANDOM_TOPOLOGY_SETTLE_MS = 96;
-const RANDOM_DRY_RAMP_MS = 48;
-const RANDOM_WET_RECOVERY_MS = 34;
+const RANDOM_DISCRETE_SETTLE_MS = 56;
+const RANDOM_TOPOLOGY_SETTLE_MS = 118;
+// BaseEffect's wet/dry control uses a 25 ms setTargetAtTime time constant. A 48 ms wait
+// still leaves roughly 15% of the previous wet path audible, which is enough for a topology
+// mutation to leak through as a tiny click. Give the exponential ramp enough time to become
+// effectively silent, then hold a short dead window before touching the graph.
+const RANDOM_DRY_RAMP_MS = 126;
+const RANDOM_SILENT_GUARD_MS = 18;
+const RANDOM_WET_RECOVERY_MS = 58;
 const RANDOM_BATCH_ORDER = [
   'saturation',
   'chorus',
@@ -94,15 +99,20 @@ async function commitOneBatch(
 
   // A machine/algorithm change is an audio transaction, not just a parameter write.
   // First crossfade this effect to its dry path while the old network is still healthy.
-  // That preserves the rest of the rack continuously and keeps topology construction inaudible.
   const destinationMix = targetMix(effect, targets);
   setWetDry(effect, 0);
   await sleep(RANDOM_DRY_RAMP_MS);
   if (!engineIsUsable()) return;
 
+  // Deliberately leave a tiny fully-dry guard window. This prevents node creation/disposal,
+  // oscillator startup, worklet activation, and feedback-network rewiring from landing on the
+  // trailing edge of the wet ramp where even a few percent of the old signal would expose it.
+  await sleep(RANDOM_SILENT_GUARD_MS);
+  if (!engineIsUsable()) return;
+
   // Keep the effect dry while the destination machine and all of its parameters are installed.
   // applyRandomBatch normally writes Mix too, so force its transaction copy to zero and restore
-  // the real destination only after the new network has had time to initialize/crossfade.
+  // the real destination only after the new network has initialized.
   const stagedTargets = new Map(targets);
   if (targets.has('mix') || effect.getParameterValue('mix') !== undefined) stagedTargets.set('mix', 0);
   applyRandomBatch(effect, stagedTargets);
@@ -110,8 +120,8 @@ async function commitOneBatch(
   await sleep(isTopologySensitive(effectId) ? RANDOM_TOPOLOGY_SETTLE_MS : RANDOM_DISCRETE_SETTLE_MS);
   if (!engineIsUsable()) return;
 
-  // Restore the randomized wet/dry target through the effect's normal smoothing. This is the
-  // audible handoff into the new machine, so no live graph mutation occurs at full wet level.
+  // Restore the randomized wet/dry target through the effect's normal smoothing. By this point
+  // every discrete graph mutation happened while that module was effectively inaudible.
   effect.setParameter('mix', destinationMix);
   await sleep(RANDOM_WET_RECOVERY_MS);
 }
@@ -139,7 +149,5 @@ export function flushCapturedRandom(
     chain = chain.then(() => commitOneBatch(engine, effectId, values, engineIsUsable));
   }
 
-  // Musical RANDOM never changes module power. The user's active rack remains the continuity
-  // anchor while each active machine transitions independently into its randomized destination.
   return chain;
 }
