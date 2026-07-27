@@ -1,0 +1,91 @@
+/* Final neutral-material pass: use the I/O inset charcoal for knob rings and spectrum hardware. */
+
+:root {
+  --calcotone-charcoal: #101315;
+}
+
+/* Outer knob ring/bezel only. Keep the cream knob face itself intact. */
+.knob-shell::before {
+  background: var(--calcotone-charcoal) !important;
+  border-color: rgba(244,239,220,.30) !important;
+  box-shadow:
+    0 7px 11px rgba(0,0,0,.50),
+    inset 0 1px rgba(255,255,255,.025),
+    inset 0 -2px rgba(0,0,0,.72) !important;
+}
+
+/* Spectrum housing now matches the deep I/O charcoal rather than the cream chassis. */
+.spectrum-unit {
+  background: var(--calcotone-charcoal) !important;
+  border-color: rgba(244,239,220,.42) !important;
+  box-shadow:
+    inset 0 2px 9px rgba(0,0,0,.68),
+    inset 0 1px rgba(255,255,255,.018),
+    0 3px 8px rgba(0,0,0,.26) !important;
+}
+
+.spectrum-header strong,
+.spectrum-status {
+  color: var(--cream-text, #f3efe4) !important;
+}
+
+/* PRESSURE uses the same cream chassis / charcoal hardware language as the rack modules. */
+.pressure-panel {
+  border-color: var(--cream-outline, rgba(244,239,220,.62)) !important;
+  background: linear-gradient(145deg, var(--cream-top,#a39f91) 0%, var(--cream-mid,#8c897e) 48%, var(--cream-bottom,#77756d) 100%) !important;
+  color: var(--cream-text,#f3efe4) !important;
+  box-shadow: 0 8px 18px rgba(0,0,0,.32), inset 0 1px rgba(255,250,228,.12) !important;
+}
+
+.pressure-machine {
+  display: grid;
+  grid-template-columns: auto minmax(120px,1fr);
+  gap: 10px;
+  align-items: center;
+  color: var(--cream-text,#f3efe4);
+  font: 800 .56rem/1 var(--mono);
+  letter-spacing: .10em;
+  text-transform: uppercase;
+}
+
+.pressure-machine select {
+  min-height: 34px;
+  border-radius: 8px !important;
+  background: var(--calcotone-charcoal) !important;
+  color: var(--cream-text,#f3efe4) !important;
+  border-color: rgba(244,239,220,.36) !important;
+}
+
+.pressure-knobs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 10px;
+  margin-top: 12px;
+  align-items: end;
+}
+
+.pressure-panel .knob-patch-jack,
+.pressure-panel .knob-modulation-ring,
+.pressure-panel .knob-effective-marker {
+  display: none !important;
+}
+
+.pressure-styles {
+  display: grid;
+  grid-template-columns: repeat(4,1fr);
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.pressure-panel button,
+.pressure-styles button {
+  color: var(--cream-text,#f3efe4) !important;
+  border-color: var(--cream-outline,rgba(244,239,220,.62)) !important;
+  background: linear-gradient(145deg, var(--cream-top,#a39f91), var(--cream-mid,#8c897e) 52%, var(--cream-bottom,#77756d)) !important;
+}
+
+.pressure-styles button.active,
+.pressure-heading button.active {
+  box-shadow: inset 0 2px 5px rgba(35,32,27,.42), 0 2px 5px rgba(0,0,0,.22) !important;
+  color: #fffaf0 !important;
+}
