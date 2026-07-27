@@ -23,8 +23,8 @@
 .signal-lab-controls { display:grid; grid-template-columns:1fr 1fr; gap:8px 10px; margin-top:10px; }
 .signal-lab:not(.is-enabled) .signal-lab-controls, .signal-lab:not(.is-enabled) .signal-lab-row { opacity:.72; }
 
-/* Pressure placement tweak: only move the knob bank, including each knob's own value/label text, down 6px. */
+/* Pressure placement tweak: only move the knob bank, including each knob's own value/label text, down 10px. */
 .pressure-panel .pressure-knobs {
   position: relative;
-  top: 6px;
+  top: 10px;
 }
