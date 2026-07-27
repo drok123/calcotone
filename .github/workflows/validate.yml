@@ -74,6 +74,14 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: TypeScript RANDOM diagnostic
+        run: |
+          npx tsc -b --pretty false > /tmp/tsc.log 2>&1 || true
+          if grep -q 'randomTransferBridge.ts' /tmp/tsc.log; then
+            echo 'TypeScript reported an error in randomTransferBridge.ts'
+            exit 1
+          fi
+
       - name: TypeScript build
         run: npx tsc -b
 
