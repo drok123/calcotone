@@ -64,6 +64,15 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
 }, forwardedRef) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const playbackRateRef = useRef(playbackRate);
+  playbackRateRef.current = playbackRate;
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.playbackRate = playbackRate;
+    video.defaultPlaybackRate = playbackRate;
+  }, [playbackRate]);
 
   useEffect(() => {
     const video = videoRef.current as FrameCallbackVideo | null;
@@ -84,7 +93,7 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
     let haveFrame = false;
     let lastCaptureAt = performance.now();
     let lastVideoTime = -1;
-    let frameIntervalMs = 1000 / Math.max(1, 30 * playbackRate);
+    let frameIntervalMs = 1000 / Math.max(1, 30 * playbackRateRef.current);
 
     const resizeBuffers = (): boolean => {
       const rect = canvas.getBoundingClientRect();
@@ -169,8 +178,8 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
       fallbackHandle = requestAnimationFrame(fallbackPoll);
     };
 
-    video.playbackRate = playbackRate;
-    video.defaultPlaybackRate = playbackRate;
+    video.playbackRate = playbackRateRef.current;
+    video.defaultPlaybackRate = playbackRateRef.current;
     video.muted = true;
     video.loop = loop;
 
@@ -188,7 +197,7 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
       cancelAnimationFrame(fallbackHandle);
       if (videoFrameHandle !== null) video.cancelVideoFrameCallback?.(videoFrameHandle);
     };
-  }, [src, playbackRate, loop]);
+  }, [src, loop]);
 
   return (
     <span className={`${className} temporal-video`} aria-hidden="true">
