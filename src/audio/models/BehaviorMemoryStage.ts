@@ -50,10 +50,10 @@ async function ensureWorklet(context: AudioContext): Promise<void> {
 }
 
 /**
- * Small stateful residual stage used to give otherwise mathematical algorithms
- * physical memory. Profiles are behavioral studies, not calibrated component models.
- * The stage stays dry-safe while its AudioWorklet loads and fully removes bypassed
- * processors from the live render graph after their crossfade completes.
+ * Stateful residual stage used to give otherwise mathematical algorithms
+ * physical memory. The AudioWorklet processor itself is created lazily so
+ * hardware modes that use a dedicated BBD/tape/converter stage do not pay for
+ * an idle processor node.
  */
 export class BehaviorMemoryStage {
   public readonly input: GainNode;
@@ -64,6 +64,7 @@ export class BehaviorMemoryStage {
   private readonly processedGain: GainNode;
   private processor: AudioWorkletNode | null = null;
   private processorConnected = false;
+  private initializePromise: Promise<void> | null = null;
   private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private profile: BehaviorMemoryProfile = 'bypass';
@@ -84,7 +85,6 @@ export class BehaviorMemoryStage {
     this.input.connect(this.bypassGain);
     this.bypassGain.connect(this.output);
     this.processedGain.connect(this.output);
-    void this.initialize();
   }
 
   public connect(destination: AudioNode): void {
@@ -103,27 +103,43 @@ export class BehaviorMemoryStage {
     this.motion = clamp01(motion);
     this.memory = clamp01(memory);
     this.color = clamp01(color);
+
+    const shouldProcess = this.profile !== 'bypass' && this.amount > 0.0001;
+    if (shouldProcess && !this.processor) {
+      void this.ensureProcessor();
+      return;
+    }
     this.sync();
   }
 
-  private async initialize(): Promise<void> {
-    try {
-      await ensureWorklet(this.context);
-      if (this.disposed) return;
-      const processor = new AudioWorkletNode(this.context, 'calcotone-behavior-memory-processor', {
-        numberOfInputs: 1,
-        numberOfOutputs: 1,
-        outputChannelCount: [2],
-        channelCount: 2,
-        channelCountMode: 'explicit',
-        channelInterpretation: 'speakers',
-      });
-      processor.onprocessorerror = () => console.error('CALCOTONE physical behavior AudioWorklet stopped unexpectedly.');
-      this.processor = processor;
-      this.sync();
-    } catch (error) {
-      console.warn('CALCOTONE physical behavior stage could not initialize; dry fallback remains active.', error);
-    }
+  private async ensureProcessor(): Promise<void> {
+    if (this.processor || this.disposed) return;
+    if (this.initializePromise) return this.initializePromise;
+
+    this.initializePromise = (async () => {
+      try {
+        await ensureWorklet(this.context);
+        if (this.disposed || this.processor) return;
+        const processor = new AudioWorkletNode(this.context, 'calcotone-behavior-memory-processor', {
+          numberOfInputs: 1,
+          numberOfOutputs: 1,
+          outputChannelCount: [2],
+          channelCount: 2,
+          channelCountMode: 'explicit',
+          channelInterpretation: 'speakers',
+        });
+        processor.onprocessorerror = () => console.error('CALCOTONE physical behavior AudioWorklet stopped unexpectedly.');
+        this.processor = processor;
+        this.values.clear();
+        this.sync();
+      } catch (error) {
+        console.warn('CALCOTONE physical behavior stage could not initialize; dry fallback remains active.', error);
+      } finally {
+        this.initializePromise = null;
+      }
+    })();
+
+    return this.initializePromise;
   }
 
   private connectProcessor(): void {
