@@ -29,5 +29,32 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Structural audit, lint, and production build
-        run: npm run check
+      - name: Structural audit
+        run: npm run audit
+
+      - name: Visual audit
+        run: npm run audit:visual
+
+      - name: Runtime audit
+        run: npm run audit:runtime
+
+      - name: Dropdown audit
+        run: npm run audit:dropdowns
+
+      - name: Routing audit
+        run: npm run audit:routing
+
+      - name: Signal audit
+        run: npm run audit:signal
+
+      - name: Dream audit
+        run: npm run audit:dream
+
+      - name: Video-world audit
+        run: npm run audit:video-world
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
