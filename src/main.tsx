@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import './UnifiedTextPalette.css'
 import './components/effects/ModuleViewport.css'
 import './components/effects/ViewportOptics.css'
 import './components/effects/HardwareIdentity.css'
