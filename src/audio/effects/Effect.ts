@@ -4,6 +4,7 @@ import { BehaviorMemoryStage, type BehaviorMemoryProfile } from '../models/Behav
 import { BBDStage } from '../models/BBDStage';
 import { TapeTransportStage } from '../models/TapeTransportStage';
 import { EarlyConverterStage } from '../models/EarlyConverterStage';
+import { SpringTankStage } from '../models/SpringTankStage';
 
 export interface Effect {
   readonly id: string;
@@ -22,6 +23,7 @@ export interface Effect {
   isProcessingSuspended(): boolean;
   setRoutingInvalidator(callback: (() => void) | null): void;
   configureBehavior(profile: BehaviorMemoryProfile, amount: number, motion: number, memory: number, color: number): void;
+  configureSpringHardware(enabled: boolean, decay: number, size: number, color: number, drive: number): void;
   dispose(): void;
 }
 
@@ -39,6 +41,7 @@ export abstract class BaseEffect implements Effect {
   private readonly bbdStage: BBDStage;
   private readonly tapeStage: TapeTransportStage;
   private readonly converterStage: EarlyConverterStage;
+  private readonly springStage: SpringTankStage;
   private readonly wetDcBlock: BiquadFilterNode;
   private readonly wetLimiter: DynamicsCompressorNode;
 
@@ -65,6 +68,7 @@ export abstract class BaseEffect implements Effect {
     this.bbdStage = new BBDStage(context);
     this.tapeStage = new TapeTransportStage(context);
     this.converterStage = new EarlyConverterStage(context);
+    this.springStage = new SpringTankStage(context);
     this.wetDcBlock = context.createBiquadFilter();
     this.wetLimiter = context.createDynamicsCompressor();
     this.bypassDryGain = context.createGain();
@@ -89,7 +93,8 @@ export abstract class BaseEffect implements Effect {
     this.wetGain.connect(this.bbdStage.input);
     this.bbdStage.connect(this.tapeStage.input);
     this.tapeStage.connect(this.converterStage.input);
-    this.converterStage.connect(this.behaviorStage.input);
+    this.converterStage.connect(this.springStage.input);
+    this.springStage.connect(this.behaviorStage.input);
     this.behaviorStage.connect(this.wetDcBlock);
     this.wetDcBlock.connect(this.wetLimiter);
     this.wetLimiter.connect(this.processedBus);
@@ -97,6 +102,7 @@ export abstract class BaseEffect implements Effect {
     this.bbdStage.setEnabled(false);
     this.tapeStage.setEnabled(false);
     this.converterStage.setEnabled(false);
+    this.springStage.setEnabled(false);
 
     this.input.connect(this.bypassDryGain);
     this.processedBus.connect(this.bypassProcessedGain);
@@ -228,6 +234,11 @@ export abstract class BaseEffect implements Effect {
     }
   }
 
+  public configureSpringHardware(enabled: boolean, decay: number, size: number, color: number, drive: number): void {
+    this.springStage.setEnabled(enabled);
+    if (enabled) this.springStage.configure(decay, size, color, drive);
+  }
+
   public abstract setParameter(parameterId: string, value: number): void;
 
   public dispose(): void {
@@ -246,6 +257,7 @@ export abstract class BaseEffect implements Effect {
     this.bbdStage.dispose();
     this.tapeStage.dispose();
     this.converterStage.dispose();
+    this.springStage.dispose();
     this.behaviorStage.dispose();
     this.wetDcBlock.disconnect();
     this.wetLimiter.disconnect();
