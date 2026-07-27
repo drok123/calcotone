@@ -36,7 +36,7 @@ requireText(viewport, 'video.videoWidth === 0', 'Viewport no-frame recovery');
 requireText(viewport, 'video.load()', 'Viewport decoder reload');
 requireText(viewport, 'const videoUrl = key ? assetUrl(VIDEO_FILES[key]) : null', 'Viewport direct known-good source');
 requireText(viewport, 'visibilitychange', 'Viewport resume-after-background recovery');
-requireText(viewport, 'const MODULE_PLAYBACK_RATE = 0.20', 'Viewport glacial module playback');
+requireText(viewport, 'const MODULE_PLAYBACK_RATE = 0.40', 'Viewport glacial module playback');
 requireText(viewport, 'video.playbackRate = MODULE_PLAYBACK_RATE', 'Viewport playback-rate enforcement');
 requireText(temporal, 'requestVideoFrameCallback', 'Frame-synchronized temporal capture');
 requireText(temporal, 'easeFrameBlend', 'Temporal frame interpolation');
