@@ -32,7 +32,7 @@ const VIDEO_FILES: Record<ModuleVideoKey, string> = {
   grain: 'visuals/grain.mp4',
 };
 
-const MODULE_PLAYBACK_RATE = 0.20;
+const MODULE_PLAYBACK_RATE = 0.40;
 
 function assetUrl(path: string): string {
   const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
