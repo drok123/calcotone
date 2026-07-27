@@ -36,7 +36,7 @@ requireText(panel, 'label="Amount"', 'Amount control');
 requireText(panel, 'label="Mix"', 'Mix control');
 
 requireText(transform, '<SignalLabPanel', 'Signal panel mounted');
-requireText(transform, 'UI-only until Signal Lab has a native AudioEngine insert point.', 'safe UI-only mode');
+requireText(transform, 'UI/visual owner until Signal Lab has a native AudioEngine insert point.', 'safe UI-only mode');
 forbidText(transform, 'engine.setSignalLabState(', 'Signal UI must not touch AudioEngine before native insertion');
 forbidText(main, "import './signalLabEngineBridge'", 'experimental Signal bridge must stay out of startup');
 requireText(vite, 'signalLabUiTransform()', 'Signal UI transform enabled');

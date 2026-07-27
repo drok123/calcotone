@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { serialRoutingTransform } from './build/serialRoutingTransform'
-import { signalLabUiTransform } from './build/signalLabUiTransform'
-import { dreamFieldCompositionTransform } from './build/dreamFieldCompositionTransform'
+import { serialRoutingTransform } from './build/serialRoutingTransform.js'
+import { signalLabUiTransform } from './build/signalLabUiTransform.js'
+import { dreamFieldCompositionTransform } from './build/dreamFieldCompositionTransform.js'
 
 // https://vite.dev/config/
 export default defineConfig({
