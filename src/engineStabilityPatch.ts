@@ -9,12 +9,14 @@ type EngineInternals = {
   overloadWindows: number;
   recoveryWindows: number;
   lastOverrunCount: number;
+  routeTransition: Promise<void>;
   dreamBuffer: { getStats(): DspProfilerSnapshot['dreamBuffer'] } | null;
 };
 
 type GrainEffect = Effect & { getProfilerStats(): GrainProfilerStats };
 type EnginePrototype = {
   start: AudioEngine['start'];
+  stop: AudioEngine['stop'];
   setPerformanceMode: AudioEngine['setPerformanceMode'];
   updateAdaptivePerformance: AudioEngine['updateAdaptivePerformance'];
   getProfilerSnapshot: AudioEngine['getProfilerSnapshot'];
@@ -24,6 +26,7 @@ type PatchGlobal = typeof globalThis & { __calcotoneEngineStabilityPatch?: boole
 
 const prototype = AudioEngine.prototype as unknown as EnginePrototype;
 const originalStart = prototype.start;
+const originalStop = prototype.stop;
 const originalSetPerformanceMode = prototype.setPerformanceMode;
 const originalUpdateAdaptivePerformance = prototype.updateAdaptivePerformance;
 const originalGetProfilerSnapshot = prototype.getProfilerSnapshot;
@@ -56,6 +59,15 @@ function configureTransparentLimiter(engine: AudioEngine, mode: PerformanceMode)
 async function stableStart(this: AudioEngine, options?: Parameters<AudioEngine['start']>[0]): Promise<void> {
   await originalStart.call(this, options);
   configureTransparentLimiter(this, this.getPerformanceMode());
+}
+
+async function stableStop(this: AudioEngine): Promise<void> {
+  const internal = internals(this);
+  // A click-safe reorder fades out and waits before touching graph/context again.
+  // Let that transition finish before stop() disposes either object so shutdown
+  // can never null the engine out from underneath the pending reorder.
+  await internal.routeTransition.catch(() => undefined);
+  await originalStop.call(this);
 }
 
 function stableSetPerformanceMode(this: AudioEngine, mode: PerformanceMode): void {
@@ -141,6 +153,7 @@ function install(): void {
   if (globalState.__calcotoneEngineStabilityPatch) return;
   globalState.__calcotoneEngineStabilityPatch = true;
   prototype.start = stableStart;
+  prototype.stop = stableStop;
   prototype.setPerformanceMode = stableSetPerformanceMode;
   prototype.updateAdaptivePerformance = stableAdaptivePerformance;
   prototype.getProfilerSnapshot = stableProfilerSnapshot;
@@ -149,6 +162,7 @@ function install(): void {
 function uninstall(): void {
   if (!globalState.__calcotoneEngineStabilityPatch) return;
   prototype.start = originalStart;
+  prototype.stop = originalStop;
   prototype.setPerformanceMode = originalSetPerformanceMode;
   prototype.updateAdaptivePerformance = originalUpdateAdaptivePerformance;
   prototype.getProfilerSnapshot = originalGetProfilerSnapshot;
