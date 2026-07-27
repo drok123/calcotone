@@ -3,8 +3,10 @@ import type { Effect } from '../../audio/effects/Effect';
 import { applyRandomBatch } from '../../perf/randomBatch';
 
 const RANDOM_DSP_STAGGER_MS = 18;
-const RANDOM_DISCRETE_SETTLE_MS = 28;
-const RANDOM_TOPOLOGY_SETTLE_MS = 76;
+const RANDOM_DISCRETE_SETTLE_MS = 42;
+const RANDOM_TOPOLOGY_SETTLE_MS = 96;
+const RANDOM_DRY_RAMP_MS = 48;
+const RANDOM_WET_RECOVERY_MS = 34;
 const RANDOM_BATCH_ORDER = [
   'saturation',
   'chorus',
@@ -15,6 +17,10 @@ const RANDOM_BATCH_ORDER = [
 ] as const;
 
 export type RandomParameterBatches = Map<string, Map<string, number>>;
+
+type EffectWithWetDry = Effect & {
+  setWetDryMix?: (value: number) => void;
+};
 
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
@@ -51,6 +57,22 @@ function discreteTargetChanges(
   return target !== undefined && current !== undefined && Math.round(target) !== Math.round(current);
 }
 
+function targetMix(effect: Effect, targets: Map<string, number>): number {
+  const requested = targets.get('mix');
+  if (requested !== undefined && Number.isFinite(requested)) return Math.max(0, Math.min(1, requested));
+  const current = effect.getParameterValue('mix');
+  return Number.isFinite(current) ? Math.max(0, Math.min(1, current as number)) : 1;
+}
+
+function setWetDry(effect: Effect, value: number): void {
+  const wetDry = effect as EffectWithWetDry;
+  if (typeof wetDry.setWetDryMix === 'function') {
+    wetDry.setWetDryMix(value);
+    return;
+  }
+  effect.setParameter('mix', value);
+}
+
 async function commitOneBatch(
   engine: AudioEngine,
   effectId: string,
@@ -63,21 +85,35 @@ async function commitOneBatch(
 
   const discreteChanging = discreteTargetChanges(effectId, effect, targets);
 
-  // The UI already owns the visible 165 ms knob animation. Audio does not need to chase that
-  // animation with repeated JS writes. Commit the destination once so expensive apply()/network
-  // rebuild paths execute a single time per machine.
-  applyRandomBatch(effect, targets);
+  if (!discreteChanging) {
+    // Pure parameter moves keep the existing smoothed DSP path. No topology handoff is needed.
+    applyRandomBatch(effect, targets);
+    await sleep(RANDOM_DSP_STAGGER_MS);
+    return;
+  }
 
-  // Delay/reverb algorithm changes crossfade live-fed old/new networks internally. Give that
-  // transition room to establish before the next machine is touched instead of dropping Mix to
-  // near-dry or rebuilding several topologies at the same instant.
-  await sleep(
-    discreteChanging
-      ? isTopologySensitive(effectId)
-        ? RANDOM_TOPOLOGY_SETTLE_MS
-        : RANDOM_DISCRETE_SETTLE_MS
-      : RANDOM_DSP_STAGGER_MS
-  );
+  // A machine/algorithm change is an audio transaction, not just a parameter write.
+  // First crossfade this effect to its dry path while the old network is still healthy.
+  // That preserves the rest of the rack continuously and keeps topology construction inaudible.
+  const destinationMix = targetMix(effect, targets);
+  setWetDry(effect, 0);
+  await sleep(RANDOM_DRY_RAMP_MS);
+  if (!engineIsUsable()) return;
+
+  // Keep the effect dry while the destination machine and all of its parameters are installed.
+  // applyRandomBatch normally writes Mix too, so force its transaction copy to zero and restore
+  // the real destination only after the new network has had time to initialize/crossfade.
+  const stagedTargets = new Map(targets);
+  if (targets.has('mix') || effect.getParameterValue('mix') !== undefined) stagedTargets.set('mix', 0);
+  applyRandomBatch(effect, stagedTargets);
+
+  await sleep(isTopologySensitive(effectId) ? RANDOM_TOPOLOGY_SETTLE_MS : RANDOM_DISCRETE_SETTLE_MS);
+  if (!engineIsUsable()) return;
+
+  // Restore the randomized wet/dry target through the effect's normal smoothing. This is the
+  // audible handoff into the new machine, so no live graph mutation occurs at full wet level.
+  effect.setParameter('mix', destinationMix);
+  await sleep(RANDOM_WET_RECOVERY_MS);
 }
 
 export function flushCapturedRandom(
@@ -85,9 +121,9 @@ export function flushCapturedRandom(
   batches: RandomParameterBatches,
   engineIsUsable: () => boolean
 ): Promise<void> {
-  // RANDOM is planned atomically, but committed to DSP one machine at a time. This prevents six
-  // expensive apply/network-rebuild paths from landing on the same audio quantum while the UI is
-  // still free to animate every knob toward its destination together.
+  // RANDOM is planned atomically but committed as a sequence of click-safe effect transactions.
+  // Discrete machine changes temporarily crossfade only that effect to dry, install the new DSP,
+  // then recover its destination mix. Pure parameter changes retain their normal smoothing.
   const committed = new Set<string>();
   let chain = Promise.resolve();
 
@@ -103,7 +139,7 @@ export function flushCapturedRandom(
     chain = chain.then(() => commitOneBatch(engine, effectId, values, engineIsUsable));
   }
 
-  // Musical RANDOM never changes module power. The user's active rack is the continuity anchor;
-  // RANDOM reshapes machines inside that rack without introducing a bypass burst or all-off state.
+  // Musical RANDOM never changes module power. The user's active rack remains the continuity
+  // anchor while each active machine transitions independently into its randomized destination.
   return chain;
 }
