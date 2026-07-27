@@ -41,7 +41,7 @@ export abstract class BaseEffect implements Effect {
   private readonly bbdStage: BBDStage;
   private readonly tapeStage: TapeTransportStage;
   private readonly converterStage: EarlyConverterStage;
-  private readonly springStage: SpringTankStage;
+  private springStage: SpringTankStage | null = null;
   private readonly wetDcBlock: BiquadFilterNode;
   private readonly wetLimiter: DynamicsCompressorNode;
 
@@ -68,7 +68,6 @@ export abstract class BaseEffect implements Effect {
     this.bbdStage = new BBDStage(context);
     this.tapeStage = new TapeTransportStage(context);
     this.converterStage = new EarlyConverterStage(context);
-    this.springStage = new SpringTankStage(context);
     this.wetDcBlock = context.createBiquadFilter();
     this.wetLimiter = context.createDynamicsCompressor();
     this.bypassDryGain = context.createGain();
@@ -88,13 +87,12 @@ export abstract class BaseEffect implements Effect {
     this.input.connect(this.dryGain);
     this.dryGain.connect(this.processedBus);
 
-    // Shared hardware mechanism chain. Inactive stages gate their process inputs,
-    // so bypassed mechanisms are effectively free apart from a few gain nodes.
+    // Shared hardware mechanism chain. Spring is intentionally lazy because it is a
+    // comparatively large feedback network and only Atmos/Cloud needs it.
     this.wetGain.connect(this.bbdStage.input);
     this.bbdStage.connect(this.tapeStage.input);
     this.tapeStage.connect(this.converterStage.input);
-    this.converterStage.connect(this.springStage.input);
-    this.springStage.connect(this.behaviorStage.input);
+    this.converterStage.connect(this.behaviorStage.input);
     this.behaviorStage.connect(this.wetDcBlock);
     this.wetDcBlock.connect(this.wetLimiter);
     this.wetLimiter.connect(this.processedBus);
@@ -102,7 +100,6 @@ export abstract class BaseEffect implements Effect {
     this.bbdStage.setEnabled(false);
     this.tapeStage.setEnabled(false);
     this.converterStage.setEnabled(false);
-    this.springStage.setEnabled(false);
 
     this.input.connect(this.bypassDryGain);
     this.processedBus.connect(this.bypassProcessedGain);
@@ -212,8 +209,6 @@ export abstract class BaseEffect implements Effect {
     const converter = profile === 'converter';
     const dedicatedHardware = bbd || tape || converter;
 
-    // Once a real mechanism owns the profile, the old generic residual must get out
-    // of the way or the sound is effectively modeled twice.
     this.behaviorStage.configure(dedicatedHardware ? 'bypass' : profile, amount, motion, memory, color);
 
     this.bbdStage.setEnabled(bbd);
@@ -235,8 +230,28 @@ export abstract class BaseEffect implements Effect {
   }
 
   public configureSpringHardware(enabled: boolean, decay: number, size: number, color: number, drive: number): void {
-    this.springStage.setEnabled(enabled);
-    if (enabled) this.springStage.configure(decay, size, color, drive);
+    if (enabled) {
+      if (!this.springStage) {
+        const spring = new SpringTankStage(this.context);
+        // Insert spring between the shared converter stage and the residual behavior stage.
+        try { this.converterStage.output.disconnect(this.behaviorStage.input); } catch { /* not connected */ }
+        this.converterStage.connect(spring.input);
+        spring.connect(this.behaviorStage.input);
+        this.springStage = spring;
+      }
+      this.springStage.setEnabled(true);
+      this.springStage.configure(decay, size, color, drive);
+      return;
+    }
+
+    if (this.springStage) {
+      const spring = this.springStage;
+      try { this.converterStage.output.disconnect(spring.input); } catch { /* not connected */ }
+      try { spring.output.disconnect(this.behaviorStage.input); } catch { /* not connected */ }
+      spring.dispose();
+      this.springStage = null;
+      this.converterStage.connect(this.behaviorStage.input);
+    }
   }
 
   public abstract setParameter(parameterId: string, value: number): void;
@@ -257,7 +272,8 @@ export abstract class BaseEffect implements Effect {
     this.bbdStage.dispose();
     this.tapeStage.dispose();
     this.converterStage.dispose();
-    this.springStage.dispose();
+    this.springStage?.dispose();
+    this.springStage = null;
     this.behaviorStage.dispose();
     this.wetDcBlock.disconnect();
     this.wetLimiter.disconnect();
