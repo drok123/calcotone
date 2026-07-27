@@ -1,4 +1,5 @@
 import { AudioEngine } from './audio/AudioEngine';
+import type { Effect } from './audio/effects/Effect';
 import { applyRandomBatch } from './perf/randomBatch';
 import { beginViewportPerformanceHold } from './components/effects/viewportScheduler';
 
@@ -138,7 +139,7 @@ function isTopologySensitive(effectId: string): boolean {
 
 function discreteTargetChanges(
   effectId: string,
-  effect: NonNullable<ReturnType<AudioEngine['getEffect']>>,
+  effect: Effect,
   targets: Map<string, number>,
 ): boolean {
   const discreteId = discreteParameterFor(effectId);
