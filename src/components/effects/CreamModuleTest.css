@@ -1,0 +1,30 @@
+/* Experimental module faceplate finish: warm creamy grey hardware panels.
+   Kept isolated so the treatment is easy to tune or remove after visual review. */
+
+.effect-module {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.075), transparent 14%),
+    linear-gradient(145deg, #aaa99f 0%, #92938c 48%, #7d807a 100%) !important;
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.38),
+    inset 0 1px rgba(255, 255, 245, 0.34),
+    inset 0 -1px rgba(36, 38, 35, 0.72) !important;
+}
+
+.effect-module::after {
+  background: linear-gradient(90deg, transparent, rgba(246, 243, 224, 0.56), transparent) !important;
+}
+
+.effect-module:hover {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.095), transparent 15%),
+    linear-gradient(145deg, #b2b0a5 0%, #999a92 48%, #838680 100%) !important;
+}
+
+/* Keep the actual video/display wells dark so they read like screens mounted in the warm chassis. */
+.module-viewport,
+.module-viewport-shell,
+.module-screen,
+.module-display {
+  background-color: #111311;
+}
