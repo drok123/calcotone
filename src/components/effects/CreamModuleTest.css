@@ -11,6 +11,13 @@
   --cream-text: #f3efe4;
   --signal-box-surface: #16191b;
   --signal-box-surface-deep: #101315;
+
+  /* The I/O inset charcoal is now the single neutral family for non-cream UI. */
+  --case: var(--signal-box-surface-deep);
+  --case-2: var(--signal-box-surface-deep);
+  --panel: var(--signal-box-surface-deep);
+  --panel-raised: var(--signal-box-surface-deep);
+  --panel-inset: var(--signal-box-surface-deep);
 }
 
 /* One material language for every cream chassis/control surface. */
@@ -117,13 +124,67 @@
 .io-control-section,
 .io-meter-section,
 .io-spectrum-section {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.012), transparent 26%),
-    linear-gradient(180deg, var(--signal-box-surface), var(--signal-box-surface-deep)) !important;
+  background: var(--signal-box-surface-deep) !important;
   border-color: var(--cream-outline) !important;
   box-shadow:
     inset 0 2px 9px rgba(0,0,0,.68),
     inset 0 1px rgba(255,255,255,.018) !important;
+}
+
+/* Collapse the remaining graphite/gray UI surfaces onto the same I/O charcoal. */
+.workstation,
+.modules-section,
+.status-strip,
+.control-strip,
+.dsp-profiler,
+.faceplate-editor-panel,
+.input-matrix,
+.meter-pair,
+.output-meter,
+.motion-route-inspector,
+.motion-route,
+.empty-routes,
+.xy-patch-bay,
+.route-options select,
+.route-controls select,
+select,
+input[type="text"],
+.sample-name,
+.linear-header strong,
+.recorder-heading time,
+.take-preview,
+.performance-mode button:not(.active),
+.route-axis button:not(.active),
+.route-options button:not(.active),
+.motion-route header button,
+.rail-modules::before {
+  background: var(--signal-box-surface-deep) !important;
+}
+
+/* Keep secondary dark wells from introducing lighter gray borders/shadows. */
+.modules-section,
+.status-strip,
+.control-strip,
+.input-matrix,
+.meter-pair,
+.output-meter,
+.motion-route,
+.empty-routes,
+.xy-patch-bay,
+select,
+input[type="text"],
+.sample-name,
+.linear-header strong,
+.recorder-heading time {
+  border-color: rgba(244,239,220,.30) !important;
+  box-shadow: inset 0 2px 8px rgba(0,0,0,.56) !important;
+}
+
+/* The structural backplane between modules uses the same neutral instead of a lighter gray rail. */
+.rail-modules::before {
+  border-top-color: rgba(244,239,220,.22) !important;
+  border-bottom-color: rgba(0,0,0,.72) !important;
+  box-shadow: none !important;
 }
 
 .spectrum-header strong,
