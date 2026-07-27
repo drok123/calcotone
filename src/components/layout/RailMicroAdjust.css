@@ -1,0 +1,4 @@
+/* Micro alignment tweak: lift the second/middle rail header without disturbing module geometry. */
+.routing-grid > .module-rail:nth-child(2) > .rail-track {
+  transform: translateY(-3px);
+}
