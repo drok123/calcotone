@@ -86,7 +86,7 @@ requireText(graph, '!effect.isProcessingSuspended()', 'AudioGraph suspended-effe
 requireText(graph, 'private serialEdges', 'AudioGraph serial-edge ownership');
 requireText(dreamBuffer, 'this.disconnectSourceFeed(id)', 'Dream source suspension');
 requireText(dreamBuffer, 'this.disconnectRouteFeed(route)', 'Dream route suspension');
-requireText(dreamProcessor, 'this.silentFrames >= this.maxHeadOffset', 'Dream idle tail flush');
+requireText(dreamProcessor, 'this.silentFrames >= this.maxRecallSamples + frames', 'Dream idle tail flush');
 
 // All modules OFF must be a truly raw audible route: no master DC filter, waveshaper,
 // limiter, or Dream return is allowed to sit between AudioGraph and the output.
@@ -175,9 +175,9 @@ for (const [needle, label] of [
   ["this.classicStage.configure(classic", 'Drift classic parameter routing'],
 ]) requireText(driftEffect, needle, label);
 requireText(driftClassicProcessor, 'processBiPhase', 'Bi-Phase dual-bank all-pass engine');
-requireText(driftClassicProcessor, 'this.cascade(inputL, centerA, 6', 'Bi-Phase six-stage bank');
+requireText(driftClassicProcessor, 'this.cascadeWithCoefficients(inputL, 6', 'Bi-Phase six-stage bank');
 requireText(driftClassicProcessor, 'processSmallStone', 'Small Stone phase engine');
-requireText(driftClassicProcessor, 'this.cascade(xL, centerL, 4', 'Small Stone four-stage network');
+requireText(driftClassicProcessor, 'this.cascadeWithCoefficients(xL, 4', 'Small Stone four-stage network');
 requireText(driftClassicProcessor, 'processUniVibe', 'Uni-Vibe photo-optical engine');
 requireText(driftClassicProcessor, 'const rise =', 'Uni-Vibe asymmetric lamp response');
 requireText(driftClassicProcessor, 'processLeslie', 'Leslie rotor engine');
