@@ -62,6 +62,13 @@
     inset 0 -1px rgba(35,34,30,.58) !important;
 }
 
+/* Motion and footer use the same cream tone but with a matte, highlight-free surface. */
+.performance-panel,
+.footer-bar {
+  background: #8c897e !important;
+  box-shadow: 0 8px 18px rgba(0,0,0,.30) !important;
+}
+
 .effect-module::after {
   opacity: .18 !important;
   background: linear-gradient(90deg, transparent, rgba(247,238,207,.34), transparent) !important;
