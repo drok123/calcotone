@@ -137,7 +137,9 @@ export function VideoLandscapeEngine({ modules, position, dragging, signalLab, o
         }}
         onError={() => markError('b', worldB)}
       />
-      <div className="xy-world-grade" /><div className="xy-world-vignette" />
+      <div className="xy-world-grade" />
+      <div className="xy-world-crt" />
+      <div className="xy-world-vignette" />
     </div>
   );
 }
