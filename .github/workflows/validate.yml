@@ -29,34 +29,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Capture baseline failures
-        shell: bash
-        run: |
-          set +e
-          npm run audit > structural.log 2>&1
-          echo $? > structural.exit
-          npm run audit:signal > signal.log 2>&1
-          echo $? > signal.exit
-          npx tsc -b --pretty false > typescript.log 2>&1
-          echo $? > typescript.exit
-          set -e
-          echo 'Captured structural, Signal Lab, and TypeScript diagnostics.'
-
-      - name: Upload baseline diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: baseline-ci-diagnostics
-          path: |
-            structural.log
-            structural.exit
-            signal.log
-            signal.exit
-            typescript.log
-            typescript.exit
-            scripts/audit.mjs
-            scripts/signal-lab-audit.mjs
-            vite.config.ts
-          if-no-files-found: error
-
-      - name: Lint
-        run: npm run lint
+      - name: Structural audit, lint, and production build
+        run: npm run check
