@@ -23,6 +23,7 @@ export class TapeTransportStage {
 
   private readonly context: AudioContext;
   private readonly bypass: GainNode;
+  private readonly processInput: GainNode;
   private readonly processed: GainNode;
   private readonly headBump: BiquadFilterNode;
   private readonly headLoss: BiquadFilterNode;
@@ -38,13 +39,13 @@ export class TapeTransportStage {
   public constructor(context: AudioContext) {
     this.context = context;
     this.input = context.createGain(); this.output = context.createGain();
-    this.bypass = context.createGain(); this.processed = context.createGain();
+    this.bypass = context.createGain(); this.processInput = context.createGain(); this.processed = context.createGain();
     this.headBump = context.createBiquadFilter(); this.headLoss = context.createBiquadFilter();
     this.saturator = context.createWaveShaper(); this.transportDelay = context.createDelay(0.08);
     this.wowLfo = context.createOscillator(); this.flutterLfo = context.createOscillator();
     this.wowDepth = context.createGain(); this.flutterDepth = context.createGain(); this.trim = context.createGain();
 
-    this.bypass.gain.value = 1; this.processed.gain.value = 0;
+    this.bypass.gain.value = 1; this.processInput.gain.value = 0; this.processed.gain.value = 0;
     this.headBump.type = 'peaking'; this.headBump.frequency.value = 82; this.headBump.Q.value = 0.72; this.headBump.gain.value = 1.2;
     this.headLoss.type = 'lowpass'; this.headLoss.frequency.value = 15_000; this.headLoss.Q.value = 0.45;
     this.saturator.oversample = '4x'; this.saturator.curve = makeTapeCurve(0.2, 0.5);
@@ -54,7 +55,7 @@ export class TapeTransportStage {
     this.wowDepth.gain.value = 0; this.flutterDepth.gain.value = 0;
 
     this.input.connect(this.bypass); this.bypass.connect(this.output);
-    this.input.connect(this.headBump); this.headBump.connect(this.headLoss); this.headLoss.connect(this.saturator);
+    this.input.connect(this.processInput); this.processInput.connect(this.headBump); this.headBump.connect(this.headLoss); this.headLoss.connect(this.saturator);
     this.saturator.connect(this.transportDelay); this.transportDelay.connect(this.trim); this.trim.connect(this.processed); this.processed.connect(this.output);
     this.wowLfo.connect(this.wowDepth); this.flutterLfo.connect(this.flutterDepth);
     this.wowDepth.connect(this.transportDelay.delayTime); this.flutterDepth.connect(this.transportDelay.delayTime);
@@ -66,6 +67,7 @@ export class TapeTransportStage {
   public setEnabled(enabled: boolean): void {
     const now = this.context.currentTime;
     this.bypass.gain.setTargetAtTime(enabled ? 0 : 1, now, 0.018);
+    this.processInput.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.018);
     this.processed.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.018);
   }
 
@@ -91,6 +93,6 @@ export class TapeTransportStage {
   public dispose(): void {
     try { this.wowLfo.stop(); } catch { /* stopped */ }
     try { this.flutterLfo.stop(); } catch { /* stopped */ }
-    [this.input,this.output,this.bypass,this.processed,this.headBump,this.headLoss,this.saturator,this.transportDelay,this.wowLfo,this.flutterLfo,this.wowDepth,this.flutterDepth,this.trim].forEach((node) => node.disconnect());
+    [this.input,this.output,this.bypass,this.processInput,this.processed,this.headBump,this.headLoss,this.saturator,this.transportDelay,this.wowLfo,this.flutterLfo,this.wowDepth,this.flutterDepth,this.trim].forEach((node) => node.disconnect());
   }
 }
