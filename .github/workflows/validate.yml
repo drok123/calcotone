@@ -53,6 +53,9 @@ jobs:
             signal.exit
             typescript.log
             typescript.exit
+            scripts/audit.mjs
+            scripts/signal-lab-audit.mjs
+            vite.config.ts
           if-no-files-found: error
 
       - name: Lint
