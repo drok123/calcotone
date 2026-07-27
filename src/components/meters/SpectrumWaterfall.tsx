@@ -20,15 +20,28 @@ export function SpectrumWaterfall({
     const context = drawingContext;
 
     let animationFrame = 0;
+    let lastDrawTime = 0;
     let lastSampleTime = 0;
+    const drawInterval = 1000 / 30;
+    const sampleInterval = 42;
     const historyLength = 24;
     const pointCount = 36;
-    const history: number[][] = Array.from({ length: historyLength }, () =>
-      Array(pointCount).fill(0)
-    );
-    const frequencyData = analyser
-      ? new Uint8Array(analyser.frequencyBinCount)
-      : null;
+    const history: Float32Array[] = Array.from({ length: historyLength }, () => new Float32Array(pointCount));
+    let historyCursor = 0;
+    const frequencyData = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
+    const binStarts = new Uint16Array(pointCount);
+    const binEnds = new Uint16Array(pointCount);
+
+    if (frequencyData) {
+      for (let point = 0; point < pointCount; point += 1) {
+        const normalized = point / Math.max(1, pointCount - 1);
+        const startIndex = Math.floor(normalized ** 2 * (frequencyData.length - 1));
+        const nextNormalized = (point + 1) / pointCount;
+        const endIndex = Math.max(startIndex + 1, Math.floor(nextNormalized ** 2 * frequencyData.length));
+        binStarts[point] = Math.min(65535, startIndex);
+        binEnds[point] = Math.min(65535, endIndex);
+      }
+    }
 
     function resizeCanvas(): void {
       const bounds = canvas.getBoundingClientRect();
@@ -42,40 +55,24 @@ export function SpectrumWaterfall({
       }
     }
 
-    function collectSpectrum(): number[] {
+    function collectSpectrum(): void {
+      const row = history[historyCursor];
+      row.fill(0);
       if (!analyser || !frequencyData || !running) {
-        return Array(pointCount).fill(0);
+        historyCursor = (historyCursor + 1) % historyLength;
+        return;
       }
 
       analyser.getByteFrequencyData(frequencyData);
-      const values: number[] = [];
-
       for (let point = 0; point < pointCount; point += 1) {
-        const normalized = point / Math.max(1, pointCount - 1);
-        const startIndex = Math.floor(
-          normalized ** 2 * (frequencyData.length - 1)
-        );
-        const nextNormalized = (point + 1) / pointCount;
-        const endIndex = Math.max(
-          startIndex + 1,
-          Math.floor(nextNormalized ** 2 * frequencyData.length)
-        );
-
+        const startIndex = binStarts[point];
+        const endIndex = Math.min(binEnds[point], frequencyData.length);
         let total = 0;
-        let samples = 0;
-        for (
-          let index = startIndex;
-          index < endIndex && index < frequencyData.length;
-          index += 1
-        ) {
-          total += frequencyData[index];
-          samples += 1;
-        }
-
-        values.push((samples > 0 ? total / samples : 0) / 255);
+        for (let index = startIndex; index < endIndex; index += 1) total += frequencyData[index];
+        const samples = Math.max(1, endIndex - startIndex);
+        row[point] = total / samples / 255;
       }
-
-      return values;
+      historyCursor = (historyCursor + 1) % historyLength;
     }
 
     function projectPoint(
@@ -133,29 +130,22 @@ export function SpectrumWaterfall({
     }
 
     function drawSpectrum(width: number, height: number): void {
-      for (let rowIndex = 0; rowIndex < history.length; rowIndex += 1) {
-        const depthPosition = rowIndex / Math.max(1, history.length - 1);
-        const row = history[history.length - 1 - rowIndex];
+      for (let rowIndex = 0; rowIndex < historyLength; rowIndex += 1) {
+        const depthPosition = rowIndex / Math.max(1, historyLength - 1);
+        const historyIndex = (historyCursor - 1 - rowIndex + historyLength) % historyLength;
+        const row = history[historyIndex];
         const opacity = 0.22 + depthPosition * 0.78;
 
         context.strokeStyle = `rgba(237, 242, 237, ${0.22 + opacity * 0.72})`;
         context.lineWidth = 1 + depthPosition * 1.2;
         context.beginPath();
 
-        for (let pointIndex = 0; pointIndex < row.length; pointIndex += 1) {
-          const frequencyPosition = pointIndex / Math.max(1, row.length - 1);
-          const point = projectPoint(
-            frequencyPosition,
-            depthPosition,
-            row[pointIndex],
-            width,
-            height
-          );
-
+        for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+          const frequencyPosition = pointIndex / Math.max(1, pointCount - 1);
+          const point = projectPoint(frequencyPosition, depthPosition, row[pointIndex], width, height);
           if (pointIndex === 0) context.moveTo(point.x, point.y);
           else context.lineTo(point.x, point.y);
         }
-
         context.stroke();
       }
     }
@@ -168,11 +158,7 @@ export function SpectrumWaterfall({
       context.textAlign = 'left';
       context.fillText('SPECTRUM', width * 0.045, height * 0.045);
       context.textAlign = 'right';
-      context.fillText(
-        running ? 'LIVE' : 'STANDBY',
-        width * 0.955,
-        height * 0.045
-      );
+      context.fillText(running ? 'LIVE' : 'STANDBY', width * 0.955, height * 0.045);
       context.textBaseline = 'bottom';
       context.textAlign = 'left';
       context.fillText('LOW', width * 0.045, height * 0.955);
@@ -181,11 +167,12 @@ export function SpectrumWaterfall({
     }
 
     function draw(timestamp: number): void {
-      resizeCanvas();
+      animationFrame = window.requestAnimationFrame(draw);
+      if (document.hidden || timestamp - lastDrawTime < drawInterval) return;
+      lastDrawTime = timestamp;
 
-      if (timestamp - lastSampleTime > 42) {
-        history.shift();
-        history.push(collectSpectrum());
+      if (timestamp - lastSampleTime >= sampleInterval) {
+        collectSpectrum();
         lastSampleTime = timestamp;
       }
 
@@ -193,11 +180,11 @@ export function SpectrumWaterfall({
       drawBackground(canvas.width, canvas.height);
       drawSpectrum(canvas.width, canvas.height);
       drawLabels(canvas.width, canvas.height);
-      animationFrame = window.requestAnimationFrame(draw);
     }
 
     const resizeObserver = new ResizeObserver(resizeCanvas);
     resizeObserver.observe(canvas);
+    resizeCanvas();
     animationFrame = window.requestAnimationFrame(draw);
 
     return () => {
@@ -213,12 +200,8 @@ export function SpectrumWaterfall({
         <span className={`spectrum-status ${running ? 'active' : ''}`}><i />{running ? 'LIVE' : 'HOLD'}</span>
       </header>
       <div className="spectrum-screen">
-        <canvas
-          ref={canvasRef}
-          aria-label="Live three-dimensional audio spectrum waterfall"
-        />
+        <canvas ref={canvasRef} aria-label="Live three-dimensional audio spectrum waterfall" />
       </div>
-
     </section>
   );
 }
