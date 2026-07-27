@@ -40,10 +40,14 @@ requireText(viewport, 'const MODULE_PLAYBACK_RATE = 0.20', 'Viewport glacial mod
 requireText(viewport, 'video.playbackRate = MODULE_PLAYBACK_RATE', 'Viewport playback-rate enforcement');
 requireText(temporal, 'requestVideoFrameCallback', 'Frame-synchronized temporal capture');
 requireText(temporal, 'easeFrameBlend', 'Temporal frame interpolation');
-requireText(temporal, 'output.globalAlpha = 1 - blend', 'Previous-frame temporal blend');
+requireText(temporal, "output.globalCompositeOperation = 'copy'", 'Opaque temporal base frame');
 requireText(temporal, 'output.globalAlpha = blend', 'Current-frame temporal blend');
-requireText(temporalCss, '.temporal-video-source', 'Hidden decoder styling');
-requireText(temporalCss, '.temporal-video-canvas', 'Smoothed canvas styling');
+requireText(temporal, 'SEEK_DISCONTINUITY_SECONDS', 'Loop and seek discontinuity guard');
+requireText(temporal, 'presentCurrentImmediately()', 'Discontinuity snap without crossfade');
+forbidText(temporal, 'output.clearRect(', 'Visible temporal canvas clearing');
+requireText(temporalCss, '.temporal-video-source', 'Decoder fallback styling');
+requireText(temporalCss, "opacity: 1 !important", 'Visible decoder fallback frame');
+requireText(temporalCss, ".temporal-video-canvas[data-ready='true']", 'Temporal canvas readiness gate');
 forbidText(main, "import './videoStabilityPatch'", 'Removed video repair monkey patch');
 requireText(viewport, "return (module.driftMode ?? 'chorus') === 'rotary' ? 'drift-alt' : 'drift';", 'Native Drift stable video selection');
 forbidText(viewport, "['liquid', 'orbit', 'doppler', 'rotary'].includes(mode) ? 'drift-alt' : 'drift'", 'Old unstable Drift video mapping');
