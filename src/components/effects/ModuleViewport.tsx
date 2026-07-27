@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { ModuleState } from '../../ui/types';
 import type { VisualAudioState } from '../../visual/VisualEngine';
 import { formatAlgorithmName } from '../../ui/formatting';
+import { TemporalVideo } from '../video/TemporalVideo';
 import './ModuleViewportVideo.css';
 
 type ModuleVideoKey = 'ember' | 'drift' | 'drift-alt' | 'halo' | 'artifact' | 'atmos' | 'grain';
@@ -259,16 +260,13 @@ function VideoLayer({ src, className }: { src: string; className: string }) {
   }, [src]);
 
   return (
-    <video
+    <TemporalVideo
       ref={videoRef}
       className={className}
       src={src}
-      autoPlay
-      muted
+      playbackRate={MODULE_PLAYBACK_RATE}
       loop
-      playsInline
       preload="auto"
-      aria-hidden="true"
     />
   );
 }
