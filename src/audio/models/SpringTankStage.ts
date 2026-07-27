@@ -13,6 +13,7 @@ export class SpringTankStage {
 
   private readonly context: AudioContext;
   private readonly bypass: GainNode;
+  private readonly processInput: GainNode;
   private readonly processed: GainNode;
   private readonly transducerIn: BiquadFilterNode;
   private readonly transducerDrive: WaveShaperNode;
@@ -29,12 +30,12 @@ export class SpringTankStage {
   public constructor(context: AudioContext) {
     this.context = context;
     this.input = context.createGain(); this.output = context.createGain();
-    this.bypass = context.createGain(); this.processed = context.createGain();
+    this.bypass = context.createGain(); this.processInput = context.createGain(); this.processed = context.createGain();
     this.transducerIn = context.createBiquadFilter(); this.transducerDrive = context.createWaveShaper();
     this.feedback = context.createGain(); this.feedbackTone = context.createBiquadFilter();
     this.transducerOut = context.createBiquadFilter(); this.sum = context.createGain();
 
-    this.bypass.gain.value = 1; this.processed.gain.value = 0;
+    this.bypass.gain.value = 1; this.processInput.gain.value = 0; this.processed.gain.value = 0;
     this.transducerIn.type = 'highpass'; this.transducerIn.frequency.value = 120; this.transducerIn.Q.value = 0.5;
     this.transducerDrive.oversample = '2x'; this.transducerDrive.curve = makeSpringCurve(0.18);
     this.feedback.gain.value = 0.52;
@@ -43,7 +44,7 @@ export class SpringTankStage {
     this.sum.gain.value = 0.58;
 
     this.input.connect(this.bypass); this.bypass.connect(this.output);
-    this.input.connect(this.transducerIn); this.transducerIn.connect(this.transducerDrive);
+    this.input.connect(this.processInput); this.processInput.connect(this.transducerIn); this.transducerIn.connect(this.transducerDrive);
 
     const baseTimes = [0.019, 0.027, 0.036, 0.048];
     for (let i = 0; i < baseTimes.length; i += 1) {
@@ -68,6 +69,7 @@ export class SpringTankStage {
   public setEnabled(enabled: boolean): void {
     const now = this.context.currentTime;
     this.bypass.gain.setTargetAtTime(enabled ? 0 : 1, now, 0.02);
+    this.processInput.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.016);
     this.processed.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.02);
   }
 
@@ -93,7 +95,7 @@ export class SpringTankStage {
   }
 
   public dispose(): void {
-    [this.input,this.output,this.bypass,this.processed,this.transducerIn,this.transducerDrive,this.feedback,this.feedbackTone,this.transducerOut,this.sum,...this.taps,...this.allpasses,...this.dampers,...this.tapGains].forEach((node) => node.disconnect());
+    [this.input,this.output,this.bypass,this.processInput,this.processed,this.transducerIn,this.transducerDrive,this.feedback,this.feedbackTone,this.transducerOut,this.sum,...this.taps,...this.allpasses,...this.dampers,...this.tapGains].forEach((node) => node.disconnect());
   }
 }
 
