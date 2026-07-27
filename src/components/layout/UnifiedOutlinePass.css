@@ -1,0 +1,60 @@
+:root {
+  --ui-outline: rgba(237, 242, 237, 0.34);
+  --ui-outline-strong: rgba(237, 242, 237, 0.5);
+}
+
+/* One restrained off-white outline language across the faceplate. */
+.workstation,
+.io-panel,
+.performance-panel,
+.modules-section,
+.effect-module,
+.input-matrix,
+.meter-pair,
+.spectrum-unit,
+.spectrum-screen,
+.sample-recorder,
+.media-transport,
+.xy-pad,
+.xy-values > div,
+.motion-route,
+.empty-routes,
+select,
+input[type='text'],
+.sample-name,
+.linear-header strong,
+.knob-value,
+.polarity-row button,
+.performance-mode button,
+.route-axis button,
+.route-options button,
+.recorder-controls button,
+.motion-route header button,
+.module-toggle {
+  border-color: var(--ui-outline) !important;
+}
+
+/* Primary shells/readout windows get a slightly firmer edge, still the same hue. */
+.workstation,
+.io-panel,
+.performance-panel,
+.modules-section,
+.effect-module,
+.spectrum-screen,
+.xy-pad {
+  border-color: var(--ui-outline-strong) !important;
+}
+
+/* Keep interaction feedback neutral instead of re-introducing green outlines. */
+select:hover,
+input[type='text']:hover,
+.sample-name:hover,
+.effect-module:hover {
+  border-color: rgba(237, 242, 237, 0.62) !important;
+}
+
+select:focus,
+input[type='text']:focus,
+.sample-name:focus {
+  border-color: rgba(237, 242, 237, 0.72) !important;
+}
