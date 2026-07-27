@@ -22,6 +22,7 @@ export class EarlyConverterStage {
 
   private readonly context: AudioContext;
   private readonly bypass: GainNode;
+  private readonly processInput: GainNode;
   private readonly processed: GainNode;
   private readonly antiAlias: BiquadFilterNode;
   private readonly quantizer: WaveShaperNode;
@@ -32,16 +33,16 @@ export class EarlyConverterStage {
   public constructor(context: AudioContext) {
     this.context = context;
     this.input = context.createGain(); this.output = context.createGain();
-    this.bypass = context.createGain(); this.processed = context.createGain();
+    this.bypass = context.createGain(); this.processInput = context.createGain(); this.processed = context.createGain();
     this.antiAlias = context.createBiquadFilter(); this.quantizer = context.createWaveShaper();
     this.reconstruction = context.createBiquadFilter(); this.trim = context.createGain();
-    this.bypass.gain.value = 1; this.processed.gain.value = 0;
+    this.bypass.gain.value = 1; this.processInput.gain.value = 0; this.processed.gain.value = 0;
     this.antiAlias.type = 'lowpass'; this.antiAlias.frequency.value = 10_500; this.antiAlias.Q.value = 0.48;
     this.quantizer.oversample = 'none'; this.quantizer.curve = makeQuantizer(12, 0.1);
     this.reconstruction.type = 'lowpass'; this.reconstruction.frequency.value = 10_200; this.reconstruction.Q.value = 0.56;
     this.trim.gain.value = 0.98;
     this.input.connect(this.bypass); this.bypass.connect(this.output);
-    this.input.connect(this.antiAlias); this.antiAlias.connect(this.quantizer); this.quantizer.connect(this.reconstruction); this.reconstruction.connect(this.trim); this.trim.connect(this.processed); this.processed.connect(this.output);
+    this.input.connect(this.processInput); this.processInput.connect(this.antiAlias); this.antiAlias.connect(this.quantizer); this.quantizer.connect(this.reconstruction); this.reconstruction.connect(this.trim); this.trim.connect(this.processed); this.processed.connect(this.output);
   }
 
   public connect(destination: AudioNode): void { this.output.connect(destination); }
@@ -49,6 +50,7 @@ export class EarlyConverterStage {
   public setEnabled(enabled: boolean): void {
     const now = this.context.currentTime;
     this.bypass.gain.setTargetAtTime(enabled ? 0 : 1, now, 0.014);
+    this.processInput.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.014);
     this.processed.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.014);
   }
 
@@ -68,6 +70,6 @@ export class EarlyConverterStage {
   }
 
   public dispose(): void {
-    [this.input,this.output,this.bypass,this.processed,this.antiAlias,this.quantizer,this.reconstruction,this.trim].forEach((node) => node.disconnect());
+    [this.input,this.output,this.bypass,this.processInput,this.processed,this.antiAlias,this.quantizer,this.reconstruction,this.trim].forEach((node) => node.disconnect());
   }
 }
