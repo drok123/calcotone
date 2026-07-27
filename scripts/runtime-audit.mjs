@@ -48,31 +48,37 @@ requireText(driftClassic, 'cascadeWithCoefficients', 'Drift cached coefficient p
 forbidText(driftClassic, 'left * (1 - wet)', 'Drift classic duplicate dry mix');
 requireText(driftStage, "const WORKLET_VERSION = '1.0.3-realtime-optimized'", 'Drift optimized cache bust');
 
-// MUSICAL RANDOM is one fast physical gesture: all active machines morph concurrently,
-// knobs sweep to the same destination, and the rack is available again quickly.
-requireText(randomBridge, 'RANDOM_MORPH_STEPS = 5', 'RANDOM short morph');
-requireText(randomBridge, 'RANDOM_MORPH_STEP_MS = 22', 'RANDOM fast morph cadence');
-requireText(randomBridge, 'smoothstep(step / RANDOM_MORPH_STEPS)', 'RANDOM eased motion');
-requireText(randomBridge, 'await Promise.all(orderedJobs)', 'RANDOM parallel module morph');
+// MUSICAL RANDOM plans every destination at once, lets React/knob CSS own the visible motion,
+// then commits each active machine to DSP exactly once in a staggered order. Expensive topology
+// changes are not allowed to land on the same audio quantum or pull the signal toward silence.
+requireText(randomBridge, 'RANDOM_DSP_STAGGER_MS = 18', 'RANDOM DSP staggering');
+requireText(randomBridge, 'RANDOM_TOPOLOGY_SETTLE_MS = 76', 'RANDOM topology settle window');
+requireText(randomBridge, 'applyRandomBatch(effect, targets);', 'RANDOM single destination commit');
+requireText(randomBridge, 'chain = chain.then(() => commitOneBatch(engine, effectId, values))', 'RANDOM serialized module commit');
+requireText(randomBridge, 'The UI already owns the visible 165 ms knob animation', 'RANDOM UI/DSP decoupling');
 requireText(randomBridge, "document.documentElement.classList.toggle('random-morphing', busy)", 'RANDOM visual morph state');
 requireText(knob, 'transform 165ms cubic-bezier(0.2, 0.82, 0.22, 1)', 'RANDOM-friendly knob travel');
+forbidText(randomBridge, 'RANDOM_MORPH_STEPS', 'Removed repeated RANDOM DSP morph');
+forbidText(randomBridge, 'Promise.all(orderedJobs)', 'Removed simultaneous RANDOM module burst');
+forbidText(randomBridge, 'RANDOM_TOPOLOGY_SAFE_MIX', 'Removed RANDOM signal-collapse guard');
+forbidText(randomBridge, "new Map([['mix', RANDOM_TOPOLOGY_SAFE_MIX]])", 'Removed RANDOM forced near-dry dip');
 forbidText(randomBridge, 'for (const entry of active) engine.setEffectBypassed(entry.id, true)', 'RANDOM bypass-all burst');
-
-// Topology-changing RANDOM moves must keep an audible dry bridge and must never power modules off.
-requireText(randomBridge, 'RANDOM_TOPOLOGY_SAFE_MIX', 'RANDOM topology dry bridge');
 requireText(randomBridge, "effectId === 'delay' || effectId === 'reverb'", 'RANDOM topology-sensitive modes');
-requireText(randomBridge, "applyRandomBatch(effect, new Map([['mix', RANDOM_TOPOLOGY_SAFE_MIX]]))", 'RANDOM pre-switch mix guard');
 requireText(randomBridge, 'Musical RANDOM never changes module power', 'RANDOM power-layout preservation');
 forbidText(randomBridge, 'directSetEffectBypassed.call(engine, effectId, bypassed)', 'RANDOM power mutation');
 
 // Global engine quality should become more transparent as quality increases, and hidden diagnostics
-// must not keep doing FFT work while the DSP panel is closed.
+// must not keep doing FFT work while the DSP panel is closed. Shutdown also waits for any pending
+// click-safe reorder so the route fade cannot dereference graph/context after teardown.
 requireText(main, "import './engineStabilityPatch'", 'Engine stability patch load');
 requireText(enginePatch, "mode === 'studio' ? -0.75", 'Studio transparent limiter threshold');
 requireText(enginePatch, "mode === 'studio' ? 4", 'Studio transparent limiter ratio');
 requireText(enginePatch, "document.querySelector('.dsp-profiler')", 'Profiler visibility guard');
 requireText(enginePatch, 'const stats = grainStats(this)', 'Adaptive Grain-only health read');
 requireText(enginePatch, 'spectralCentroidHz: 0', 'Hidden profiler avoids spectrum work');
+requireText(enginePatch, 'await internal.routeTransition.catch(() => undefined)', 'Route transition teardown serialization');
+requireText(enginePatch, 'prototype.stop = stableStop', 'Route-safe stop patch install');
+requireText(enginePatch, 'prototype.stop = originalStop', 'Route-safe stop HMR restore');
 requireText(enginePatch, 'import.meta.hot.dispose(uninstall)', 'Engine patch HMR teardown');
 
 // Input mode changes are natively click-smoothed and sum-mono must not add ~3 dB on correlated stereo.
@@ -99,7 +105,7 @@ requireText(artifactPatch, 'function canSuspendTransport', 'Artifact transport o
 requireText(artifactPatch, "mode === 'tascam424'", 'Artifact Tascam transport sleep');
 requireText(artifactPatch, "mode === 'Neve 1073'", 'Artifact Neve transport sleep');
 requireText(artifactPatch, "mode === 'SSL 4000E'", 'Artifact SSL transport sleep');
-requireText(artifactPatch, "mode === 'API 1608'", 'Artifact API transport sleep');
+requireText(artifactPatch, "mode === 'API 1608'", 'Artifact API 1608 transport sleep');
 forbidText(artifactPatch, "|| mode === 'Ampex ATR-102'", 'Artifact ATR-102 transport must stay live');
 requireText(artifactPatch, 'cassetteNoise.disconnect', 'Artifact noise branch detach');
 requireText(artifactPatch, 'leftDepth.disconnect', 'Artifact modulation branch detach');
@@ -139,7 +145,7 @@ requireText(ember, 'if (curveCache.size >= MAX_CURVE_CACHE)', 'Ember curve cache
 forbidText(main, "import './videoStabilityPatch'", 'Removed video repair monkey patch');
 requireText(main, "import './components/effects/VideoColorStability.css'", 'Video color stability stylesheet load');
 requireText(viewport, "return (module.driftMode ?? 'chorus') === 'rotary' ? 'drift-alt' : 'drift';", 'Native stable Drift video mapping');
-forbidText(viewport, "['liquid', 'orbit', 'doppler', 'rotary'].includes(mode) ? 'drift-alt' : 'drift'", 'Old Drift alternate mapping');
+forbidText(viewport, "['liquid', 'orbit', 'doppler', 'rotary'].includes(mode) ? 'drift-alt' : 'drift'", 'Old unstable Drift video mapping');
 forbidText(videoColor, 'brightness(', 'Video brightness modulation');
 forbidText(videoColor, 'contrast(', 'Video contrast modulation');
 requireText(videoColor, '.module-video-transition-veil { display: none !important; }', 'Video transition veil disabled');
