@@ -52,7 +52,9 @@ requireText(engine, 'failedWorlds', 'XY failed-world quarantine');
 requireText(engine, 'visibilitychange', 'XY visibility resume');
 requireText(engine, 'onCanPlay', 'XY decoder readiness gate');
 requireText(engine, 'onError', 'XY decoder error fallback');
-requireText(engine, 'playbackRate = dragging ? 0.72 : 0.48', 'XY gesture playback response');
+requireText(engine, 'const IDLE_PLAYBACK_RATE = 0.30', 'XY glacial idle playback');
+requireText(engine, 'const DRAG_PLAYBACK_RATE = 0.50', 'XY responsive drag playback');
+requireText(engine, 'playbackRate = dragging ? DRAG_PLAYBACK_RATE : IDLE_PLAYBACK_RATE', 'XY gesture playback response');
 requireText(field, 'if (videoAvailableRef.current) return;', 'Dream renderer suspension under video');
 requireText(field, "uses-dream-fallback", 'Dream visual fallback state');
 
