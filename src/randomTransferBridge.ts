@@ -27,6 +27,7 @@ function consumeClick(event: MouseEvent): void {
 function markBusy(button: HTMLButtonElement, busy: boolean): void {
   button.classList.toggle('transfer-busy', busy);
   document.documentElement.classList.toggle('random-morphing', busy);
+  document.documentElement.classList.toggle('random-hard-hold', busy);
   if (busy) {
     button.setAttribute('aria-busy', 'true');
     button.style.pointerEvents = 'none';
@@ -138,7 +139,7 @@ function installBridge(): void {
 
 function uninstallBridge(): void {
   document.removeEventListener('click', onRandomizerClick, true);
-  document.documentElement.classList.remove('random-morphing');
+  document.documentElement.classList.remove('random-morphing', 'random-hard-hold');
   uninstallRandomCapture();
   activeEngine = null;
   replayButton = null;
