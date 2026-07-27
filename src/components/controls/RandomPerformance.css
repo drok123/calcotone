@@ -1,0 +1,10 @@
+/* RANDOM is already doing real DSP topology/parameter work. Do not spend main-thread/GPU
+   budget tweening 36+ knob transforms at the same time. The random bridge adds
+   `random-morphing` only for the duration of the staged RANDOM commit. */
+html.random-morphing .knob-face,
+html.random-morphing .knob-effective-marker,
+html.random-morphing .knob-modulation-ring {
+  transition: none !important;
+  animation: none !important;
+  will-change: auto !important;
+}
