@@ -2,20 +2,31 @@
   overflow: hidden;
 }
 
+/* Keep the native decoder frame directly underneath the interpolated canvas. If the
+   canvas is rebuilt after a resize/seek, the user sees a real video frame instead of
+   a black/transparent flash. */
 .temporal-video-source {
   position: absolute !important;
-  width: 1px !important;
-  height: 1px !important;
-  inset: auto auto 0 0 !important;
-  opacity: 0 !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+  object-position: center;
+  opacity: 1 !important;
   pointer-events: none !important;
 }
 
 .temporal-video-canvas {
   position: absolute;
   inset: 0;
+  z-index: 1;
   display: block;
   width: 100%;
   height: 100%;
+  opacity: 0;
   pointer-events: none;
+}
+
+.temporal-video-canvas[data-ready='true'] {
+  opacity: 1;
 }
