@@ -35,6 +35,7 @@ export class TapeTransportStage {
   private readonly flutterDepth: GainNode;
   private readonly trim: GainNode;
   private curveKey = '';
+  private modulationConnected = false;
 
   public constructor(context: AudioContext) {
     this.context = context;
@@ -58,17 +59,32 @@ export class TapeTransportStage {
     this.input.connect(this.processInput); this.processInput.connect(this.headBump); this.headBump.connect(this.headLoss); this.headLoss.connect(this.saturator);
     this.saturator.connect(this.transportDelay); this.transportDelay.connect(this.trim); this.trim.connect(this.processed); this.processed.connect(this.output);
     this.wowLfo.connect(this.wowDepth); this.flutterLfo.connect(this.flutterDepth);
-    this.wowDepth.connect(this.transportDelay.delayTime); this.flutterDepth.connect(this.transportDelay.delayTime);
+    // The oscillators may run for the lifetime of the node, but their control graph stays
+    // disconnected until tape is active so disabled transports do not continuously render
+    // AudioParam modulation across every BaseEffect instance.
     this.wowLfo.start(); this.flutterLfo.start(context.currentTime + 0.019);
   }
 
   public connect(destination: AudioNode): void { this.output.connect(destination); }
+
+  private setModulationConnected(enabled: boolean): void {
+    if (enabled === this.modulationConnected) return;
+    this.modulationConnected = enabled;
+    if (enabled) {
+      this.wowDepth.connect(this.transportDelay.delayTime);
+      this.flutterDepth.connect(this.transportDelay.delayTime);
+      return;
+    }
+    try { this.wowDepth.disconnect(this.transportDelay.delayTime); } catch { /* already disconnected */ }
+    try { this.flutterDepth.disconnect(this.transportDelay.delayTime); } catch { /* already disconnected */ }
+  }
 
   public setEnabled(enabled: boolean): void {
     const now = this.context.currentTime;
     this.bypass.gain.setTargetAtTime(enabled ? 0 : 1, now, 0.018);
     this.processInput.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.018);
     this.processed.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.018);
+    this.setModulationConnected(enabled);
   }
 
   public configure(speed: number, wear: number, tone: number, drive: number): void {
@@ -91,6 +107,7 @@ export class TapeTransportStage {
   }
 
   public dispose(): void {
+    this.setModulationConnected(false);
     try { this.wowLfo.stop(); } catch { /* stopped */ }
     try { this.flutterLfo.stop(); } catch { /* stopped */ }
     [this.input,this.output,this.bypass,this.processInput,this.processed,this.headBump,this.headLoss,this.saturator,this.transportDelay,this.wowLfo,this.flutterLfo,this.wowDepth,this.flutterDepth,this.trim].forEach((node) => node.disconnect());
