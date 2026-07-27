@@ -167,6 +167,137 @@
 .footer-bar p { opacity: .96; }
 .footer-actions span { opacity: .98; }
 
+/* Desktop rack-bay layout: side panels stretch to the main module bay and distribute their contents evenly. */
+@media (min-width: 1421px) {
+  .main-grid {
+    align-items: stretch !important;
+  }
+
+  .io-panel,
+  .performance-panel {
+    position: relative !important;
+    top: auto !important;
+    align-self: stretch;
+    height: 100%;
+    min-height: 0;
+    padding: 18px !important;
+    gap: 16px !important;
+  }
+
+  .io-panel {
+    display: grid !important;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .io-unified-box {
+    display: grid !important;
+    grid-template-rows: auto auto minmax(290px, 1fr);
+    align-content: stretch;
+    gap: 18px !important;
+    min-height: 0;
+    padding: 16px !important;
+  }
+
+  .io-control-section {
+    display: grid !important;
+    align-content: space-between;
+    gap: 16px !important;
+    padding: 2px 0;
+  }
+
+  .io-meter-section {
+    display: grid !important;
+    grid-template-rows: minmax(116px, auto) auto;
+    align-content: center;
+    gap: 12px !important;
+    padding: 10px 0 !important;
+  }
+
+  .meter-pair {
+    min-height: 126px;
+  }
+
+  .io-spectrum-section {
+    display: grid !important;
+    grid-template-rows: minmax(230px, 1fr) auto;
+    align-content: stretch;
+    gap: 14px !important;
+    min-height: 0;
+    padding-top: 16px !important;
+  }
+
+  .spectrum-unit {
+    display: grid !important;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+    height: 100%;
+    padding: 11px !important;
+  }
+
+  .spectrum-screen,
+  .spectrum-screen canvas {
+    min-height: 210px !important;
+    height: 100% !important;
+  }
+
+  .engine-info-grid {
+    gap: 9px !important;
+  }
+
+  .engine-info-grid > div {
+    min-height: 52px;
+    padding: 10px 11px 9px !important;
+  }
+
+  .performance-panel {
+    display: grid !important;
+    grid-template-rows: auto auto minmax(330px, 1fr) auto minmax(90px, auto) auto;
+    align-content: stretch;
+  }
+
+  .performance-mode {
+    gap: 9px !important;
+  }
+
+  .performance-mode button {
+    min-height: 40px !important;
+  }
+
+  .performance-panel .xy-pad {
+    width: 100%;
+    height: 100%;
+    min-height: 330px !important;
+    aspect-ratio: auto !important;
+  }
+
+  .performance-panel .xy-patch-bay {
+    min-height: 68px;
+  }
+
+  .performance-panel .motion-route-inspector {
+    min-height: 90px;
+    align-content: start;
+    padding: 4px 0 !important;
+  }
+
+  .performance-panel .empty-routes {
+    min-height: 58px;
+    display: grid;
+    place-items: center;
+    margin: 0;
+  }
+
+  .performance-panel .sample-recorder {
+    align-self: end;
+    padding: 14px !important;
+    gap: 12px !important;
+  }
+
+  .recorder-controls button {
+    min-height: 38px !important;
+  }
+}
+
 /* Keep the actual video/display wells dark so they read like screens mounted in the warm chassis. */
 .module-viewport,
 .module-viewport-shell,
