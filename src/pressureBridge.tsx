@@ -33,7 +33,6 @@ let pressureRoot: Root | null = null;
 let pressureHost: HTMLElement | null = null;
 let mountFrame = 0;
 let mountAttempts = 0;
-let lastEnabled = getPressureState().enabled;
 
 function PressureMount() {
   const state = usePressureState();
@@ -47,13 +46,12 @@ function renderPressure(): void {
 
 function applyPostRackPressure(engine: AudioEngine): void {
   const pressure = processors.get(engine);
-  if (!pressure || !getPressureState().enabled) return;
+  if (!pressure) return;
 
   const internal = engine as unknown as EngineInternals;
   const { graph, dcBlock, safetyClipper, limiter, analyser, outputGain } = internal;
   if (!graph || !dcBlock || !safetyClipper || !limiter || !analyser || !outputGain) return;
 
-  // Pressure is a fixed post-rack insert. Master safety still follows it.
   try { graph.output.disconnect(); } catch { /* already disconnected */ }
   try { pressure.output.disconnect(); } catch { /* already disconnected */ }
   try { dcBlock.disconnect(); } catch { /* already disconnected */ }
@@ -69,58 +67,60 @@ function applyPostRackPressure(engine: AudioEngine): void {
   analyser.connect(outputGain);
 }
 
-function rebuildMasterWithPressure(engine: AudioEngine): void {
-  const pressure = processors.get(engine);
-  if (pressure) {
-    try { pressure.output.disconnect(); } catch { /* already disconnected */ }
-  }
+function restoreMasterChain(engine: AudioEngine): void {
   originalConnectMasterChain.call(engine);
+}
+
+function createPressure(engine: AudioEngine): SignalLab | null {
+  const existing = processors.get(engine);
+  if (existing) return existing;
+
+  const internal = engine as unknown as EngineInternals;
+  if (!internal.context || !internal.graph) return null;
+
+  const pressure = new SignalLab(internal.context);
+  pressure.setState(getPressureState());
+  processors.set(engine, pressure);
+  return pressure;
+}
+
+function enablePressure(engine: AudioEngine): void {
+  const pressure = createPressure(engine);
+  if (!pressure) return;
+  pressure.setState(getPressureState());
+  restoreMasterChain(engine);
   applyPostRackPressure(engine);
 }
 
+function disablePressure(engine: AudioEngine): void {
+  const pressure = processors.get(engine);
+  if (!pressure) return;
+  try { pressure.output.disconnect(); } catch { /* already disconnected */ }
+  pressure.dispose();
+  processors.delete(engine);
+  restoreMasterChain(engine);
+}
+
 function attachPressure(engine: AudioEngine): void {
-  const existing = processors.get(engine);
-  if (existing) {
-    activeEngine = engine;
-    const state = getPressureState();
-    existing.setState(state);
-    lastEnabled = state.enabled;
-    rebuildMasterWithPressure(engine);
-    renderPressure();
-    return;
-  }
-
-  const internal = engine as unknown as EngineInternals;
-  if (!internal.context || !internal.graph) return;
-
-  const pressure = new SignalLab(internal.context);
-  const state = getPressureState();
-  pressure.setState(state);
-  processors.set(engine, pressure);
   activeEngine = engine;
-  lastEnabled = state.enabled;
-  rebuildMasterWithPressure(engine);
+  if (getPressureState().enabled) enablePressure(engine);
   renderPressure();
 }
 
 function detachPressure(engine: AudioEngine): void {
   const pressure = processors.get(engine);
-  if (!pressure) return;
-
-  try { pressure.output.disconnect(); } catch { /* already disconnected */ }
-  pressure.dispose();
-  processors.delete(engine);
+  if (pressure) {
+    try { pressure.output.disconnect(); } catch { /* already disconnected */ }
+    pressure.dispose();
+    processors.delete(engine);
+  }
   if (activeEngine === engine) activeEngine = null;
   renderPressure();
 }
 
 enginePrototype.connectMasterChain = function patchedConnectMasterChain(this: AudioEngine): void {
-  const pressure = processors.get(this);
-  if (pressure) {
-    try { pressure.output.disconnect(); } catch { /* already disconnected */ }
-  }
   originalConnectMasterChain.call(this);
-  applyPostRackPressure(this);
+  if (processors.has(this)) applyPostRackPressure(this);
 };
 
 enginePrototype.start = async function patchedPressureStart(
@@ -172,17 +172,18 @@ function scheduleMount(): void {
 
 function onPressureChange(event: Event): void {
   const detail = (event as CustomEvent<ReturnType<typeof getPressureState>>).detail ?? getPressureState();
-  const enabledChanged = detail.enabled !== lastEnabled;
-  lastEnabled = detail.enabled;
 
   if (activeEngine) {
-    const pressure = processors.get(activeEngine);
-    pressure?.setState(detail);
-
-    // Knob/machine/style changes only update AudioParams and the waveshaper. Rebuilding the
-    // entire graph on every pointer move was expensive and could create audible scheduling spikes.
-    // The topology only needs to change when Pressure itself enters or leaves the signal path.
-    if (enabledChanged) rebuildMasterWithPressure(activeEngine);
+    if (detail.enabled) {
+      const pressure = createPressure(activeEngine);
+      pressure?.setState(detail);
+      if (pressure) {
+        restoreMasterChain(activeEngine);
+        applyPostRackPressure(activeEngine);
+      }
+    } else {
+      disablePressure(activeEngine);
+    }
   }
   renderPressure();
 }
