@@ -21,6 +21,7 @@ const MAX_RENDER_HEIGHT = 720;
 const MAX_DEVICE_SCALE = 1.25;
 const MIN_FRAME_INTERVAL_MS = 32;
 const MAX_FRAME_INTERVAL_MS = 420;
+const MIN_RENDER_INTERVAL_MS = 14;
 
 function drawCover(
   context: CanvasRenderingContext2D,
@@ -93,6 +94,7 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
     let haveFrame = false;
     let lastCaptureAt = performance.now();
     let lastVideoTime = -1;
+    let lastRenderAt = 0;
     let frameIntervalMs = 1000 / Math.max(1, 30 * playbackRateRef.current);
 
     const resizeBuffers = (): boolean => {
@@ -142,7 +144,13 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
 
     const render = (now: number): void => {
       if (cancelled) return;
-      if (haveFrame && resizeBuffers()) {
+      if (now - lastRenderAt < MIN_RENDER_INTERVAL_MS) {
+        animationHandle = requestAnimationFrame(render);
+        return;
+      }
+      lastRenderAt = now;
+
+      if (haveFrame && canvas.width > 1 && canvas.height > 1) {
         const blend = easeFrameBlend((now - lastCaptureAt) / Math.max(MIN_FRAME_INTERVAL_MS, frameIntervalMs * 0.94));
         const width = canvas.width;
         const height = canvas.height;
@@ -182,6 +190,7 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
     video.defaultPlaybackRate = playbackRateRef.current;
     video.muted = true;
     video.loop = loop;
+    resizeBuffers();
 
     if (video.requestVideoFrameCallback) requestNextVideoFrame();
     else fallbackHandle = requestAnimationFrame(fallbackPoll);
