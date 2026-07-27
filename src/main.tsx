@@ -18,6 +18,7 @@ import './components/layout/CharcoalHardwarePass.css'
 import './engineStabilityPatch'
 import './haloStabilityPatch'
 import './artifactStabilityPatch'
+import './pressureBridge'
 import './randomTransferBridge'
 import App from './App.tsx'
 
