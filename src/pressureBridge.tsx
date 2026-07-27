@@ -31,6 +31,9 @@ const processors = new WeakMap<AudioEngine, SignalLab>();
 let activeEngine: AudioEngine | null = null;
 let pressureRoot: Root | null = null;
 let pressureHost: HTMLElement | null = null;
+let mountFrame = 0;
+let mountAttempts = 0;
+let lastEnabled = getPressureState().enabled;
 
 function PressureMount() {
   const state = usePressureState();
@@ -79,7 +82,9 @@ function attachPressure(engine: AudioEngine): void {
   const existing = processors.get(engine);
   if (existing) {
     activeEngine = engine;
-    existing.setState(getPressureState());
+    const state = getPressureState();
+    existing.setState(state);
+    lastEnabled = state.enabled;
     rebuildMasterWithPressure(engine);
     renderPressure();
     return;
@@ -89,9 +94,11 @@ function attachPressure(engine: AudioEngine): void {
   if (!internal.context || !internal.graph) return;
 
   const pressure = new SignalLab(internal.context);
-  pressure.setState(getPressureState());
+  const state = getPressureState();
+  pressure.setState(state);
   processors.set(engine, pressure);
   activeEngine = engine;
+  lastEnabled = state.enabled;
   rebuildMasterWithPressure(engine);
   renderPressure();
 }
@@ -140,10 +147,10 @@ enginePrototype.stop = async function patchedPressureStop(
   await originalStop.apply(this, args);
 };
 
-function mountPressurePanel(): void {
-  if (document.querySelector('.pressure-panel')) return;
+function mountPressurePanel(): boolean {
+  if (document.querySelector('.pressure-panel')) return true;
   const modules = document.querySelector<HTMLElement>('.modules-section');
-  if (!modules || pressureHost?.isConnected) return;
+  if (!modules || pressureHost?.isConnected) return false;
 
   const host = document.createElement('div');
   host.className = 'pressure-host';
@@ -153,31 +160,47 @@ function mountPressurePanel(): void {
   pressureHost = host;
   pressureRoot = createRoot(host);
   renderPressure();
+  return true;
+}
+
+function scheduleMount(): void {
+  if (mountPressurePanel()) return;
+  if (mountAttempts >= 30) return;
+  mountAttempts += 1;
+  mountFrame = requestAnimationFrame(scheduleMount);
 }
 
 function onPressureChange(event: Event): void {
-  const detail = (event as CustomEvent<ReturnType<typeof getPressureState>>).detail;
+  const detail = (event as CustomEvent<ReturnType<typeof getPressureState>>).detail ?? getPressureState();
+  const enabledChanged = detail.enabled !== lastEnabled;
+  lastEnabled = detail.enabled;
+
   if (activeEngine) {
     const pressure = processors.get(activeEngine);
-    pressure?.setState(detail ?? getPressureState());
-    rebuildMasterWithPressure(activeEngine);
+    pressure?.setState(detail);
+
+    // Knob/machine/style changes only update AudioParams and the waveshaper. Rebuilding the
+    // entire graph on every pointer move was expensive and could create audible scheduling spikes.
+    // The topology only needs to change when Pressure itself enters or leaves the signal path.
+    if (enabledChanged) rebuildMasterWithPressure(activeEngine);
   }
   renderPressure();
 }
 
 function install(): void {
   window.addEventListener('calcotone:pressure-change', onPressureChange);
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountPressurePanel, { once: true });
-  else mountPressurePanel();
-
-  const observer = new MutationObserver(() => mountPressurePanel());
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-  (window as Window & { __calcotonePressureObserver?: MutationObserver }).__calcotonePressureObserver = observer;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', scheduleMount, { once: true });
+  } else {
+    scheduleMount();
+  }
 }
 
 function uninstall(): void {
   window.removeEventListener('calcotone:pressure-change', onPressureChange);
-  (window as Window & { __calcotonePressureObserver?: MutationObserver }).__calcotonePressureObserver?.disconnect();
+  if (mountFrame) cancelAnimationFrame(mountFrame);
+  mountFrame = 0;
+  mountAttempts = 0;
 
   if (activeEngine) {
     detachPressure(activeEngine);
