@@ -15,6 +15,7 @@ const engine = read('src/components/motion/VideoLandscapeEngine.tsx');
 const catalog = read('src/components/motion/VideoLandscapeCatalog.ts');
 const css = read('src/components/motion/VideoLandscapeEngine.css');
 const field = read('src/components/motion/XYSignalField.tsx');
+const temporal = read('src/components/video/TemporalVideo.tsx');
 
 for (const world of ['base','cyber','storm','solar','dream','night']) {
   requireText(catalog, `${world}: 'xy-worlds/cyber-mountain/${world}.mp4'`, `XY ${world} asset slot`);
@@ -55,6 +56,9 @@ requireText(engine, 'onError', 'XY decoder error fallback');
 requireText(engine, 'const IDLE_PLAYBACK_RATE = 0.20', 'XY glacial idle playback');
 requireText(engine, 'const DRAG_PLAYBACK_RATE = 0.35', 'XY responsive drag playback');
 requireText(engine, 'playbackRate = dragging ? DRAG_PLAYBACK_RATE : IDLE_PLAYBACK_RATE', 'XY gesture playback response');
+requireText(engine, '<TemporalVideo', 'XY temporal smoothing renderer');
+requireText(temporal, 'requestVideoFrameCallback', 'XY frame-synchronized temporal capture');
+requireText(temporal, 'easeFrameBlend', 'XY temporal interpolation');
 requireText(field, 'if (videoAvailableRef.current) return;', 'Dream renderer suspension under video');
 requireText(field, "uses-dream-fallback", 'Dream visual fallback state');
 
