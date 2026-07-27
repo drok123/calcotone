@@ -4,7 +4,6 @@ import { BehaviorMemoryStage, type BehaviorMemoryProfile } from '../models/Behav
 import { BBDStage } from '../models/BBDStage';
 import { TapeTransportStage } from '../models/TapeTransportStage';
 import { EarlyConverterStage } from '../models/EarlyConverterStage';
-import { SpringTankStage } from '../models/SpringTankStage';
 
 export interface Effect {
   readonly id: string;
@@ -40,10 +39,6 @@ export abstract class BaseEffect implements Effect {
   private readonly bbdStage: BBDStage;
   private readonly tapeStage: TapeTransportStage;
   private readonly converterStage: EarlyConverterStage;
-  // Instantiated as shared infrastructure but deliberately dormant until an Atmos
-  // algorithm explicitly requests spring mechanics. Do not smear spring behavior
-  // across generic room/plate/hall profiles.
-  private readonly springStage: SpringTankStage;
   private readonly wetDcBlock: BiquadFilterNode;
   private readonly wetLimiter: DynamicsCompressorNode;
 
@@ -70,7 +65,6 @@ export abstract class BaseEffect implements Effect {
     this.bbdStage = new BBDStage(context);
     this.tapeStage = new TapeTransportStage(context);
     this.converterStage = new EarlyConverterStage(context);
-    this.springStage = new SpringTankStage(context);
     this.wetDcBlock = context.createBiquadFilter();
     this.wetLimiter = context.createDynamicsCompressor();
     this.bypassDryGain = context.createGain();
@@ -90,13 +84,12 @@ export abstract class BaseEffect implements Effect {
     this.input.connect(this.dryGain);
     this.dryGain.connect(this.processedBus);
 
-    // Shared hardware mechanism chain. Every stage is internally crossfaded to
-    // transparent bypass unless the behavior registry selects its mechanism.
+    // Shared hardware mechanism chain. Inactive stages gate their process inputs,
+    // so bypassed mechanisms are effectively free apart from a few gain nodes.
     this.wetGain.connect(this.bbdStage.input);
     this.bbdStage.connect(this.tapeStage.input);
     this.tapeStage.connect(this.converterStage.input);
-    this.converterStage.connect(this.springStage.input);
-    this.springStage.connect(this.behaviorStage.input);
+    this.converterStage.connect(this.behaviorStage.input);
     this.behaviorStage.connect(this.wetDcBlock);
     this.wetDcBlock.connect(this.wetLimiter);
     this.wetLimiter.connect(this.processedBus);
@@ -104,7 +97,6 @@ export abstract class BaseEffect implements Effect {
     this.bbdStage.setEnabled(false);
     this.tapeStage.setEnabled(false);
     this.converterStage.setEnabled(false);
-    this.springStage.setEnabled(false);
 
     this.input.connect(this.bypassDryGain);
     this.processedBus.connect(this.bypassProcessedGain);
@@ -138,8 +130,6 @@ export abstract class BaseEffect implements Effect {
       this.bypassSuspendTimer = null;
     }
 
-    // Presets configure bypass before AudioGraph binds the effect. There is no live
-    // serial signal yet, so bypassed modules can start fully suspended immediately.
     if (bypassed && this.routingInvalidator === null) {
       this.bypassed = true;
       this.processingSuspended = true;
@@ -151,8 +141,6 @@ export abstract class BaseEffect implements Effect {
     }
 
     if (!bypassed && this.processingSuspended) {
-      // Put the module back into the serial path while its output is still clean/dry,
-      // then crossfade the processed path in. This avoids clicks on wake-up.
       this.processingSuspended = false;
       this.routingInvalidator?.();
     }
@@ -213,17 +201,18 @@ export abstract class BaseEffect implements Effect {
     memory: number,
     color: number,
   ): void {
-    this.behaviorStage.configure(profile, amount, motion, memory, color);
-
     const bbd = profile === 'charge';
     const tape = profile === 'magnetic' || profile === 'transport';
     const converter = profile === 'converter';
+    const dedicatedHardware = bbd || tape || converter;
+
+    // Once a real mechanism owns the profile, the old generic residual must get out
+    // of the way or the sound is effectively modeled twice.
+    this.behaviorStage.configure(dedicatedHardware ? 'bypass' : profile, amount, motion, memory, color);
 
     this.bbdStage.setEnabled(bbd);
     this.tapeStage.setEnabled(tape);
     this.converterStage.setEnabled(converter);
-    // Spring requires an explicit spring algorithm; generic acoustic profiles remain unchanged.
-    this.springStage.setEnabled(false);
 
     if (bbd) {
       const virtualDelaySeconds = 0.008 + memory * 0.48;
@@ -257,7 +246,6 @@ export abstract class BaseEffect implements Effect {
     this.bbdStage.dispose();
     this.tapeStage.dispose();
     this.converterStage.dispose();
-    this.springStage.dispose();
     this.behaviorStage.dispose();
     this.wetDcBlock.disconnect();
     this.wetLimiter.disconnect();
