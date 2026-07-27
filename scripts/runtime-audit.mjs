@@ -25,6 +25,7 @@ const randomCapture = read('src/features/random/randomCapture.ts');
 const randomDspScheduler = read('src/features/random/randomDspScheduler.ts');
 const randomRuntime = randomBridge + randomCapture + randomDspScheduler;
 const enginePatch = read('src/engineStabilityPatch.ts');
+const enginePolicy = read('src/features/engine/engineStabilityPolicy.ts');
 const inputMatrix = read('src/audio/InputMatrix.ts');
 const haloPatch = read('src/haloStabilityPatch.ts');
 const artifactPatch = read('src/artifactStabilityPatch.ts');
@@ -79,11 +80,12 @@ forbidText(randomRuntime, 'directSetEffectBypassed.call(engine, effectId, bypass
 // must not keep doing FFT work while the DSP panel is closed. Shutdown also waits for any pending
 // click-safe reorder so the route fade cannot dereference graph/context after teardown.
 requireText(main, "import './engineStabilityPatch'", 'Engine stability patch load');
-requireText(enginePatch, "mode === 'studio' ? -0.75", 'Studio transparent limiter threshold');
-requireText(enginePatch, "mode === 'studio' ? 4", 'Studio transparent limiter ratio');
+requireText(enginePatch, "from './features/engine/engineStabilityPolicy'", 'Engine stability policy wiring');
+requireText(enginePolicy, "mode === 'studio' ? -0.75", 'Studio transparent limiter threshold');
+requireText(enginePolicy, "mode === 'studio' ? 4", 'Studio transparent limiter ratio');
 requireText(enginePatch, "document.querySelector('.dsp-profiler')", 'Profiler visibility guard');
-requireText(enginePatch, 'const stats = grainStats(this)', 'Adaptive Grain-only health read');
-requireText(enginePatch, 'spectralCentroidHz: 0', 'Hidden profiler avoids spectrum work');
+requireText(enginePolicy, 'const stats = grainStats(engine)', 'Adaptive Grain-only health read');
+requireText(enginePolicy, 'spectralCentroidHz: 0', 'Hidden profiler avoids spectrum work');
 requireText(enginePatch, 'await internal.routeTransition.catch(() => undefined)', 'Route transition teardown serialization');
 requireText(enginePatch, 'prototype.stop = stableStop', 'Route-safe stop patch install');
 requireText(enginePatch, 'prototype.stop = originalStop', 'Route-safe stop HMR restore');
