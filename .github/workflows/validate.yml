@@ -29,6 +29,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: RANDOM structural diagnostic
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync } from 'node:fs';
+          const source = readFileSync('src/randomTransferBridge.ts', 'utf8');
+          for (const needle of [
+            'beginViewportPerformanceHold()',
+            'engine.setEffectBypassed(entry.id, entry.bypassed)',
+            '.finally(() => {',
+            'import.meta.hot.dispose',
+            "document.removeEventListener('click', onRandomizerClick, true)",
+          ]) {
+            if (!source.includes(needle)) throw new Error(`Missing RANDOM structural marker: ${needle}`);
+          }
+          EOF
+
       - name: Structural audit
         run: npm run audit
 
