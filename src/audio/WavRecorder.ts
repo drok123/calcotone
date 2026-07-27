@@ -254,8 +254,14 @@ function highPass(input: number, state: { x: number; y: number }, alpha: number)
 }
 
 function softLimit(sample: number, drive: number, ceiling: number): number {
-  const shaped = Math.tanh(sample * drive) / drive;
-  return Math.max(-ceiling, Math.min(ceiling, shaped));
+  const sign = sample < 0 ? -1 : 1;
+  const magnitude = Math.abs(sample);
+  const knee = ceiling * (drive > 1.4 ? 0.68 : 0.78);
+  if (magnitude <= knee) return sample;
+  const span = Math.max(1e-8, ceiling - knee);
+  const normalized = (magnitude - knee) / span;
+  const compressed = Math.tanh(normalized * drive) / Math.tanh(drive);
+  return sign * Math.min(ceiling, knee + span * compressed);
 }
 
 function measurePeak(left: Float32Array, right: Float32Array): number {
