@@ -19,12 +19,11 @@ function enterHold(): void {
     return { video, shouldResume };
   });
 
-  // The viewport scheduler already stops its registered renderers during RANDOM.
-  // Shrinking the two independent canvas families prevents their own RAF loops from
-  // spending meaningful compositor/GPU time while DSP modes and graphs are changing.
+  // Keep the last valid visual frame intact during RANDOM. The viewport scheduler already
+  // pauses registered physics renderers, and pausing the video elements stops decoder work.
+  // Do not resize or clear canvas backing stores here: doing so can strand a renderer at 1x1
+  // after RANDOM and leave the spectrum/module window blank or white.
   for (const canvas of document.querySelectorAll<HTMLCanvasElement>('.temporal-video-canvas, .spectrum-screen canvas')) {
-    canvas.width = 1;
-    canvas.height = 1;
     canvas.dataset.randomHeld = 'true';
   }
 }
@@ -39,13 +38,13 @@ function exitHold(): void {
   }
   heldVideos = [];
 
-  // Components own their actual backing-store size. A resize event lets their normal
-  // resize logic restore full resolution on the first calm frame after RANDOM.
-  window.dispatchEvent(new Event('resize'));
+  // Preserve each component's existing backing-store dimensions and simply let its normal
+  // RAF/video-frame loop continue from the last good frame on the next animation frame.
   requestAnimationFrame(() => {
     for (const canvas of document.querySelectorAll<HTMLCanvasElement>('[data-random-held="true"]')) {
       delete canvas.dataset.randomHeld;
     }
+    window.dispatchEvent(new Event('resize'));
   });
 }
 
