@@ -22,3 +22,11 @@
 .signal-lab-position { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
 .signal-lab-controls { display:grid; grid-template-columns:1fr 1fr; gap:8px 10px; margin-top:10px; }
 .signal-lab:not(.is-enabled) .signal-lab-controls, .signal-lab:not(.is-enabled) .signal-lab-row { opacity:.72; }
+
+/* Pressure placement tweak: move its knob bank and associated lower text/controls 5px toward the footer. */
+.pressure-panel .pressure-knobs,
+.pressure-panel .pressure-machine,
+.pressure-panel .pressure-styles {
+  position: relative;
+  top: 5px;
+}
