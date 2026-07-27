@@ -30,7 +30,6 @@ export class BBDStage {
   private readonly clockShaper: WaveShaperNode;
   private readonly deEmphasis: BiquadFilterNode;
   private readonly trim: GainNode;
-  private enabled = false;
   private curveKey = -1;
 
   public constructor(context: AudioContext) {
@@ -65,7 +64,6 @@ export class BBDStage {
   public connect(destination: AudioNode): void { this.output.connect(destination); }
 
   public setEnabled(enabled: boolean): void {
-    this.enabled = enabled;
     const now = this.context.currentTime;
     this.bypass.gain.setTargetAtTime(enabled ? 0 : 1, now, 0.016);
     this.processed.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.016);
@@ -77,7 +75,6 @@ export class BBDStage {
     const tone = clamp01(color);
     const mod = clamp01(modulation);
     const now = this.context.currentTime;
-    // Longer requested delays imply a lower BBD clock and therefore less bandwidth.
     const clockLoss = clamp01(Math.log10(1 + time * 75) / Math.log10(1 + 6.2 * 75));
     const cutoff = 9200 - clockLoss * 5200 - c * 1500 + tone * 1700;
     this.bucketLoss.frequency.setTargetAtTime(Math.max(1400, cutoff), now, 0.04);
