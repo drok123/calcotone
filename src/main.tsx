@@ -21,6 +21,7 @@ import './haloStabilityPatch'
 import './artifactStabilityPatch'
 import './realtimeStabilityPatch'
 import './pressureBridge'
+import './randomVisualGovernor'
 import './randomTransferBridge'
 import App from './App.tsx'
 
