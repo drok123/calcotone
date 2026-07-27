@@ -11,8 +11,12 @@ interface TemporalVideoProps {
   onError?: () => void;
 }
 
+type VideoFrameMetadata = {
+  mediaTime?: number;
+};
+
 type FrameCallbackVideo = HTMLVideoElement & {
-  requestVideoFrameCallback?: (callback: (now: number) => void) => number;
+  requestVideoFrameCallback?: (callback: (now: number, metadata: VideoFrameMetadata) => void) => number;
   cancelVideoFrameCallback?: (handle: number) => void;
 };
 
@@ -22,6 +26,7 @@ const MAX_DEVICE_SCALE = 1.25;
 const MIN_FRAME_INTERVAL_MS = 32;
 const MAX_FRAME_INTERVAL_MS = 420;
 const MIN_RENDER_INTERVAL_MS = 14;
+const SEEK_DISCONTINUITY_SECONDS = 0.12;
 
 function drawCover(
   context: CanvasRenderingContext2D,
@@ -94,6 +99,7 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
     let haveFrame = false;
     let lastCaptureAt = performance.now();
     let lastVideoTime = -1;
+    let lastCapturedMediaTime = -1;
     let lastRenderAt = 0;
     let frameIntervalMs = 1000 / Math.max(1, 30 * playbackRateRef.current);
 
@@ -105,6 +111,8 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
       const height = Math.max(2, Math.min(MAX_RENDER_HEIGHT, Math.round(rect.height * scale)));
       if (canvas.width === width && canvas.height === height && previous.width === width && current.width === width) return true;
 
+      // Resizing a canvas clears it. Keep the decoder visible underneath and rebuild all
+      // temporal buffers from the next valid frame rather than presenting a black buffer.
       canvas.width = width;
       canvas.height = height;
       previous.width = width;
@@ -114,31 +122,60 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
       previousContext = previous.getContext('2d', { alpha: false });
       currentContext = current.getContext('2d', { alpha: false });
       haveFrame = false;
+      canvas.dataset.ready = 'false';
       return Boolean(previousContext && currentContext);
     };
 
-    const snapshot = (now: number): void => {
+    const copyVideoInto = (context: CanvasRenderingContext2D, target: HTMLCanvasElement): void => {
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.globalAlpha = 1;
+      context.globalCompositeOperation = 'copy';
+      drawCover(context, video, video.videoWidth, video.videoHeight, target.width, target.height);
+      context.globalCompositeOperation = 'source-over';
+    };
+
+    const presentCurrentImmediately = (): void => {
+      if (!previousContext || !currentContext || !haveFrame) return;
+      previousContext.setTransform(1, 0, 0, 1, 0, 0);
+      previousContext.globalCompositeOperation = 'copy';
+      previousContext.drawImage(current, 0, 0);
+      previousContext.globalCompositeOperation = 'source-over';
+
+      output.setTransform(1, 0, 0, 1, 0, 0);
+      output.globalAlpha = 1;
+      output.globalCompositeOperation = 'copy';
+      output.drawImage(current, 0, 0, canvas.width, canvas.height);
+      output.globalCompositeOperation = 'source-over';
+      canvas.dataset.ready = 'true';
+    };
+
+    const snapshot = (now: number, mediaTime = video.currentTime): void => {
       if (cancelled || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth <= 0 || video.videoHeight <= 0) return;
       if (!resizeBuffers() || !previousContext || !currentContext) return;
 
-      if (haveFrame) {
+      const discontinuity = lastCapturedMediaTime >= 0 && mediaTime < lastCapturedMediaTime - SEEK_DISCONTINUITY_SECONDS;
+
+      if (haveFrame && !discontinuity) {
         previousContext.setTransform(1, 0, 0, 1, 0, 0);
-        previousContext.clearRect(0, 0, previous.width, previous.height);
+        previousContext.globalAlpha = 1;
+        previousContext.globalCompositeOperation = 'copy';
         previousContext.drawImage(current, 0, 0);
+        previousContext.globalCompositeOperation = 'source-over';
+
         const observed = now - lastCaptureAt;
         if (observed >= MIN_FRAME_INTERVAL_MS && observed <= MAX_FRAME_INTERVAL_MS) {
           frameIntervalMs = frameIntervalMs * 0.72 + observed * 0.28;
         }
       }
 
-      currentContext.setTransform(1, 0, 0, 1, 0, 0);
-      currentContext.clearRect(0, 0, current.width, current.height);
-      drawCover(currentContext, video, video.videoWidth, video.videoHeight, current.width, current.height);
+      copyVideoInto(currentContext, current);
 
-      if (!haveFrame) {
-        previousContext.drawImage(current, 0, 0);
+      if (!haveFrame || discontinuity) {
         haveFrame = true;
+        presentCurrentImmediately();
       }
+
+      lastCapturedMediaTime = mediaTime;
       lastCaptureAt = now;
     };
 
@@ -156,23 +193,25 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
         const height = canvas.height;
         const drift = Math.min(1.25, width * 0.00085);
 
+        // Never clear the visible canvas between layers. The previous frame is an opaque
+        // base and the current frame is composited over it, so there is no blank flash.
         output.setTransform(1, 0, 0, 1, 0, 0);
+        output.globalCompositeOperation = 'copy';
         output.globalAlpha = 1;
-        output.clearRect(0, 0, width, height);
-
-        output.globalAlpha = 1 - blend;
         output.drawImage(previous, -drift * blend, 0, width + drift, height);
+        output.globalCompositeOperation = 'source-over';
         output.globalAlpha = blend;
         output.drawImage(current, drift * (1 - blend), 0, width + drift, height);
         output.globalAlpha = 1;
+        canvas.dataset.ready = 'true';
       }
       animationHandle = requestAnimationFrame(render);
     };
 
     const requestNextVideoFrame = (): void => {
       if (cancelled || !video.requestVideoFrameCallback) return;
-      videoFrameHandle = video.requestVideoFrameCallback((now) => {
-        snapshot(now);
+      videoFrameHandle = video.requestVideoFrameCallback((now, metadata) => {
+        snapshot(now, Number.isFinite(metadata.mediaTime) ? Number(metadata.mediaTime) : video.currentTime);
         requestNextVideoFrame();
       });
     };
@@ -181,7 +220,7 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
       if (cancelled) return;
       if (Math.abs(video.currentTime - lastVideoTime) > 0.0005) {
         lastVideoTime = video.currentTime;
-        snapshot(now);
+        snapshot(now, video.currentTime);
       }
       fallbackHandle = requestAnimationFrame(fallbackPoll);
     };
@@ -190,6 +229,7 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
     video.defaultPlaybackRate = playbackRateRef.current;
     video.muted = true;
     video.loop = loop;
+    canvas.dataset.ready = 'false';
     resizeBuffers();
 
     if (video.requestVideoFrameCallback) requestNextVideoFrame();
@@ -226,7 +266,7 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
         onCanPlay={(event) => onCanPlay?.(event.currentTarget)}
         onError={() => onError?.()}
       />
-      <canvas ref={canvasRef} className="temporal-video-canvas" />
+      <canvas ref={canvasRef} className="temporal-video-canvas" data-ready="false" />
     </span>
   );
 });
