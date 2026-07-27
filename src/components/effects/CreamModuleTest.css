@@ -38,7 +38,10 @@
 .engine-info-grid > div,
 .record-start,
 .record-stop,
-.record-cancel {
+.record-cancel,
+.performance-mode button,
+.route-axis button,
+.route-options button {
   color: var(--cream-text) !important;
   border-color: var(--cream-outline) !important;
   background: linear-gradient(145deg, var(--cream-top) 0%, var(--cream-mid) 48%, var(--cream-bottom) 100%) !important;
@@ -72,7 +75,10 @@
 .recorder-controls button:hover:not(:disabled),
 .recorder-master-selector button:hover:not(:disabled),
 .footer-safe-toggle:hover:not(:disabled),
-.rail-track button:hover {
+.rail-track button:hover,
+.performance-mode button:hover:not(:disabled),
+.route-axis button:hover:not(:disabled),
+.route-options button:hover:not(:disabled) {
   background: linear-gradient(145deg, var(--cream-hover-top) 0%, var(--cream-hover-mid) 48%, var(--cream-hover-bottom) 100%) !important;
   filter: none !important;
 }
@@ -82,13 +88,36 @@
 .layout-editor-toggle.active,
 .polarity-row button.active,
 .recorder-master-selector button.active,
-.footer-safe-toggle.active {
+.footer-safe-toggle.active,
+.performance-mode button.active,
+.route-axis button.active,
+.route-options button.active {
   color: #fffaf0 !important;
   border-color: rgba(255,249,226,.72) !important;
   background: linear-gradient(145deg, #a19d90 0%, #89867b 48%, #74726a 100%) !important;
   box-shadow:
     inset 0 2px 5px rgba(35,32,27,.42),
     0 2px 5px rgba(0,0,0,.22) !important;
+}
+
+/* Knob hardware uses the same cream material instead of graphite metal. */
+.knob-shell::before {
+  background: linear-gradient(145deg, var(--cream-top), var(--cream-mid) 50%, var(--cream-bottom)) !important;
+  box-shadow:
+    0 7px 11px rgba(0,0,0,.48),
+    inset 0 1px rgba(255,250,228,.18),
+    inset 0 -3px 5px rgba(35,34,30,.48) !important;
+}
+
+.knob-shell::after {
+  background: linear-gradient(145deg, #aaa596 0%, #8d897d 54%, #747269 100%) !important;
+  box-shadow:
+    inset 0 1px 2px rgba(255,250,228,.15),
+    inset 0 -4px 7px rgba(35,34,30,.42) !important;
+}
+
+.knob-indicator {
+  background: var(--cream-text) !important;
 }
 
 /* Shared chassis dividers. */
@@ -153,9 +182,6 @@ input[type="text"],
 .linear-header strong,
 .recorder-heading time,
 .take-preview,
-.performance-mode button:not(.active),
-.route-axis button:not(.active),
-.route-options button:not(.active),
 .motion-route header button,
 .rail-modules::before {
   background: var(--signal-box-surface-deep) !important;
