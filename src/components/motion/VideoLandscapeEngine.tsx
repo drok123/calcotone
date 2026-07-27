@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { ModuleState } from '../../ui/types';
 import type { SignalLabState } from '../../audio/SignalLab';
+import { TemporalVideo } from '../video/TemporalVideo';
 import { landscapeIdentity, videoUrl, type VideoWorld } from './VideoLandscapeCatalog';
 import './VideoLandscapeEngine.css';
 
@@ -106,18 +107,36 @@ export function VideoLandscapeEngine({ modules, position, dragging, signalLab, o
     '--grade-tint-opacity': identity.grade.tintOpacity + signalDepth,
   } as CSSProperties;
 
+  const playbackRate = dragging ? DRAG_PLAYBACK_RATE : IDLE_PLAYBACK_RATE;
+
   return (
     <div className="xy-video-world" style={style} aria-hidden="true" data-world={currentWorld} data-module={identity.moduleId ?? 'raw'} data-mode={identity.mode}>
-      <video ref={aRef} className={`xy-world-video ${activeSlot === 'a' ? 'is-front' : 'is-back'}`} src={videoUrl(worldA)} muted loop playsInline preload="auto"
-        onCanPlay={(event) => {
-          if (activeSlotRef.current === 'a') { if (!activeReady) { setActiveReady(true); void event.currentTarget.play().catch(() => undefined); } return; }
+      <TemporalVideo
+        ref={aRef}
+        className={`xy-world-video ${activeSlot === 'a' ? 'is-front' : 'is-back'}`}
+        src={videoUrl(worldA)}
+        playbackRate={playbackRate}
+        loop
+        preload="auto"
+        onCanPlay={(video) => {
+          if (activeSlotRef.current === 'a') { if (!activeReady) { setActiveReady(true); void video.play().catch(() => undefined); } return; }
           if (worldA !== currentWorld) activate('a', worldA);
-        }} onError={() => markError('a', worldA)} />
-      <video ref={bRef} className={`xy-world-video ${activeSlot === 'b' ? 'is-front' : 'is-back'}`} src={videoUrl(worldB)} muted loop playsInline preload="auto"
-        onCanPlay={(event) => {
-          if (activeSlotRef.current === 'b') { if (!activeReady) { setActiveReady(true); void event.currentTarget.play().catch(() => undefined); } return; }
+        }}
+        onError={() => markError('a', worldA)}
+      />
+      <TemporalVideo
+        ref={bRef}
+        className={`xy-world-video ${activeSlot === 'b' ? 'is-front' : 'is-back'}`}
+        src={videoUrl(worldB)}
+        playbackRate={playbackRate}
+        loop
+        preload="auto"
+        onCanPlay={(video) => {
+          if (activeSlotRef.current === 'b') { if (!activeReady) { setActiveReady(true); void video.play().catch(() => undefined); } return; }
           if (worldB !== currentWorld) activate('b', worldB);
-        }} onError={() => markError('b', worldB)} />
+        }}
+        onError={() => markError('b', worldB)}
+      />
       <div className="xy-world-grade" /><div className="xy-world-vignette" />
     </div>
   );
