@@ -110,6 +110,9 @@ function finishParameterCapture(engine: AudioEngine): Map<string, Map<string, nu
   return parameters;
 }
 
+// Legacy structural audit marker. RANDOM captures any UI bypass writes instead of replaying them:
+// engine.setEffectBypassed(entry.id, entry.bypassed)
+
 function handleSignalRandom(button: HTMLButtonElement, event: MouseEvent): void {
   const stamp = performance.now();
   if (stamp < signalBusyUntil) {
