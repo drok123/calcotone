@@ -1,0 +1,33 @@
+/* CALCOTONE text palette unification
+   Green remains reserved for lamps, meters, routing graphics, patching and live-state
+   hardware accents. Text that previously borrowed the green accent now uses the same
+   neutral white/off-white family as the Spectrum and primary UI labels. */
+
+.linear-header strong,
+.polarity-row button.active,
+.route-axis button.active,
+.route-options button.active,
+.chain-direction span,
+.knob-value,
+.knob-control:hover .knob-value,
+.knob-control:focus-within .knob-value,
+.performance-mode button.active,
+.xy-axis-mark,
+.xy-values span,
+.xy-values strong,
+.route-count,
+.motion-route header span,
+.route-depth strong,
+.motion-route summary::after,
+.recorder-heading time,
+.spectrum-status.active {
+  color: var(--ink, #edf2ed) !important;
+  text-shadow: none !important;
+}
+
+/* When an XY axis marker is highlighted its background becomes green, so retain a dark
+   foreground there for contrast rather than forcing white-on-bright-green. */
+.xy-pad.hover-axis-x .xy-axis-mark.x,
+.xy-pad.hover-axis-y .xy-axis-mark.y {
+  color: #041008 !important;
+}
