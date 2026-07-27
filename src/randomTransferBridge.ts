@@ -175,7 +175,7 @@ async function commitOneBatch(
   }
 }
 
-async function flushCapturedRandom(
+function flushCapturedRandom(
   engine: AudioEngine,
   batches: Map<string, Map<string, number>>,
   _bypasses: Map<string, boolean>,
@@ -184,20 +184,24 @@ async function flushCapturedRandom(
   // expensive apply/network-rebuild paths from landing on the same audio quantum while the UI is
   // still free to animate every knob toward its destination together.
   const committed = new Set<string>();
+  let chain = Promise.resolve();
+
   for (const effectId of RANDOM_BATCH_ORDER) {
     const values = batches.get(effectId);
     if (!values) continue;
-    await commitOneBatch(engine, effectId, values);
     committed.add(effectId);
+    chain = chain.then(() => commitOneBatch(engine, effectId, values));
   }
+
   for (const [effectId, values] of batches) {
     if (committed.has(effectId)) continue;
-    await commitOneBatch(engine, effectId, values);
+    chain = chain.then(() => commitOneBatch(engine, effectId, values));
   }
 
   // Legacy audit marker: engine.setEffectBypassed(entry.id, entry.bypassed)
   // Musical RANDOM never changes module power. The user's active rack is the continuity anchor;
   // RANDOM reshapes machines inside that rack without introducing a bypass burst or all-off state.
+  return chain;
 }
 
 function handleSignalRandom(button: HTMLButtonElement, event: MouseEvent): void {
