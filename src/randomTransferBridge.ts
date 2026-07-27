@@ -3,12 +3,9 @@ import { applyRandomBatch } from './perf/randomBatch';
 import { beginViewportPerformanceHold } from './components/effects/viewportScheduler';
 
 const RANDOM_PREP_MS = 12;
-const RANDOM_MORPH_STEPS = 5;
-const RANDOM_MORPH_STEP_MS = 22;
-const RANDOM_MODULE_GAP_MS = 8;
-const RANDOM_TOPOLOGY_GUARD_MS = 34;
-const RANDOM_TOPOLOGY_SETTLE_MS = 52;
-const RANDOM_TOPOLOGY_SAFE_MIX = 0.08;
+const RANDOM_DSP_STAGGER_MS = 18;
+const RANDOM_DISCRETE_SETTLE_MS = 28;
+const RANDOM_TOPOLOGY_SETTLE_MS = 76;
 const RANDOM_SETTLE_MS = 24;
 const SIGNAL_LOCK_MS = 90;
 const RANDOM_BATCH_ORDER = ['saturation', 'chorus', 'bitcrusher', 'media', 'delay', 'reverb'] as const;
@@ -139,12 +136,19 @@ function isTopologySensitive(effectId: string): boolean {
   return effectId === 'delay' || effectId === 'reverb';
 }
 
-function smoothstep(value: number): number {
-  const x = Math.max(0, Math.min(1, value));
-  return x * x * (3 - 2 * x);
+function discreteTargetChanges(
+  effectId: string,
+  effect: NonNullable<ReturnType<AudioEngine['getEffect']>>,
+  targets: Map<string, number>,
+): boolean {
+  const discreteId = discreteParameterFor(effectId);
+  if (!discreteId) return false;
+  const target = targets.get(discreteId);
+  const current = effect.getParameterValue(discreteId);
+  return target !== undefined && current !== undefined && Math.round(target) !== Math.round(current);
 }
 
-async function morphOneBatch(
+async function commitOneBatch(
   engine: AudioEngine,
   effectId: string,
   targets: Map<string, number>,
@@ -153,58 +157,21 @@ async function morphOneBatch(
   const effect = engine.getEffect(effectId);
   if (!effect) return;
 
-  const discreteId = discreteParameterFor(effectId);
-  const discreteTarget = discreteId ? targets.get(discreteId) : undefined;
-  const currentDiscrete = discreteId ? effect.getParameterValue(discreteId) : undefined;
-  const discreteChanging =
-    discreteId !== null &&
-    discreteTarget !== undefined &&
-    currentDiscrete !== undefined &&
-    Math.round(discreteTarget) !== Math.round(currentDiscrete);
+  const discreteChanging = discreteTargetChanges(effectId, effect, targets);
 
-  // Halo and Atmos rebuild their internal networks when algorithms change. During RANDOM,
-  // briefly lean the module toward its dry path before asking for a topology swap. This gives
-  // the listener a continuous bridge while a brand-new delay/reverb network is still empty.
-  // The target Mix is then restored naturally by the eased continuous morph below.
-  if (discreteChanging && isTopologySensitive(effectId)) {
-    const currentMix = effect.getParameterValue('mix');
-    if (currentMix !== undefined && currentMix > RANDOM_TOPOLOGY_SAFE_MIX) {
-      applyRandomBatch(effect, new Map([['mix', RANDOM_TOPOLOGY_SAFE_MIX]]));
-      await sleep(RANDOM_TOPOLOGY_GUARD_MS);
-    }
+  // The UI already owns the visible 165 ms knob animation. Audio does not need to chase that
+  // animation with repeated JS writes. Commit the destination once so expensive apply()/network
+  // rebuild paths execute a single time per machine.
+  applyRandomBatch(effect, targets);
+
+  // Delay/reverb algorithm changes crossfade live-fed old/new networks internally. Give that
+  // transition room to establish before the next machine is touched instead of dropping Mix to
+  // near-dry or rebuilding several topologies at the same instant.
+  if (discreteChanging) {
+    await sleep(isTopologySensitive(effectId) ? RANDOM_TOPOLOGY_SETTLE_MS : RANDOM_DISCRETE_SETTLE_MS);
+  } else {
+    await sleep(RANDOM_DSP_STAGGER_MS);
   }
-
-  if (discreteId && discreteTarget !== undefined) {
-    applyRandomBatch(effect, new Map([[discreteId, discreteTarget]]));
-    await sleep(discreteChanging && isTopologySensitive(effectId)
-      ? RANDOM_TOPOLOGY_SETTLE_MS
-      : RANDOM_MORPH_STEP_MS);
-  }
-
-  const continuousTargets = [...targets.entries()].filter(([id]) => id !== discreteId);
-  if (continuousTargets.length === 0) {
-    await sleep(RANDOM_MODULE_GAP_MS);
-    return;
-  }
-
-  const starts = new Map<string, number>();
-  for (const [parameterId, target] of continuousTargets) {
-    starts.set(parameterId, effect.getParameterValue(parameterId) ?? target);
-  }
-
-  for (let step = 1; step <= RANDOM_MORPH_STEPS; step += 1) {
-    if (activeEngine !== engine || engine.getState() !== 'running') return;
-    const eased = smoothstep(step / RANDOM_MORPH_STEPS);
-    const intermediate = new Map<string, number>();
-    for (const [parameterId, target] of continuousTargets) {
-      const start = starts.get(parameterId) ?? target;
-      intermediate.set(parameterId, start + (target - start) * eased);
-    }
-    applyRandomBatch(effect, intermediate);
-    await sleep(RANDOM_MORPH_STEP_MS);
-  }
-
-  await sleep(RANDOM_MODULE_GAP_MS);
 }
 
 async function flushCapturedRandom(
@@ -212,22 +179,24 @@ async function flushCapturedRandom(
   batches: Map<string, Map<string, number>>,
   _bypasses: Map<string, boolean>,
 ): Promise<void> {
-  // All active machines travel together. This keeps RANDOM feeling like one physical
-  // gesture, matches the knob sweep, and shortens the lockout enough to perform with it.
-  const orderedJobs: Promise<void>[] = [];
+  // RANDOM is planned atomically, but committed to DSP one machine at a time. This prevents six
+  // expensive apply/network-rebuild paths from landing on the same audio quantum while the UI is
+  // still free to animate every knob toward its destination together.
+  const committed = new Set<string>();
   for (const effectId of RANDOM_BATCH_ORDER) {
     const values = batches.get(effectId);
-    if (values) orderedJobs.push(morphOneBatch(engine, effectId, values));
+    if (!values) continue;
+    await commitOneBatch(engine, effectId, values);
+    committed.add(effectId);
   }
   for (const [effectId, values] of batches) {
-    if ((RANDOM_BATCH_ORDER as readonly string[]).includes(effectId)) continue;
-    orderedJobs.push(morphOneBatch(engine, effectId, values));
+    if (committed.has(effectId)) continue;
+    await commitOneBatch(engine, effectId, values);
   }
-  await Promise.all(orderedJobs);
 
   // Legacy audit marker: engine.setEffectBypassed(entry.id, entry.bypassed)
   // Musical RANDOM never changes module power. The user's active rack is the continuity anchor;
-  // RANDOM is allowed to reshape machines inside that rack, but it may not create an all-off state.
+  // RANDOM reshapes machines inside that rack without introducing a bypass burst or all-off state.
 }
 
 function handleSignalRandom(button: HTMLButtonElement, event: MouseEvent): void {
@@ -272,6 +241,8 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
     let plan: { parameters: Map<string, Map<string, number>>; bypass: Map<string, boolean> };
 
     try {
+      // Let React update the visual destination immediately while the capture shim prevents those
+      // same UI writes from hammering DSP. The actual audio commit is scheduled below.
       button.click();
     } catch (error) {
       replayButton = null;
@@ -282,7 +253,7 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
 
     void flushCapturedRandom(engine, plan.parameters, plan.bypass)
       .then(() => sleep(RANDOM_SETTLE_MS))
-      .catch((error) => console.error('CALCOTONE RANDOM staged morph failed.', error))
+      .catch((error) => console.error('CALCOTONE RANDOM staged commit failed.', error))
       .finally(() => {
         randomBusy = false;
         markBusy(button, false);
