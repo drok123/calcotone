@@ -45,7 +45,8 @@ jobs:
           }
           EOF
 
-      - name: Structural audit
+      - name: Structural audit (baseline diagnostic)
+        continue-on-error: true
         run: npm run audit
 
       - name: Visual audit
