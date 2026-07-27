@@ -6,6 +6,8 @@ import './VideoLandscapeEngine.css';
 
 type Slot = 'a' | 'b';
 const CROSSFADE_SETTLE_MS = 760;
+const IDLE_PLAYBACK_RATE = 0.30;
+const DRAG_PLAYBACK_RATE = 0.50;
 
 function syncVideo(incoming: HTMLVideoElement, outgoing: HTMLVideoElement): void {
   if (!Number.isFinite(incoming.duration) || incoming.duration <= 0) return;
@@ -57,7 +59,7 @@ export function VideoLandscapeEngine({ modules, position, dragging, signalLab, o
     if (!incoming) return;
     clearPauseTimer();
     if (outgoing && incoming !== outgoing) syncVideo(incoming, outgoing);
-    incoming.playbackRate = dragging ? 0.72 : 0.48;
+    incoming.playbackRate = dragging ? DRAG_PLAYBACK_RATE : IDLE_PLAYBACK_RATE;
     void incoming.play().catch(() => undefined);
     setActiveReady(true);
     setActiveSlot(slot);
@@ -80,7 +82,7 @@ export function VideoLandscapeEngine({ modules, position, dragging, signalLab, o
   useEffect(() => {
     const active = activeSlot === 'a' ? aRef.current : bRef.current;
     if (!active) return;
-    active.playbackRate = dragging ? 0.72 : 0.48;
+    active.playbackRate = dragging ? DRAG_PLAYBACK_RATE : IDLE_PLAYBACK_RATE;
     if (activeReady) void active.play().catch(() => undefined);
   }, [dragging, activeReady, activeSlot]);
 
