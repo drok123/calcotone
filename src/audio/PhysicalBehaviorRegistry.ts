@@ -15,6 +15,13 @@ interface BehaviorSpec {
   color: number;
 }
 
+interface SpringHardwareSpec {
+  decay: number;
+  size: number;
+  color: number;
+  drive: number;
+}
+
 const BYPASS: BehaviorSpec = { profile: 'bypass', amount: 0, motion: 0, memory: 0, color: 0.5 };
 const attached = new WeakSet<Effect>();
 
@@ -55,6 +62,7 @@ export function attachPhysicalBehavior(effect: Effect): Effect {
  */
 export function syncPhysicalBehavior(effect: Effect): void {
   let behavior = BYPASS;
+  let springHardware: SpringHardwareSpec | null = null;
 
   if (effect.id === 'saturation') {
     const mode = EMBER_MODE_ORDER[index(effect, 'mode')] ?? 'velvet';
@@ -134,7 +142,18 @@ export function syncPhysicalBehavior(effect: Effect): void {
       case 'plate': behavior = spec('elastic', 0.055 + diffusion * 0.05, motion, 0.78 + storedEnergy * 0.18, color); break;
       case 'hall': behavior = spec('acoustic', 0.045 + diffusion * 0.045, size, 0.74 + storedEnergy * 0.22, color); break;
       case 'cinema': behavior = spec('acoustic', 0.05 + size * 0.05, mix(motion, size, 0.16), 0.8 + storedEnergy * 0.16, color); break;
-      case 'cloud': behavior = spec('fluid', 0.055 + motion * 0.07, motion, 0.82 + storedEnergy * 0.14, color); break;
+      case 'cloud': {
+        // Cloud now owns a dedicated mechanical spring tank. Do not layer the old
+        // generic fluid residual over it; the spring dispersion/transducers are the identity.
+        behavior = BYPASS;
+        springHardware = {
+          decay,
+          size,
+          color,
+          drive: Math.min(1, 0.16 + diffusion * 0.66 + motion * 0.18),
+        };
+        break;
+      }
       case 'freeze': behavior = spec('acoustic', 0.07 + decay * 0.055, motion, 0.94 + storedEnergy * 0.05, color); break;
       case 'celestial': behavior = spec('orbital', 0.06 + motion * 0.065, motion, 0.86 + storedEnergy * 0.1, color); break;
       case 'aurora': behavior = spec('fluid', 0.06 + motion * 0.07, motion, 0.8 + storedEnergy * 0.14, color); break;
@@ -183,4 +202,11 @@ export function syncPhysicalBehavior(effect: Effect): void {
   }
 
   effect.configureBehavior(behavior.profile, behavior.amount, behavior.motion, behavior.memory, behavior.color);
+  effect.configureSpringHardware(
+    springHardware !== null,
+    springHardware?.decay ?? 0,
+    springHardware?.size ?? 0.5,
+    springHardware?.color ?? 0.5,
+    springHardware?.drive ?? 0,
+  );
 }
