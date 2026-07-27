@@ -27,6 +27,8 @@ export interface Effect {
   dispose(): void;
 }
 
+type DedicatedHardware = 'bbd' | 'tape' | 'converter' | null;
+
 export abstract class BaseEffect implements Effect {
   public abstract readonly id: string;
   public abstract readonly name: string;
@@ -38,10 +40,11 @@ export abstract class BaseEffect implements Effect {
   protected readonly wetGain: GainNode;
   protected readonly processedBus: GainNode;
   private readonly behaviorStage: BehaviorMemoryStage;
-  private readonly bbdStage: BBDStage;
-  private readonly tapeStage: TapeTransportStage;
-  private readonly converterStage: EarlyConverterStage;
+  private bbdStage: BBDStage | null = null;
+  private tapeStage: TapeTransportStage | null = null;
+  private converterStage: EarlyConverterStage | null = null;
   private springStage: SpringTankStage | null = null;
+  private activeDedicatedHardware: DedicatedHardware = null;
   private readonly wetDcBlock: BiquadFilterNode;
   private readonly wetLimiter: DynamicsCompressorNode;
 
@@ -65,9 +68,6 @@ export abstract class BaseEffect implements Effect {
     this.wetGain = context.createGain();
     this.processedBus = context.createGain();
     this.behaviorStage = new BehaviorMemoryStage(context);
-    this.bbdStage = new BBDStage(context);
-    this.tapeStage = new TapeTransportStage(context);
-    this.converterStage = new EarlyConverterStage(context);
     this.wetDcBlock = context.createBiquadFilter();
     this.wetLimiter = context.createDynamicsCompressor();
     this.bypassDryGain = context.createGain();
@@ -84,22 +84,17 @@ export abstract class BaseEffect implements Effect {
     this.wetLimiter.ratio.value = 20;
     this.wetLimiter.attack.value = 0.001;
     this.wetLimiter.release.value = 0.06;
+
     this.input.connect(this.dryGain);
     this.dryGain.connect(this.processedBus);
 
-    // Shared hardware mechanism chain. Spring is intentionally lazy because it is a
-    // comparatively large feedback network and only Atmos/Cloud needs it.
-    this.wetGain.connect(this.bbdStage.input);
-    this.bbdStage.connect(this.tapeStage.input);
-    this.tapeStage.connect(this.converterStage.input);
-    this.converterStage.connect(this.behaviorStage.input);
+    // Default wet path is intentionally small. Specialty hardware is created only
+    // for modes that actually need it, rather than keeping BBD/tape/converter/spring
+    // networks alive inside every effect instance.
+    this.wetGain.connect(this.behaviorStage.input);
     this.behaviorStage.connect(this.wetDcBlock);
     this.wetDcBlock.connect(this.wetLimiter);
     this.wetLimiter.connect(this.processedBus);
-
-    this.bbdStage.setEnabled(false);
-    this.tapeStage.setEnabled(false);
-    this.converterStage.setEnabled(false);
 
     this.input.connect(this.bypassDryGain);
     this.processedBus.connect(this.bypassProcessedGain);
@@ -197,6 +192,61 @@ export abstract class BaseEffect implements Effect {
     });
   }
 
+  private rebuildHardwarePath(): void {
+    if (this.disposed) return;
+
+    // This is called only when the selected physical hardware family changes.
+    // Normal parameter motion never reconnects the audio graph.
+    try { this.wetGain.disconnect(); } catch { /* already disconnected */ }
+    try { this.bbdStage?.output.disconnect(); } catch { /* already disconnected */ }
+    try { this.tapeStage?.output.disconnect(); } catch { /* already disconnected */ }
+    try { this.converterStage?.output.disconnect(); } catch { /* already disconnected */ }
+    try { this.springStage?.output.disconnect(); } catch { /* already disconnected */ }
+
+    let source: AudioNode = this.wetGain;
+    if (this.activeDedicatedHardware === 'bbd' && this.bbdStage) {
+      source.connect(this.bbdStage.input);
+      source = this.bbdStage.output;
+    } else if (this.activeDedicatedHardware === 'tape' && this.tapeStage) {
+      source.connect(this.tapeStage.input);
+      source = this.tapeStage.output;
+    } else if (this.activeDedicatedHardware === 'converter' && this.converterStage) {
+      source.connect(this.converterStage.input);
+      source = this.converterStage.output;
+    }
+
+    if (this.springStage) {
+      source.connect(this.springStage.input);
+      source = this.springStage.output;
+    }
+
+    source.connect(this.behaviorStage.input);
+  }
+
+  private selectDedicatedHardware(next: DedicatedHardware): void {
+    if (this.activeDedicatedHardware === next) return;
+
+    if (next !== 'bbd' && this.bbdStage) {
+      this.bbdStage.dispose();
+      this.bbdStage = null;
+    }
+    if (next !== 'tape' && this.tapeStage) {
+      this.tapeStage.dispose();
+      this.tapeStage = null;
+    }
+    if (next !== 'converter' && this.converterStage) {
+      this.converterStage.dispose();
+      this.converterStage = null;
+    }
+
+    if (next === 'bbd' && !this.bbdStage) this.bbdStage = new BBDStage(this.context);
+    if (next === 'tape' && !this.tapeStage) this.tapeStage = new TapeTransportStage(this.context);
+    if (next === 'converter' && !this.converterStage) this.converterStage = new EarlyConverterStage(this.context);
+
+    this.activeDedicatedHardware = next;
+    this.rebuildHardwarePath();
+  }
+
   public configureBehavior(
     profile: BehaviorMemoryProfile,
     amount: number,
@@ -204,26 +254,24 @@ export abstract class BaseEffect implements Effect {
     memory: number,
     color: number,
   ): void {
-    const bbd = profile === 'charge';
-    const tape = profile === 'magnetic' || profile === 'transport';
-    const converter = profile === 'converter';
-    const dedicatedHardware = bbd || tape || converter;
+    const dedicated: DedicatedHardware = profile === 'charge'
+      ? 'bbd'
+      : profile === 'magnetic' || profile === 'transport'
+        ? 'tape'
+        : profile === 'converter'
+          ? 'converter'
+          : null;
 
-    this.behaviorStage.configure(dedicatedHardware ? 'bypass' : profile, amount, motion, memory, color);
+    this.selectDedicatedHardware(dedicated);
+    this.behaviorStage.configure(dedicated ? 'bypass' : profile, amount, motion, memory, color);
 
-    this.bbdStage.setEnabled(bbd);
-    this.tapeStage.setEnabled(tape);
-    this.converterStage.setEnabled(converter);
-
-    if (bbd) {
+    if (dedicated === 'bbd' && this.bbdStage) {
       const virtualDelaySeconds = 0.008 + memory * 0.48;
       this.bbdStage.configure(virtualDelaySeconds, amount, color, motion);
-    }
-    if (tape) {
+    } else if (dedicated === 'tape' && this.tapeStage) {
       const speed = Math.max(0, Math.min(1, 0.72 + color * 0.22 - motion * 0.08));
       this.tapeStage.configure(speed, motion, color, amount);
-    }
-    if (converter) {
+    } else if (dedicated === 'converter' && this.converterStage) {
       const bits = 9 + (1 - amount) * 5;
       this.converterStage.configure(bits, color, amount);
     }
@@ -232,12 +280,8 @@ export abstract class BaseEffect implements Effect {
   public configureSpringHardware(enabled: boolean, decay: number, size: number, color: number, drive: number): void {
     if (enabled) {
       if (!this.springStage) {
-        const spring = new SpringTankStage(this.context);
-        // Insert spring between the shared converter stage and the residual behavior stage.
-        try { this.converterStage.output.disconnect(this.behaviorStage.input); } catch { /* not connected */ }
-        this.converterStage.connect(spring.input);
-        spring.connect(this.behaviorStage.input);
-        this.springStage = spring;
+        this.springStage = new SpringTankStage(this.context);
+        this.rebuildHardwarePath();
       }
       this.springStage.setEnabled(true);
       this.springStage.configure(decay, size, color, drive);
@@ -245,12 +289,9 @@ export abstract class BaseEffect implements Effect {
     }
 
     if (this.springStage) {
-      const spring = this.springStage;
-      try { this.converterStage.output.disconnect(spring.input); } catch { /* not connected */ }
-      try { spring.output.disconnect(this.behaviorStage.input); } catch { /* not connected */ }
-      spring.dispose();
+      this.springStage.dispose();
       this.springStage = null;
-      this.converterStage.connect(this.behaviorStage.input);
+      this.rebuildHardwarePath();
     }
   }
 
@@ -269,9 +310,12 @@ export abstract class BaseEffect implements Effect {
     this.dryGain.disconnect();
     this.wetGain.disconnect();
     this.processedBus.disconnect();
-    this.bbdStage.dispose();
-    this.tapeStage.dispose();
-    this.converterStage.dispose();
+    this.bbdStage?.dispose();
+    this.bbdStage = null;
+    this.tapeStage?.dispose();
+    this.tapeStage = null;
+    this.converterStage?.dispose();
+    this.converterStage = null;
     this.springStage?.dispose();
     this.springStage = null;
     this.behaviorStage.dispose();
