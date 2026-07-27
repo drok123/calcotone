@@ -90,10 +90,12 @@
 .performance-panel { border-color: var(--cream-outline) !important; }
 .footer-bar { border-top-color: var(--cream-outline) !important; }
 
-/* Rail typography stays off-white, but ornamental highlights are subdued. */
+/* Rail typography stays off-white, with softly rounded hardware ends. */
 .rail-track {
   border-top-color: rgba(244,239,220,.34) !important;
   border-bottom-color: rgba(56,52,45,.62) !important;
+  border-radius: 10px !important;
+  overflow: hidden;
   text-shadow: 0 1px 2px rgba(0,0,0,.64);
 }
 
