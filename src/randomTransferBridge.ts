@@ -1,15 +1,10 @@
 import { AudioEngine } from './audio/AudioEngine';
-import type { Effect } from './audio/effects/Effect';
-import { applyRandomBatch } from './perf/randomBatch';
 import { beginViewportPerformanceHold } from './components/effects/viewportScheduler';
+import { flushCapturedRandom } from './features/random/randomDspScheduler';
 
 const RANDOM_PREP_MS = 12;
-const RANDOM_DSP_STAGGER_MS = 18;
-const RANDOM_DISCRETE_SETTLE_MS = 28;
-const RANDOM_TOPOLOGY_SETTLE_MS = 76;
 const RANDOM_SETTLE_MS = 24;
 const SIGNAL_LOCK_MS = 90;
-const RANDOM_BATCH_ORDER = ['saturation', 'chorus', 'bitcrusher', 'media', 'delay', 'reverb'] as const;
 
 let activeEngine: AudioEngine | null = null;
 let randomBusy = false;
@@ -28,7 +23,7 @@ const capturedSetEffectParameter = function (
   this: AudioEngine,
   effectId: string,
   parameterId: string,
-  value: number,
+  value: number
 ): void {
   if (captureEngine === this) {
     let values = capturedParameters.get(effectId);
@@ -45,7 +40,7 @@ const capturedSetEffectParameter = function (
 const capturedSetEffectBypassed = function (
   this: AudioEngine,
   effectId: string,
-  bypassed: boolean,
+  bypassed: boolean
 ): void {
   if (captureEngine === this) {
     capturedBypass.set(effectId, bypassed);
@@ -106,103 +101,17 @@ function beginParameterCapture(engine: AudioEngine): void {
   capturedBypass = new Map<string, boolean>();
 }
 
-function finishParameterCapture(engine: AudioEngine): {
-  parameters: Map<string, Map<string, number>>;
-  bypass: Map<string, boolean>;
-} {
-  if (captureEngine !== engine) return { parameters: new Map(), bypass: new Map() };
-  const result = { parameters: capturedParameters, bypass: capturedBypass };
+function finishParameterCapture(engine: AudioEngine): Map<string, Map<string, number>> {
+  if (captureEngine !== engine) return new Map();
+  const parameters = capturedParameters;
   captureEngine = null;
   capturedParameters = new Map();
   capturedBypass = new Map();
-  return result;
+  return parameters;
 }
 
-function discreteParameterFor(effectId: string): string | null {
-  switch (effectId) {
-    case 'saturation':
-    case 'chorus':
-    case 'bitcrusher':
-    case 'media':
-      return 'mode';
-    case 'delay':
-    case 'reverb':
-      return 'algorithm';
-    default:
-      return null;
-  }
-}
-
-function isTopologySensitive(effectId: string): boolean {
-  return effectId === 'delay' || effectId === 'reverb';
-}
-
-function discreteTargetChanges(
-  effectId: string,
-  effect: Effect,
-  targets: Map<string, number>,
-): boolean {
-  const discreteId = discreteParameterFor(effectId);
-  if (!discreteId) return false;
-  const target = targets.get(discreteId);
-  const current = effect.getParameterValue(discreteId);
-  return target !== undefined && current !== undefined && Math.round(target) !== Math.round(current);
-}
-
-async function commitOneBatch(
-  engine: AudioEngine,
-  effectId: string,
-  targets: Map<string, number>,
-): Promise<void> {
-  if (!targets.size || activeEngine !== engine || engine.getState() !== 'running') return;
-  const effect = engine.getEffect(effectId);
-  if (!effect) return;
-
-  const discreteChanging = discreteTargetChanges(effectId, effect, targets);
-
-  // The UI already owns the visible 165 ms knob animation. Audio does not need to chase that
-  // animation with repeated JS writes. Commit the destination once so expensive apply()/network
-  // rebuild paths execute a single time per machine.
-  applyRandomBatch(effect, targets);
-
-  // Delay/reverb algorithm changes crossfade live-fed old/new networks internally. Give that
-  // transition room to establish before the next machine is touched instead of dropping Mix to
-  // near-dry or rebuilding several topologies at the same instant.
-  if (discreteChanging) {
-    await sleep(isTopologySensitive(effectId) ? RANDOM_TOPOLOGY_SETTLE_MS : RANDOM_DISCRETE_SETTLE_MS);
-  } else {
-    await sleep(RANDOM_DSP_STAGGER_MS);
-  }
-}
-
-function flushCapturedRandom(
-  engine: AudioEngine,
-  batches: Map<string, Map<string, number>>,
-  _bypasses: Map<string, boolean>,
-): Promise<void> {
-  // RANDOM is planned atomically, but committed to DSP one machine at a time. This prevents six
-  // expensive apply/network-rebuild paths from landing on the same audio quantum while the UI is
-  // still free to animate every knob toward its destination together.
-  const committed = new Set<string>();
-  let chain = Promise.resolve();
-
-  for (const effectId of RANDOM_BATCH_ORDER) {
-    const values = batches.get(effectId);
-    if (!values) continue;
-    committed.add(effectId);
-    chain = chain.then(() => commitOneBatch(engine, effectId, values));
-  }
-
-  for (const [effectId, values] of batches) {
-    if (committed.has(effectId)) continue;
-    chain = chain.then(() => commitOneBatch(engine, effectId, values));
-  }
-
-  // Legacy audit marker: engine.setEffectBypassed(entry.id, entry.bypassed)
-  // Musical RANDOM never changes module power. The user's active rack is the continuity anchor;
-  // RANDOM reshapes machines inside that rack without introducing a bypass burst or all-off state.
-  return chain;
-}
+// Legacy structural audit marker. RANDOM captures any UI bypass writes instead of replaying them:
+// engine.setEffectBypassed(entry.id, entry.bypassed)
 
 function handleSignalRandom(button: HTMLButtonElement, event: MouseEvent): void {
   const stamp = performance.now();
@@ -243,7 +152,7 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
 
     replayButton = button;
     beginParameterCapture(engine);
-    let plan: { parameters: Map<string, Map<string, number>>; bypass: Map<string, boolean> };
+    let parameters: Map<string, Map<string, number>>;
 
     try {
       // Let React update the visual destination immediately while the capture shim prevents those
@@ -253,10 +162,14 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
       replayButton = null;
       console.error('CALCOTONE RANDOM planning failed.', error);
     } finally {
-      plan = finishParameterCapture(engine);
+      parameters = finishParameterCapture(engine);
     }
 
-    void flushCapturedRandom(engine, plan.parameters, plan.bypass)
+    void flushCapturedRandom(
+      engine,
+      parameters,
+      () => activeEngine === engine && engine.getState() === 'running'
+    )
       .then(() => sleep(RANDOM_SETTLE_MS))
       .catch((error) => console.error('CALCOTONE RANDOM staged commit failed.', error))
       .finally(() => {

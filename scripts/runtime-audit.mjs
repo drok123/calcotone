@@ -21,6 +21,7 @@ const forbidText = (source, needle, label) => {
 const driftClassic = read('public/drift-classic-processor.js');
 const driftStage = read('src/audio/models/DriftClassicStage.ts');
 const randomBridge = read('src/randomTransferBridge.ts');
+const randomDspScheduler = read('src/features/random/randomDspScheduler.ts');
 const enginePatch = read('src/engineStabilityPatch.ts');
 const inputMatrix = read('src/audio/InputMatrix.ts');
 const haloPatch = read('src/haloStabilityPatch.ts');
@@ -51,21 +52,22 @@ requireText(driftStage, "const WORKLET_VERSION = '1.0.3-realtime-optimized'", 'D
 // MUSICAL RANDOM plans every destination at once, lets React/knob CSS own the visible motion,
 // then commits each active machine to DSP exactly once in a staggered order. Expensive topology
 // changes are not allowed to land on the same audio quantum or pull the signal toward silence.
-requireText(randomBridge, 'RANDOM_DSP_STAGGER_MS = 18', 'RANDOM DSP staggering');
-requireText(randomBridge, 'RANDOM_TOPOLOGY_SETTLE_MS = 76', 'RANDOM topology settle window');
-requireText(randomBridge, 'applyRandomBatch(effect, targets);', 'RANDOM single destination commit');
-requireText(randomBridge, 'chain = chain.then(() => commitOneBatch(engine, effectId, values))', 'RANDOM serialized module commit');
-requireText(randomBridge, 'The UI already owns the visible 165 ms knob animation', 'RANDOM UI/DSP decoupling');
+requireText(randomBridge, "import { flushCapturedRandom } from './features/random/randomDspScheduler'", 'RANDOM scheduler module wiring');
+requireText(randomDspScheduler, 'RANDOM_DSP_STAGGER_MS = 18', 'RANDOM DSP staggering');
+requireText(randomDspScheduler, 'RANDOM_TOPOLOGY_SETTLE_MS = 76', 'RANDOM topology settle window');
+requireText(randomDspScheduler, 'applyRandomBatch(effect, targets);', 'RANDOM single destination commit');
+requireText(randomDspScheduler, 'chain = chain.then(() => commitOneBatch(engine, effectId, values, engineIsUsable))', 'RANDOM serialized module commit');
+requireText(randomDspScheduler, 'The UI already owns the visible 165 ms knob animation', 'RANDOM UI/DSP decoupling');
 requireText(randomBridge, "document.documentElement.classList.toggle('random-morphing', busy)", 'RANDOM visual morph state');
 requireText(knob, 'transform 165ms cubic-bezier(0.2, 0.82, 0.22, 1)', 'RANDOM-friendly knob travel');
-forbidText(randomBridge, 'RANDOM_MORPH_STEPS', 'Removed repeated RANDOM DSP morph');
-forbidText(randomBridge, 'Promise.all(orderedJobs)', 'Removed simultaneous RANDOM module burst');
-forbidText(randomBridge, 'RANDOM_TOPOLOGY_SAFE_MIX', 'Removed RANDOM signal-collapse guard');
-forbidText(randomBridge, "new Map([['mix', RANDOM_TOPOLOGY_SAFE_MIX]])", 'Removed RANDOM forced near-dry dip');
-forbidText(randomBridge, 'for (const entry of active) engine.setEffectBypassed(entry.id, true)', 'RANDOM bypass-all burst');
-requireText(randomBridge, "effectId === 'delay' || effectId === 'reverb'", 'RANDOM topology-sensitive modes');
-requireText(randomBridge, 'Musical RANDOM never changes module power', 'RANDOM power-layout preservation');
-forbidText(randomBridge, 'directSetEffectBypassed.call(engine, effectId, bypassed)', 'RANDOM power mutation');
+forbidText(randomBridge + randomDspScheduler, 'RANDOM_MORPH_STEPS', 'Removed repeated RANDOM DSP morph');
+forbidText(randomBridge + randomDspScheduler, 'Promise.all(orderedJobs)', 'Removed simultaneous RANDOM module burst');
+forbidText(randomBridge + randomDspScheduler, 'RANDOM_TOPOLOGY_SAFE_MIX', 'Removed RANDOM signal-collapse guard');
+forbidText(randomBridge + randomDspScheduler, "new Map([['mix', RANDOM_TOPOLOGY_SAFE_MIX]])", 'Removed RANDOM forced near-dry dip');
+forbidText(randomBridge + randomDspScheduler, 'for (const entry of active) engine.setEffectBypassed(entry.id, true)', 'RANDOM bypass-all burst');
+requireText(randomDspScheduler, "effectId === 'delay' || effectId === 'reverb'", 'RANDOM topology-sensitive modes');
+requireText(randomDspScheduler, 'Musical RANDOM never changes module power', 'RANDOM power-layout preservation');
+forbidText(randomBridge + randomDspScheduler, 'directSetEffectBypassed.call(engine, effectId, bypassed)', 'RANDOM power mutation');
 
 // Global engine quality should become more transparent as quality increases, and hidden diagnostics
 // must not keep doing FFT work while the DSP panel is closed. Shutdown also waits for any pending
