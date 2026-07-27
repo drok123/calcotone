@@ -99,7 +99,7 @@ export function SpectrumWaterfall({
     function drawBackground(width: number, height: number): void {
       context.fillStyle = '#06110c';
       context.fillRect(0, 0, width, height);
-      context.strokeStyle = 'rgba(72, 255, 145, 0.13)';
+      context.strokeStyle = 'rgba(237, 242, 237, 0.12)';
       context.lineWidth = 1;
 
       const horizonY = height * 0.19;
@@ -127,7 +127,7 @@ export function SpectrumWaterfall({
         context.stroke();
       }
 
-      context.strokeStyle = 'rgba(119, 255, 172, 0.48)';
+      context.strokeStyle = 'rgba(237, 242, 237, 0.44)';
       context.lineWidth = Math.max(1, width / 500);
       context.strokeRect(1, 1, width - 2, height - 2);
     }
@@ -138,7 +138,7 @@ export function SpectrumWaterfall({
         const row = history[history.length - 1 - rowIndex];
         const opacity = 0.22 + depthPosition * 0.78;
 
-        context.strokeStyle = `rgba(92, 255, 154, ${0.22 + opacity * 0.7})`;
+        context.strokeStyle = `rgba(237, 242, 237, ${0.22 + opacity * 0.72})`;
         context.lineWidth = 1 + depthPosition * 1.2;
         context.beginPath();
 
@@ -162,7 +162,7 @@ export function SpectrumWaterfall({
 
     function drawLabels(width: number, height: number): void {
       const fontSize = Math.max(8, Math.round(width / 42));
-      context.fillStyle = 'rgba(137, 255, 180, 0.88)';
+      context.fillStyle = 'rgba(237, 242, 237, 0.88)';
       context.font = `700 ${fontSize}px "Courier New", monospace`;
       context.textBaseline = 'top';
       context.textAlign = 'left';
@@ -222,4 +222,3 @@ export function SpectrumWaterfall({
     </section>
   );
 }
-
