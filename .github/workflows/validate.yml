@@ -74,5 +74,8 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Production build
-        run: npm run build
+      - name: TypeScript build
+        run: npx tsc -b
+
+      - name: Vite build
+        run: npx vite build
