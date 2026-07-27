@@ -25,7 +25,9 @@ const MAX_RENDER_HEIGHT = 720;
 const MAX_DEVICE_SCALE = 1.25;
 const MIN_FRAME_INTERVAL_MS = 32;
 const MAX_FRAME_INTERVAL_MS = 420;
-const MIN_RENDER_INTERVAL_MS = 14;
+// 45 fps is more than enough for interpolating the 0.4x module footage while avoiding
+// six independent 70+ fps canvas compositors when a full rack is active.
+const MIN_RENDER_INTERVAL_MS = 1000 / 45;
 const SEEK_DISCONTINUITY_SECONDS = 0.12;
 
 function drawCover(
@@ -111,8 +113,6 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
       const height = Math.max(2, Math.min(MAX_RENDER_HEIGHT, Math.round(rect.height * scale)));
       if (canvas.width === width && canvas.height === height && previous.width === width && current.width === width) return true;
 
-      // Resizing a canvas clears it. Keep the decoder visible underneath and rebuild all
-      // temporal buffers from the next valid frame rather than presenting a black buffer.
       canvas.width = width;
       canvas.height = height;
       previous.width = width;
@@ -150,7 +150,7 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
     };
 
     const snapshot = (now: number, mediaTime = video.currentTime): void => {
-      if (cancelled || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth <= 0 || video.videoHeight <= 0) return;
+      if (cancelled || document.hidden || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth <= 0 || video.videoHeight <= 0) return;
       if (!resizeBuffers() || !previousContext || !currentContext) return;
 
       const discontinuity = lastCapturedMediaTime >= 0 && mediaTime < lastCapturedMediaTime - SEEK_DISCONTINUITY_SECONDS;
@@ -181,10 +181,8 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
 
     const render = (now: number): void => {
       if (cancelled) return;
-      if (now - lastRenderAt < MIN_RENDER_INTERVAL_MS) {
-        animationHandle = requestAnimationFrame(render);
-        return;
-      }
+      animationHandle = requestAnimationFrame(render);
+      if (document.hidden || now - lastRenderAt < MIN_RENDER_INTERVAL_MS) return;
       lastRenderAt = now;
 
       if (haveFrame && canvas.width > 1 && canvas.height > 1) {
@@ -193,8 +191,6 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
         const height = canvas.height;
         const drift = Math.min(1.25, width * 0.00085);
 
-        // Never clear the visible canvas between layers. The previous frame is an opaque
-        // base and the current frame is composited over it, so there is no blank flash.
         output.setTransform(1, 0, 0, 1, 0, 0);
         output.globalCompositeOperation = 'copy';
         output.globalAlpha = 1;
@@ -205,7 +201,6 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
         output.globalAlpha = 1;
         canvas.dataset.ready = 'true';
       }
-      animationHandle = requestAnimationFrame(render);
     };
 
     const requestNextVideoFrame = (): void => {
@@ -218,7 +213,7 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
 
     const fallbackPoll = (now: number): void => {
       if (cancelled) return;
-      if (Math.abs(video.currentTime - lastVideoTime) > 0.0005) {
+      if (!document.hidden && Math.abs(video.currentTime - lastVideoTime) > 0.0005) {
         lastVideoTime = video.currentTime;
         snapshot(now, video.currentTime);
       }
