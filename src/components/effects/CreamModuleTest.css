@@ -3,22 +3,22 @@
 
 .effect-module {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.075), transparent 14%),
-    linear-gradient(145deg, #aaa99f 0%, #92938c 48%, #7d807a 100%) !important;
+    linear-gradient(180deg, rgba(255, 252, 235, 0.07), transparent 14%),
+    linear-gradient(145deg, #a39f91 0%, #8c897e 48%, #77756d 100%) !important;
   box-shadow:
-    0 10px 22px rgba(0, 0, 0, 0.38),
-    inset 0 1px rgba(255, 255, 245, 0.34),
-    inset 0 -1px rgba(36, 38, 35, 0.72) !important;
+    0 10px 22px rgba(0, 0, 0, 0.4),
+    inset 0 1px rgba(255, 250, 228, 0.34),
+    inset 0 -1px rgba(35, 34, 30, 0.76) !important;
 }
 
 .effect-module::after {
-  background: linear-gradient(90deg, transparent, rgba(246, 243, 224, 0.56), transparent) !important;
+  background: linear-gradient(90deg, transparent, rgba(247, 238, 207, 0.62), transparent) !important;
 }
 
 .effect-module:hover {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.095), transparent 15%),
-    linear-gradient(145deg, #b2b0a5 0%, #999a92 48%, #838680 100%) !important;
+    linear-gradient(180deg, rgba(255, 252, 235, 0.085), transparent 15%),
+    linear-gradient(145deg, #aaa596 0%, #918e82 48%, #7c7a71 100%) !important;
 }
 
 /* Keep the actual video/display wells dark so they read like screens mounted in the warm chassis. */
