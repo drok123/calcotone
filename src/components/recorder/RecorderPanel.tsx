@@ -129,8 +129,7 @@ export function RecorderPanel({
         placeholder="calcotone-sample"
       />
 
-      <div className="recorder-master-selector" role="group" aria-label="Recorder master mode">
-        <span>MASTER</span>
+      <div className="recorder-master-selector recorder-master-selector-buttons-only" role="group" aria-label="Recorder master mode">
         {(['raw', 'clean', 'loud'] as const).map((mode) => (
           <button
             key={mode}
