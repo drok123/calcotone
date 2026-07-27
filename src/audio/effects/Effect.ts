@@ -1,6 +1,10 @@
 import type { ParameterDefinition, ParameterState } from '../Parameter';
 import { normalizeParameter } from '../Parameter';
 import { BehaviorMemoryStage, type BehaviorMemoryProfile } from '../models/BehaviorMemoryStage';
+import { BBDStage } from '../models/BBDStage';
+import { TapeTransportStage } from '../models/TapeTransportStage';
+import { EarlyConverterStage } from '../models/EarlyConverterStage';
+import { SpringTankStage } from '../models/SpringTankStage';
 
 export interface Effect {
   readonly id: string;
@@ -33,6 +37,13 @@ export abstract class BaseEffect implements Effect {
   protected readonly wetGain: GainNode;
   protected readonly processedBus: GainNode;
   private readonly behaviorStage: BehaviorMemoryStage;
+  private readonly bbdStage: BBDStage;
+  private readonly tapeStage: TapeTransportStage;
+  private readonly converterStage: EarlyConverterStage;
+  // Instantiated as shared infrastructure but deliberately dormant until an Atmos
+  // algorithm explicitly requests spring mechanics. Do not smear spring behavior
+  // across generic room/plate/hall profiles.
+  private readonly springStage: SpringTankStage;
   private readonly wetDcBlock: BiquadFilterNode;
   private readonly wetLimiter: DynamicsCompressorNode;
 
@@ -56,6 +67,10 @@ export abstract class BaseEffect implements Effect {
     this.wetGain = context.createGain();
     this.processedBus = context.createGain();
     this.behaviorStage = new BehaviorMemoryStage(context);
+    this.bbdStage = new BBDStage(context);
+    this.tapeStage = new TapeTransportStage(context);
+    this.converterStage = new EarlyConverterStage(context);
+    this.springStage = new SpringTankStage(context);
     this.wetDcBlock = context.createBiquadFilter();
     this.wetLimiter = context.createDynamicsCompressor();
     this.bypassDryGain = context.createGain();
@@ -74,10 +89,22 @@ export abstract class BaseEffect implements Effect {
     this.wetLimiter.release.value = 0.06;
     this.input.connect(this.dryGain);
     this.dryGain.connect(this.processedBus);
-    this.wetGain.connect(this.behaviorStage.input);
+
+    // Shared hardware mechanism chain. Every stage is internally crossfaded to
+    // transparent bypass unless the behavior registry selects its mechanism.
+    this.wetGain.connect(this.bbdStage.input);
+    this.bbdStage.connect(this.tapeStage.input);
+    this.tapeStage.connect(this.converterStage.input);
+    this.converterStage.connect(this.springStage.input);
+    this.springStage.connect(this.behaviorStage.input);
     this.behaviorStage.connect(this.wetDcBlock);
     this.wetDcBlock.connect(this.wetLimiter);
     this.wetLimiter.connect(this.processedBus);
+
+    this.bbdStage.setEnabled(false);
+    this.tapeStage.setEnabled(false);
+    this.converterStage.setEnabled(false);
+    this.springStage.setEnabled(false);
 
     this.input.connect(this.bypassDryGain);
     this.processedBus.connect(this.bypassProcessedGain);
@@ -187,6 +214,29 @@ export abstract class BaseEffect implements Effect {
     color: number,
   ): void {
     this.behaviorStage.configure(profile, amount, motion, memory, color);
+
+    const bbd = profile === 'charge';
+    const tape = profile === 'magnetic' || profile === 'transport';
+    const converter = profile === 'converter';
+
+    this.bbdStage.setEnabled(bbd);
+    this.tapeStage.setEnabled(tape);
+    this.converterStage.setEnabled(converter);
+    // Spring requires an explicit spring algorithm; generic acoustic profiles remain unchanged.
+    this.springStage.setEnabled(false);
+
+    if (bbd) {
+      const virtualDelaySeconds = 0.008 + memory * 0.48;
+      this.bbdStage.configure(virtualDelaySeconds, amount, color, motion);
+    }
+    if (tape) {
+      const speed = Math.max(0, Math.min(1, 0.72 + color * 0.22 - motion * 0.08));
+      this.tapeStage.configure(speed, motion, color, amount);
+    }
+    if (converter) {
+      const bits = 9 + (1 - amount) * 5;
+      this.converterStage.configure(bits, color, amount);
+    }
   }
 
   public abstract setParameter(parameterId: string, value: number): void;
@@ -204,6 +254,10 @@ export abstract class BaseEffect implements Effect {
     this.dryGain.disconnect();
     this.wetGain.disconnect();
     this.processedBus.disconnect();
+    this.bbdStage.dispose();
+    this.tapeStage.dispose();
+    this.converterStage.dispose();
+    this.springStage.dispose();
     this.behaviorStage.dispose();
     this.wetDcBlock.disconnect();
     this.wetLimiter.disconnect();
