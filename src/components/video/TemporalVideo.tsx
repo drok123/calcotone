@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useRef } from 'react';
+import './TemporalVideo.css';
 
 interface TemporalVideoProps {
   src: string;
