@@ -54,8 +54,25 @@ export function useVisualEngine(
     let lastSample = 0;
     let lastReactPublish = 0;
     const sampleInterval = 1000 / Math.max(1, frameRate);
-    const reactInterval = 1000 / 20;
+    // Canvas/video visualizers consume the shared snapshot independently. React only
+    // needs a modest cadence for meters, labels and CSS feedback; lowering this from
+    // 20 Hz substantially reduces full-workstation reconciliation with no DSP impact.
+    const reactInterval = 1000 / 15;
     const data = new Uint8Array(analyser.frequencyBinCount);
+    const lowEnd = Math.floor(data.length * 0.12);
+    const midEnd = Math.floor(data.length * 0.48);
+
+    const average = (start: number, end: number) => {
+      let total = 0;
+      const safeEnd = Math.min(end, data.length);
+      for (let index = start; index < safeEnd; index += 1) total += data[index];
+      return safeEnd > start ? total / (safeEnd - start) / 255 : 0;
+    };
+
+    const smoothBand = (previous: number, next: number) => {
+      const amount = next > previous ? 0.48 : 0.20;
+      return previous + (next - previous) * amount;
+    };
 
     const render = (timestamp: number) => {
       frame = requestAnimationFrame(render);
@@ -63,24 +80,10 @@ export function useVisualEngine(
       lastSample = timestamp;
 
       analyser.getByteFrequencyData(data);
-      const average = (start: number, end: number) => {
-        let total = 0;
-        const safeEnd = Math.min(end, data.length);
-        for (let index = start; index < safeEnd; index += 1) total += data[index];
-        return safeEnd > start ? total / (safeEnd - start) / 255 : 0;
-      };
+      const rawLow = average(1, lowEnd);
+      const rawMid = average(lowEnd, midEnd);
+      const rawHigh = average(midEnd, data.length);
 
-      const rawLow = average(1, Math.floor(data.length * 0.12));
-      const rawMid = average(
-        Math.floor(data.length * 0.12),
-        Math.floor(data.length * 0.48)
-      );
-      const rawHigh = average(Math.floor(data.length * 0.48), data.length);
-
-      const smoothBand = (previous: number, next: number) => {
-        const amount = next > previous ? 0.48 : 0.20;
-        return previous + (next - previous) * amount;
-      };
       const low = smoothBand(smoothedBands.current.low, rawLow);
       const mid = smoothBand(smoothedBands.current.mid, rawMid);
       const high = smoothBand(smoothedBands.current.high, rawHigh);
@@ -103,8 +106,6 @@ export function useVisualEngine(
       };
       latestVisualAudioState = next;
 
-      // Canvas renderers read latestVisualAudioState directly at their own cadence.
-      // React only needs a lower-rate snapshot for lightweight CSS/video feedback.
       if (timestamp - lastReactPublish >= reactInterval) {
         lastReactPublish = timestamp;
         setState(next);
