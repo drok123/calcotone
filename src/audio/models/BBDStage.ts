@@ -23,6 +23,7 @@ export class BBDStage {
 
   private readonly context: AudioContext;
   private readonly bypass: GainNode;
+  private readonly processInput: GainNode;
   private readonly processed: GainNode;
   private readonly compander: CompanderStage;
   private readonly preEmphasis: BiquadFilterNode;
@@ -37,6 +38,7 @@ export class BBDStage {
     this.input = context.createGain();
     this.output = context.createGain();
     this.bypass = context.createGain();
+    this.processInput = context.createGain();
     this.processed = context.createGain();
     this.compander = new CompanderStage(context);
     this.preEmphasis = context.createBiquadFilter();
@@ -46,6 +48,7 @@ export class BBDStage {
     this.trim = context.createGain();
 
     this.bypass.gain.value = 1;
+    this.processInput.gain.value = 0;
     this.processed.gain.value = 0;
     this.preEmphasis.type = 'highshelf'; this.preEmphasis.frequency.value = 2400; this.preEmphasis.gain.value = 2;
     this.bucketLoss.type = 'lowpass'; this.bucketLoss.frequency.value = 6800; this.bucketLoss.Q.value = 0.42;
@@ -54,7 +57,7 @@ export class BBDStage {
     this.trim.gain.value = 0.96;
 
     this.input.connect(this.bypass); this.bypass.connect(this.output);
-    this.input.connect(this.compander.input); this.compander.connect(this.preEmphasis);
+    this.input.connect(this.processInput); this.processInput.connect(this.compander.input); this.compander.connect(this.preEmphasis);
     this.preEmphasis.connect(this.bucketLoss); this.bucketLoss.connect(this.clockShaper);
     this.clockShaper.connect(this.deEmphasis); this.deEmphasis.connect(this.trim);
     this.trim.connect(this.processed); this.processed.connect(this.output);
@@ -66,6 +69,7 @@ export class BBDStage {
   public setEnabled(enabled: boolean): void {
     const now = this.context.currentTime;
     this.bypass.gain.setTargetAtTime(enabled ? 0 : 1, now, 0.016);
+    this.processInput.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.016);
     this.processed.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.016);
   }
 
@@ -91,6 +95,6 @@ export class BBDStage {
 
   public dispose(): void {
     this.compander.dispose();
-    [this.input, this.output, this.bypass, this.processed, this.preEmphasis, this.bucketLoss, this.clockShaper, this.deEmphasis, this.trim].forEach((node) => node.disconnect());
+    [this.input, this.output, this.bypass, this.processInput, this.processed, this.preEmphasis, this.bucketLoss, this.clockShaper, this.deEmphasis, this.trim].forEach((node) => node.disconnect());
   }
 }
