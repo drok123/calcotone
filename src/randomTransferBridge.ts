@@ -1,5 +1,6 @@
 import { AudioEngine } from './audio/AudioEngine';
 import { beginViewportPerformanceHold } from './components/effects/viewportScheduler';
+import { randomizePressure } from './components/signal/pressureStore';
 import {
   beginRandomCapture,
   finishRandomCapture,
@@ -84,9 +85,11 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
     let parameters: Map<string, Map<string, number>>;
 
     try {
-      // Let React update the visual destination immediately while the capture shim prevents those
-      // same UI writes from hammering DSP. The actual audio commit is scheduled below.
+      // Let React update the six-module visual destination immediately while the capture shim prevents
+      // those same UI writes from hammering DSP. Pressure owns its own hardware-aware sweet spots and
+      // is randomized independently only when its ON switch is active.
       button.click();
+      randomizePressure();
     } catch (error) {
       replayButton = null;
       console.error('CALCOTONE RANDOM planning failed.', error);
