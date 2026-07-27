@@ -49,6 +49,33 @@
   border-top-color: rgba(244, 239, 220, 0.58) !important;
 }
 
+/* Module signal rails now use the same cream hardware finish as the chassis controls. */
+.rail-track {
+  color: var(--cream-text) !important;
+  border-top-color: rgba(255, 250, 230, 0.46) !important;
+  border-bottom-color: rgba(56, 52, 45, 0.74) !important;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.06), transparent 15%, transparent 85%, rgba(255,255,255,.035)),
+    linear-gradient(180deg, var(--cream-control-top), var(--cream-control-mid) 58%, var(--cream-control-bottom)) !important;
+  box-shadow:
+    inset 0 1px rgba(255, 250, 230, 0.28),
+    inset 0 -1px rgba(40, 38, 34, 0.5),
+    0 2px 5px rgba(0,0,0,.24) !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,.72);
+}
+
+.rail-track::after {
+  opacity: .42 !important;
+  background: linear-gradient(90deg, transparent, #f1ead5 16%, #f1ead5 84%, transparent) !important;
+}
+
+.rail-id,
+.rail-track strong,
+.rail-track button,
+.rail-track button:hover {
+  color: var(--cream-text) !important;
+}
+
 /* Utility controls: RANDOM / SIGNAL RANDOM / EXPLAIN / LAYOUT / DSP. */
 .profiler-toggle,
 .layout-editor-toggle,
