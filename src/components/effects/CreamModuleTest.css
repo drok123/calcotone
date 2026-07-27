@@ -109,6 +109,34 @@
     inset 0 1px rgba(255,255,255,.025) !important;
 }
 
+/* I/O spectrum housing and engine readout tiles use the same cream hardware finish. */
+.spectrum-unit,
+.engine-info-grid > div {
+  color: var(--cream-text) !important;
+  border-color: var(--cream-outline) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 252, 235, 0.10), transparent 42%),
+    linear-gradient(180deg, var(--cream-control-top), var(--cream-control-mid) 58%, var(--cream-control-bottom)) !important;
+  box-shadow:
+    0 3px 7px rgba(0, 0, 0, 0.30),
+    inset 0 1px rgba(255, 250, 230, 0.28),
+    inset 0 -1px rgba(40, 38, 34, 0.5) !important;
+}
+
+.spectrum-header strong,
+.spectrum-status,
+.engine-info-grid span,
+.engine-info-grid strong,
+.engine-info-grid strong.active {
+  color: var(--cream-text) !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,.72) !important;
+}
+
+/* Keep the analyzer itself readable like a dark glass display mounted in the cream housing. */
+.spectrum-screen {
+  border-color: rgba(255, 249, 226, 0.72) !important;
+}
+
 /* REC / SAVE / CLEAR are intentionally all cream hardware controls. */
 .record-start,
 .record-stop,
