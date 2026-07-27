@@ -25,9 +25,9 @@ const MAX_RENDER_HEIGHT = 720;
 const MAX_DEVICE_SCALE = 1.25;
 const MIN_FRAME_INTERVAL_MS = 32;
 const MAX_FRAME_INTERVAL_MS = 420;
-// 45 fps is more than enough for interpolating the 0.4x module footage while avoiding
-// six independent 70+ fps canvas compositors when a full rack is active.
-const MIN_RENDER_INTERVAL_MS = 1000 / 45;
+// 30 fps remains smooth for 0.4x interpolated module footage while keeping six
+// simultaneous canvas compositors from competing with realtime audio.
+const MIN_RENDER_INTERVAL_MS = 1000 / 30;
 const SEEK_DISCONTINUITY_SECONDS = 0.12;
 
 function drawCover(
@@ -57,9 +57,8 @@ function easeFrameBlend(value: number): number {
  *
  * Browser playbackRate can only hold decoded frames longer; it cannot invent motion
  * between them. This component captures each newly presented decoder frame and blends
- * from the previous frame to the new one at display refresh rate. The tiny opposing
- * sub-pixel drift on the two layers hides cadence edges without requiring optical-flow
- * inference or extra video decoders.
+ * from the previous frame to the new one. The tiny opposing sub-pixel drift on the two
+ * layers hides cadence edges without requiring optical-flow inference or extra decoders.
  */
 export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(function TemporalVideo({
   src,
@@ -181,8 +180,10 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
 
     const render = (now: number): void => {
       if (cancelled) return;
-      animationHandle = requestAnimationFrame(render);
-      if (document.hidden || now - lastRenderAt < MIN_RENDER_INTERVAL_MS) return;
+      if (document.hidden || now - lastRenderAt < MIN_RENDER_INTERVAL_MS) {
+        animationHandle = requestAnimationFrame(render);
+        return;
+      }
       lastRenderAt = now;
 
       if (haveFrame && canvas.width > 1 && canvas.height > 1) {
@@ -201,6 +202,7 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
         output.globalAlpha = 1;
         canvas.dataset.ready = 'true';
       }
+      animationHandle = requestAnimationFrame(render);
     };
 
     const requestNextVideoFrame = (): void => {
