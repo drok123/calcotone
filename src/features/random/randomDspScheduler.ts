@@ -3,15 +3,16 @@ import type { Effect } from '../../audio/effects/Effect';
 import { applyRandomBatch } from '../../perf/randomBatch';
 
 const RANDOM_DSP_STAGGER_MS = 18;
-const RANDOM_DISCRETE_SETTLE_MS = 56;
-const RANDOM_TOPOLOGY_SETTLE_MS = 118;
-// BaseEffect's wet/dry control uses a 25 ms setTargetAtTime time constant. A 48 ms wait
-// still leaves roughly 15% of the previous wet path audible, which is enough for a topology
-// mutation to leak through as a tiny click. Give the exponential ramp enough time to become
-// effectively silent, then hold a short dead window before touching the graph.
+const RANDOM_DISCRETE_SETTLE_MS = 54;
 const RANDOM_DRY_RAMP_MS = 126;
-const RANDOM_SILENT_GUARD_MS = 18;
-const RANDOM_WET_RECOVERY_MS = 58;
+const RANDOM_SILENT_HOLD_MS = 18;
+const RANDOM_WET_RECOVERY_MS = 48;
+// Keep RANDOM's transaction alive until topology-heavy effects have completed their
+// own internal network crossfades. Halo currently fades for 0.52 s and Atmos for
+// 0.82 s; the margins below also give retire/disposal timers room to run before a
+// user can launch another topology churn pass.
+const RANDOM_HALO_TOPOLOGY_SETTLE_MS = 620;
+const RANDOM_ATMOS_TOPOLOGY_SETTLE_MS = 940;
 const RANDOM_BATCH_ORDER = [
   'saturation',
   'chorus',
@@ -46,8 +47,10 @@ function discreteParameterFor(effectId: string): string | null {
   }
 }
 
-function isTopologySensitive(effectId: string): boolean {
-  return effectId === 'delay' || effectId === 'reverb';
+function topologySettleMs(effectId: string): number {
+  if (effectId === 'delay') return RANDOM_HALO_TOPOLOGY_SETTLE_MS;
+  if (effectId === 'reverb') return RANDOM_ATMOS_TOPOLOGY_SETTLE_MS;
+  return RANDOM_DISCRETE_SETTLE_MS;
 }
 
 function discreteTargetChanges(
@@ -98,30 +101,30 @@ async function commitOneBatch(
   }
 
   // A machine/algorithm change is an audio transaction, not just a parameter write.
-  // First crossfade this effect to its dry path while the old network is still healthy.
+  // First crossfade this effect fully to its dry path while the old network is still healthy.
   const destinationMix = targetMix(effect, targets);
   setWetDry(effect, 0);
   await sleep(RANDOM_DRY_RAMP_MS);
   if (!engineIsUsable()) return;
 
-  // Deliberately leave a tiny fully-dry guard window. This prevents node creation/disposal,
-  // oscillator startup, worklet activation, and feedback-network rewiring from landing on the
-  // trailing edge of the wet ramp where even a few percent of the old signal would expose it.
-  await sleep(RANDOM_SILENT_GUARD_MS);
+  // Give the wet path a genuinely silent floor before allocating/switching topology.
+  await sleep(RANDOM_SILENT_HOLD_MS);
   if (!engineIsUsable()) return;
 
   // Keep the effect dry while the destination machine and all of its parameters are installed.
   // applyRandomBatch normally writes Mix too, so force its transaction copy to zero and restore
-  // the real destination only after the new network has initialized.
+  // the real destination only after the new network has completed its internal transition.
   const stagedTargets = new Map(targets);
   if (targets.has('mix') || effect.getParameterValue('mix') !== undefined) stagedTargets.set('mix', 0);
   applyRandomBatch(effect, stagedTargets);
 
-  await sleep(isTopologySensitive(effectId) ? RANDOM_TOPOLOGY_SETTLE_MS : RANDOM_DISCRETE_SETTLE_MS);
+  // Crucially, Halo/Atmos remain inside the RANDOM transaction until their own network
+  // crossfades finish. This bounds retiring-network pressure under repeated RANDOM abuse.
+  await sleep(topologySettleMs(effectId));
   if (!engineIsUsable()) return;
 
-  // Restore the randomized wet/dry target through the effect's normal smoothing. By this point
-  // every discrete graph mutation happened while that module was effectively inaudible.
+  // Restore the randomized wet/dry target through the effect's normal smoothing only after
+  // topology construction/crossfade has finished.
   effect.setParameter('mix', destinationMix);
   await sleep(RANDOM_WET_RECOVERY_MS);
 }
@@ -133,7 +136,7 @@ export function flushCapturedRandom(
 ): Promise<void> {
   // RANDOM is planned atomically but committed as a sequence of click-safe effect transactions.
   // Discrete machine changes temporarily crossfade only that effect to dry, install the new DSP,
-  // then recover its destination mix. Pure parameter changes retain their normal smoothing.
+  // wait for any topology transition to complete, then recover its destination mix.
   const committed = new Set<string>();
   let chain = Promise.resolve();
 
@@ -149,5 +152,7 @@ export function flushCapturedRandom(
     chain = chain.then(() => commitOneBatch(engine, effectId, values, engineIsUsable));
   }
 
+  // The bridge holds RANDOM busy until this promise resolves, so repeated button mashing can no
+  // longer outrun Halo/Atmos network retirement and accumulate topology churn.
   return chain;
 }
