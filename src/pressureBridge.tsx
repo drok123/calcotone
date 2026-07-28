@@ -174,14 +174,17 @@ function onPressureChange(event: Event): void {
   const detail = (event as CustomEvent<ReturnType<typeof getPressureState>>).detail ?? getPressureState();
 
   if (activeEngine) {
+    const wasEnabled = processors.has(activeEngine);
     if (detail.enabled) {
       const pressure = createPressure(activeEngine);
       pressure?.setState(detail);
-      if (pressure) {
+      // Topology only changes at the power boundary. Drive, Time, Character,
+      // Mix, machine and style updates stay inside the existing processor.
+      if (pressure && !wasEnabled) {
         restoreMasterChain(activeEngine);
         applyPostRackPressure(activeEngine);
       }
-    } else {
+    } else if (wasEnabled) {
       disablePressure(activeEngine);
     }
   }
