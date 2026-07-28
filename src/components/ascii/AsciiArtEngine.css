@@ -1,0 +1,64 @@
+.ascii-art-engine {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #050706;
+  opacity: 0.94;
+  transition: opacity 240ms ease, filter 240ms ease;
+  image-rendering: auto;
+}
+
+.ascii-art-engine.is-standby {
+  opacity: 0.34;
+  filter: saturate(0.45) brightness(0.72);
+}
+
+.ascii-art-engine.is-active {
+  filter: saturate(0.92) contrast(1.08);
+}
+
+.dsp-viewport.ascii-viewport::after,
+.xy-visual-stack.ascii-only::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.018) 0,
+      rgba(255, 255, 255, 0.018) 1px,
+      transparent 1px,
+      transparent 4px
+    ),
+    radial-gradient(circle at 50% 48%, transparent 48%, rgba(0, 0, 0, 0.38) 100%);
+  mix-blend-mode: screen;
+  opacity: 0.62;
+}
+
+.dsp-viewport.ascii-viewport.is-reconfiguring .ascii-art-engine {
+  animation: ascii-reconfigure 360ms steps(4, end);
+}
+
+.xy-visual-stack.ascii-only {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #050706;
+}
+
+@keyframes ascii-reconfigure {
+  0% { opacity: 0.22; transform: translateY(-1px); }
+  45% { opacity: 0.82; transform: translateY(1px); }
+  100% { opacity: 0.94; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ascii-art-engine,
+  .dsp-viewport.ascii-viewport.is-reconfiguring .ascii-art-engine {
+    transition: none;
+    animation: none;
+  }
+}

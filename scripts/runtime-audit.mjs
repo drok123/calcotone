@@ -33,7 +33,7 @@ const reverb = read('src/audio/effects/Reverb.ts');
 const chorus = read('src/audio/effects/Chorus.ts');
 const grain = read('src/audio/effects/Bitcrusher.ts');
 const viewport = read('src/components/effects/ModuleViewport.tsx');
-const videoColor = read('src/components/effects/VideoColorStability.css');
+const ascii = read('src/components/ascii/AsciiArtEngine.tsx');
 const media = read('src/audio/effects/Media.ts');
 const ember = read('src/audio/effects/Saturation.ts');
 const main = read('src/main.tsx');
@@ -61,10 +61,12 @@ requireText(randomCapture, 'installRandomCapture', 'RANDOM capture installation'
 requireText(randomCapture, 'beginRandomCapture', 'RANDOM capture begin');
 requireText(randomCapture, 'finishRandomCapture', 'RANDOM capture finish');
 requireText(randomDspScheduler, 'RANDOM_DSP_STAGGER_MS = 18', 'RANDOM DSP staggering');
-requireText(randomDspScheduler, 'RANDOM_TOPOLOGY_SETTLE_MS = 76', 'RANDOM topology settle window');
+requireText(randomDspScheduler, 'RANDOM_DISCRETE_SETTLE_MS = 54', 'RANDOM discrete settle window');
+requireText(randomDspScheduler, 'RANDOM_HALO_TOPOLOGY_SETTLE_MS = 620', 'RANDOM Halo topology settle window');
+requireText(randomDspScheduler, 'RANDOM_ATMOS_TOPOLOGY_SETTLE_MS = 940', 'RANDOM Atmos topology settle window');
 requireText(randomDspScheduler, 'applyRandomBatch(effect, targets);', 'RANDOM single destination commit');
 requireText(randomDspScheduler, 'chain = chain.then(() => commitOneBatch(engine, effectId, values, engineIsUsable))', 'RANDOM serialized module commit');
-requireText(randomDspScheduler, 'The UI already owns the visible 165 ms knob animation', 'RANDOM UI/DSP decoupling');
+requireText(randomDspScheduler, 'Pure parameter moves keep the existing smoothed DSP path', 'RANDOM parameter/topology decoupling');
 requireText(randomBridge, "document.documentElement.classList.toggle('random-morphing', busy)", 'RANDOM visual morph state');
 requireText(knob, 'transform 165ms cubic-bezier(0.2, 0.82, 0.22, 1)', 'RANDOM-friendly knob travel');
 forbidText(randomRuntime, 'RANDOM_MORPH_STEPS', 'Removed repeated RANDOM DSP morph');
@@ -72,8 +74,8 @@ forbidText(randomRuntime, 'Promise.all(orderedJobs)', 'Removed simultaneous RAND
 forbidText(randomRuntime, 'RANDOM_TOPOLOGY_SAFE_MIX', 'Removed RANDOM signal-collapse guard');
 forbidText(randomRuntime, "new Map([['mix', RANDOM_TOPOLOGY_SAFE_MIX]])", 'Removed RANDOM forced near-dry dip');
 forbidText(randomRuntime, 'for (const entry of active) engine.setEffectBypassed(entry.id, true)', 'RANDOM bypass-all burst');
-requireText(randomDspScheduler, "effectId === 'delay' || effectId === 'reverb'", 'RANDOM topology-sensitive modes');
-requireText(randomDspScheduler, 'Musical RANDOM never changes module power', 'RANDOM power-layout preservation');
+requireText(randomDspScheduler, "if (effectId === 'delay') return RANDOM_HALO_TOPOLOGY_SETTLE_MS", 'RANDOM Halo topology wait');
+requireText(randomDspScheduler, "if (effectId === 'reverb') return RANDOM_ATMOS_TOPOLOGY_SETTLE_MS", 'RANDOM Atmos topology wait');
 forbidText(randomRuntime, 'directSetEffectBypassed.call(engine, effectId, bypassed)', 'RANDOM power mutation');
 
 // Global engine quality should become more transparent as quality increases, and hidden diagnostics
@@ -151,14 +153,18 @@ requireText(reverb, 'this.input.disconnect(entry.network.input)', 'Atmos disconn
 requireText(ember, 'const MAX_CURVE_CACHE = 192', 'Ember bounded curve cache');
 requireText(ember, 'if (curveCache.size >= MAX_CURVE_CACHE)', 'Ember curve cache eviction');
 
-// Video identity is native and color-only: only Rotary keeps the alternate Drift footage.
+// Visual identity is deterministic ASCII. Every surface shares the budgeted scheduler,
+ // sleeps while offscreen, and never owns a decoder or animation loop.
 forbidText(main, "import './videoStabilityPatch'", 'Removed video repair monkey patch');
-requireText(main, "import './components/effects/VideoColorStability.css'", 'Video color stability stylesheet load');
-requireText(viewport, "return (module.driftMode ?? 'chorus') === 'rotary' ? 'drift-alt' : 'drift';", 'Native stable Drift video mapping');
-forbidText(viewport, "['liquid', 'orbit', 'doppler', 'rotary'].includes(mode) ? 'drift-alt' : 'drift'", 'Old unstable Drift video mapping');
-forbidText(videoColor, 'brightness(', 'Video brightness modulation');
-forbidText(videoColor, 'contrast(', 'Video contrast modulation');
-requireText(videoColor, '.module-video-transition-veil { display: none !important; }', 'Video transition veil disabled');
+forbidText(main, "import './components/effects/VideoColorStability.css'", 'Retired video stylesheet');
+requireText(viewport, '<AsciiArtEngine kind="module" module={module}', 'Module ASCII wiring');
+requireText(ascii, 'subscribeViewportAnimation(render)', 'ASCII shared scheduler');
+requireText(ascii, 'IntersectionObserver', 'ASCII offscreen suspension');
+requireText(ascii, '1000 / 18', 'ASCII bounded active cadence');
+requireText(ascii, 'Math.min(1.35, window.devicePixelRatio', 'ASCII pixel-density cap');
+forbidText(ascii, 'requestAnimationFrame(', 'Independent ASCII animation loop');
+forbidText(viewport, '<video', 'Module decoder');
+forbidText(viewport, '.mp4', 'Module video payload');
 
 // Visual scheduling must stay allocation-conscious and HMR-safe.
 requireText(scheduler, 'let callbackSnapshot: ViewportRenderCallback[] = []', 'Viewport stable callback snapshot');

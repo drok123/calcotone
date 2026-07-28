@@ -1,0 +1,120 @@
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { extname, resolve } from 'node:path';
+
+const root = process.cwd();
+const failures = [];
+const read = (relative) => {
+  const file = resolve(root, relative);
+  if (!existsSync(file)) { failures.push(`Missing required file: ${relative}`); return ''; }
+  return readFileSync(file, 'utf8');
+};
+const requireText = (source, needle, label) => {
+  if (!source.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
+};
+const forbidText = (source, needle, label) => {
+  if (source.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`);
+};
+
+const engine = read('src/components/ascii/AsciiArtEngine.tsx');
+const viewport = read('src/components/effects/ModuleViewport.tsx');
+const field = read('src/components/motion/XYSignalField.tsx');
+const scheduler = read('src/components/effects/viewportScheduler.ts');
+
+const effectFiles = [
+  ['saturation', 'src/audio/effects/Saturation.ts', 'EMBER_MODE_ORDER'],
+  ['chorus', 'src/audio/effects/Chorus.ts', 'DRIFT_MODE_ORDER'],
+  ['delay', 'src/audio/effects/Delay.ts', 'DELAY_ALGORITHM_ORDER'],
+  ['reverb', 'src/audio/effects/Reverb.ts', 'REVERB_ALGORITHM_ORDER'],
+  ['bitcrusher', 'src/audio/effects/Bitcrusher.ts', 'GRAIN_MODE_ORDER'],
+  ['media', 'src/audio/effects/Media.ts', 'MEDIA_MODE_ORDER'],
+];
+
+function hashAsciiScene(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+const identities = new Map();
+let dropdownModeCount = 0;
+for (const [moduleId, relative, orderName] of effectFiles) {
+  const source = read(relative);
+  const match = source.match(new RegExp(`export const ${orderName}[^=]*=\\s*\\[([\\s\\S]*?)\\];`));
+  if (!match) { failures.push(`Cannot parse ${orderName}`); continue; }
+  const modes = [...match[1].matchAll(/['"]([^'"]+)['"]/g)].map((item) => item[1]);
+  dropdownModeCount += modes.length;
+  for (const mode of modes) {
+    const key = `${moduleId}:${mode}`;
+    const seed = hashAsciiScene(key);
+    const collision = identities.get(seed);
+    if (collision) failures.push(`ASCII identity collision: ${collision} and ${key}`);
+    identities.set(seed, key);
+  }
+}
+if (dropdownModeCount !== 79) {
+  failures.push(`Expected 79 dropdown ASCII identities; found ${dropdownModeCount}`);
+}
+
+requireText(engine, 'export function moduleModeKey', 'Exact module/mode identity');
+requireText(engine, 'return `${module.id}:${moduleMode(module)}`', 'Module-qualified dropdown key');
+requireText(engine, 'hashAsciiScene(key)', 'Deterministic per-mode seed');
+for (const moduleId of ['saturation', 'chorus', 'delay', 'reverb', 'bitcrusher', 'media']) {
+  requireText(engine, `case '${moduleId}'`, `${moduleId} ASCII composition`);
+}
+for (const pressureMode of ['fet', 'opto', 'varimu', 'vca']) {
+  requireText(engine, `case '${pressureMode}'`, `Pressure ${pressureMode} ASCII composition`);
+}
+requireText(engine, 'subscribeViewportAnimation(render)', 'Shared ASCII scheduler');
+requireText(engine, 'IntersectionObserver', 'Offscreen ASCII suspension');
+requireText(engine, 'Math.min(1.35, window.devicePixelRatio', 'Portable canvas pixel cap');
+requireText(engine, '1000 / 18', 'Low-cost idle ASCII cadence');
+forbidText(engine, 'requestAnimationFrame(', 'Per-surface animation loop');
+forbidText(engine, 'Math.random()', 'Nondeterministic ASCII art');
+requireText(viewport, '<AsciiArtEngine kind="module"', 'Module ASCII renderer');
+requireText(field, 'kind="landscape"', 'XY ASCII landscape renderer');
+requireText(scheduler, 'const FRAME_BUDGET_MS = 7.5', 'Shared visual frame budget');
+
+const retired = [
+  'src/components/video/TemporalVideo.tsx',
+  'src/components/video/TemporalVideo.css',
+  'src/components/motion/VideoLandscapeEngine.tsx',
+  'src/components/motion/VideoLandscapeEngine.css',
+  'src/components/motion/VideoLandscapeCatalog.ts',
+  'src/components/effects/ModuleViewportVideo.css',
+  'src/components/effects/VideoColorStability.css',
+  'build/dreamFieldCompositionTransform.ts',
+  'public/visuals/ember.mp4',
+  'public/visuals/drift.mp4',
+  'public/visuals/drift-alt.mp4',
+  'public/visuals/halo.mp4',
+  'public/visuals/artifact.mp4',
+  'public/visuals/atmos.mp4',
+  'public/visuals/grain.mp4',
+];
+for (const relative of retired) {
+  if (existsSync(resolve(root, relative))) failures.push(`Retired decoder path still exists: ${relative}`);
+}
+
+function collectSource(directory) {
+  const entries = readdirSync(resolve(root, directory), { withFileTypes: true });
+  return entries.flatMap((entry) => {
+    const relative = `${directory}/${entry.name}`;
+    if (entry.isDirectory()) return collectSource(relative);
+    return ['.ts', '.tsx', '.css'].includes(extname(entry.name)) ? [relative] : [];
+  });
+}
+const runtimeSource = collectSource('src').map((relative) => read(relative)).join('\n');
+for (const token of ['<video', 'TemporalVideo', 'requestVideoFrameCallback', 'VideoLandscapeEngine', '.mp4']) {
+  forbidText(runtimeSource, token, 'Decoder-free runtime');
+}
+
+if (failures.length) {
+  console.error('\nCALCOTONE ASCII landscape audit failed:\n');
+  for (const failure of failures) console.error(` - ${failure}`);
+  console.error('');
+  process.exit(1);
+}
+console.log(`CALCOTONE ASCII landscape audit passed (${dropdownModeCount} deterministic dropdown identities; zero decoders).`);

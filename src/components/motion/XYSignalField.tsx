@@ -1,45 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ModuleState, XYAssignment } from '../../ui/types';
 import type { SignalLabState } from '../../audio/SignalLab';
-import { getEffectiveMotionValue } from '../../ui/motion';
-import { getLatestVisualAudioState } from '../../visual/VisualEngine';
-import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
-import { DreamFieldEngine } from './DreamFieldEngine';
-import { drawSignalFieldArt } from './SignalFieldArt';
-import { VideoLandscapeEngine } from './VideoLandscapeEngine';
-import './DreamField.css';
-
-const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
-
-function visualEnergy(module: ModuleState): number {
-  const value = (id: string, fallback = 0) => module.parameters.find((parameter) => parameter.id === id)?.value ?? fallback;
-  const mix = value('mix', 0);
-  if (mix <= 0) return 0;
-  let character = 0.5;
-  switch (module.id) {
-    case 'saturation': character = value('drive') * 0.55 + value('heat') * 0.30 + value('character') * 0.15; break;
-    case 'chorus': character = value('depth') * 0.42 + value('motion') * 0.33 + value('spread') * 0.25; break;
-    case 'delay': character = value('feedback') * 0.46 + value('time') * 0.24 + value('character') * 0.18 + value('width') * 0.12; break;
-    case 'reverb': character = value('size') * 0.34 + value('diffusion') * 0.28 + value('decay') * 0.24 + value('motion') * 0.14; break;
-    case 'bitcrusher': character = value('chaos') * 0.40 + value('density') * 0.25 + value('bloom') * 0.22 + (1 - value('bits', 1)) * 0.13; break;
-    case 'media': character = value('wear') * 0.40 + value('wow') * 0.28 + value('noise') * 0.18 + (1 - value('tone', 0.5)) * 0.14; break;
-  }
-  return clamp01(Math.sqrt(mix) * (0.52 + clamp01(character) * 0.48));
-}
-
-function modulesForDreamEngine(modules: ModuleState[], assignments: XYAssignment[], position: { x: number; y: number }): ModuleState[] {
-  const assignmentByTarget = new Map(assignments.map((assignment) => [assignment.target, assignment]));
-  return modules.map((module) => {
-    const effectiveParameters = module.parameters.map((parameter) => {
-      const assignment = assignmentByTarget.get(`${module.id}.${parameter.id}`);
-      return assignment ? { ...parameter, value: getEffectiveMotionValue(parameter.value, assignment, position) } : parameter;
-    });
-    const effectiveModule: ModuleState = { ...module, parameters: effectiveParameters };
-    if (!module.enabled || !module.available) return effectiveModule;
-    const energy = visualEnergy(effectiveModule);
-    return { ...effectiveModule, parameters: effectiveParameters.map((parameter) => parameter.id === 'mix' ? { ...parameter, value: energy } : parameter) };
-  });
-}
+import type { ModuleState, XYAssignment } from '../../ui/types';
+import { AsciiArtEngine } from '../ascii/AsciiArtEngine';
 
 export function XYSignalField({ modules, assignments, position, dragging, signalLab }: {
   modules: ModuleState[];
@@ -48,82 +9,17 @@ export function XYSignalField({ modules, assignments, position, dragging, signal
   dragging: boolean;
   signalLab?: SignalLabState;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const modulesRef = useRef(modules);
-  const assignmentsRef = useRef(assignments);
-  const positionRef = useRef(position);
-  const draggingRef = useRef(dragging);
-  const signalLabRef = useRef(signalLab);
-  const videoAvailableRef = useRef(false);
-  const [videoAvailable, setVideoAvailable] = useState(false);
-
-  modulesRef.current = modules;
-  assignmentsRef.current = assignments;
-  positionRef.current = position;
-  draggingRef.current = dragging;
-  signalLabRef.current = signalLab;
-
-  const handleVideoAvailability = useCallback((available: boolean) => {
-    videoAvailableRef.current = available;
-    setVideoAvailable(available);
-  }, []);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const context = canvas.getContext('2d', { alpha: true });
-    if (!context) return;
-    const engine = new DreamFieldEngine();
-    let width = 1, height = 1;
-    let dpr = Math.min(1.75, window.devicePixelRatio || 1);
-    let faulted = false;
-    let visualModuleSource: ModuleState[] | null = null;
-    let visualAssignmentSource: XYAssignment[] | null = null;
-    let visualX = Number.NaN, visualY = Number.NaN;
-    let visualModules = modulesForDreamEngine(modulesRef.current, assignmentsRef.current, positionRef.current);
-
-    const getVisualModules = () => {
-      const nextPosition = positionRef.current;
-      if (visualModuleSource !== modulesRef.current || visualAssignmentSource !== assignmentsRef.current || visualX !== nextPosition.x || visualY !== nextPosition.y) {
-        visualModuleSource = modulesRef.current; visualAssignmentSource = assignmentsRef.current;
-        visualX = nextPosition.x; visualY = nextPosition.y;
-        visualModules = modulesForDreamEngine(modulesRef.current, assignmentsRef.current, nextPosition);
-      }
-      return visualModules;
-    };
-
-    const resize = () => {
-      const bounds = canvas.getBoundingClientRect(); width = Math.max(1, bounds.width); height = Math.max(1, bounds.height);
-      dpr = Math.min(1.75, window.devicePixelRatio || 1);
-      const pixelWidth = Math.max(1, Math.round(width * dpr)); const pixelHeight = Math.max(1, Math.round(height * dpr));
-      if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) { canvas.width = pixelWidth; canvas.height = pixelHeight; }
-      engine.resize(width, height);
-    };
-
-    resize();
-    const observer = new ResizeObserver(resize); observer.observe(canvas);
-    const drawFault = () => {
-      context.setTransform(dpr, 0, 0, dpr, 0, 0); context.clearRect(0, 0, width, height);
-      context.fillStyle = 'rgba(10, 3, 3, 0.96)'; context.fillRect(0, 0, width, height);
-    };
-    const render: ViewportRenderCallback = (stamp) => {
-      // Video worlds are the primary art system. Keep Dream as a zero-cost fallback while video is healthy.
-      if (videoAvailableRef.current) return;
-      if (faulted) { drawFault(); return; }
-      context.setTransform(dpr, 0, 0, dpr, 0, 0);
-      try {
-        const visualAudio = getLatestVisualAudioState(); const effectiveModules = getVisualModules();
-        engine.render(context, { modules: effectiveModules, assignments: assignmentsRef.current, x: positionRef.current.x / 100, y: positionRef.current.y / 100, dragging: draggingRef.current, time: stamp / 1000, audio: visualAudio });
-        const signal = signalLabRef.current;
-        if (signal?.enabled) drawSignalFieldArt(context, width, height, { state: signal, modules: effectiveModules, x: positionRef.current.x / 100, y: positionRef.current.y / 100, time: stamp / 1000, audio: visualAudio });
-      } catch (error) { faulted = true; console.error('CALCOTONE Dream Engine render failed', error); drawFault(); }
-    };
-    const unsubscribe = subscribeViewportAnimation(render);
-    return () => { unsubscribe(); observer.disconnect(); };
-  }, []);
-
-  return <div className={`xy-visual-stack ${videoAvailable ? 'has-video-world' : 'uses-dream-fallback'}`}>
-    <VideoLandscapeEngine modules={modules} position={position} dragging={dragging} signalLab={signalLab} onAvailabilityChange={handleVideoAvailability} />
-    <canvas ref={canvasRef} className="xy-signal-field xy-dream-fallback" aria-hidden="true" />
-  </div>;
+  return (
+    <div className="xy-visual-stack ascii-only">
+      <AsciiArtEngine
+        kind="landscape"
+        modules={modules}
+        position={position}
+        dragging={dragging}
+        pressure={signalLab}
+        patchCount={assignments.length}
+        className="xy-signal-field"
+      />
+    </div>
+  );
 }
