@@ -5,8 +5,8 @@ import type {
   RefObject,
 } from 'react';
 import type { ModuleState, MotionCurve, MotionSmoothing, XYAssignment } from '../../ui/types';
-import type { SignalLabState } from '../../audio/SignalLab';
 import { getEffectiveMotionValue } from '../../ui/motion';
+import { usePressureState } from '../signal/pressureStore';
 import { XYSignalField } from './XYSignalField';
 import './MotionPad.css';
 import './UiPolish.css';
@@ -19,14 +19,14 @@ export interface MotionPadProps {
   dragging: boolean;
   patchActive: boolean;
   hoverAxis: 'x' | 'y' | null;
-  signalLab?: SignalLabState;
   onDraggingChange: (dragging: boolean) => void;
   onPadPointer: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onDisconnect: (target: string) => void;
   onRouteChange: (id: string, patch: Partial<Omit<XYAssignment, 'id' | 'target'>>) => void;
 }
 
-export function MotionPad({ padRef, modules, assignments, position, dragging, patchActive, hoverAxis, signalLab, onDraggingChange, onPadPointer, onDisconnect, onRouteChange }: MotionPadProps) {
+export function MotionPad({ padRef, modules, assignments, position, dragging, patchActive, hoverAxis, onDraggingChange, onPadPointer, onDisconnect, onRouteChange }: MotionPadProps) {
+  const signalLab = usePressureState();
   const xRoutes = assignments.filter((assignment) => assignment.axis === 'x');
   const yRoutes = assignments.filter((assignment) => assignment.axis === 'y');
   const padStyle = { '--pad-x': `${position.x}%`, '--pad-y': `${100 - position.y}%` } as CSSProperties;
@@ -42,7 +42,7 @@ export function MotionPad({ padRef, modules, assignments, position, dragging, pa
         <div className="dream-reticle horizontal" aria-hidden="true" /><div className="dream-reticle vertical" aria-hidden="true" />
         <div className="dream-position-guide x" aria-hidden="true" /><div className="dream-position-guide y" aria-hidden="true" /><div className="dream-origin" aria-hidden="true" />
         <div className="xy-cursor dream-cursor" style={{ '--x': `${position.x}%`, '--y': `${100 - position.y}%` } as CSSProperties} aria-hidden="true" />
-        <div className="dream-hud" aria-hidden="true"><span>DREAM FIELD</span><strong>X {Math.round(position.x).toString().padStart(3, '0')}</strong><strong>Y {Math.round(position.y).toString().padStart(3, '0')}</strong><em>{signalLab?.enabled ? `SIGNAL · ${signalLab.mode.toUpperCase()}` : assignments.length ? `X${xRoutes.length} · Y${yRoutes.length}` : 'UNPATCHED'}</em></div>
+        <div className="dream-hud" aria-hidden="true"><span>DREAM FIELD</span><strong>X {Math.round(position.x).toString().padStart(3, '0')}</strong><strong>Y {Math.round(position.y).toString().padStart(3, '0')}</strong><em>{signalLab?.enabled ? `PRESSURE · ${signalLab.mode.toUpperCase()}` : assignments.length ? `X${xRoutes.length} · Y${yRoutes.length}` : 'UNPATCHED'}</em></div>
       </div>
 
       <div className={`xy-patch-bay ${patchActive ? 'patch-target-active' : ''} ${hoverAxis ? `hover-axis-${hoverAxis}` : ''}`} aria-label="XY patch destinations">
