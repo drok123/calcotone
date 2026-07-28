@@ -1,11 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ModuleState } from '../../ui/types';
 import type { VisualAudioState } from '../../visual/VisualEngine';
-import { AsciiArtEngine, moduleModeKey, moduleModeLabel } from '../ascii/AsciiArtEngine';
-
-function captionFor(module: ModuleState): string {
-  return `${module.name.toUpperCase()} · ${moduleModeLabel(module)}`;
-}
+import { AsciiArtEngine, moduleModeKey } from '../ascii/AsciiArtEngine';
 
 export function ModuleViewport({ module, visualState }: { module: ModuleState; visualState: VisualAudioState }) {
   const sceneKey = moduleModeKey(module);
@@ -38,7 +34,6 @@ export function ModuleViewport({ module, visualState }: { module: ModuleState; v
       data-visual-mode={sceneKey}
     >
       <AsciiArtEngine kind="module" module={module} />
-      {module.enabled && <span className="viewport-caption">{captionFor(module)}</span>}
     </div>
   );
 }
