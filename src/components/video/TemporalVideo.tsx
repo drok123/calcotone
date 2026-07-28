@@ -82,9 +82,10 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
   }, [playbackRate]);
 
   useEffect(() => {
-    const video = videoRef.current as FrameCallbackVideo | null;
+    const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
+    const frameCallbacks = video as unknown as FrameCallbackVideo;
 
     const previous = document.createElement('canvas');
     const current = document.createElement('canvas');
@@ -206,8 +207,8 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
     };
 
     const requestNextVideoFrame = (): void => {
-      if (cancelled || !video.requestVideoFrameCallback) return;
-      videoFrameHandle = video.requestVideoFrameCallback((now, metadata) => {
+      if (cancelled || !frameCallbacks.requestVideoFrameCallback) return;
+      videoFrameHandle = frameCallbacks.requestVideoFrameCallback((now, metadata) => {
         snapshot(now, Number.isFinite(metadata.mediaTime) ? Number(metadata.mediaTime) : video.currentTime);
         requestNextVideoFrame();
       });
@@ -229,7 +230,7 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
     canvas.dataset.ready = 'false';
     resizeBuffers();
 
-    if (video.requestVideoFrameCallback) requestNextVideoFrame();
+    if (frameCallbacks.requestVideoFrameCallback) requestNextVideoFrame();
     else fallbackHandle = requestAnimationFrame(fallbackPoll);
     animationHandle = requestAnimationFrame(render);
 
@@ -241,7 +242,7 @@ export const TemporalVideo = forwardRef<HTMLVideoElement, TemporalVideoProps>(fu
       resizeObserver?.disconnect();
       cancelAnimationFrame(animationHandle);
       cancelAnimationFrame(fallbackHandle);
-      if (videoFrameHandle !== null) video.cancelVideoFrameCallback?.(videoFrameHandle);
+      if (videoFrameHandle !== null) frameCallbacks.cancelVideoFrameCallback?.(videoFrameHandle);
     };
   }, [src, loop]);
 
