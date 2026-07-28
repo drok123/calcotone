@@ -39,12 +39,12 @@ interface ModuleTheme {
 }
 
 const THEMES: Record<string, ModuleTheme> = {
-  saturation: { primary: '#ffbf69', secondary: '#fff1cf', glyphs: ' .:+=xX#@' },
-  chorus: { primary: '#79d7e7', secondary: '#e4fbff', glyphs: ' .~-:=+*#' },
-  delay: { primary: '#d6d9ff', secondary: '#fff0bd', glyphs: ' .:|/\\+X#' },
-  reverb: { primary: '#c5b6ff', secondary: '#e7fbff', glyphs: ' .^/\\AVM#' },
-  bitcrusher: { primary: '#9ee38d', secondary: '#ffe28a', glyphs: ' .`:+*%#@' },
-  media: { primary: '#e7d4ad', secondary: '#e59abb', glyphs: ' ._-+=[]#' },
+  saturation: { primary: '#ffbf69', secondary: '#fff1cf', glyphs: ' .,:;i1tfLCG08@' },
+  chorus: { primary: '#79d7e7', secondary: '#e4fbff', glyphs: ' .,:;i1tfLCG08@' },
+  delay: { primary: '#d6d9ff', secondary: '#fff0bd', glyphs: ' .,:;i1tfLCG08@' },
+  reverb: { primary: '#c5b6ff', secondary: '#e7fbff', glyphs: ' .,:;i1tfLCG08@' },
+  bitcrusher: { primary: '#9ee38d', secondary: '#ffe28a', glyphs: ' .,:;i1tfLCG08@' },
+  media: { primary: '#e7d4ad', secondary: '#e59abb', glyphs: ' .,:;i1tfLCG08@' },
   landscape: { primary: '#b8e2d3', secondary: '#f3ead4', glyphs: ' .,:;+=x#@' },
 };
 
@@ -517,6 +517,354 @@ function pressureField(state: SignalLabState | undefined, u: number, v: number, 
   return 0;
 }
 
+type LogoSampler = (x: number, y: number) => number;
+type LogoPoint = readonly [number, number];
+type LogoSegment = readonly [number, number, number, number];
+
+function strokeIntensity(distance: number, width: number): number {
+  const amount = clamp01(1 - distance / Math.max(0.0001, width));
+  return amount * amount * (3 - amount * 2);
+}
+
+function pointDistance(x: number, y: number, point: LogoPoint): number {
+  return Math.hypot(x - point[0], y - point[1]);
+}
+
+function segmentDistance(x: number, y: number, segment: LogoSegment): number {
+  const [ax, ay, bx, by] = segment;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared <= 0.000001) return Math.hypot(x - ax, y - ay);
+  const position = clamp01(((x - ax) * dx + (y - ay) * dy) / lengthSquared);
+  return Math.hypot(x - (ax + dx * position), y - (ay + dy * position));
+}
+
+function sampleSegments(
+  x: number,
+  y: number,
+  segments: readonly LogoSegment[],
+  width: number,
+): number {
+  let intensity = 0;
+  for (const segment of segments) {
+    intensity = Math.max(intensity, strokeIntensity(segmentDistance(x, y, segment), width));
+  }
+  return intensity;
+}
+
+function rotatePoint(x: number, y: number, angle: number): LogoPoint {
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  return [x * cosine - y * sine, x * sine + y * cosine];
+}
+
+function squarePoints(scale: number, angle: number, offsetX = 0, offsetY = 0): LogoPoint[] {
+  return [
+    rotatePoint(-scale, -scale, angle),
+    rotatePoint(scale, -scale, angle),
+    rotatePoint(scale, scale, angle),
+    rotatePoint(-scale, scale, angle),
+  ].map(([x, y]) => [x + offsetX, y + offsetY] as const);
+}
+
+function connectLoop(points: readonly LogoPoint[]): LogoSegment[] {
+  return points.map((point, index) => {
+    const next = points[(index + 1) % points.length]!;
+    return [point[0], point[1], next[0], next[1]] as const;
+  });
+}
+
+function createCubeGeometry(
+  scale: number,
+  angle: number,
+  depthX: number,
+  depthY: number,
+): { points: LogoPoint[]; segments: LogoSegment[] } {
+  const front = squarePoints(scale, angle, depthX * 0.5, depthY * 0.5);
+  const back = squarePoints(scale, angle, -depthX * 0.5, -depthY * 0.5);
+  const segments = [...connectLoop(front), ...connectLoop(back)];
+  for (let index = 0; index < 4; index += 1) {
+    segments.push([
+      front[index]![0],
+      front[index]![1],
+      back[index]![0],
+      back[index]![1],
+    ]);
+  }
+  return { points: [...front, ...back], segments };
+}
+
+function createEmberSampler(
+  phase: number,
+  detail: number,
+  audio: VisualAudioState,
+): LogoSampler {
+  const tongueCount = 2 + detail % 3;
+  const lean = ((detail % 7) - 3) * 0.012;
+  return (x, y) => {
+    const progress = (y + 0.96) / 1.82;
+    if (progress < 0 || progress > 1 || Math.abs(x) > 0.92) return 0;
+    const t = clamp01(progress);
+    const movement = 0.035 + audio.mid * 0.028;
+    const center = Math.sin(y * (3.2 + detail * 0.08) + phase * 2) * movement * (1 - t)
+      + lean * (0.5 - t);
+    const width = 0.035
+      + Math.pow(Math.max(0, Math.sin(Math.PI * t)), 0.70) * (0.54 + audio.low * 0.08)
+      + t * 0.16;
+    const outline = strokeIntensity(Math.abs(Math.abs(x - center) - width), 0.038);
+    const baseY = 0.82 + Math.cos((x - center) * Math.PI * 1.5) * 0.075;
+    const base = Math.abs(x - center) < 0.23
+      ? strokeIntensity(Math.abs(y - baseY), 0.035)
+      : 0;
+
+    let tongues = 0;
+    for (let index = 0; index < tongueCount; index += 1) {
+      const offset = (index - (tongueCount - 1) * 0.5) * 0.18;
+      const tongueCenter = offset + Math.sin(y * 4.1 + phase * (index % 2 === 0 ? 1 : -1)) * 0.035;
+      const tongueWidth = 0.045 + (1 - t) * (0.13 + index * 0.018);
+      const tongueTop = -0.62 + index * 0.12;
+      if (y > tongueTop) {
+        tongues = Math.max(
+          tongues,
+          strokeIntensity(Math.abs(Math.abs(x - tongueCenter) - tongueWidth), 0.027) * (1 - t * 0.34),
+        );
+      }
+    }
+
+    const emberCore = Math.abs(x - center) < width && y > 0.25
+      ? strokeIntensity(Math.hypot((x - center) * 1.7, y - 0.62), 0.30) * 0.20
+      : 0;
+    return Math.max(outline, base, tongues * 0.88, emberCore);
+  };
+}
+
+function createDriftSampler(
+  phase: number,
+  detail: number,
+  audio: VisualAudioState,
+): LogoSampler {
+  const waveCount = 4 + detail % 3;
+  const frequency = 2.4 + (detail % 5) * 0.34;
+  const direction = detail % 2 === 0 ? 1 : -1;
+  return (x, y) => {
+    if (Math.abs(x) > 1.02 || Math.abs(y) > 0.90) return 0;
+    const edgeFade = clamp01((1.04 - Math.abs(x)) / 0.16);
+    let intensity = 0;
+    for (let index = 0; index < waveCount; index += 1) {
+      const baseline = (index - (waveCount - 1) * 0.5) * 0.22;
+      const amplitude = 0.055 + (index % 2) * 0.022 + audio.mid * 0.035;
+      const target = baseline
+        + Math.sin(x * frequency + phase * direction + index * 0.72) * amplitude
+        + Math.sin(x * 1.35 - phase * 2 + index) * 0.018;
+      intensity = Math.max(intensity, strokeIntensity(Math.abs(y - target), 0.030));
+    }
+    const droplet = strokeIntensity(Math.abs(Math.hypot((x + 0.78) * 1.8, y + 0.58) - 0.11), 0.025);
+    return Math.max(intensity * edgeFade, droplet * (0.52 + audio.high * 0.24));
+  };
+}
+
+function createHaloSampler(
+  phase: number,
+  detail: number,
+  audio: VisualAudioState,
+): LogoSampler {
+  const ringCount = 3 + detail % 3;
+  return (x, y) => {
+    if (Math.abs(x) > 1.04 || Math.abs(y) > 1.04) return 0;
+    let intensity = strokeIntensity(Math.hypot(x, y), 0.055) * (0.72 + audio.transient * 0.22);
+    for (let index = 0; index < ringCount; index += 1) {
+      const angle = phase * (index % 2 === 0 ? 1 : -1)
+        + index * Math.PI / ringCount
+        + detail * 0.07;
+      const cosine = Math.cos(angle);
+      const sine = Math.sin(angle);
+      const rotatedX = x * cosine - y * sine;
+      const rotatedY = x * sine + y * cosine;
+      const flatten = 0.24 + ((detail + index) % 4) * 0.075;
+      const radius = Math.hypot(rotatedX, rotatedY / flatten);
+      const target = 0.58 + index * 0.105;
+      intensity = Math.max(
+        intensity,
+        strokeIntensity(Math.abs(radius - target), 0.031) * (0.94 - index * 0.08),
+      );
+    }
+    return intensity;
+  };
+}
+
+function createAtmosSampler(
+  phase: number,
+  detail: number,
+  audio: VisualAudioState,
+): LogoSampler {
+  const radius = 0.82;
+  const latitudeCount = 3 + detail % 3;
+  const longitudeCount = 2 + detail % 3;
+  return (x, y) => {
+    const distance = Math.hypot(x, y);
+    if (distance > 0.96) return 0;
+    let intensity = strokeIntensity(Math.abs(distance - radius), 0.032 + audio.level * 0.008);
+
+    const sphereX = clamp01(1 - (x / radius) ** 2);
+    for (let index = 0; index < latitudeCount; index += 1) {
+      const latitude = (index - (latitudeCount - 1) * 0.5) * 0.31;
+      const target = latitude * Math.sqrt(sphereX);
+      intensity = Math.max(
+        intensity,
+        strokeIntensity(Math.abs(y - target), 0.022) * (0.50 + Math.abs(latitude) * 0.25),
+      );
+    }
+
+    for (let index = 0; index < longitudeCount; index += 1) {
+      const longitudePhase = phase + index * Math.PI / longitudeCount + detail * 0.045;
+      const compression = 0.12 + Math.abs(Math.cos(longitudePhase)) * 0.62;
+      const ellipse = Math.hypot(x / (radius * compression), y / radius);
+      intensity = Math.max(
+        intensity,
+        strokeIntensity(Math.abs(ellipse - 1), 0.027) * (0.46 + compression * 0.34),
+      );
+    }
+
+    const atmosphere = strokeIntensity(Math.abs(distance - 0.90), 0.022) * (0.28 + audio.high * 0.20);
+    return Math.max(intensity, atmosphere);
+  };
+}
+
+function createGrainSampler(
+  phase: number,
+  detail: number,
+  audio: VisualAudioState,
+): LogoSampler {
+  const rotation = phase * (detail % 2 === 0 ? 1 : -1) + detail * 0.06;
+  const depthX = 0.18 + Math.cos(phase * 2) * 0.035;
+  const depthY = 0.15 + Math.sin(phase * 2) * 0.025;
+  const outer = createCubeGeometry(0.56, rotation, depthX, depthY);
+  const inner = createCubeGeometry(
+    0.29,
+    -rotation + detail * 0.035,
+    depthX * 0.56,
+    -depthY * 0.56,
+  );
+  const bridges: LogoSegment[] = outer.points.map((point, index) => {
+    const target = inner.points[index]!;
+    return [point[0], point[1], target[0], target[1]];
+  });
+  const segments = [...outer.segments, ...inner.segments, ...bridges];
+  const points = [...outer.points, ...inner.points];
+  return (x, y) => {
+    if (Math.abs(x) > 0.98 || Math.abs(y) > 0.98) return 0;
+    const wire = sampleSegments(x, y, segments, 0.024 + audio.transient * 0.006);
+    let vertices = 0;
+    for (const point of points) {
+      vertices = Math.max(vertices, strokeIntensity(pointDistance(x, y, point), 0.050));
+    }
+    return Math.max(wire * 0.88, vertices);
+  };
+}
+
+function createArtifactSampler(
+  phase: number,
+  detail: number,
+  audio: VisualAudioState,
+): LogoSampler {
+  const spread = 0.38 + (detail % 3) * 0.055;
+  const segments: LogoSegment[] = [
+    [-1.00, 0, -0.62, 0],
+    [-0.62, -spread, -0.62, spread],
+    [-0.62, -0.18, -0.24, -0.55],
+    [-0.62, 0.18, -0.24, 0.55],
+    [-0.24, -0.55, 0.18, -0.55],
+    [-0.24, 0.55, 0.18, 0.55],
+    [0.18, -spread, 0.18, spread],
+    [0.18, -0.20, 0.58, -0.50],
+    [0.18, 0.20, 0.58, 0.50],
+    [0.58, -0.50, 0.86, -0.50],
+    [0.58, 0.50, 0.86, 0.50],
+    [0.86, -0.50, 0.86, 0.50],
+    [0.86, 0, 1.03, 0],
+    [-0.74, -0.28, -0.62, -0.18],
+    [-0.74, -0.08, -0.62, -0.18],
+    [0.46, 0.34, 0.58, 0.50],
+    [0.43, 0.50, 0.58, 0.50],
+  ];
+  const packetCount = 3 + detail % 4;
+  const packets: LogoPoint[] = [];
+  const travelPhase = ((phase / TAU) * (1 + detail % 3)) % 1;
+  for (let index = 0; index < packetCount; index += 1) {
+    const travel = (travelPhase + index / packetCount) % 1;
+    const packetX = -0.94 + travel * 1.84;
+    const packetY = index % 3 === 0 ? 0 : index % 3 === 1 ? -0.50 : 0.50;
+    packets.push([packetX, packetY]);
+  }
+  return (x, y) => {
+    if (Math.abs(x) > 1.08 || Math.abs(y) > 0.86) return 0;
+    const circuit = sampleSegments(x, y, segments, 0.026);
+    let data = 0;
+    for (const packet of packets) {
+      data = Math.max(
+        data,
+        strokeIntensity(pointDistance(x, y, packet), 0.065 + audio.transient * 0.012),
+      );
+    }
+    return Math.max(circuit * 0.72, data);
+  };
+}
+
+function createModuleLogoSampler(
+  scene: PreparedScene,
+  loopAngle: number,
+  audio: VisualAudioState,
+  aspectRatio: number,
+): LogoSampler | null {
+  const module = scene.module;
+  const layer = scene.layers[0];
+  if (!module || !layer) return null;
+  const variant = MODE_ART_VARIANTS[layer.key.toLowerCase() as keyof typeof MODE_ART_VARIANTS]
+    ?? { motif: 'digital', scale: 6, amount: 0.38, bias: 0 };
+  const motifSeed = hashAsciiScene(variant.motif);
+  const detail = Math.max(1, Math.round(variant.scale + (motifSeed % 5)));
+  const speed = 1 + motifSeed % 2;
+  const phase = loopAngle * speed + variant.bias * TAU;
+  const float = Math.sin(loopAngle + variant.bias * TAU) * (0.024 + audio.low * 0.010);
+  const scale = 0.79 * (
+    1
+    + Math.sin(loopAngle * 2 + variant.bias * TAU) * 0.008
+    + audio.level * 0.022
+  );
+
+  let emblem: LogoSampler;
+  switch (module.id) {
+    case 'saturation':
+      emblem = createEmberSampler(phase, detail, audio);
+      break;
+    case 'chorus':
+      emblem = createDriftSampler(phase, detail, audio);
+      break;
+    case 'delay':
+      emblem = createHaloSampler(phase, detail, audio);
+      break;
+    case 'reverb':
+      emblem = createAtmosSampler(phase, detail, audio);
+      break;
+    case 'bitcrusher':
+      emblem = createGrainSampler(phase, detail, audio);
+      break;
+    case 'media':
+      emblem = createArtifactSampler(phase, detail, audio);
+      break;
+    default:
+      return null;
+  }
+
+  const brightness = 0.72 + variant.amount * 0.74;
+  return (normalizedX, normalizedY) => {
+    const x = normalizedX * aspectRatio / scale;
+    const y = (normalizedY - float) / scale;
+    return clamp01(emblem(x, y) * brightness);
+  };
+}
+
 function framedLine(columns: number, label: string): string {
   const content = `[ ${label.slice(0, Math.max(0, columns - 8))} ]`;
   const remaining = Math.max(0, columns - content.length - 2);
@@ -531,57 +879,88 @@ function drawAscii(
   scene: PreparedScene,
   stamp: number,
 ): void {
-  const theme = scene.kind === 'module' && scene.module
+  const isModule = scene.kind === 'module' && Boolean(scene.module);
+  const theme = isModule && scene.module
     ? THEMES[scene.module.id] ?? THEMES.landscape
     : THEMES.landscape;
   const audio = getLatestVisualAudioState();
   const time = stamp / 1000;
   const loopAngle = loopAngleForTime(time);
-  const columns = Math.max(scene.kind === 'landscape' ? 38 : 30, Math.min(scene.kind === 'landscape' ? 82 : 58, Math.floor(width / 6.6)));
+  const columns = isModule
+    ? Math.max(54, Math.min(104, Math.floor(width / 4.15)))
+    : Math.max(38, Math.min(82, Math.floor(width / 6.6)));
   const cellWidth = width / columns;
-  const fontSize = Math.max(7, Math.min(11.5, cellWidth * 1.42));
-  const lineHeight = fontSize * 1.12;
-  const rows = Math.max(9, Math.floor(height / lineHeight));
+  const fontSize = isModule
+    ? Math.max(4.8, Math.min(7.4, cellWidth * 1.42))
+    : Math.max(7, Math.min(11.5, cellWidth * 1.42));
+  const lineHeight = fontSize * (isModule ? 1.04 : 1.12);
+  const rows = Math.max(isModule ? 20 : 9, Math.floor(height / lineHeight));
   const bodyRows = Math.max(1, rows - 2);
   const seed = hashAsciiScene(scene.sceneKey);
   const glyphs = theme.glyphs;
-  const activeGain = scene.active ? 1 : 0.22;
   const cursorX = clamp01((scene.position?.x ?? 50) / 100);
   const cursorY = clamp01((scene.position?.y ?? 50) / 100);
+  const moduleLogo = isModule
+    ? createModuleLogoSampler(scene, loopAngle, audio, width / Math.max(1, height))
+    : null;
 
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.fillStyle = '#050706';
   context.fillRect(0, 0, width, height);
   context.font = `600 ${fontSize}px "IBM Plex Mono", "SFMono-Regular", Consolas, monospace`;
 
-  // The canvas already follows the glass, but the glyph grid used to keep its
-  // natural font metrics and leave dead bands around wide or resized module
-  // windows. Measure the complete character frame and independently scale both
-  // axes so its outer ASCII border lands on every edge of the viewport.
+  // Measure the denser glyph grid and scale both axes once. Module windows use
+  // smaller cells than the combined landscape so their centered emblems retain
+  // crisp curves, vertices, and circuit details without adding extra canvases.
   const gridWidth = Math.max(1, context.measureText('M'.repeat(columns)).width);
   const gridHeight = Math.max(1, (rows - 1) * lineHeight + fontSize);
   const horizontalScale = width / gridWidth;
   const verticalScale = height / gridHeight;
   context.setTransform(dpr * horizontalScale, 0, 0, dpr * verticalScale, 0, 0);
   context.textBaseline = 'top';
-  context.shadowBlur = scene.active ? 4 : 1;
+  context.shadowBlur = scene.active ? (isModule ? 2.4 : 4) : 1;
   context.shadowColor = theme.primary;
 
   for (let row = 0; row < rows; row += 1) {
     let line: string;
-    if (row === 0) {
+    let lineIntensity = 0;
+
+    if (!isModule && row === 0) {
       line = framedLine(columns, scene.label);
-    } else if (row === rows - 1) {
+      lineIntensity = 0.86;
+    } else if (!isModule && row === rows - 1) {
       const footer = `SEED ${(seed >>> 0).toString(16).toUpperCase().padStart(8, '0')} // ${scene.active ? 'ONLINE' : 'STANDBY'}`;
       line = framedLine(columns, footer);
+      lineIntensity = 0.86;
     } else {
-      const characters = new Array<string>(columns).fill(' ');
-      characters[0] = '|';
-      characters[columns - 1] = '|';
-      const normalizedY = ((row - 1) / Math.max(1, bodyRows - 1)) * 2 - 1;
+      const characters = Array.from({ length: columns }, () => ' ');
+      if (!isModule) {
+        characters[0] = '|';
+        characters[columns - 1] = '|';
+      }
+      const normalizedY = isModule
+        ? (row / Math.max(1, rows - 1)) * 2 - 1
+        : ((row - 1) / Math.max(1, bodyRows - 1)) * 2 - 1;
+      const firstColumn = isModule ? 0 : 1;
+      const lastColumn = isModule ? columns : columns - 1;
 
-      for (let column = 1; column < columns - 1; column += 1) {
-        const normalizedX = ((column - 1) / Math.max(1, columns - 3)) * 2 - 1;
+      for (let column = firstColumn; column < lastColumn; column += 1) {
+        const normalizedX = isModule
+          ? (column / Math.max(1, columns - 1)) * 2 - 1
+          : ((column - 1) / Math.max(1, columns - 3)) * 2 - 1;
+
+        if (moduleLogo) {
+          let value = moduleLogo(normalizedX, normalizedY);
+          const dust = hashNoise(column, row, seed);
+          if (value < 0.025 && dust > 0.9975) value = 0.10 + audio.high * 0.08;
+          if (value < 0.035) continue;
+          const normalized = clamp01(Math.pow(value, 0.72) * (0.88 + audio.level * 0.12));
+          const glyphIndex = Math.min(glyphs.length - 1, Math.floor(normalized * glyphs.length));
+          characters[column] = glyphs[glyphIndex];
+          lineIntensity = Math.max(lineIntensity, normalized);
+          continue;
+        }
+
         let value = 0;
         let totalWeight = 0;
         for (const layer of scene.layers) {
@@ -603,12 +982,15 @@ function drawAscii(
         if (normalized < 0.25 || (!scene.active && normalized < 0.56)) continue;
         const glyphIndex = Math.min(glyphs.length - 1, Math.floor(normalized * glyphs.length));
         characters[column] = glyphs[glyphIndex];
+        lineIntensity = Math.max(lineIntensity, normalized);
       }
       line = characters.join('');
     }
 
-    context.globalAlpha = activeGain * (row === 0 || row === rows - 1 ? 0.86 : 0.52 + audio.level * 0.18);
-    context.fillStyle = row % 5 === 0 ? theme.secondary : theme.primary;
+    context.globalAlpha = isModule
+      ? (scene.active ? 0.68 + lineIntensity * 0.26 : 0.44)
+      : (row === 0 || row === rows - 1 ? 0.86 : 0.52 + audio.level * 0.18);
+    context.fillStyle = row % (isModule ? 6 : 5) === 0 ? theme.secondary : theme.primary;
     context.fillText(line, 0, row * lineHeight);
   }
 
