@@ -21,12 +21,14 @@ const viewport = read('src/components/effects/ModuleViewport.tsx');
 const field = read('src/components/motion/XYSignalField.tsx');
 const motionPad = read('src/components/motion/MotionPad.tsx');
 const app = read('src/App.tsx');
+const appCss = read('src/App.css');
 const vite = read('vite.config.ts');
 const main = read('src/main.tsx');
 
 requireText(viewport, '<AsciiArtEngine kind="module" module={module}', 'Module ASCII surface');
 requireText(viewport, 'moduleModeKey(module)', 'Dropdown-driven module scene');
 requireText(viewport, 'is-reconfiguring', 'Dropdown reconfiguration transition');
+forbidText(viewport, 'viewport-caption', 'Duplicate module artwork label');
 forbidText(viewport, '<TemporalVideo', 'Module decoder');
 forbidText(viewport, '.mp4', 'Module media asset');
 
@@ -38,6 +40,10 @@ forbidText(field, 'VideoLandscapeEngine', 'XY decoder world');
 
 requireText(ascii, 'hashAsciiScene', 'Deterministic scene identity');
 requireText(ascii, 'moduleModeKey', 'Per-dropdown scene identity');
+requireText(ascii, 'export const MODE_ART_VARIANTS', 'Named dropdown art variants');
+requireText(ascii, 'export const ASCII_LOOP_SECONDS = 18', 'Closed ASCII loop duration');
+requireText(ascii, 'loopAngleForTime(time)', 'Modulo loop phase');
+requireText(ascii, 'sampleModeAccent(layer, x, y, loopAngle)', 'Module-inspired dropdown accent');
 requireText(ascii, 'subscribeViewportAnimation(render)', 'Shared viewport scheduler');
 requireText(ascii, 'getLatestVisualAudioState()', 'Non-React audio snapshot');
 requireText(ascii, 'IntersectionObserver', 'Offscreen renderer sleep');
@@ -47,6 +53,8 @@ requireText(ascii, 'const verticalScale = height / gridHeight', 'Edge-to-edge AS
 requireText(ascii, 'dpr * horizontalScale', 'Measured ASCII canvas transform');
 forbidText(ascii, 'requestAnimationFrame(', 'Independent ASCII animation loop');
 forbidText(ascii, 'Math.random()', 'Random per-frame artwork');
+forbidText(ascii, 'audio.driftPhase', 'Unbounded ASCII drift phase');
+forbidText(appCss, '.viewport-caption', 'Retired duplicate artwork label styles');
 requireText(asciiCss, 'repeating-linear-gradient', 'ASCII scanline optics');
 requireText(asciiCss, '@media (prefers-reduced-motion: reduce)', 'Reduced motion support');
 
