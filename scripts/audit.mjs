@@ -65,12 +65,12 @@ const magneticProcessor = read('public/magnetic-core-processor.js');
 const behaviorProcessor = read('public/behavior-memory-processor.js');
 const driftClassicProcessor = read('public/drift-classic-processor.js');
 const grainProcessor = read('public/grain-processor.js');
-const artifactSamplerProcessor = read('public/artifact-sampler-processor.js');
+const emberDigitalCaptureProcessor = read('public/ember-digital-capture-processor.js');
 const dreamProcessor = read('public/dream-buffer-processor.js');
 
 for (const file of [
   'public/grain-processor.js',
-  'public/artifact-sampler-processor.js',
+  'public/ember-digital-capture-processor.js',
   'public/dream-buffer-processor.js',
   'public/ember-tube-processor.js',
   'public/magnetic-core-processor.js',
@@ -190,15 +190,20 @@ requireText(registry, "case 'biphase': case 'smallstone': case 'univibe': case '
 requireText(grainProcessor, 'this.voices = Array.from({ length: 8 }', 'Grain bounded live-memory voice pool');
 requireText(grainProcessor, 'this.processSlice(window, density, pitch, motion, memory)', 'Grain slice mechanism');
 requireText(grainProcessor, 'this.processFreeze(window, density, pitch, motion, memory, transient)', 'Grain freeze mechanism');
+requireText(grainProcessor, 'applyHardwareCharacter(mode, processedL, processedR, window, density, motion, memory)', 'Grain hardware model stage');
+for (const model of ['Clouds study','Beads study','Morphagene study','Arbhar study','Particle 2 study','Microcosm study']) {
+  requireText(grainProcessor, model, `Grain ${model}`);
+}
 forbidText(grainProcessor, 'processHardware(', 'Grain sampler hardware path');
 forbidText(grainProcessor, 'quantizeNonlinear12', 'Grain converter quantization');
-requireText(artifactSamplerProcessor, 'quantizeNonlinear12', 'Artifact MPC60 nonlinear converter study');
-requireText(artifactSamplerProcessor, 'targetRate = 7500 + clock * 40500', 'Artifact S950 variable record clock');
-requireText(artifactSamplerProcessor, 'targetRate = 27000', 'Artifact Emulator II 27k study');
-requireText(artifactSamplerProcessor, 'targetRate = 24000 + clock * 8000', 'Artifact Fairlight IIx sample-clock study');
-requireText(artifactSamplerProcessor, 'quantizeCompanded8', 'Artifact vintage 8-bit companding study');
+requireText(emberDigitalCaptureProcessor, 'quantizeNonlinear12', 'Ember MPC60 nonlinear converter study');
+requireText(emberDigitalCaptureProcessor, 'targetRate = 7500 + clock * 40500', 'Ember S950 variable record clock');
+requireText(emberDigitalCaptureProcessor, 'targetRate = 27000', 'Ember Emulator II 27k study');
+requireText(emberDigitalCaptureProcessor, 'targetRate = 24000 + clock * 8000', 'Ember Fairlight IIx sample-clock study');
+requireText(emberDigitalCaptureProcessor, 'quantizeCompanded8', 'Ember vintage 8-bit companding study');
+requireText(registry, "case 'clouds': case 'beads': case 'morphagene': case 'arbhar': case 'particle2': case 'microcosm':", 'No double Grain hardware simulation');
 requireText(registry, "case 'sp1200': case 'mpc60': case 'mirage': case 's950': case 'emulator2': case 'fairlightiix':", 'No double sampler converter simulation');
-requireText(registry, "case 'tascam424': case 'neve1073': case 'ssl4000e': case 'api1608':", 'No double Ember console simulation');
+requireText(registry, "case 'tascam424': case 'Neve 1073': case 'SSL 4000E': case 'API 1608':", 'No double Artifact console simulation');
 
 requireText(grainEffect, 'stats.cpuLoad = Number.NaN', 'Grain fake timing guard');
 requireText(visualEngine, 'if (!running || !analyser)', 'Idle visual sleep');
@@ -231,12 +236,15 @@ requireText(driftEffect, 'const orbitWidth = Math.min', 'Drift Orbit spread cont
 
 requireText(mediaEffect, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve cache');
 requireText(mediaEffect, 'function cacheCurve(', 'Artifact curve cache');
-requireText(mediaEffect, "'calcotone-artifact-sampler-processor'", 'Artifact sampler worklet');
-requireText(mediaEffect, "this.setSamplerParameter('mode', samplerMode, now)", 'Artifact sampler model routing');
+requireText(mediaEffect, "this.mode === 'tascam424'", 'Artifact TASCAM console path');
+requireText(mediaEffect, 'this.configureSummingBus(now, {', 'Artifact console summing paths');
+forbidText(mediaEffect, 'AudioWorkletNode', 'Artifact digital-capture worklet');
 requireText(mediaEffect, 'this.setSaturatorCurve(getSaturationCurve', 'Artifact cached media saturation');
 requireText(mediaEffect, 'if (this.parameterValues.get(parameterId) === next) return', 'Artifact duplicate-value guards');
 forbidText(mediaEffect, 'this.preampStage.curve = makeOpAmpCurve', 'Artifact stale live curve allocation');
 forbidText(mediaEffect, 'this.saturator.curve = makeSaturationCurve', 'Artifact stale live curve allocation');
+requireText(emberEffect, "'calcotone-ember-digital-capture-processor'", 'Ember digital-capture worklet');
+requireText(emberEffect, "this.setDigitalCaptureParameter('mode', digitalCaptureMode, now)", 'Ember digital-capture routing');
 
 forbidText(randomBridge, 'randomProfiler', 'RANDOM bridge');
 forbidText(randomBatch, '__calcotoneRandomProfiler', 'RANDOM batch');

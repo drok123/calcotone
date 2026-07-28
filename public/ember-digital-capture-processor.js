@@ -1,4 +1,4 @@
-class CalcotoneArtifactSamplerProcessor extends AudioWorkletProcessor {
+class CalcotoneEmberDigitalCaptureProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
       { name: 'mode', defaultValue: 0, minValue: 0, maxValue: 5, automationRate: 'k-rate' },
@@ -210,4 +210,4 @@ class CalcotoneArtifactSamplerProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('calcotone-artifact-sampler-processor', CalcotoneArtifactSamplerProcessor);
+registerProcessor('calcotone-ember-digital-capture-processor', CalcotoneEmberDigitalCaptureProcessor);

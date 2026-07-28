@@ -1,4 +1,4 @@
-import { ARTIFACT_SAMPLER_MODES, MediaEffect, type MediaMode } from './audio/effects/Media';
+import { ARTIFACT_CONSOLE_MODES, MediaEffect, type MediaMode } from './audio/effects/Media';
 
 type ArtifactInternals = {
   mode: MediaMode;
@@ -31,7 +31,7 @@ const globalState = globalThis as ArtifactPatchGlobal;
 
 function canSuspendTransport(mode: MediaMode): boolean {
   // ATR-102 still owns wow/flutter + hiss as part of its mechanism, so it must stay live.
-  return ARTIFACT_SAMPLER_MODES.some((candidate) => candidate === mode);
+  return ARTIFACT_CONSOLE_MODES.some((candidate) => candidate === mode);
 }
 
 function detachUnusedBranches(effect: ArtifactPatchState): void {

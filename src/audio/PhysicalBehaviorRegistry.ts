@@ -80,7 +80,7 @@ export function syncPhysicalBehavior(effect: Effect): void {
       case 'exciter': behavior = spec('converter', 0.05 + character * 0.075, mix(heat, drive, 0.25), 0.24 + dynamics * 0.18, mix(character, tone, 0.2)); break;
       case 'broken': behavior = spec('fracture', 0.085 + drive * 0.13, mix(heat, character, 0.2), 0.82 + dynamics * 0.14, character); break;
       case 'goldlion': case 'mullard': case 'telefunken': case 'bugleboy': case 'rcablack':
-      case 'tascam424': case 'neve1073': case 'ssl4000e': case 'api1608':
+      case 'sp1200': case 'mpc60': case 'mirage': case 's950': case 'emulator2': case 'fairlightiix':
         behavior = BYPASS;
         break;
     }
@@ -171,6 +171,7 @@ export function syncPhysicalBehavior(effect: Effect): void {
       // Grain owns its complete buffer mechanisms. A second residual memory,
       // BBD, or fracture stage would blur the distinction between algorithms.
       case 'mosaic': case 'scatter': case 'smear': case 'prism': case 'slice': case 'freeze':
+      case 'clouds': case 'beads': case 'morphagene': case 'arbhar': case 'particle2': case 'microcosm':
         behavior = BYPASS;
         break;
     }
@@ -191,7 +192,7 @@ export function syncPhysicalBehavior(effect: Effect): void {
       case 'broken': behavior = spec('fracture', 0.085 + wear * 0.095 + noise * 0.02, wow, 0.84 + ageMemory * 0.14, tone); break;
       case 'archive': behavior = spec('transport', 0.05 + wear * 0.06 + noise * 0.015, wow, 0.84 + ageMemory * 0.12, tone); break;
       case 'Ampex ATR-102': behavior = spec('magnetic', 0.06 + wear * 0.07, wow, 0.84 + ageMemory * 0.12, tone); break;
-      case 'sp1200': case 'mpc60': case 'mirage': case 's950': case 'emulator2': case 'fairlightiix':
+      case 'tascam424': case 'Neve 1073': case 'SSL 4000E': case 'API 1608':
         behavior = BYPASS;
         break;
     }

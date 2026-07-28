@@ -512,7 +512,7 @@ export class DreamFieldEngine {
           const nv = valueOf(l.artifact, 'noise', 0.1) * g.artifact;
           const tone = valueOf(l.artifact, 'tone', 0.62);
           const dust = (hash(px + Math.floor(time * 1.5), py + seed) - 0.5) * nv * (7 + audio.high * 6);
-          if (mode === 'cassette' || mode === 'sp1200') {
+          if (mode === 'cassette' || mode === 'tascam424') {
             r += wear * (4 + tone * 6) + dust;
             gg += wear * 1.5 + dust * 0.65;
             b -= wear * 2.4 - dust * 0.45;
@@ -546,8 +546,8 @@ export class DreamFieldEngine {
             r += t * 8 + dust;
             gg -= t * 2;
             b -= t * 5;
-          } else if (modeIs(mode, 'mpc60', 'mirage', 's950', 'emulator2', 'fairlightiix')) {
-            const consoleWarmth = mode === 'mirage' ? 1 : mode === 'emulator2' ? 0.6 : 0.25;
+          } else if (modeIs(mode, 'Neve 1073', 'SSL 4000E', 'API 1608')) {
+            const consoleWarmth = mode === 'Neve 1073' ? 1 : mode === 'API 1608' ? 0.6 : 0.25;
             r += wear * (5 + consoleWarmth * 4);
             gg += wear * (3 + tone * 2);
             b += wear * (1 + (1 - consoleWarmth) * 2);
@@ -908,7 +908,7 @@ export class DreamFieldEngine {
     if (!m || g.artifact <= 0) return;
     const mode = m.mediaMode ?? 'cassette';
     if (mode === 'vhs') this.drawCyberCity(ctx, time, m, g, s);
-    else if (modeIs(mode, 'sp1200', 'mpc60', 'mirage', 's950', 'emulator2', 'fairlightiix')) this.drawSamplerGrid(ctx, time, mode, g);
+    else if (modeIs(mode, 'tascam424', 'Neve 1073', 'SSL 4000E', 'API 1608')) this.drawSamplerGrid(ctx, time, mode, g);
     else if (mode === 'archive') this.drawArchiveMonoliths(ctx, g, s);
     else if (mode === 'broken') this.drawBrokenStructures(ctx, time, g, s);
   }
@@ -1012,8 +1012,8 @@ export class DreamFieldEngine {
     const w = this.width;
     const h = this.height;
     const hz = g.horizon * h;
-    const warm = mode === 'sp1200' || mode === 'mirage';
-    const punchy = mode === 'mpc60' || mode === 's950';
+    const warm = mode === 'tascam424' || mode === 'Neve 1073';
+    const punchy = mode === 'SSL 4000E' || mode === 'API 1608';
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
     const count = punchy ? 9 : 7;

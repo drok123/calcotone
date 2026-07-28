@@ -76,7 +76,7 @@ function paletteFor(layers: LayerSet, audio: AudioPhysics): Palette {
   };
   if (mediaMode === 'vhs') {
     palette = { ...palette, bgTop: [4, 8, 18], bgBottom: [10, 18, 36], water: [5, 12, 28] };
-  } else if (modeIs(mediaMode, 'sp1200', 'mpc60', 'mirage', 's950', 'emulator2', 'fairlightiix', 'cassette', 'reel', 'Ampex ATR-102')) {
+  } else if (modeIs(mediaMode, 'tascam424', 'Neve 1073', 'SSL 4000E', 'API 1608', 'cassette', 'reel', 'Ampex ATR-102')) {
     palette = {
       bgTop: [8, 10, 14], bgBottom: [25, 23, 26], haze: [124, 109, 88], terrain: [12, 10, 10], water: [12, 11, 13],
       accentA: [240, 181, 104], accentB: [194, 124, 76], core: [255, 209, 148], coreGlow: [252, 145, 88], detail: [243, 231, 214],
@@ -321,7 +321,7 @@ export class DreamFieldEngine {
     if (!module || c.artifact <= 0) return;
     const mode = module.mediaMode ?? 'cassette';
     if (mode === 'vhs') return this.drawCyberCity(ctx, time, module, c);
-    if (modeIs(mode, 'sp1200', 'mpc60', 'mirage', 's950', 'emulator2', 'fairlightiix')) return this.drawSamplerWorld(ctx, time, mode, c);
+    if (modeIs(mode, 'tascam424', 'Neve 1073', 'SSL 4000E', 'API 1608')) return this.drawSamplerWorld(ctx, time, mode, c);
     if (mode === 'archive') return this.drawArchiveWorld(ctx, c);
     if (mode === 'broken') return this.drawBrokenWorld(ctx, time, c);
   }
@@ -367,8 +367,8 @@ export class DreamFieldEngine {
 
   private drawSamplerWorld(ctx: CanvasRenderingContext2D, time: number, mode: string, c: Composition) {
     const horizonY = c.horizon * this.height;
-    const color = modeIs(mode, 'mirage', 'emulator2') ? c.palette.accentB : mode === 'sp1200' ? c.palette.core : c.palette.accentA;
-    const count = mode === 'fairlightiix' ? 8 : mode === 'sp1200' ? 6 : 7;
+    const color = modeIs(mode, 'SSL 4000E', 'API 1608') ? c.palette.accentB : mode === 'tascam424' ? c.palette.core : c.palette.accentA;
+    const count = mode === 'API 1608' ? 8 : mode === 'tascam424' ? 6 : 7;
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
     for (let i = 0; i < count; i += 1) {

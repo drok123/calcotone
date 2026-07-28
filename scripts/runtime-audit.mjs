@@ -118,11 +118,11 @@ requireText(haloPatch, 'PITCH_SLEEP_THRESHOLD', 'Halo pitch scheduler sleep');
 requireText(haloPatch, 'shifter.nextGrainTime = shifter.context.currentTime + 0.02', 'Halo no grain catch-up burst');
 requireText(haloPatch, 'import.meta.hot.dispose(uninstall)', 'Halo patch HMR teardown');
 
-// Artifact keeps transport/noise branches out of sampler modes, but ATR-102 must retain
+// Artifact keeps transport/noise branches out of console paths, but ATR-102 must retain
 // its mechanism-specific wow/flutter/hiss path. Curve caches remain explicitly bounded.
 requireText(main, "import './artifactStabilityPatch'", 'Artifact stability patch load');
 requireText(artifactPatch, 'function canSuspendTransport', 'Artifact transport ownership');
-requireText(artifactPatch, 'ARTIFACT_SAMPLER_MODES.some', 'Artifact sampler transport sleep');
+requireText(artifactPatch, 'ARTIFACT_CONSOLE_MODES.some', 'Artifact console transport sleep');
 forbidText(artifactPatch, "|| mode === 'Ampex ATR-102'", 'Artifact ATR-102 transport must stay live');
 requireText(artifactPatch, 'cassetteNoise.disconnect', 'Artifact noise branch detach');
 requireText(artifactPatch, 'leftDepth.disconnect', 'Artifact modulation branch detach');
@@ -134,7 +134,7 @@ requireText(media, 'if (cache.size >= MAX_CURVE_CACHE)', 'Artifact curve cache e
 // Ember, Drift and Grain own mechanism routing natively; the shared monkey patch must stay gone.
 forbidText(main, "import './moduleStabilityPatch'", 'Removed module branch monkey patch');
 requireText(ember, 'private genericAttached = true', 'Ember native generic branch state');
-requireText(ember, 'this.setGenericBranchAttached(!(namedTube || magnetic))', 'Ember native dedicated-branch ownership');
+requireText(ember, 'this.setGenericBranchAttached(!(namedTube || magnetic || digitalCapture))', 'Ember native dedicated-branch ownership');
 requireText(ember, 'this.hp.disconnect(this.shaper)', 'Ember native generic shaper detach');
 requireText(chorus, 'private standardAttached = true', 'Drift native standard branch state');
 requireText(chorus, 'this.setStandardBranchAttached(false)', 'Drift native classic ownership');

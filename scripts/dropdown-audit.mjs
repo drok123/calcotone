@@ -46,14 +46,14 @@ const atmos = read('src/audio/effects/Reverb.ts');
 const grain = read('src/audio/effects/Bitcrusher.ts');
 const grainProcessor = read('public/grain-processor.js');
 const artifact = read('src/audio/effects/Media.ts');
-const artifactSampler = read('public/artifact-sampler-processor.js');
+const emberDigitalCapture = read('public/ember-digital-capture-processor.js');
 
-const EMBER = ['velvet','tube','console','transformer','furnace','exciter','broken','goldlion','mullard','telefunken','bugleboy','rcablack','tascam424','neve1073','ssl4000e','api1608'];
+const EMBER = ['velvet','tube','console','transformer','furnace','exciter','broken','goldlion','mullard','telefunken','bugleboy','rcablack','sp1200','mpc60','mirage','s950','emulator2','fairlightiix'];
 const DRIFT = ['chorus','ensemble','dimension','vibrato','rotary','doppler','liquid','orbit','ce1','dimensiond','mxrflanger','electricmistress','adaflanger','bf2','biphase','smallstone','univibe','leslie'];
 const HALO = ['clean','tape','bbd','pingpong','diffuse','scatter','constellation','re201','EP-3 Echoplex','Binson Echorec','Deluxe Memory Man','AMS DMX 15-80 S'];
 const ATMOS = ['room','plate','hall','cinema','cloud','freeze','celestial','aurora','nebula','abyss','emt140','lexicon224'];
-const GRAIN = ['mosaic','scatter','smear','prism','slice','freeze'];
-const ARTIFACT = ['cassette','reel','vinyl','vhs','radio','wax','broken','archive','sp1200','mpc60','mirage','s950','Ampex ATR-102','emulator2','fairlightiix'];
+const GRAIN = ['mosaic','scatter','smear','prism','slice','freeze','clouds','beads','morphagene','arbhar','particle2','microcosm'];
+const ARTIFACT = ['cassette','reel','vinyl','vhs','radio','wax','broken','archive','tascam424','Neve 1073','SSL 4000E','API 1608','Ampex ATR-102'];
 
 requireOrder(ember, 'EMBER_MODE_ORDER', EMBER, 'Ember dropdown');
 requireOrder(drift, 'DRIFT_MODE_ORDER', DRIFT, 'Drift dropdown');
@@ -65,9 +65,13 @@ requireOrder(artifact, 'MEDIA_MODE_ORDER', ARTIFACT, 'Artifact dropdown');
 // Ember: named tubes and transformer must use dedicated stages; generic modes share only the intentional shaper path.
 for (const tube of ['goldlion','mullard','telefunken','bugleboy','rcablack']) requireText(ember, `${tube}: '${tube}'`, `Ember ${tube} dedicated tube mapping`);
 requireText(ember, "const magnetic = this.mode === 'transformer'", 'Ember transformer ownership');
-for (const mode of ['tascam424','neve1073','ssl4000e','api1608']) requireText(ember, `${mode}: {`, `Ember ${mode} console path`);
-requireText(ember, 'const consolePath = CONSOLE_PATHS[this.mode]', 'Ember console path ownership');
-requireText(ember, 'this.setGenericBranchAttached(!(namedTube || magnetic))', 'Ember inactive generic branch suspension');
+requireText(ember, "'calcotone-ember-digital-capture-processor'", 'Ember digital-capture worklet branch');
+for (const mode of [0,1,2,3,4,5]) requireText(emberDigitalCapture, `mode === ${mode}`, `Ember digital-capture model ${mode}`);
+requireText(emberDigitalCapture, 'quantizeNonlinear12', 'Ember MPC60 nonlinear converter');
+requireText(emberDigitalCapture, 'quantizeCompanded8', 'Ember vintage 8-bit companding');
+requireText(ember, 'this.setDigitalCaptureParameter(\'mode\', digitalCaptureMode, now)', 'Ember digital-capture model routing');
+requireText(ember, 'this.setGenericBranchAttached(!(namedTube || magnetic || digitalCapture))', 'Ember inactive generic branch suspension');
+forbidText(ember, 'CONSOLE_PATHS', 'Ember console path ownership');
 requireText(ember, 'const MAX_CURVE_CACHE = 192', 'Ember bounded curve cache');
 
 // Drift: standard modulation and dedicated classic hardware must remain mutually exclusive.
@@ -90,23 +94,33 @@ for (const mode of ATMOS) requireObjectKey(atmos, mode, `Atmos ${mode}`);
 requireText(atmos, 'const MAX_RETIRED_REVERB_NETWORKS = 1', 'Atmos retiring network cap');
 forbidText(atmos, 'this.input.disconnect(previous.network.input)', 'Atmos premature outgoing disconnect');
 
-// Grain: every mode is a live-memory mechanism, with bounded shared resources and
-// dedicated slice/freeze state. Converter quantization belongs to Artifact.
+// Grain: live-memory algorithms and granular hardware studies share bounded
+// resources. Converter quantization and classic sampler playback belong to Ember.
 requireText(grainProcessor, 'this.voices = Array.from({ length: 8 }', 'Grain bounded voice pool');
 requireText(grainProcessor, 'spawnGranularVoice(', 'Grain granular memory engine');
 requireText(grainProcessor, 'processSlice(', 'Grain deterministic slice engine');
 requireText(grainProcessor, 'processFreeze(', 'Grain crossfaded freeze engine');
+for (const [mode, mechanism] of [
+  [6, 'Clouds study'],
+  [7, 'Beads study'],
+  [8, 'Morphagene study'],
+  [9, 'Arbhar study'],
+  [10, 'Particle 2 study'],
+  [11, 'Microcosm study'],
+]) requireText(grainProcessor, `mode === ${mode}`, `Grain ${mechanism}`);
+requireText(grainProcessor, 'applyHardwareCharacter(', 'Grain hardware character stage');
+requireText(grainProcessor, 'maxValue: 11', 'Grain hardware mode worklet range');
 requireText(grain, 'this.processor.connect(this.wetGain)', 'Grain single owned DSP path');
 forbidText(grainProcessor, 'processHardware(', 'Grain must not contain sampler hardware');
 forbidText(grainProcessor, 'quantizeNonlinear12', 'Grain must not contain converter quantization');
 
-// Artifact: media, tape, transmission, and six early-sampler converters retain
-// mechanism-specific paths.
+// Artifact: media, tape, transmission, and console paths retain mechanism-specific paths.
 requireText(artifact, "this.mode === 'Ampex ATR-102'", 'Artifact ATR-102 implementation');
-requireText(artifact, "'calcotone-artifact-sampler-processor'", 'Artifact sampler worklet branch');
-for (const mode of [0,1,2,3,4,5]) requireText(artifactSampler, `mode === ${mode}`, `Artifact sampler model ${mode}`);
-requireText(artifactSampler, 'quantizeNonlinear12', 'Artifact MPC60 nonlinear converter');
-requireText(artifactSampler, 'quantizeCompanded8', 'Artifact vintage 8-bit companding');
+requireText(artifact, "this.mode === 'tascam424'", 'Artifact TASCAM 424 path');
+for (const mode of ['Neve 1073','SSL 4000E','API 1608']) requireText(artifact, `this.mode === '${mode}'`, `Artifact ${mode} console path`);
+requireText(artifact, 'this.configureSummingBus(now, {', 'Artifact summing-bus routing');
+requireText(artifact, 'getOpAmpCurve(', 'Artifact op-amp path');
+forbidText(artifact, 'AudioWorkletNode', 'Artifact digital-capture ownership');
 requireText(artifact, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve caches');
 
 if (failures.length) {
