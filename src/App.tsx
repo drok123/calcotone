@@ -37,6 +37,15 @@ import { FaceplateLayoutEditor } from './components/layout/FaceplateLayoutEditor
 import type { ModuleState, XYAssignment, XYAxis } from './ui/types';
 import { clamp } from './ui/math';
 import { shapeMotionSource } from './ui/motion';
+import {
+  RANDOM_UI_COMPLETE_EVENT,
+  RANDOM_UI_EFFECT_ORDER,
+  RANDOM_UI_MODULE_EVENT,
+  completeRandomUiFlow,
+  revealRandomUiModule,
+  type RandomUiCompleteDetail,
+  type RandomUiModuleDetail,
+} from './features/random/randomUiFlow';
 
 const APP_NAME = 'CALCOTONE';
 const DESIGN_WIDTH = 2560;
@@ -71,6 +80,18 @@ interface PatchDraft {
   pointerX: number;
   pointerY: number;
   hoverAxis: XYAxis | null;
+}
+
+interface RandomUiPlan {
+  finalModules: ModuleState[];
+  finalMessage: string;
+  revealed: Set<string>;
+  targets: Map<string, ModuleState>;
+}
+
+interface RandomFlowProgress {
+  current: number;
+  total: number;
 }
 
 const INITIAL_MODULES: ModuleState[] = [
@@ -408,6 +429,8 @@ export default function App() {
   const [message, setMessage] = useState(
     'Open the preview in a separate tab, then start the audio engine.'
   );
+  const [randomFlowProgress, setRandomFlowProgress] =
+    useState<RandomFlowProgress | null>(null);
   const [inputDevice, setInputDevice] = useState('No input connected');
   const [latency, setLatency] = useState('—');
   const [sampleRate, setSampleRate] = useState('—');
@@ -439,6 +462,9 @@ export default function App() {
   const xyPadRef = useRef<HTMLDivElement | null>(null);
   const patchDraftRef = useRef<PatchDraft | null>(null);
   const motionValueRef = useRef(new Map<string, number>());
+  const randomUiPlanRef = useRef<RandomUiPlan | null>(null);
+  const randomFlowActiveRef = useRef(false);
+  const offlineRandomTimersRef = useRef<number[]>([]);
 
   function getEngine(): AudioEngine {
     if (!engineRef.current) {
@@ -968,7 +994,27 @@ export default function App() {
       return { ...modeModule, parameters: nextParameters };
     });
 
-    setModules(nextModules);
+    const sweetSpotSummary = sweetSpotsUsed.length
+      ? ` · Sweet spots: ${sweetSpotsUsed.join(' · ')}`
+      : '';
+    const finalMessage = `MUSICAL RANDOM reshaped ${activeModules.length} active module${activeModules.length === 1 ? '' : 's'}${sweetSpotSummary}.`;
+    const targets = new Map(
+      nextModules
+        .filter((module) => module.enabled && module.available)
+        .map((module) => [module.id, module])
+    );
+
+    for (const timer of offlineRandomTimersRef.current) window.clearTimeout(timer);
+    offlineRandomTimersRef.current = [];
+    randomUiPlanRef.current = {
+      finalModules: nextModules,
+      finalMessage,
+      revealed: new Set(),
+      targets,
+    };
+    randomFlowActiveRef.current = true;
+    setRandomFlowProgress({ current: 0, total: targets.size });
+    setMessage(`RANDOM FLOW queued · ${targets.size} module packet${targets.size === 1 ? '' : 's'}.`);
 
     if (engineState === 'running') {
       const engine = engineRef.current;
@@ -1003,12 +1049,19 @@ export default function App() {
           );
         }
       }
+    } else {
+      // Without live DSP there is no transfer scheduler to drive the UI. Preserve
+      // the same serial reveal locally so RANDOM never falls back to a visual burst.
+      const orderedTargets = RANDOM_UI_EFFECT_ORDER.filter((effectId) => targets.has(effectId));
+      for (const [index, effectId] of orderedTargets.entries()) {
+        offlineRandomTimersRef.current.push(
+          window.setTimeout(() => revealRandomUiModule(effectId), 48 + index * 96)
+        );
+      }
+      offlineRandomTimersRef.current.push(
+        window.setTimeout(() => completeRandomUiFlow(), 72 + orderedTargets.length * 96)
+      );
     }
-
-    const sweetSpotSummary = sweetSpotsUsed.length
-      ? ` · Sweet spots: ${sweetSpotsUsed.join(' · ')}`
-      : '';
-    setMessage(`MUSICAL RANDOM reshaped ${activeModules.length} active module${activeModules.length === 1 ? '' : 's'}${sweetSpotSummary}.`);
   }
 
   function toggleModule(moduleId: string): void {
@@ -1048,7 +1101,11 @@ export default function App() {
     setXyPosition({ x, y });
   }
 
-  function applyXYAssignments(x: number, y: number): void {
+  function applyXYAssignments(
+    x: number,
+    y: number,
+    moduleSource: ModuleState[] = modules
+  ): void {
     const activeTargets = new Set(xyAssignments.map((assignment) => assignment.target));
     for (const target of motionValueRef.current.keys()) {
       if (!activeTargets.has(target)) motionValueRef.current.delete(target);
@@ -1063,7 +1120,7 @@ export default function App() {
         assignment.curve ?? 'linear'
       );
       const [moduleId, parameterId] = assignment.target.split('.');
-      const module = modules.find((candidate) => candidate.id === moduleId);
+      const module = moduleSource.find((candidate) => candidate.id === moduleId);
       const parameter = module?.parameters.find(
         (candidate) => candidate.id === parameterId
       );
@@ -1094,6 +1151,62 @@ export default function App() {
       }
     }
   }
+
+  useEffect(() => {
+    const revealModule = (event: Event): void => {
+      const detail = (event as CustomEvent<RandomUiModuleDetail>).detail;
+      const effectId = detail?.effectId;
+      const plan = randomUiPlanRef.current;
+      if (!effectId || !plan || plan.revealed.has(effectId)) return;
+      const target = plan.targets.get(effectId);
+      if (!target) return;
+
+      plan.revealed.add(effectId);
+      const current = plan.revealed.size;
+      const total = plan.targets.size;
+      setModules((currentModules) =>
+        currentModules.map((module) => module.id === effectId ? target : module)
+      );
+      setRandomFlowProgress({ current, total });
+      setMessage(`RANDOM FLOW ${current}/${total} · ${target.name}`);
+    };
+
+    const finishFlow = (event: Event): void => {
+      const detail = (event as CustomEvent<RandomUiCompleteDetail>).detail;
+      const plan = randomUiPlanRef.current;
+      if (!plan) return;
+
+      const revealedEverything = plan.revealed.size === plan.targets.size;
+      if (!revealedEverything && detail?.completed !== false) {
+        setModules(plan.finalModules);
+      }
+
+      randomUiPlanRef.current = null;
+      randomFlowActiveRef.current = false;
+      setRandomFlowProgress(null);
+
+      if (detail?.completed === false) {
+        setMessage(`RANDOM FLOW interrupted after ${plan.revealed.size}/${plan.targets.size} modules.`);
+        return;
+      }
+
+      setMessage(plan.finalMessage);
+      if (revealedEverything) {
+        applyXYAssignments(
+          xyPosition.x / 100,
+          xyPosition.y / 100,
+          plan.finalModules
+        );
+      }
+    };
+
+    window.addEventListener(RANDOM_UI_MODULE_EVENT, revealModule);
+    window.addEventListener(RANDOM_UI_COMPLETE_EVENT, finishFlow);
+    return () => {
+      window.removeEventListener(RANDOM_UI_MODULE_EVENT, revealModule);
+      window.removeEventListener(RANDOM_UI_COMPLETE_EVENT, finishFlow);
+    };
+  }, [engineState, xyAssignments, xyPosition.x, xyPosition.y]);
 
   function beginPatch(
     target: string,
@@ -1271,12 +1384,15 @@ export default function App() {
 
   useEffect(() => {
     if (engineState !== 'running') return;
+    if (randomFlowActiveRef.current) return;
     applyXYAssignments(xyPosition.x / 100, xyPosition.y / 100);
   }, [xyAssignments, modules, xyPosition.x, xyPosition.y, engineState]);
 
   useEffect(() => {
     return () => {
       clearRecordingTimer();
+      for (const timer of offlineRandomTimersRef.current) window.clearTimeout(timer);
+      offlineRandomTimersRef.current = [];
       engineRef.current?.cancelRecording();
       void engineRef.current?.stop();
     };
@@ -1300,7 +1416,7 @@ export default function App() {
       window.removeEventListener('resize', refreshPersistentPatchLines);
       window.removeEventListener('scroll', refreshPersistentPatchLines, true);
     };
-  }, [xyAssignments, modules, railAOrder, railBOrder]);
+  }, [xyAssignments, railAOrder, railBOrder]);
 
   useLayoutEffect(() => {
     const fitCanvas = (): void => {
@@ -1397,7 +1513,14 @@ export default function App() {
         </header>
 
         <section className="status-strip control-strip">
-          <button type="button" className="profiler-toggle randomizer-toggle" onClick={randomizeActiveModules} title="Randomize only active modules within musically guarded ranges">RANDOM</button>
+          <button type="button" className="profiler-toggle randomizer-toggle" onClick={randomizeActiveModules} title="Randomize only active modules within musically guarded ranges">
+            RANDOM
+            {randomFlowProgress && (
+              <span className="randomizer-flow-count" aria-hidden="true">
+                {randomFlowProgress.current}/{randomFlowProgress.total}
+              </span>
+            )}
+          </button>
           <button type="button" className="profiler-toggle signal-randomizer-toggle" onClick={randomizeSignalOrder} title="Randomize the order of both three-module signal rails">SIGNAL RANDOM</button>
           <button type="button" className={`profiler-toggle ${explainMode ? 'active' : ''}`} aria-pressed={explainMode} onClick={() => setExplainMode((value) => !value)}>EXPLAIN</button>
           <FaceplateLayoutEditor />
