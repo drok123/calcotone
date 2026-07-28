@@ -68,6 +68,10 @@ requireText(hardwarePalette, '.output-meter span.lit', 'Cream output-meter illum
 requireText(hardwarePalette, '.knob-patch-jack.assigned', 'Dark metallic knob jacks');
 requireText(hardwarePalette, '.xy-patch-destination.axis-y i', 'Dark metallic XY sockets');
 requireText(hardwarePalette, '.pressure-panel .knob-label', 'Charcoal Pressure labels');
+requireText(hardwarePalette, '.effect-module .module-header h3', 'Charcoal module titles');
+requireText(hardwarePalette, '.effect-module .knob-label', 'Charcoal module control legends');
+requireText(hardwarePalette, '.effect-module .module-route-cue', 'Charcoal module route cue');
+requireText(hardwarePalette, '.effect-module .coming-soon', 'Charcoal module fallback text');
 const hardwarePolishImport = main.indexOf("import './components/layout/HardwarePolishPass.css'");
 const charcoalPassImport = main.indexOf("import './components/layout/CharcoalHardwarePass.css'");
 if (hardwarePolishImport < 0 || charcoalPassImport < 0 || charcoalPassImport < hardwarePolishImport) {
