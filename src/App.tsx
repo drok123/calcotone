@@ -29,7 +29,6 @@ import {
 import { useVisualEngine } from './visual/VisualEngine';
 import { EffectModule } from './components/effects/EffectModule';
 import { MotionPad } from './components/motion/MotionPad';
-import { usePressureState } from './components/signal/pressureStore';
 import { LinearControl } from './components/controls/LinearControl';
 import { LevelMeter } from './components/meters/LevelMeter';
 import { SpectrumWaterfall } from './components/meters/SpectrumWaterfall';
@@ -386,7 +385,6 @@ export default function App() {
   const [canvasScale, setCanvasScale] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [modules, setModules] = useState<ModuleState[]>(INITIAL_MODULES);
-  const pressureState = usePressureState();
   const [railAOrder, setRailAOrder] = useState<string[]>([...DEFAULT_RAIL_A_ORDER]);
   const [railBOrder, setRailBOrder] = useState<string[]>([...DEFAULT_RAIL_B_ORDER]);
   const [draggedModuleId, setDraggedModuleId] = useState<string | null>(null);
@@ -1360,12 +1358,16 @@ export default function App() {
         );
       }
 
-      setProfiler(engine?.getProfilerSnapshot() ?? null);
+      if (profilerOpen) {
+        setProfiler(engine?.getProfilerSnapshot() ?? null);
+      } else {
+        setProfiler((current) => current === null ? current : null);
+      }
     };
     refresh();
     const timer = window.setInterval(refresh, 500);
     return () => window.clearInterval(timer);
-  }, [isRunning]);
+  }, [isRunning, profilerOpen]);
 
   return (
     <div className="app-shell">
@@ -1663,7 +1665,6 @@ export default function App() {
               dragging={xyDragging}
               patchActive={Boolean(patchDraft)}
               hoverAxis={patchDraft?.hoverAxis ?? null}
-              signalLab={pressureState}
               onDraggingChange={setXyDragging}
               onPadPointer={handleXYPad}
               onDisconnect={disconnectPatch}
