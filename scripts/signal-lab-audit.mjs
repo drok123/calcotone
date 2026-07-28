@@ -51,6 +51,10 @@ requireText(pressureBridge, 'restoreMasterChain(engine)', 'Pressure bypass resto
 requireText(pressureBridge, "window.addEventListener('calcotone:pressure-change'", 'Pressure state event wiring');
 requireText(pressureStore, "STORAGE_KEY = 'calcotone.pressure-state.v1'", 'Pressure state persistence');
 requireText(pressureStore, 'if (!state.enabled) return null', 'RANDOM respects Pressure power');
+requireText(pressureBridge, 'const wasEnabled = processors.has(activeEngine)', 'Pressure topology transition detection');
+requireText(pressureBridge, 'if (pressure && !wasEnabled)', 'Pressure graph stays stable on control changes');
+requireText(pressureStore, 'schedulePersist()', 'Pressure persistence coalescing');
+requireText(pressureStore, 'const PERSIST_DELAY_MS = 180', 'Pressure persistence debounce window');
 
 forbidText(vite, 'signalLabUiTransform()', 'obsolete UI-only Signal transform disabled');
 
