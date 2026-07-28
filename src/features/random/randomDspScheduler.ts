@@ -1,6 +1,7 @@
 import type { AudioEngine } from '../../audio/AudioEngine';
 import type { Effect } from '../../audio/effects/Effect';
 import { applyRandomBatch } from '../../perf/randomBatch';
+import { RANDOM_UI_EFFECT_ORDER } from './randomUiFlow';
 
 const RANDOM_DSP_STAGGER_MS = 18;
 const RANDOM_DISCRETE_SETTLE_MS = 54;
@@ -13,14 +14,7 @@ const RANDOM_WET_RECOVERY_MS = 48;
 // user can launch another topology churn pass.
 const RANDOM_HALO_TOPOLOGY_SETTLE_MS = 620;
 const RANDOM_ATMOS_TOPOLOGY_SETTLE_MS = 940;
-const RANDOM_BATCH_ORDER = [
-  'saturation',
-  'chorus',
-  'bitcrusher',
-  'media',
-  'delay',
-  'reverb',
-] as const;
+const RANDOM_BATCH_ORDER = RANDOM_UI_EFFECT_ORDER;
 
 export type RandomParameterBatches = Map<string, Map<string, number>>;
 
@@ -30,6 +24,13 @@ type EffectWithWetDry = Effect & {
 
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+function yieldForUiPaint(): Promise<void> {
+  if (document.hidden) return sleep(0);
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => window.setTimeout(resolve, 0));
+  });
 }
 
 function discreteParameterFor(effectId: string): string | null {
@@ -85,11 +86,19 @@ async function commitOneBatch(
   engine: AudioEngine,
   effectId: string,
   targets: Map<string, number>,
-  engineIsUsable: () => boolean
+  engineIsUsable: () => boolean,
+  revealModule: (effectId: string) => void
 ): Promise<void> {
   if (!targets.size || !engineIsUsable()) return;
   const effect = engine.getEffect(effectId);
   if (!effect) return;
+
+  // Reveal one destination packet, finish React's commit, and give the browser a
+  // paint opportunity before this module performs any DSP work. RANDOM therefore
+  // reads as a flowing sequence instead of one large visual/state burst.
+  revealModule(effectId);
+  await yieldForUiPaint();
+  if (!engineIsUsable()) return;
 
   const discreteChanging = discreteTargetChanges(effectId, effect, targets);
 
@@ -132,7 +141,8 @@ async function commitOneBatch(
 export function flushCapturedRandom(
   engine: AudioEngine,
   batches: RandomParameterBatches,
-  engineIsUsable: () => boolean
+  engineIsUsable: () => boolean,
+  revealModule: (effectId: string) => void
 ): Promise<void> {
   // RANDOM is planned atomically but committed as a sequence of click-safe effect transactions.
   // Discrete machine changes temporarily crossfade only that effect to dry, install the new DSP,
@@ -144,12 +154,12 @@ export function flushCapturedRandom(
     const values = batches.get(effectId);
     if (!values) continue;
     committed.add(effectId);
-    chain = chain.then(() => commitOneBatch(engine, effectId, values, engineIsUsable));
+    chain = chain.then(() => commitOneBatch(engine, effectId, values, engineIsUsable, revealModule));
   }
 
   for (const [effectId, values] of batches) {
     if (committed.has(effectId)) continue;
-    chain = chain.then(() => commitOneBatch(engine, effectId, values, engineIsUsable));
+    chain = chain.then(() => commitOneBatch(engine, effectId, values, engineIsUsable, revealModule));
   }
 
   // The bridge holds RANDOM busy until this promise resolves, so repeated button mashing can no
