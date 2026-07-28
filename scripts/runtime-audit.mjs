@@ -37,6 +37,7 @@ const videoColor = read('src/components/effects/VideoColorStability.css');
 const media = read('src/audio/effects/Media.ts');
 const ember = read('src/audio/effects/Saturation.ts');
 const main = read('src/main.tsx');
+const app = read('src/App.tsx');
 const scheduler = read('src/components/effects/viewportScheduler.ts');
 const engine = read('src/audio/AudioEngine.ts');
 const knob = read('src/components/controls/Knob.tsx');
@@ -86,6 +87,8 @@ requireText(enginePolicy, "mode === 'studio' ? 4", 'Studio transparent limiter r
 requireText(enginePatch, "document.querySelector('.dsp-profiler')", 'Profiler visibility guard');
 requireText(enginePolicy, 'const stats = grainStats(engine)', 'Adaptive Grain-only health read');
 requireText(enginePolicy, 'spectralCentroidHz: 0', 'Hidden profiler avoids spectrum work');
+requireText(app, 'const resolvedMode = engine?.getPerformanceMode()', 'SAFE resolved mode read');
+requireText(app, 'setPerformanceMode((currentMode) =>', 'SAFE React quality state mirror');
 requireText(enginePatch, 'await internal.routeTransition.catch(() => undefined)', 'Route transition teardown serialization');
 requireText(enginePatch, 'prototype.stop = stableStop', 'Route-safe stop patch install');
 requireText(enginePatch, 'prototype.stop = originalStop', 'Route-safe stop HMR restore');
