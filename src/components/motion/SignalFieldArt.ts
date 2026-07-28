@@ -44,8 +44,8 @@ export function drawSignalFieldArt(ctx: CanvasRenderingContext2D, width: number,
   const vocabulary = landscapeVocabulary(frame.modules);
   const x = clamp01(frame.x);
   const y = clamp01(frame.y);
-  const amount = clamp01(state.amount);
-  const motion = clamp01(state.motion);
+  const amount = clamp01(state.drive);
+  const motion = clamp01(state.time);
   const level = clamp01(frame.audio.level);
   const transient = clamp01(frame.audio.transient);
   const influence = 0.035 + amount * 0.045 + level * 0.018;
@@ -60,7 +60,7 @@ export function drawSignalFieldArt(ctx: CanvasRenderingContext2D, width: number,
   ctx.lineJoin = 'round';
 
   switch (state.mode) {
-    case 'octaver': {
+    case 'opto': {
       // A landscape contour and its harmonic echo: same terrain grammar, shifted in scale/depth.
       for (let layer = 0; layer < 2; layer += 1) {
         ctx.strokeStyle = rgba(layer ? palette.b : palette.a, influence * (layer ? 0.62 : 0.82));
@@ -79,7 +79,7 @@ export function drawSignalFieldArt(ctx: CanvasRenderingContext2D, width: number,
       }
       break;
     }
-    case 'ringmod': {
+    case 'varimu': {
       // Two restrained interference fields share the scene's perspective instead of floating circles.
       const span = Math.min(width, height) * (0.16 + amount * 0.12);
       for (let i = 0; i < 3; i += 1) {
@@ -97,7 +97,7 @@ export function drawSignalFieldArt(ctx: CanvasRenderingContext2D, width: number,
       ctx.stroke();
       break;
     }
-    case 'tremolo': {
+    case 'fet': {
       // Fine horizon strata breathe rather than generic waveform lines.
       for (let i = 0; i < 3; i += 1) {
         const base = horizon + height * (0.045 + i * 0.035);
@@ -114,7 +114,7 @@ export function drawSignalFieldArt(ctx: CanvasRenderingContext2D, width: number,
       }
       break;
     }
-    case 'autopan': {
+    case 'vca': {
       // Long perspective arcs imply stereo travel while remaining anchored to the world horizon.
       for (let i = 0; i < 2; i += 1) {
         const offset = (i ? 1 : -1) * width * (0.05 + amount * 0.04);
@@ -126,7 +126,7 @@ export function drawSignalFieldArt(ctx: CanvasRenderingContext2D, width: number,
       }
       break;
     }
-    case 'wavefolder': {
+    default: {
       // A topographic contour is locally pleated around the cursor; folds stay tied to terrain depth.
       for (let row = 0; row < 3; row += 1) {
         ctx.strokeStyle = rgba(row === 1 ? palette.b : palette.a, influence * (0.66 - row * 0.07));
