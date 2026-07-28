@@ -18,7 +18,7 @@ const main = read('src/main.tsx');
 const signalArt = read('src/components/motion/SignalFieldArt.ts');
 const xyField = read('src/components/motion/XYSignalField.tsx');
 const motionPad = read('src/components/motion/MotionPad.tsx');
-const signalTransform = read('build/signalLabUiTransform.ts');
+const app = read('src/App.tsx');
 
 const videoTags = (temporal.match(/<video\b/g) ?? []).length;
 if (videoTags !== 1) failures.push(`TemporalVideo must own exactly one decoder template; found ${videoTags}`);
@@ -56,17 +56,17 @@ forbidText(viewport, "['liquid', 'orbit', 'doppler', 'rotary'].includes(mode) ? 
 requireText(signalArt, 'scenePalette(modules', 'Signal art derives landscape palette');
 requireText(signalArt, 'landscapeVocabulary(modules', 'Signal art derives landscape vocabulary');
 requireText(signalArt, "'architectural' | 'mechanical' | 'fluid' | 'organic'", 'Signal art vocabulary families');
-requireText(signalArt, "case 'octaver'", 'Signal Octave composition');
-requireText(signalArt, "case 'ringmod'", 'Signal Ring Mod composition');
-requireText(signalArt, "case 'tremolo'", 'Signal Tremolo composition');
-requireText(signalArt, "case 'autopan'", 'Signal Auto Pan composition');
-requireText(signalArt, "case 'wavefolder'", 'Signal Wavefolder composition');
+requireText(signalArt, "case 'fet'", 'Pressure FET composition');
+requireText(signalArt, "case 'opto'", 'Pressure Opto composition');
+requireText(signalArt, "case 'varimu'", 'Pressure Vari-Mu composition');
+requireText(signalArt, "case 'vca'", 'Pressure VCA composition');
 requireText(signalArt, "ctx.globalCompositeOperation = 'screen'", 'Signal art integrated luminosity');
 forbidText(signalArt, "strokeStyle = 'black'", 'Signal black-line overlay');
 forbidText(signalArt, 'Math.random()', 'Signal per-frame random spaghetti');
 requireText(xyField, 'if (signal?.enabled) drawSignalFieldArt', 'Signal artwork only while enabled');
 requireText(motionPad, 'signalLab={signalLab}', 'MotionPad forwards Signal visual state');
-requireText(signalTransform, 'signalLab={signalLabState}', 'App forwards Signal state to XY');
+requireText(app, 'const pressureState = usePressureState()', 'App subscribes to live Pressure state');
+requireText(app, 'signalLab={pressureState}', 'App forwards Pressure state to XY');
 
 for (const name of ['ember', 'drift', 'drift-alt', 'halo', 'artifact', 'atmos', 'grain']) {
   const file = `public/visuals/${name}.mp4`;
