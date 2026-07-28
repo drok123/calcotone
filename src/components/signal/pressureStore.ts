@@ -7,6 +7,8 @@ import {
 
 const STORAGE_KEY = 'calcotone.pressure-state.v1';
 const listeners = new Set<() => void>();
+const PERSIST_DELAY_MS = 180;
+let persistTimer: number | null = null;
 
 let state: SignalLabState = loadState();
 
@@ -32,8 +34,18 @@ function loadState(): SignalLabState {
   }
 }
 
-function persist(): void {
+function persistNow(): void {
+  if (typeof window === 'undefined') return;
   try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* storage is optional */ }
+}
+
+function schedulePersist(): void {
+  if (typeof window === 'undefined') return;
+  if (persistTimer !== null) window.clearTimeout(persistTimer);
+  persistTimer = window.setTimeout(() => {
+    persistTimer = null;
+    persistNow();
+  }, PERSIST_DELAY_MS);
 }
 
 function emit(): void {
@@ -54,7 +66,7 @@ export function setPressureState(patch: Partial<SignalLabState>): void {
     character: clamp01(patch.character ?? state.character),
     mix: clamp01(patch.mix ?? state.mix),
   };
-  persist();
+  schedulePersist();
   emit();
 }
 
@@ -85,4 +97,13 @@ export function randomizePressure(): string | null {
     mix: randomIn(recipe.mix),
   });
   return `${recipe.mode.toUpperCase()} · ${recipe.style.toUpperCase()}`;
+}
+
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (persistTimer !== null) window.clearTimeout(persistTimer);
+    persistTimer = null;
+    persistNow();
+  });
 }
