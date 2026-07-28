@@ -1345,8 +1345,20 @@ export default function App() {
       return;
     }
     const refresh = () => {
-      engineRef.current?.updateAdaptivePerformance();
-      setProfiler(engineRef.current?.getProfilerSnapshot() ?? null);
+      const engine = engineRef.current;
+      engine?.updateAdaptivePerformance();
+
+      // SAFE owns adaptive quality decisions inside the engine. Mirror its resolved
+      // mode back into React in the same low-rate tick so controls and visuals never
+      // keep rendering a stale manual selection.
+      const resolvedMode = engine?.getPerformanceMode();
+      if (resolvedMode) {
+        setPerformanceMode((currentMode) =>
+          currentMode === resolvedMode ? currentMode : resolvedMode
+        );
+      }
+
+      setProfiler(engine?.getProfilerSnapshot() ?? null);
     };
     refresh();
     const timer = window.setInterval(refresh, 500);
