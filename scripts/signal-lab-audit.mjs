@@ -20,32 +20,45 @@ const forbidText = (source, needle, label) => {
 
 const core = read('src/audio/SignalLab.ts');
 const panel = read('src/components/signal/SignalLabPanel.tsx');
-const transform = read('build/signalLabUiTransform.ts');
+const pressureBridge = read('src/pressureBridge.tsx');
+const pressureStore = read('src/components/signal/pressureStore.ts');
 const main = read('src/main.tsx');
 const vite = read('vite.config.ts');
 
-requireText(core, "'octaver', 'ringmod', 'tremolo', 'autopan', 'wavefolder'", 'real v1 machine list');
-forbidText(core, "'freqshift'", 'placeholder frequency shift removed');
-requireText(core, 'this.dcBlock.frequency.value = 24', 'octave rectifier DC protection');
-requireText(core, 'FOLD_CURVE_CACHE_LIMIT = 64', 'bounded wavefolder curve cache');
+requireText(core, "['fet', 'opto', 'varimu', 'vca']", 'Pressure machine list');
+requireText(core, "this.detectorFilter.type = 'highpass'", 'Pressure detector DC protection');
+requireText(core, 'this.detectorFilter.frequency.value = 42', 'Pressure detector cutoff');
+requireText(core, "this.gainElement.oversample = '4x'", 'Pressure nonlinear oversampling');
+requireText(core, 'const activeMix = this.state.enabled ? this.state.mix : 0', 'Pressure true bypass mix');
+requireText(core, 'Math.cos(activeMix * Math.PI * 0.5)', 'Pressure equal-power dry law');
+requireText(core, 'Math.sin(activeMix * Math.PI * 0.5)', 'Pressure equal-power wet law');
+requireText(core, 'Math.round(character * 48)', 'Pressure bounded curve refresh');
 
-requireText(panel, '<strong>SIGNAL</strong>', 'Signal panel heading');
-requireText(panel, "onChange({ position: 'pre' })", 'PRE insert control');
-requireText(panel, "onChange({ position: 'post' })", 'POST insert control');
-requireText(panel, 'label="Amount"', 'Amount control');
-requireText(panel, 'label="Mix"', 'Mix control');
+requireText(panel, '<strong>PRESSURE</strong>', 'Pressure panel heading');
+requireText(panel, '<span>Machine</span>', 'Pressure machine control');
+requireText(panel, 'label="Drive"', 'Pressure Drive control');
+requireText(panel, 'label="Time"', 'Pressure Time control');
+requireText(panel, 'label="Character"', 'Pressure Character control');
+requireText(panel, 'label="Mix"', 'Pressure Mix control');
+requireText(panel, 'SIGNAL_LAB_STYLES.map', 'Pressure hardware style controls');
 
-requireText(transform, '<SignalLabPanel', 'Signal panel mounted');
-requireText(transform, 'UI/visual owner until Signal Lab has a native AudioEngine insert point.', 'safe UI-only mode');
-forbidText(transform, 'engine.setSignalLabState(', 'Signal UI must not touch AudioEngine before native insertion');
-forbidText(main, "import './signalLabEngineBridge'", 'experimental Signal bridge must stay out of startup');
-requireText(vite, 'signalLabUiTransform()', 'Signal UI transform enabled');
+requireText(main, "import './pressureBridge'", 'Pressure bridge startup wiring');
+forbidText(main, "import './signalLabEngineBridge'", 'retired movable Signal bridge startup');
+requireText(pressureBridge, 'function applyPostRackPressure(engine: AudioEngine)', 'fixed post-rack Pressure owner');
+requireText(pressureBridge, 'graph.output.connect(pressure.input)', 'rack feeds Pressure');
+requireText(pressureBridge, 'pressure.output.connect(dcBlock)', 'Pressure feeds protected master chain');
+requireText(pressureBridge, 'restoreMasterChain(engine)', 'Pressure bypass restores master topology');
+requireText(pressureBridge, "window.addEventListener('calcotone:pressure-change'", 'Pressure state event wiring');
+requireText(pressureStore, "STORAGE_KEY = 'calcotone.pressure-state.v1'", 'Pressure state persistence');
+requireText(pressureStore, 'if (!state.enabled) return null', 'RANDOM respects Pressure power');
+
+forbidText(vite, 'signalLabUiTransform()', 'obsolete UI-only Signal transform disabled');
 
 if (failures.length) {
-  console.error('\nCALCOTONE Signal Lab audit failed:\n');
+  console.error('\nCALCOTONE Pressure audit failed:\n');
   for (const failure of failures) console.error(` - ${failure}`);
   console.error('');
   process.exit(1);
 }
 
-console.log('CALCOTONE Signal Lab audit passed (UI mounted; audio graph untouched).');
+console.log('CALCOTONE Pressure audit passed (live post-rack DSP + protected master path).');
