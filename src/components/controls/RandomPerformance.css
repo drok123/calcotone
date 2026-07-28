@@ -1,10 +1,51 @@
-/* RANDOM is already doing real DSP topology/parameter work. Do not spend main-thread/GPU
-   budget tweening 36+ knob transforms at the same time. The random bridge adds
-   `random-morphing` only for the duration of the staged RANDOM commit. */
+/* RANDOM briefly holds the existing frame only while it plans the destination.
+   The actual UI/DSP transfer then moves one painted module packet at a time. */
 html.random-morphing .knob-face,
 html.random-morphing .knob-effective-marker,
 html.random-morphing .knob-modulation-ring {
   transition: none !important;
   animation: none !important;
   will-change: auto !important;
+}
+
+.randomizer-toggle {
+  position: relative;
+  overflow: hidden;
+}
+
+.randomizer-toggle.transfer-busy {
+  cursor: progress;
+}
+
+.randomizer-toggle.transfer-busy::after {
+  content: "";
+  position: absolute;
+  left: -34%;
+  bottom: 0;
+  width: 30%;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #f1dda0 42%, #fff4c7 58%, transparent);
+  box-shadow: 0 0 7px rgba(241, 221, 160, .36);
+  animation: random-serial-flow 640ms cubic-bezier(.38, 0, .2, 1) infinite;
+}
+
+.randomizer-flow-count {
+  margin-left: 6px;
+  color: #fff1be;
+  font-size: .48rem;
+  letter-spacing: .05em;
+}
+
+@keyframes random-serial-flow {
+  from { transform: translateX(0); }
+  to { transform: translateX(450%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .randomizer-toggle.transfer-busy::after {
+    animation: none;
+    left: 8%;
+    width: 84%;
+  }
 }

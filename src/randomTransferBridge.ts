@@ -8,6 +8,10 @@ import {
   uninstallRandomCapture,
 } from './features/random/randomCapture';
 import { flushCapturedRandom } from './features/random/randomDspScheduler';
+import {
+  completeRandomUiFlow,
+  revealRandomUiModule,
+} from './features/random/randomUiFlow';
 
 const RANDOM_PREP_MS = 12;
 const RANDOM_SETTLE_MS = 24;
@@ -24,10 +28,8 @@ function consumeClick(event: MouseEvent): void {
   event.stopImmediatePropagation();
 }
 
-function markBusy(button: HTMLButtonElement, busy: boolean): void {
+function markTransactionBusy(button: HTMLButtonElement, busy: boolean): void {
   button.classList.toggle('transfer-busy', busy);
-  document.documentElement.classList.toggle('random-morphing', busy);
-  document.documentElement.classList.toggle('random-hard-hold', busy);
   if (busy) {
     button.setAttribute('aria-busy', 'true');
     button.style.pointerEvents = 'none';
@@ -35,6 +37,11 @@ function markBusy(button: HTMLButtonElement, busy: boolean): void {
     button.removeAttribute('aria-busy');
     button.style.removeProperty('pointer-events');
   }
+}
+
+function markPlanningHold(busy: boolean): void {
+  document.documentElement.classList.toggle('random-morphing', busy);
+  document.documentElement.classList.toggle('random-hard-hold', busy);
 }
 
 function sleep(milliseconds: number): Promise<void> {
@@ -51,8 +58,8 @@ function handleSignalRandom(button: HTMLButtonElement, event: MouseEvent): void 
     return;
   }
   signalBusyUntil = stamp + SIGNAL_LOCK_MS;
-  markBusy(button, true);
-  window.setTimeout(() => markBusy(button, false), SIGNAL_LOCK_MS);
+  markTransactionBusy(button, true);
+  window.setTimeout(() => markTransactionBusy(button, false), SIGNAL_LOCK_MS);
 }
 
 function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void {
@@ -70,14 +77,19 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
 
   consumeClick(event);
   randomBusy = true;
-  markBusy(button, true);
+  markTransactionBusy(button, true);
+  markPlanningHold(true);
   const releaseViewportHold = beginViewportPerformanceHold();
+  const releasePlanningHold = (): void => {
+    markPlanningHold(false);
+    releaseViewportHold();
+  };
 
   window.setTimeout(() => {
     if (activeEngine !== engine || engine.getState() !== 'running') {
       randomBusy = false;
-      markBusy(button, false);
-      releaseViewportHold();
+      markTransactionBusy(button, false);
+      releasePlanningHold();
       return;
     }
 
@@ -98,17 +110,26 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
       parameters = finishRandomCapture(engine);
     }
 
+    // The capture transaction is complete. Resume the screens before the first
+    // module packet is revealed; DSP serialization continues independently.
+    releasePlanningHold();
+
+    let completed = true;
     void flushCapturedRandom(
       engine,
       parameters,
-      () => activeEngine === engine && engine.getState() === 'running'
+      () => activeEngine === engine && engine.getState() === 'running',
+      revealRandomUiModule
     )
       .then(() => sleep(RANDOM_SETTLE_MS))
-      .catch((error) => console.error('CALCOTONE RANDOM staged commit failed.', error))
+      .catch((error) => {
+        completed = false;
+        console.error('CALCOTONE RANDOM staged commit failed.', error);
+      })
       .finally(() => {
+        completeRandomUiFlow(completed);
         randomBusy = false;
-        markBusy(button, false);
-        releaseViewportHold();
+        markTransactionBusy(button, false);
       });
   }, RANDOM_PREP_MS);
 }
