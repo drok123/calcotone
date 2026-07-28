@@ -59,7 +59,7 @@ if (dropdownModeCount !== 79) {
 }
 
 requireText(engine, 'export function moduleModeKey', 'Exact module/mode identity');
-requireText(engine, 'return `\${module.id}:\${moduleMode(module)}`', 'Module-qualified dropdown key');
+requireText(engine, 'return `${module.id}:${moduleMode(module)}`', 'Module-qualified dropdown key');
 requireText(engine, 'hashAsciiScene(key)', 'Deterministic per-mode seed');
 for (const moduleId of ['saturation', 'chorus', 'delay', 'reverb', 'bitcrusher', 'media']) {
   requireText(engine, `case '${moduleId}'`, `${moduleId} ASCII composition`);
