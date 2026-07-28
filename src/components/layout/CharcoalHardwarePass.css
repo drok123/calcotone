@@ -9,6 +9,20 @@
   --calcotone-metal-bottom: #141719;
 }
 
+/* Printed legends on the cream module faceplates use the same Patches charcoal
+   as Recorder and Pressure. Text inside dark readout/select/screen wells is
+   intentionally excluded and keeps its light display ink. */
+.effect-module .module-number,
+.effect-module .module-header h3,
+.effect-module .module-route-cue,
+.effect-module .knob-label,
+.effect-module .coming-soon,
+.effect-module .knob-control:hover .knob-label {
+  color: var(--calcotone-cream-ink) !important;
+  text-shadow: none !important;
+}
+
+
 /* Outer knob ring/bezel only. Keep the cream knob face itself intact. */
 .knob-shell::before {
   background: var(--calcotone-charcoal) !important;
