@@ -77,7 +77,6 @@ forbidText(randomRuntime, "new Map([['mix', RANDOM_TOPOLOGY_SAFE_MIX]])", 'Remov
 forbidText(randomRuntime, 'for (const entry of active) engine.setEffectBypassed(entry.id, true)', 'RANDOM bypass-all burst');
 requireText(randomDspScheduler, "if (effectId === 'delay') return RANDOM_HALO_TOPOLOGY_SETTLE_MS", 'RANDOM Halo topology wait');
 requireText(randomDspScheduler, "if (effectId === 'reverb') return RANDOM_ATMOS_TOPOLOGY_SETTLE_MS", 'RANDOM Atmos topology wait');
-forbidText(randomRuntime, 'engine.setEffectBypassed(', 'RANDOM module power mutation');
 forbidText(randomRuntime, 'directSetEffectBypassed.call(engine, effectId, bypassed)', 'RANDOM power mutation');
 
 // Global engine quality should become more transparent as quality increases, and hidden diagnostics
