@@ -76,7 +76,7 @@ function paletteFor(layers: LayerSet, audio: AudioPhysics): Palette {
   };
   if (mediaMode === 'vhs') {
     palette = { ...palette, bgTop: [4, 8, 18], bgBottom: [10, 18, 36], water: [5, 12, 28] };
-  } else if (modeIs(mediaMode, 'Neve 1073', 'API 1608', 'SSL 4000E', 'cassette', 'reel', 'tascam424')) {
+  } else if (modeIs(mediaMode, 'sp1200', 'mpc60', 'mirage', 's950', 'emulator2', 'fairlightiix', 'cassette', 'reel', 'Ampex ATR-102')) {
     palette = {
       bgTop: [8, 10, 14], bgBottom: [25, 23, 26], haze: [124, 109, 88], terrain: [12, 10, 10], water: [12, 11, 13],
       accentA: [240, 181, 104], accentB: [194, 124, 76], core: [255, 209, 148], coreGlow: [252, 145, 88], detail: [243, 231, 214],
@@ -321,7 +321,7 @@ export class DreamFieldEngine {
     if (!module || c.artifact <= 0) return;
     const mode = module.mediaMode ?? 'cassette';
     if (mode === 'vhs') return this.drawCyberCity(ctx, time, module, c);
-    if (modeIs(mode, 'Neve 1073', 'API 1608', 'SSL 4000E')) return this.drawConsoleWorld(ctx, time, mode, c);
+    if (modeIs(mode, 'sp1200', 'mpc60', 'mirage', 's950', 'emulator2', 'fairlightiix')) return this.drawSamplerWorld(ctx, time, mode, c);
     if (mode === 'archive') return this.drawArchiveWorld(ctx, c);
     if (mode === 'broken') return this.drawBrokenWorld(ctx, time, c);
   }
@@ -365,10 +365,10 @@ export class DreamFieldEngine {
     ctx.restore();
   }
 
-  private drawConsoleWorld(ctx: CanvasRenderingContext2D, time: number, mode: string, c: Composition) {
+  private drawSamplerWorld(ctx: CanvasRenderingContext2D, time: number, mode: string, c: Composition) {
     const horizonY = c.horizon * this.height;
-    const color = mode === 'Neve 1073' ? c.palette.core : c.palette.accentA;
-    const count = mode === 'API 1608' ? 8 : 6;
+    const color = modeIs(mode, 'mirage', 'emulator2') ? c.palette.accentB : mode === 'sp1200' ? c.palette.core : c.palette.accentA;
+    const count = mode === 'fairlightiix' ? 8 : mode === 'sp1200' ? 6 : 7;
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
     for (let i = 0; i < count; i += 1) {
@@ -423,11 +423,10 @@ export class DreamFieldEngine {
 
   private drawParticles(ctx: CanvasRenderingContext2D, time: number, module: ModuleState | undefined, c: Composition) {
     if (!module || c.grain <= 0) return;
-    const mode = module.grainMode ?? 'reconstruct';
+    const mode = module.grainMode ?? 'mosaic';
     const density = valueOf(module, 'density', 0.42);
     const chaos = valueOf(module, 'chaos', 0.16);
     const count = 8 + Math.round(density * 18 + c.audio.high * 8);
-    const hardware = modeIs(mode, 'sp1200', 'mpc60', 'mirage');
     ctx.save(); ctx.globalCompositeOperation = 'screen';
     for (let i = 0; i < count; i += 1) {
       const seed = hash(i * 9.3, 1.4);
@@ -435,14 +434,15 @@ export class DreamFieldEngine {
       const x = (0.10 + hash(i * 4.7, 3.1) * 0.80) * this.width + Math.sin(time * 0.03 + i) * chaos * this.width * 0.02;
       const y = (0.14 + travel * 0.74) * this.height;
       const alpha = 0.02 + c.grain * 0.025 + c.audio.high * 0.02;
-      if (hardware) {
-        const size = mode === 'mirage' ? 2.3 : mode === 'sp1200' ? 1.8 : 1.4;
-        ctx.fillStyle = css(mode === 'mirage' ? c.palette.accentB : mode === 'sp1200' ? c.palette.core : c.palette.accentA, alpha * 0.75);
-        ctx.fillRect(Math.round(x / size) * size, Math.round(y / size) * size, size, size * (1 + seed * 1.2));
+      ctx.strokeStyle = css(mode === 'prism' ? (i % 2 ? c.palette.accentA : c.palette.accentB) : mode === 'freeze' ? c.palette.accentA : c.palette.detail, alpha);
+      ctx.beginPath();
+      if (mode === 'slice') {
+        const cellY = Math.round(y / 6) * 6;
+        ctx.moveTo(x - 3, cellY); ctx.lineTo(x + 3 + c.audio.transient * 2, cellY);
       } else {
-        ctx.strokeStyle = css(mode === 'prism' ? (i % 2 ? c.palette.accentA : c.palette.accentB) : c.palette.detail, alpha);
-        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + chaos * 2 + c.audio.transient * 1.8, y + 5 + c.audio.low * 5); ctx.stroke();
+        ctx.moveTo(x, y); ctx.lineTo(x + chaos * 2 + c.audio.transient * 1.8, y + (mode === 'smear' ? 10 : 5) + c.audio.low * 5);
       }
+      ctx.stroke();
     }
     ctx.restore();
   }

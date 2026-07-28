@@ -110,14 +110,11 @@ requireText(haloPatch, 'PITCH_SLEEP_THRESHOLD', 'Halo pitch scheduler sleep');
 requireText(haloPatch, 'shifter.nextGrainTime = shifter.context.currentTime + 0.02', 'Halo no grain catch-up burst');
 requireText(haloPatch, 'import.meta.hot.dispose(uninstall)', 'Halo patch HMR teardown');
 
-// Artifact keeps transport/noise branches out of static insert/summing modes, but ATR-102 must
-// retain its mechanism-specific wow/flutter/hiss path. Curve caches remain explicitly bounded.
+// Artifact keeps transport/noise branches out of sampler modes, but ATR-102 must retain
+// its mechanism-specific wow/flutter/hiss path. Curve caches remain explicitly bounded.
 requireText(main, "import './artifactStabilityPatch'", 'Artifact stability patch load');
 requireText(artifactPatch, 'function canSuspendTransport', 'Artifact transport ownership');
-requireText(artifactPatch, "mode === 'tascam424'", 'Artifact Tascam transport sleep');
-requireText(artifactPatch, "mode === 'Neve 1073'", 'Artifact Neve transport sleep');
-requireText(artifactPatch, "mode === 'SSL 4000E'", 'Artifact SSL transport sleep');
-requireText(artifactPatch, "mode === 'API 1608'", 'Artifact API 1608 transport sleep');
+requireText(artifactPatch, 'ARTIFACT_SAMPLER_MODES.some', 'Artifact sampler transport sleep');
 forbidText(artifactPatch, "|| mode === 'Ampex ATR-102'", 'Artifact ATR-102 transport must stay live');
 requireText(artifactPatch, 'cassetteNoise.disconnect', 'Artifact noise branch detach');
 requireText(artifactPatch, 'leftDepth.disconnect', 'Artifact modulation branch detach');
@@ -135,10 +132,9 @@ requireText(chorus, 'private standardAttached = true', 'Drift native standard br
 requireText(chorus, 'this.setStandardBranchAttached(false)', 'Drift native classic ownership');
 requireText(chorus, 'this.input.disconnect(this.preamp)', 'Drift native standard branch detach');
 requireText(chorus, '}, 72);', 'Drift fade-before-detach timing');
-requireText(grain, 'private bloomAttached = true', 'Grain native Bloom branch state');
-requireText(grain, 'this.setBloomBranchAttached(false)', 'Grain native hardware ownership');
-requireText(grain, 'this.processor.disconnect(this.bloomFilter)', 'Grain native Bloom detach');
-requireText(grain, '}, 90);', 'Grain fade-before-detach timing');
+requireText(grain, 'this.processor.connect(this.wetGain)', 'Grain single owned DSP path');
+forbidText(grain, 'bloomFilter', 'Removed Grain universal Bloom branch');
+forbidText(grain, 'setBloomBranchAttached', 'Removed Grain hardware branch switching');
 
 // Atmos owns its stability natively: initialize once, ignore redundant writes afterward,
 // keep the outgoing field live-fed during crossfade, and allow only one retiring field.

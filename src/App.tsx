@@ -137,15 +137,15 @@ const INITIAL_MODULES: ModuleState[] = [
   {
     id: 'bitcrusher',
     name: 'Grain',
-    grainMode: 'reconstruct',
+    grainMode: 'smear',
     enabled: false,
     available: true,
     parameters: [
-      { id: 'bits', label: 'Bits', value: 0.75, display: '13 bit' },
-      { id: 'density', label: 'Density', value: 0.42, display: '42%' },
-      { id: 'pitch', label: 'Pitch', value: 0.38, display: '±5 st' },
-      { id: 'chaos', label: 'Chaos', value: 0.16, display: '16%' },
-      { id: 'bloom', label: 'Bloom', value: 0.36, display: '36%' },
+      { id: 'bits', label: 'Window', value: 0.75, display: '540 ms' },
+      { id: 'density', label: 'Overlap', value: 0.42, display: '42%' },
+      { id: 'pitch', label: 'Pitch Drift', value: 0.38, display: '±0.7 st' },
+      { id: 'chaos', label: 'Motion', value: 0.16, display: '16%' },
+      { id: 'bloom', label: 'Memory', value: 0.36, display: '36%' },
       { id: 'mix', label: 'Mix', value: 0.12, display: '12%' },
     ],
   },
@@ -312,31 +312,40 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
     { name: 'VOCAL PLATE STYLE', parameters: { decay:[0.46,0.58], size:[0.18,0.34], color:[0.55,0.74], diffusion:[0.42,0.62], motion:[0.08,0.20], mix:[0.18,0.32] } },
   ],
 
-  'bitcrusher:sp1200': [
-    { name: 'FILTERED DRUM BUS', parameters: { bits:[0.05,0.20], density:[0.42,0.62], pitch:[0.00,0.00], chaos:[0.12,0.28], bloom:[0.46,0.66], mix:[0.18,0.32] } },
+  'media:sp1200': [
+    { name: 'FILTERED DRUM BUS', parameters: { wear:[0.42,0.62], wow:[0.05,0.20], noise:[0.12,0.28], tone:[0.46,0.66], mix:[0.18,0.32] } },
   ],
-  'bitcrusher:mpc60': [
-    { name: 'CLASSIC 40K', parameters: { bits:[0.52,0.72], density:[0.40,0.58], pitch:[0.00,0.00], chaos:[0.28,0.46], bloom:[0.54,0.72], mix:[0.18,0.30] } },
+  'media:mpc60': [
+    { name: 'CLASSIC 40K', parameters: { wear:[0.40,0.58], wow:[0.50,0.50], noise:[0.28,0.46], tone:[0.54,0.72], mix:[0.18,0.30] } },
   ],
-  'bitcrusher:mirage': [
-    { name: 'CLASSIC 29K', parameters: { bits:[0.32,0.34], density:[0.38,0.58], pitch:[0.80,0.88], chaos:[0.18,0.34], bloom:[0.48,0.68], mix:[0.18,0.30] } },
+  'media:mirage': [
+    { name: 'CLASSIC 29K', parameters: { wear:[0.38,0.58], wow:[0.80,0.88], noise:[0.18,0.34], tone:[0.48,0.68], mix:[0.18,0.30] } },
+  ],
+  'media:s950': [
+    { name: 'VARIABLE CLOCK', parameters: { wear:[0.34,0.56], wow:[0.34,0.72], noise:[0.12,0.30], tone:[0.46,0.74], mix:[0.18,0.31] } },
+  ],
+  'media:emulator2': [
+    { name: 'COMPANDED FILTER', parameters: { wear:[0.34,0.54], wow:[0.50,0.50], noise:[0.22,0.42], tone:[0.42,0.70], mix:[0.18,0.31] } },
+  ],
+  'media:fairlightiix': [
+    { name: 'EARLY DIGITAL', parameters: { wear:[0.30,0.50], wow:[0.30,0.74], noise:[0.20,0.38], tone:[0.44,0.72], mix:[0.18,0.31] } },
   ],
 
-  'media:tascam424': [
-    { name: 'ELASTIC DI', parameters: { wear:[0.28,0.42], wow:[0.14,0.19], noise:[0.09,0.13], tone:[0.30,0.44], mix:[0.22,0.36] } },
-    { name: 'PUSHED PREAMP', parameters: { wear:[0.40,0.54], wow:[0.13,0.18], noise:[0.08,0.13], tone:[0.46,0.58], mix:[0.24,0.38] } },
+  'saturation:tascam424': [
+    { name: 'ELASTIC DI', parameters: { drive:[0.28,0.42], tone:[0.48,0.68], heat:[0.12,0.28], character:[0.34,0.52], dynamics:[0.24,0.42], mix:[0.22,0.36] } },
+    { name: 'PUSHED PREAMP', parameters: { drive:[0.40,0.54], tone:[0.42,0.62], heat:[0.28,0.46], character:[0.42,0.62], dynamics:[0.32,0.50], mix:[0.24,0.38] } },
   ],
-  'media:Neve 1073': [
-    { name: 'IRON THICKENER', parameters: { wear:[0.22,0.36], wow:[0.16,0.23], noise:[0.10,0.16], tone:[0.22,0.38], mix:[0.22,0.38] } },
-    { name: 'PUSHED CHANNEL', parameters: { wear:[0.35,0.50], wow:[0.17,0.26], noise:[0.10,0.18], tone:[0.34,0.50], mix:[0.20,0.34] } },
+  'saturation:neve1073': [
+    { name: 'IRON THICKENER', parameters: { drive:[0.22,0.36], tone:[0.42,0.66], heat:[0.28,0.44], character:[0.34,0.54], dynamics:[0.30,0.50], mix:[0.22,0.38] } },
+    { name: 'PUSHED CHANNEL', parameters: { drive:[0.35,0.50], tone:[0.38,0.62], heat:[0.38,0.58], character:[0.40,0.62], dynamics:[0.38,0.58], mix:[0.20,0.34] } },
   ],
-  'media:SSL 4000E': [
-    { name: 'BUS EDGE', parameters: { wear:[0.16,0.28], wow:[0.14,0.20], noise:[0.12,0.20], tone:[0.22,0.38], mix:[0.18,0.32] } },
-    { name: 'VCA PUSH', parameters: { wear:[0.28,0.42], wow:[0.14,0.20], noise:[0.14,0.22], tone:[0.38,0.54], mix:[0.20,0.34] } },
+  'saturation:ssl4000e': [
+    { name: 'BUS EDGE', parameters: { drive:[0.16,0.28], tone:[0.52,0.74], heat:[0.16,0.30], character:[0.42,0.62], dynamics:[0.38,0.62], mix:[0.18,0.32] } },
+    { name: 'VCA PUSH', parameters: { drive:[0.28,0.42], tone:[0.48,0.70], heat:[0.28,0.46], character:[0.46,0.68], dynamics:[0.50,0.72], mix:[0.20,0.34] } },
   ],
-  'media:API 1608': [
-    { name: 'PUNCH BUS', parameters: { wear:[0.20,0.34], wow:[0.18,0.26], noise:[0.12,0.20], tone:[0.24,0.40], mix:[0.20,0.34] } },
-    { name: 'OUTPUT IRON', parameters: { wear:[0.28,0.42], wow:[0.17,0.24], noise:[0.11,0.18], tone:[0.40,0.56], mix:[0.20,0.34] } },
+  'saturation:api1608': [
+    { name: 'PUNCH BUS', parameters: { drive:[0.20,0.34], tone:[0.48,0.70], heat:[0.26,0.44], character:[0.44,0.64], dynamics:[0.38,0.58], mix:[0.20,0.34] } },
+    { name: 'OUTPUT IRON', parameters: { drive:[0.28,0.42], tone:[0.44,0.66], heat:[0.36,0.56], character:[0.48,0.68], dynamics:[0.46,0.66], mix:[0.20,0.34] } },
   ],
   'media:Ampex ATR-102': [
     { name: '7.5 IPS THICK', parameters: { wear:[0.24,0.40], wow:[0.10,0.13], noise:[0.04,0.12], tone:[0.42,0.54], mix:[0.24,0.42] } },
@@ -1918,7 +1927,7 @@ function formatParameterValue(
   }
 
   if (moduleId === 'bitcrusher' && parameterId === 'bits') {
-    return `${Math.round(dspValue)} bit`;
+    return `${Math.round(18 + value * 742)} ms`;
   }
 
   if (moduleId === 'bitcrusher' && parameterId === 'pitch') {

@@ -53,7 +53,7 @@ type ModeMotif =
   | 'waves' | 'voices' | 'depth' | 'vibrato' | 'rotor' | 'doppler' | 'liquid' | 'orbit' | 'comb' | 'phase'
   | 'echo' | 'reels' | 'steps' | 'pingpong' | 'diffuse' | 'scatter' | 'stars' | 'drum' | 'memory' | 'digital'
   | 'room' | 'plate' | 'hall' | 'aperture' | 'cloud' | 'crystal' | 'aurora' | 'nebula' | 'void'
-  | 'blocks' | 'shards' | 'smear' | 'prism' | 'repeat' | 'ruins' | 'pixels'
+  | 'blocks' | 'smear' | 'prism' | 'repeat' | 'pixels'
   | 'cassette' | 'vinyl' | 'tracking' | 'radio' | 'wax' | 'shelves' | 'deck';
 
 interface ModeArtVariant {
@@ -79,6 +79,10 @@ export const MODE_ART_VARIANTS = {
   'saturation:telefunken': { motif: 'tubes', scale: 5.0, amount: 0.35, bias: 0.62 },
   'saturation:bugleboy': { motif: 'tubes', scale: 6.0, amount: 0.34, bias: 0.68 },
   'saturation:rcablack': { motif: 'tubes', scale: 7.0, amount: 0.36, bias: 0.74 },
+  'saturation:tascam424': { motif: 'channels', scale: 4.0, amount: 0.40, bias: 0.80 },
+  'saturation:neve1073': { motif: 'channels', scale: 6.0, amount: 0.38, bias: 0.86 },
+  'saturation:ssl4000e': { motif: 'channels', scale: 8.0, amount: 0.39, bias: 0.92 },
+  'saturation:api1608': { motif: 'channels', scale: 10.0, amount: 0.38, bias: 0.98 },
 
   'chorus:chorus': { motif: 'waves', scale: 4.0, amount: 0.34, bias: 0.06 },
   'chorus:ensemble': { motif: 'voices', scale: 5.0, amount: 0.40, bias: 0.12 },
@@ -125,18 +129,12 @@ export const MODE_ART_VARIANTS = {
   'reverb:emt140': { motif: 'plate', scale: 10.0, amount: 0.38, bias: 0.84 },
   'reverb:lexicon224': { motif: 'digital', scale: 7.0, amount: 0.39, bias: 0.92 },
 
-  'bitcrusher:reconstruct': { motif: 'blocks', scale: 6.0, amount: 0.38, bias: 0.03 },
-  'bitcrusher:shatter': { motif: 'shards', scale: 8.0, amount: 0.42, bias: 0.11 },
+  'bitcrusher:mosaic': { motif: 'blocks', scale: 6.0, amount: 0.38, bias: 0.03 },
+  'bitcrusher:scatter': { motif: 'scatter', scale: 8.0, amount: 0.42, bias: 0.11 },
   'bitcrusher:smear': { motif: 'smear', scale: 6.0, amount: 0.37, bias: 0.19 },
   'bitcrusher:prism': { motif: 'prism', scale: 7.0, amount: 0.40, bias: 0.27 },
-  'bitcrusher:stutter': { motif: 'repeat', scale: 10.0, amount: 0.39, bias: 0.35 },
-  'bitcrusher:ruin': { motif: 'ruins', scale: 6.0, amount: 0.41, bias: 0.43 },
-  'bitcrusher:sp1200': { motif: 'pixels', scale: 5.0, amount: 0.38, bias: 0.51 },
-  'bitcrusher:mpc60': { motif: 'pixels', scale: 7.0, amount: 0.38, bias: 0.59 },
-  'bitcrusher:mirage': { motif: 'pixels', scale: 9.0, amount: 0.37, bias: 0.67 },
-  'bitcrusher:s950': { motif: 'pixels', scale: 11.0, amount: 0.36, bias: 0.75 },
-  'bitcrusher:emulator2': { motif: 'pixels', scale: 13.0, amount: 0.37, bias: 0.83 },
-  'bitcrusher:fairlightiix': { motif: 'digital', scale: 9.0, amount: 0.40, bias: 0.91 },
+  'bitcrusher:slice': { motif: 'repeat', scale: 10.0, amount: 0.39, bias: 0.35 },
+  'bitcrusher:freeze': { motif: 'crystal', scale: 6.0, amount: 0.41, bias: 0.43 },
 
   'media:cassette': { motif: 'cassette', scale: 5.0, amount: 0.41, bias: 0.02 },
   'media:reel': { motif: 'reels', scale: 5.0, amount: 0.40, bias: 0.10 },
@@ -146,11 +144,13 @@ export const MODE_ART_VARIANTS = {
   'media:wax': { motif: 'wax', scale: 7.0, amount: 0.38, bias: 0.42 },
   'media:broken': { motif: 'fracture', scale: 9.0, amount: 0.40, bias: 0.50 },
   'media:archive': { motif: 'shelves', scale: 6.0, amount: 0.39, bias: 0.58 },
-  'media:tascam424': { motif: 'channels', scale: 4.0, amount: 0.41, bias: 0.66 },
-  'media:neve 1073': { motif: 'channels', scale: 6.0, amount: 0.38, bias: 0.74 },
-  'media:ssl 4000e': { motif: 'channels', scale: 8.0, amount: 0.39, bias: 0.82 },
-  'media:api 1608': { motif: 'channels', scale: 10.0, amount: 0.38, bias: 0.90 },
-  'media:ampex atr-102': { motif: 'deck', scale: 6.0, amount: 0.42, bias: 0.98 },
+  'media:ampex atr-102': { motif: 'deck', scale: 6.0, amount: 0.42, bias: 0.66 },
+  'media:sp1200': { motif: 'pixels', scale: 5.0, amount: 0.38, bias: 0.72 },
+  'media:mpc60': { motif: 'pixels', scale: 7.0, amount: 0.38, bias: 0.78 },
+  'media:mirage': { motif: 'pixels', scale: 9.0, amount: 0.37, bias: 0.84 },
+  'media:s950': { motif: 'pixels', scale: 11.0, amount: 0.36, bias: 0.90 },
+  'media:emulator2': { motif: 'pixels', scale: 13.0, amount: 0.37, bias: 0.96 },
+  'media:fairlightiix': { motif: 'digital', scale: 9.0, amount: 0.40, bias: 1.02 },
 } as const satisfies Record<string, ModeArtVariant>;
 
 const TAU = Math.PI * 2;
@@ -181,7 +181,7 @@ function moduleMode(module: ModuleState): string {
     case 'chorus': return module.driftMode ?? 'chorus';
     case 'delay': return module.delayAlgorithm ?? 'tape';
     case 'reverb': return module.algorithm ?? 'hall';
-    case 'bitcrusher': return module.grainMode ?? 'reconstruct';
+    case 'bitcrusher': return module.grainMode ?? 'smear';
     case 'media': return module.mediaMode ?? 'cassette';
     default: return 'default';
   }
@@ -380,10 +380,6 @@ function sampleModeAccent(layer: SceneLayer, x: number, y: number, loopAngle: nu
     case 'blocks':
       accent = Math.cos(Math.floor((x + 1) * variant.scale) + Math.floor((y + 1) * variant.scale) - sway * 0.10);
       break;
-    case 'shards':
-      accent = Math.sin((x + y) * variant.scale + sway * 0.16)
-        * Math.cos((x - y) * (variant.scale + 2));
-      break;
     case 'smear':
       accent = Math.sin(y * variant.scale + x * 1.2 - sway * 0.18) * (1 - Math.abs(x) * 0.18);
       break;
@@ -395,9 +391,6 @@ function sampleModeAccent(layer: SceneLayer, x: number, y: number, loopAngle: nu
       break;
     case 'repeat':
       accent = Math.cos(Math.floor((x + 1) * variant.scale) * 0.82 + y * 3 - counterSway * 0.10);
-      break;
-    case 'ruins':
-      accent = Math.sin((y + 1) * variant.scale + sway * 0.10) * (0.46 + Math.abs(x) * 0.42);
       break;
     case 'pixels':
       accent = Math.cos(

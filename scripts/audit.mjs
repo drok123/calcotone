@@ -65,10 +65,12 @@ const magneticProcessor = read('public/magnetic-core-processor.js');
 const behaviorProcessor = read('public/behavior-memory-processor.js');
 const driftClassicProcessor = read('public/drift-classic-processor.js');
 const grainProcessor = read('public/grain-processor.js');
+const artifactSamplerProcessor = read('public/artifact-sampler-processor.js');
 const dreamProcessor = read('public/dream-buffer-processor.js');
 
 for (const file of [
   'public/grain-processor.js',
+  'public/artifact-sampler-processor.js',
   'public/dream-buffer-processor.js',
   'public/ember-tube-processor.js',
   'public/magnetic-core-processor.js',
@@ -151,7 +153,7 @@ for (const [needle, label] of [
   ['const dynamicCoercivity =', 'Magnetic dynamic coercivity'],
 ]) requireText(magneticProcessor, needle, label);
 requireText(registry, "case 'transformer': behavior = BYPASS", 'No double transformer simulation');
-requireText(registry, "case 'goldlion': case 'mullard': case 'telefunken': case 'bugleboy': case 'rcablack': behavior = BYPASS", 'No double tube simulation');
+requireText(registry, "case 'goldlion': case 'mullard': case 'telefunken': case 'bugleboy': case 'rcablack':", 'No double tube simulation');
 
 requireText(registry, "const spread = value(effect, 'spread'", 'Drift physical spread mapping');
 requireText(registry, "const time = value(effect, 'time'", 'Halo stored-energy time mapping');
@@ -185,14 +187,18 @@ requireText(driftClassicProcessor, 'this.rotorHornSpeed +=', 'Leslie horn motor 
 requireText(driftClassicProcessor, 'this.rotorDrumSpeed +=', 'Leslie drum motor inertia');
 requireText(registry, "case 'biphase': case 'smallstone': case 'univibe': case 'leslie': behavior = BYPASS", 'No double Drift classic simulation');
 
-requireText(grainProcessor, 'const hardwareMode = mode >= 6', 'Grain hardware-mode branch');
-requireText(grainProcessor, 'this.processHardware(dryL, dryR, mode, bits, density, pitch, chaos, bloom)', 'Grain hardware conversion path');
-requireText(grainProcessor, 'quantizeNonlinear12', 'MPC60 nonlinear converter study');
-requireText(grainProcessor, 'targetRate = 7500 + pitch * 40500', 'S950 variable record clock');
-requireText(grainProcessor, 'targetRate = 27000', 'Emulator II 27k study');
-requireText(grainProcessor, 'targetRate = 24000 + pitch * 8000', 'Fairlight IIx sample-clock study');
-requireText(grainProcessor, 'quantizeCompanded8', 'Vintage 8-bit companding study');
-requireText(registry, "case 'sp1200': case 'mpc60': case 'mirage': case 's950': case 'emulator2': case 'fairlightiix': behavior = BYPASS", 'No double sampler converter simulation');
+requireText(grainProcessor, 'this.voices = Array.from({ length: 8 }', 'Grain bounded live-memory voice pool');
+requireText(grainProcessor, 'this.processSlice(window, density, pitch, motion, memory)', 'Grain slice mechanism');
+requireText(grainProcessor, 'this.processFreeze(window, density, pitch, motion, memory, transient)', 'Grain freeze mechanism');
+forbidText(grainProcessor, 'processHardware(', 'Grain sampler hardware path');
+forbidText(grainProcessor, 'quantizeNonlinear12', 'Grain converter quantization');
+requireText(artifactSamplerProcessor, 'quantizeNonlinear12', 'Artifact MPC60 nonlinear converter study');
+requireText(artifactSamplerProcessor, 'targetRate = 7500 + clock * 40500', 'Artifact S950 variable record clock');
+requireText(artifactSamplerProcessor, 'targetRate = 27000', 'Artifact Emulator II 27k study');
+requireText(artifactSamplerProcessor, 'targetRate = 24000 + clock * 8000', 'Artifact Fairlight IIx sample-clock study');
+requireText(artifactSamplerProcessor, 'quantizeCompanded8', 'Artifact vintage 8-bit companding study');
+requireText(registry, "case 'sp1200': case 'mpc60': case 'mirage': case 's950': case 'emulator2': case 'fairlightiix':", 'No double sampler converter simulation');
+requireText(registry, "case 'tascam424': case 'neve1073': case 'ssl4000e': case 'api1608':", 'No double Ember console simulation');
 
 requireText(grainEffect, 'stats.cpuLoad = Number.NaN', 'Grain fake timing guard');
 requireText(visualEngine, 'if (!running || !analyser)', 'Idle visual sleep');
@@ -225,7 +231,8 @@ requireText(driftEffect, 'const orbitWidth = Math.min', 'Drift Orbit spread cont
 
 requireText(mediaEffect, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve cache');
 requireText(mediaEffect, 'function cacheCurve(', 'Artifact curve cache');
-requireText(mediaEffect, 'this.setPreampCurve(getOpAmpCurve', 'Artifact cached op-amp stage');
+requireText(mediaEffect, "'calcotone-artifact-sampler-processor'", 'Artifact sampler worklet');
+requireText(mediaEffect, "this.setSamplerParameter('mode', samplerMode, now)", 'Artifact sampler model routing');
 requireText(mediaEffect, 'this.setSaturatorCurve(getSaturationCurve', 'Artifact cached media saturation');
 requireText(mediaEffect, 'if (this.parameterValues.get(parameterId) === next) return', 'Artifact duplicate-value guards');
 forbidText(mediaEffect, 'this.preampStage.curve = makeOpAmpCurve', 'Artifact stale live curve allocation');

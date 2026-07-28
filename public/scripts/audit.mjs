@@ -16,7 +16,7 @@ for (const dir of ['src', 'public']) {
   }
 }
 
-for (const file of ['grain-processor.js','dream-buffer-processor.js','recorder-processor.js']) {
+for (const file of ['grain-processor.js','artifact-sampler-processor.js','dream-buffer-processor.js','recorder-processor.js']) {
   const path = join(root, 'public', file);
   if (!existsSync(path)) { problems.push(`missing worklet: public/${file}`); continue; }
   try { execFileSync(process.execPath, ['--check', path], { stdio: 'pipe' }); }

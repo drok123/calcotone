@@ -10,17 +10,31 @@ export type MediaMode =
   | 'wax'
   | 'broken'
   | 'archive'
-  | 'tascam424'
-  | 'Neve 1073'
-  | 'SSL 4000E'
-  | 'API 1608'
-  | 'Ampex ATR-102';
+  | 'Ampex ATR-102'
+  | 'sp1200'
+  | 'mpc60'
+  | 'mirage'
+  | 's950'
+  | 'emulator2'
+  | 'fairlightiix';
 
-// Existing indices stay fixed so old presets keep their original format.
+export const ARTIFACT_SAMPLER_MODES = [
+  'sp1200','mpc60','mirage','s950','emulator2','fairlightiix',
+] as const satisfies readonly MediaMode[];
+
+// Keep the original media positions and the ATR-102 at index 12. Legacy console
+// preset indices are explicitly migrated instead of silently selecting samplers.
 export const MEDIA_MODE_ORDER: MediaMode[] = [
-  'cassette', 'reel', 'vinyl', 'vhs', 'radio', 'wax', 'broken', 'archive', 'tascam424',
-  'Neve 1073', 'SSL 4000E', 'API 1608', 'Ampex ATR-102',
+  'cassette','reel','vinyl','vhs','radio','wax','broken','archive',
+  'sp1200','mpc60','mirage','s950','Ampex ATR-102','emulator2','fairlightiix',
 ];
+
+export const MEDIA_MODE_GROUPS = [
+  { label: 'MEDIA', modes: ['cassette','reel','vinyl','vhs','wax','archive','broken'] },
+  { label: 'TRANSMISSION', modes: ['radio'] },
+  { label: 'TAPE MACHINES', modes: ['Ampex ATR-102'] },
+  { label: 'DIGITAL CAPTURE', modes: ARTIFACT_SAMPLER_MODES },
+] as const satisfies ReadonlyArray<{ label: string; modes: readonly MediaMode[] }>;
 
 const MODE = { id: 'mode', label: 'Mode', min: 0, max: MEDIA_MODE_ORDER.length - 1, defaultValue: 0, step: 1 };
 const WEAR = { id: 'wear', label: 'Wear', min: 0, max: 1, defaultValue: 0.162, step: 0.01 };
@@ -31,13 +45,10 @@ const MIX = { id: 'mix', label: 'Mix', min: 0, max: 1, defaultValue: 0.26, step:
 
 const MAX_CURVE_CACHE = 384;
 const IDENTITY_CURVE = createIdentityCurve();
-const summingCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
-const opAmpCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
-const transformerCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
 const tapeCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
 const saturationCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
 
-/** Recording-media coloration plus subtle bus/summing identities. */
+/** Capture, reproduction, and transmission coloration. */
 export class MediaEffect extends BaseEffect {
   public readonly id = 'media';
   public readonly name = 'Media';
@@ -56,6 +67,9 @@ export class MediaEffect extends BaseEffect {
   private readonly crossfeedLtoR: GainNode;
   private readonly crossfeedRtoL: GainNode;
   private readonly merger: ChannelMergerNode;
+  private readonly mediaGain: GainNode;
+  private readonly samplerProcessor: AudioWorkletNode;
+  private readonly samplerGain: GainNode;
   private readonly wowLfo: OscillatorNode;
   private readonly flutterLfo: OscillatorNode;
   private readonly leftDepth: GainNode;
@@ -73,6 +87,7 @@ export class MediaEffect extends BaseEffect {
   private artifactMix = MIX.defaultValue;
   private currentPreampCurve: Float32Array<ArrayBuffer> | null = null;
   private currentSaturatorCurve: Float32Array<ArrayBuffer> | null = null;
+  private readonly samplerValues = new Map<string, number>();
 
   public constructor(context: AudioContext) {
     super(context);
@@ -90,6 +105,17 @@ export class MediaEffect extends BaseEffect {
     this.crossfeedLtoR = context.createGain();
     this.crossfeedRtoL = context.createGain();
     this.merger = context.createChannelMerger(2);
+    this.mediaGain = context.createGain();
+    this.samplerProcessor = new AudioWorkletNode(context, 'calcotone-artifact-sampler-processor', {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [2],
+      channelCount: 2,
+      channelCountMode: 'explicit',
+      channelInterpretation: 'speakers',
+    });
+    this.samplerProcessor.onprocessorerror = () => console.error('CALCOTONE Artifact sampler AudioWorklet stopped unexpectedly.');
+    this.samplerGain = context.createGain();
     this.wowLfo = context.createOscillator();
     this.flutterLfo = context.createOscillator();
     this.leftDepth = context.createGain();
@@ -113,6 +139,8 @@ export class MediaEffect extends BaseEffect {
     this.rightDelay.delayTime.value = 0.0093;
     this.crossfeedLtoR.gain.value = 0;
     this.crossfeedRtoL.gain.value = 0;
+    this.mediaGain.gain.value = 1;
+    this.samplerGain.gain.value = 0;
     this.wowLfo.type = 'sine';
     this.flutterLfo.type = 'triangle';
 
@@ -133,7 +161,11 @@ export class MediaEffect extends BaseEffect {
     this.splitter.connect(this.crossfeedRtoL, 1);
     this.crossfeedLtoR.connect(this.merger, 0, 1);
     this.crossfeedRtoL.connect(this.merger, 0, 0);
-    this.merger.connect(this.wetGain);
+    this.merger.connect(this.mediaGain);
+    this.mediaGain.connect(this.wetGain);
+    this.input.connect(this.samplerProcessor);
+    this.samplerProcessor.connect(this.samplerGain);
+    this.samplerGain.connect(this.wetGain);
 
     this.wowLfo.connect(this.leftDepth);
     this.flutterLfo.connect(this.rightDepth);
@@ -141,8 +173,8 @@ export class MediaEffect extends BaseEffect {
     this.rightDepth.connect(this.rightDelay.delayTime);
     this.cassetteNoise.connect(this.cassetteNoiseGain);
     this.vinylNoise.connect(this.vinylNoiseGain);
-    this.cassetteNoiseGain.connect(this.wetGain);
-    this.vinylNoiseGain.connect(this.wetGain);
+    this.cassetteNoiseGain.connect(this.mediaGain);
+    this.vinylNoiseGain.connect(this.mediaGain);
 
     this.wowLfo.start();
     this.flutterLfo.start(context.currentTime + 0.07);
@@ -223,8 +255,12 @@ export class MediaEffect extends BaseEffect {
       this.highpass, this.lowpass, this.saturator, this.splitter, this.leftDelay, this.rightDelay,
       this.crossfeedLtoR, this.crossfeedRtoL, this.merger, this.wowLfo, this.flutterLfo,
       this.leftDepth, this.rightDepth, this.cassetteNoise, this.vinylNoise,
-      this.cassetteNoiseGain, this.vinylNoiseGain,
+      this.cassetteNoiseGain, this.vinylNoiseGain, this.mediaGain, this.samplerProcessor,
+      this.samplerGain,
     ].forEach((node) => node.disconnect());
+    this.samplerProcessor.onprocessorerror = null;
+    this.samplerProcessor.port.close();
+    this.samplerValues.clear();
     super.dispose();
   }
 
@@ -246,7 +282,7 @@ export class MediaEffect extends BaseEffect {
       return;
     }
     const now = this.context.currentTime;
-    // Insert/summing modes are strongly correlated with dry, so complementary gains avoid
+    // Capture-machine modes are strongly correlated with dry, so complementary gains avoid
     // a parallel +3 dB bump while keeping Mix continuous and useful.
     this.dryGain.gain.setTargetAtTime(1 - this.artifactMix, now, 0.025);
     this.wetGain.gain.setTargetAtTime(this.artifactMix, now, 0.025);
@@ -255,88 +291,21 @@ export class MediaEffect extends BaseEffect {
   private applyCharacter(): void {
     const now = this.context.currentTime;
 
-    if (this.mode === 'tascam424') {
-      const trimDrive = this.wear;
-      const channelDrive = this.tone;
-      const lowDb = bipolarAroundDefault(this.wow, WOW.defaultValue) * 10;
-      const highDb = bipolarAroundDefault(this.noise, NOISE.defaultValue) * 10;
-      const inputGain = 0.82 + trimDrive * 2.9;
-      const preDrive = 1.05 + trimDrive * 4.4;
-      const postDrive = 1 + Math.pow(channelDrive, 1.55) * 7.6;
-      this.modelInputGain.gain.setTargetAtTime(inputGain, now, 0.025);
-      this.setPreampCurve(getOpAmpCurve(preDrive, 0.045));
-      this.lowShelf.frequency.setTargetAtTime(100, now, 0.04);
-      this.lowShelf.gain.setTargetAtTime(lowDb, now, 0.04);
-      this.highShelf.frequency.setTargetAtTime(10_000, now, 0.04);
-      this.highShelf.gain.setTargetAtTime(highDb, now, 0.04);
-      this.modelOutputGain.gain.setTargetAtTime(hardwareAutoTrim(inputGain, opAmpSlope(preDrive), opAmpSlope(postDrive)), now, 0.035);
-      this.highpass.frequency.setTargetAtTime(28, now, 0.04);
-      this.lowpass.frequency.setTargetAtTime(19_000, now, 0.04);
-      this.setSaturatorCurve(getOpAmpCurve(postDrive, 0.032 + trimDrive * 0.025));
+    const samplerMode = ARTIFACT_SAMPLER_MODES.indexOf(this.mode as typeof ARTIFACT_SAMPLER_MODES[number]);
+    if (samplerMode >= 0) {
+      this.mediaGain.gain.setTargetAtTime(0, now, 0.025);
+      this.samplerGain.gain.setTargetAtTime(1.04, now, 0.025);
+      this.setSamplerParameter('mode', samplerMode, now);
+      this.setSamplerParameter('drive', this.wear, now);
+      this.setSamplerParameter('clock', this.wow, now);
+      this.setSamplerParameter('character', this.noise, now);
+      this.setSamplerParameter('filter', this.tone, now);
       this.disableTransport(now);
-      this.setCrossfeed(0, now);
       return;
     }
 
-    if (this.mode === 'Neve 1073') {
-      const cohesion = this.wear;
-      const weight = bipolarAroundDefault(this.wow, WOW.defaultValue);
-      const air = bipolarAroundDefault(this.noise, NOISE.defaultValue);
-      const iron = this.tone;
-      this.configureSummingBus(now, {
-        preCompression: 0.008 + cohesion * 0.035,
-        postCompression: 0.006 + iron * 0.022,
-        asymmetry: 0.004 + cohesion * 0.018,
-        lowHz: 110,
-        lowDb: weight * 1.5 + cohesion * 0.15,
-        highHz: 12_000,
-        highDb: air * 1.15 - cohesion * 0.12,
-        highpassHz: 20 + Math.max(0, -weight) * 8,
-        lowpassHz: 21_500 - cohesion * 450,
-        crossfeed: 0.0015 + cohesion * 0.0045,
-      });
-      return;
-    }
-
-    if (this.mode === 'SSL 4000E') {
-      const glue = this.wear;
-      const weight = bipolarAroundDefault(this.wow, WOW.defaultValue);
-      const presence = bipolarAroundDefault(this.noise, NOISE.defaultValue);
-      const punch = this.tone;
-      this.configureSummingBus(now, {
-        preCompression: 0.007 + glue * 0.038,
-        postCompression: 0.006 + punch * 0.018,
-        asymmetry: 0.0015 + glue * 0.005,
-        lowHz: 90,
-        lowDb: weight * 1.0 - glue * 0.08,
-        highHz: 8_500,
-        highDb: presence * 1.2 + glue * 0.08,
-        highpassHz: 24,
-        lowpassHz: 22_000,
-        crossfeed: 0.001 + glue * 0.003,
-      });
-      return;
-    }
-
-    if (this.mode === 'API 1608') {
-      const punch = this.wear;
-      const weight = bipolarAroundDefault(this.wow, WOW.defaultValue);
-      const presence = bipolarAroundDefault(this.noise, NOISE.defaultValue);
-      const iron = this.tone;
-      this.configureSummingBus(now, {
-        preCompression: 0.006 + punch * 0.028,
-        postCompression: 0.005 + iron * 0.018,
-        asymmetry: 0.002 + punch * 0.008,
-        lowHz: 100,
-        lowDb: weight * 1.3 + punch * 0.12,
-        highHz: 10_500,
-        highDb: presence * 1.1 + punch * 0.1,
-        highpassHz: 22,
-        lowpassHz: 21_800,
-        crossfeed: 0.0008 + punch * 0.0025,
-      });
-      return;
-    }
+    this.mediaGain.gain.setTargetAtTime(1, now, 0.025);
+    this.samplerGain.gain.setTargetAtTime(0, now, 0.025);
 
     if (this.mode === 'Ampex ATR-102') {
       const speedProfile = atr102Profile(atr102Speed(this.wow));
@@ -399,23 +368,12 @@ export class MediaEffect extends BaseEffect {
     this.vinylNoiseGain.gain.setTargetAtTime(vinyl ? baseNoise * (this.mode === 'wax' ? 1.7 : 1.25) : 0, now, 0.05);
   }
 
-  private configureSummingBus(now: number, profile: {
-    preCompression: number; postCompression: number; asymmetry: number;
-    lowHz: number; lowDb: number; highHz: number; highDb: number;
-    highpassHz: number; lowpassHz: number; crossfeed: number;
-  }): void {
-    this.modelInputGain.gain.setTargetAtTime(1, now, 0.025);
-    this.setPreampCurve(getSummingCurve(profile.preCompression, profile.asymmetry));
-    this.lowShelf.frequency.setTargetAtTime(profile.lowHz, now, 0.04);
-    this.lowShelf.gain.setTargetAtTime(profile.lowDb, now, 0.04);
-    this.highShelf.frequency.setTargetAtTime(profile.highHz, now, 0.04);
-    this.highShelf.gain.setTargetAtTime(profile.highDb, now, 0.04);
-    this.modelOutputGain.gain.setTargetAtTime(1 / (1 + profile.crossfeed), now, 0.035);
-    this.highpass.frequency.setTargetAtTime(profile.highpassHz, now, 0.04);
-    this.lowpass.frequency.setTargetAtTime(profile.lowpassHz, now, 0.04);
-    this.setSaturatorCurve(getSummingCurve(profile.postCompression, profile.asymmetry * 0.55));
-    this.disableTransport(now);
-    this.setCrossfeed(profile.crossfeed, now);
+  private setSamplerParameter(name: string, value: number, now: number): void {
+    if (this.samplerValues.get(name) === value) return;
+    const parameter = this.samplerProcessor.parameters.get(name);
+    if (!parameter) throw new Error(`Artifact sampler parameter "${name}" is unavailable.`);
+    this.samplerValues.set(name, value);
+    parameter.setTargetAtTime(value, now, 0.012);
   }
 
   private disableTransport(now: number): void {
@@ -457,12 +415,7 @@ export class MediaEffect extends BaseEffect {
 }
 
 function isInsertMode(mode: MediaMode): boolean {
-  return mode === 'tascam424' || mode === 'Neve 1073' || mode === 'SSL 4000E' || mode === 'API 1608' || mode === 'Ampex ATR-102';
-}
-
-function bipolarAroundDefault(value: number, center: number): number {
-  if (value >= center) return (value - center) / Math.max(1e-6, 1 - center);
-  return (value - center) / Math.max(1e-6, center);
+  return mode === 'Ampex ATR-102' || ARTIFACT_SAMPLER_MODES.some((candidate) => candidate === mode);
 }
 
 export function atr102Speed(value: number): 3.75 | 7.5 | 15 | 30 {
@@ -483,7 +436,6 @@ function normalizedTanhSlope(drive: number): number {
   const safeDrive = Math.max(1, drive);
   return safeDrive / Math.max(1e-6, Math.tanh(safeDrive));
 }
-function opAmpSlope(drive: number): number { return normalizedTanhSlope(drive); }
 function transformerSlope(drive: number): number { return normalizedTanhSlope(drive) * 0.985; }
 function tapeSlope(drive: number): number { return normalizedTanhSlope(drive); }
 function hardwareAutoTrim(inputGain: number, ...stageSlopes: number[]): number {
@@ -517,38 +469,10 @@ function createIdentityCurve(): Float32Array<ArrayBuffer> {
   return curve;
 }
 
-function getSummingCurve(compression: number, asymmetry: number): Float32Array<ArrayBuffer> {
-  const comp = Math.max(0, Math.min(0.12, quantize(compression, 512)));
-  const asym = Math.max(-0.08, Math.min(0.08, quantize(asymmetry, 512)));
-  return cacheCurve(summingCurveCache, `${comp}:${asym}`, () => {
-    const curve = new Float32Array(4096);
-    for (let index = 0; index < curve.length; index += 1) {
-      const x = (index / (curve.length - 1)) * 2 - 1;
-      const even = asym * x * x * (1 - Math.abs(x));
-      curve[index] = Math.max(-1, Math.min(1, x - comp * x * x * x + even));
-    }
-    return curve;
-  });
-}
-
-function getOpAmpCurve(drive: number, asymmetry: number): Float32Array<ArrayBuffer> {
-  const safeDrive = Math.max(1, quantize(drive, 128));
-  const asym = quantize(asymmetry, 512);
-  return cacheCurve(opAmpCurveCache, `${safeDrive}:${asym}`, () => {
-    const curve = new Float32Array(4096);
-    for (let index = 0; index < curve.length; index += 1) {
-      const x = (index / (curve.length - 1)) * 2 - 1;
-      const sideDrive = safeDrive * (x >= 0 ? 1 + asym : 1 - asym * 0.62);
-      curve[index] = Math.tanh(x * sideDrive) / Math.max(1e-6, Math.tanh(sideDrive));
-    }
-    return curve;
-  });
-}
-
 function getTransformerCurve(drive: number, asymmetry: number): Float32Array<ArrayBuffer> {
   const safeDrive = Math.max(1, quantize(drive, 128));
   const asym = quantize(asymmetry, 512);
-  return cacheCurve(transformerCurveCache, `${safeDrive}:${asym}`, () => {
+  return cacheCurve(tapeCurveCache, `transformer:${safeDrive}:${asym}`, () => {
     const curve = new Float32Array(4096);
     const norm = Math.max(1e-6, Math.tanh(safeDrive));
     for (let index = 0; index < curve.length; index += 1) {
