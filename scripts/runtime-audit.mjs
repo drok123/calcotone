@@ -33,7 +33,7 @@ const reverb = read('src/audio/effects/Reverb.ts');
 const chorus = read('src/audio/effects/Chorus.ts');
 const grain = read('src/audio/effects/Bitcrusher.ts');
 const viewport = read('src/components/effects/ModuleViewport.tsx');
-const videoColor = read('src/components/effects/VideoColorStability.css');
+const ascii = read('src/components/ascii/AsciiArtEngine.tsx');
 const media = read('src/audio/effects/Media.ts');
 const ember = read('src/audio/effects/Saturation.ts');
 const main = read('src/main.tsx');
@@ -156,14 +156,18 @@ requireText(reverb, 'this.input.disconnect(entry.network.input)', 'Atmos disconn
 requireText(ember, 'const MAX_CURVE_CACHE = 192', 'Ember bounded curve cache');
 requireText(ember, 'if (curveCache.size >= MAX_CURVE_CACHE)', 'Ember curve cache eviction');
 
-// Video identity is native and color-only: only Rotary keeps the alternate Drift footage.
+// Visual identity is deterministic ASCII. Every surface shares the budgeted scheduler,
+ // sleeps while offscreen, and never owns a decoder or animation loop.
 forbidText(main, "import './videoStabilityPatch'", 'Removed video repair monkey patch');
-requireText(main, "import './components/effects/VideoColorStability.css'", 'Video color stability stylesheet load');
-requireText(viewport, "return (module.driftMode ?? 'chorus') === 'rotary' ? 'drift-alt' : 'drift';", 'Native stable Drift video mapping');
-forbidText(viewport, "['liquid', 'orbit', 'doppler', 'rotary'].includes(mode) ? 'drift-alt' : 'drift'", 'Old unstable Drift video mapping');
-forbidText(videoColor, 'brightness(', 'Video brightness modulation');
-forbidText(videoColor, 'contrast(', 'Video contrast modulation');
-requireText(videoColor, '.module-video-transition-veil { display: none !important; }', 'Video transition veil disabled');
+forbidText(main, "import './components/effects/VideoColorStability.css'", 'Retired video stylesheet');
+requireText(viewport, '<AsciiArtEngine kind="module" module={module}', 'Module ASCII wiring');
+requireText(ascii, 'subscribeViewportAnimation(render)', 'ASCII shared scheduler');
+requireText(ascii, 'IntersectionObserver', 'ASCII offscreen suspension');
+requireText(ascii, '1000 / 18', 'ASCII bounded active cadence');
+requireText(ascii, 'Math.min(1.35, window.devicePixelRatio', 'ASCII pixel-density cap');
+forbidText(ascii, 'requestAnimationFrame(', 'Independent ASCII animation loop');
+forbidText(viewport, '<video', 'Module decoder');
+forbidText(viewport, '.mp4', 'Module video payload');
 
 // Visual scheduling must stay allocation-conscious and HMR-safe.
 requireText(scheduler, 'let callbackSnapshot: ViewportRenderCallback[] = []', 'Viewport stable callback snapshot');
