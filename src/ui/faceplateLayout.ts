@@ -47,15 +47,15 @@ const listeners = new Set<() => void>();
 export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
   version: 2,
   custom: true,
-  viewportHeight: 264,
-  stageHeight: 526,
+  viewportHeight: 312,
+  stageHeight: 457.81022074542363,
   knobs: [
-    { x: 0.15929910480312698, y: 348 },
-    { x: 0.5, y: 348 },
-    { x: 0.85451197053407, y: 348 },
-    { x: 0.15929910480312698, y: 452 },
-    { x: 0.5, y: 452 },
-    { x: 0.85451197053407, y: 452 },
+    { x: 0.2504604051565378, y: 411.81022074542363 },
+    { x: 0.4125230202578269, y: 411.81022074542363 },
+    { x: 0.08839779005524862, y: 411.81022074542363 },
+    { x: 0.574585635359116, y: 411.81022074542363 },
+    { x: 0.7366482504604052, y: 411.81022074542363 },
+    { x: 0.8987108655616943, y: 411.81022074542363 },
   ],
   snap: 8,
 };
@@ -376,22 +376,29 @@ function loadSavedLayout(): FaceplateLayout {
 }
 
 function sanitizeV2Layout(layout: Partial<FaceplateLayout>): FaceplateLayout {
-  const knobs = (layout.knobs ?? FACTORY_FACEPLATE_LAYOUT.knobs).map((point) => ({
-    x: clamp(Number(point.x) || 0.5, 0.07, 0.93),
-    y: clamp(Number(point.y) || 364, 46, 620),
+  const knobs = (layout.knobs ?? FACTORY_FACEPLATE_LAYOUT.knobs).map((point, index) => ({
+    x: clamp(Number(point.x) || FACTORY_FACEPLATE_LAYOUT.knobs[index]?.x || 0.5, 0.07, 0.93),
+    y: clamp(Number(point.y) || FACTORY_FACEPLATE_LAYOUT.knobs[index]?.y || 364, 46, 620),
   }));
   const stageHeight = clamp(
-    Math.max(Number(layout.stageHeight) || 526, Math.max(...knobs.map((point) => point.y)) + 54),
+    Math.max(
+      Number(layout.stageHeight) || FACTORY_FACEPLATE_LAYOUT.stageHeight,
+      Math.max(...knobs.map((point) => point.y)) + 46
+    ),
     220,
     680,
   );
   return {
     version: 2,
     custom: true,
-    viewportHeight: clamp(Number(layout.viewportHeight) || 192, 120, Math.max(120, Math.min(520, Math.min(...knobs.map((point) => point.y)) - 52))),
+    viewportHeight: clamp(
+      Number(layout.viewportHeight) || FACTORY_FACEPLATE_LAYOUT.viewportHeight,
+      120,
+      Math.max(120, Math.min(520, Math.min(...knobs.map((point) => point.y)) - 52))
+    ),
     stageHeight,
     knobs: knobs.map((point) => ({ ...point, y: clamp(point.y, 46, stageHeight - 46) })),
-    snap: clamp(Number(layout.snap) || 8, 2, 24),
+    snap: clamp(Number(layout.snap) || FACTORY_FACEPLATE_LAYOUT.snap, 2, 24),
   };
 }
 
