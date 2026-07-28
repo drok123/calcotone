@@ -52,6 +52,7 @@ for (const [moduleId, relative, orderName] of effectFiles) {
     const collision = identities.get(seed);
     if (collision) failures.push(`ASCII identity collision: ${collision} and ${key}`);
     identities.set(seed, key);
+    requireText(engine, `'${key.toLowerCase()}':`, `${key} named ASCII variant`);
   }
 }
 if (dropdownModeCount !== 79) {
@@ -61,6 +62,10 @@ if (dropdownModeCount !== 79) {
 requireText(engine, 'export function moduleModeKey', 'Exact module/mode identity');
 requireText(engine, 'return `${module.id}:${moduleMode(module)}`', 'Module-qualified dropdown key');
 requireText(engine, 'hashAsciiScene(key)', 'Deterministic per-mode seed');
+requireText(engine, 'export const MODE_ART_VARIANTS', 'Explicit dropdown art table');
+requireText(engine, 'export const ASCII_LOOP_SECONDS = 18', 'Perfect ASCII loop duration');
+requireText(engine, 'loopAngleForTime(time)', 'Modulo ASCII loop phase');
+requireText(engine, 'sampleModeAccent(layer, x, y, loopAngle)', 'Semantic dropdown motif layer');
 for (const moduleId of ['saturation', 'chorus', 'delay', 'reverb', 'bitcrusher', 'media']) {
   requireText(engine, `case '${moduleId}'`, `${moduleId} ASCII composition`);
 }
@@ -73,6 +78,8 @@ requireText(engine, 'Math.min(1.35, window.devicePixelRatio', 'Portable canvas p
 requireText(engine, '1000 / 18', 'Low-cost idle ASCII cadence');
 forbidText(engine, 'requestAnimationFrame(', 'Per-surface animation loop');
 forbidText(engine, 'Math.random()', 'Nondeterministic ASCII art');
+forbidText(engine, 'audio.driftPhase', 'Unbounded non-looping ASCII phase');
+forbidText(viewport, 'viewport-caption', 'Duplicate module artwork label');
 requireText(viewport, '<AsciiArtEngine kind="module"', 'Module ASCII renderer');
 requireText(field, 'kind="landscape"', 'XY ASCII landscape renderer');
 requireText(scheduler, 'const FRAME_BUDGET_MS = 7.5', 'Shared visual frame budget');
