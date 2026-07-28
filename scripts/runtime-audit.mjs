@@ -23,7 +23,8 @@ const driftStage = read('src/audio/models/DriftClassicStage.ts');
 const randomBridge = read('src/randomTransferBridge.ts');
 const randomCapture = read('src/features/random/randomCapture.ts');
 const randomDspScheduler = read('src/features/random/randomDspScheduler.ts');
-const randomRuntime = randomBridge + randomCapture + randomDspScheduler;
+const randomUiFlow = read('src/features/random/randomUiFlow.ts');
+const randomRuntime = randomBridge + randomCapture + randomDspScheduler + randomUiFlow;
 const enginePatch = read('src/engineStabilityPatch.ts');
 const enginePolicy = read('src/features/engine/engineStabilityPolicy.ts');
 const inputMatrix = read('src/audio/InputMatrix.ts');
@@ -65,9 +66,16 @@ requireText(randomDspScheduler, 'RANDOM_DISCRETE_SETTLE_MS = 54', 'RANDOM discre
 requireText(randomDspScheduler, 'RANDOM_HALO_TOPOLOGY_SETTLE_MS = 620', 'RANDOM Halo topology settle window');
 requireText(randomDspScheduler, 'RANDOM_ATMOS_TOPOLOGY_SETTLE_MS = 940', 'RANDOM Atmos topology settle window');
 requireText(randomDspScheduler, 'applyRandomBatch(effect, targets);', 'RANDOM single destination commit');
-requireText(randomDspScheduler, 'chain = chain.then(() => commitOneBatch(engine, effectId, values, engineIsUsable))', 'RANDOM serialized module commit');
+requireText(randomDspScheduler, 'chain = chain.then(() => commitOneBatch(engine, effectId, values, engineIsUsable, revealModule))', 'RANDOM serialized module commit');
 requireText(randomDspScheduler, 'Pure parameter moves keep the existing smoothed DSP path', 'RANDOM parameter/topology decoupling');
 requireText(randomBridge, "document.documentElement.classList.toggle('random-morphing', busy)", 'RANDOM visual morph state');
+requireText(randomDspScheduler, 'await yieldForUiPaint();', 'RANDOM UI paint yield');
+requireText(randomDspScheduler, 'revealModule(effectId);', 'RANDOM per-module reveal');
+requireText(randomUiFlow, "RANDOM_UI_MODULE_EVENT = 'calcotone:random-ui-module'", 'RANDOM typed UI stream event');
+requireText(randomBridge, 'releasePlanningHold();', 'RANDOM short planning hold release');
+if (randomBridge.indexOf('releasePlanningHold();') > randomBridge.indexOf('void flushCapturedRandom(')) {
+  failures.push('RANDOM planning hold must end before staged DSP begins');
+}
 requireText(knob, 'transform 165ms cubic-bezier(0.2, 0.82, 0.22, 1)', 'RANDOM-friendly knob travel');
 forbidText(randomRuntime, 'RANDOM_MORPH_STEPS', 'Removed repeated RANDOM DSP morph');
 forbidText(randomRuntime, 'Promise.all(orderedJobs)', 'Removed simultaneous RANDOM module burst');
