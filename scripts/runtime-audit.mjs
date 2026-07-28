@@ -61,10 +61,12 @@ requireText(randomCapture, 'installRandomCapture', 'RANDOM capture installation'
 requireText(randomCapture, 'beginRandomCapture', 'RANDOM capture begin');
 requireText(randomCapture, 'finishRandomCapture', 'RANDOM capture finish');
 requireText(randomDspScheduler, 'RANDOM_DSP_STAGGER_MS = 18', 'RANDOM DSP staggering');
-requireText(randomDspScheduler, 'RANDOM_TOPOLOGY_SETTLE_MS = 76', 'RANDOM topology settle window');
+requireText(randomDspScheduler, 'RANDOM_DISCRETE_SETTLE_MS = 54', 'RANDOM discrete settle window');
+requireText(randomDspScheduler, 'RANDOM_HALO_TOPOLOGY_SETTLE_MS = 620', 'RANDOM Halo topology settle window');
+requireText(randomDspScheduler, 'RANDOM_ATMOS_TOPOLOGY_SETTLE_MS = 940', 'RANDOM Atmos topology settle window');
 requireText(randomDspScheduler, 'applyRandomBatch(effect, targets);', 'RANDOM single destination commit');
 requireText(randomDspScheduler, 'chain = chain.then(() => commitOneBatch(engine, effectId, values, engineIsUsable))', 'RANDOM serialized module commit');
-requireText(randomDspScheduler, 'The UI already owns the visible 165 ms knob animation', 'RANDOM UI/DSP decoupling');
+requireText(randomDspScheduler, 'Pure parameter moves keep the existing smoothed DSP path', 'RANDOM parameter/topology decoupling');
 requireText(randomBridge, "document.documentElement.classList.toggle('random-morphing', busy)", 'RANDOM visual morph state');
 requireText(knob, 'transform 165ms cubic-bezier(0.2, 0.82, 0.22, 1)', 'RANDOM-friendly knob travel');
 forbidText(randomRuntime, 'RANDOM_MORPH_STEPS', 'Removed repeated RANDOM DSP morph');
@@ -72,8 +74,8 @@ forbidText(randomRuntime, 'Promise.all(orderedJobs)', 'Removed simultaneous RAND
 forbidText(randomRuntime, 'RANDOM_TOPOLOGY_SAFE_MIX', 'Removed RANDOM signal-collapse guard');
 forbidText(randomRuntime, "new Map([['mix', RANDOM_TOPOLOGY_SAFE_MIX]])", 'Removed RANDOM forced near-dry dip');
 forbidText(randomRuntime, 'for (const entry of active) engine.setEffectBypassed(entry.id, true)', 'RANDOM bypass-all burst');
-requireText(randomDspScheduler, "effectId === 'delay' || effectId === 'reverb'", 'RANDOM topology-sensitive modes');
-requireText(randomDspScheduler, 'Musical RANDOM never changes module power', 'RANDOM power-layout preservation');
+requireText(randomDspScheduler, "if (effectId === 'delay') return RANDOM_HALO_TOPOLOGY_SETTLE_MS", 'RANDOM Halo topology wait');
+requireText(randomDspScheduler, "if (effectId === 'reverb') return RANDOM_ATMOS_TOPOLOGY_SETTLE_MS", 'RANDOM Atmos topology wait');
 forbidText(randomRuntime, 'directSetEffectBypassed.call(engine, effectId, bypassed)', 'RANDOM power mutation');
 
 // Global engine quality should become more transparent as quality increases, and hidden diagnostics
