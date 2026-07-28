@@ -1,9 +1,9 @@
 import type { CSSProperties, ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { REVERB_ALGORITHM_ORDER, type ReverbAlgorithm } from '../../audio/effects/Reverb';
-import { MEDIA_MODE_ORDER, type MediaMode } from '../../audio/effects/Media';
-import { EMBER_MODE_ORDER, type EmberMode } from '../../audio/effects/Saturation';
+import { ARTIFACT_SAMPLER_MODES, MEDIA_MODE_GROUPS, type MediaMode } from '../../audio/effects/Media';
+import { EMBER_MODE_GROUPS, type EmberMode } from '../../audio/effects/Saturation';
 import { DRIFT_MODE_ORDER, type DriftMode } from '../../audio/effects/Chorus';
-import { GRAIN_MODE_ORDER, type GrainMode } from '../../audio/effects/Bitcrusher';
+import { GRAIN_MODE_GROUPS, type GrainMode } from '../../audio/effects/Bitcrusher';
 import { DELAY_ALGORITHM_ORDER, type DelayAlgorithm } from '../../audio/effects/Delay';
 import type { VisualAudioState } from '../../visual/VisualEngine';
 import type { ModuleParameter, ModuleState, XYAssignment } from '../../ui/types';
@@ -259,7 +259,11 @@ export function EffectModule({
             <label className="algorithm-selector ember-mode-selector">
               <span className="sr-only">Ember mode</span>
               <select aria-label="Ember mode" value={module.emberMode ?? 'velvet'} onChange={(event: ReactChangeEvent<HTMLSelectElement>) => onEmberModeChange(event.target.value as EmberMode)}>
-                {EMBER_MODE_ORDER.map((mode) => <option key={mode} value={mode}>{formatEmberMode(mode)}</option>)}
+                {EMBER_MODE_GROUPS.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.modes.map((mode) => <option key={mode} value={mode}>{formatEmberMode(mode)}</option>)}
+                  </optgroup>
+                ))}
               </select>
             </label>
           )}
@@ -276,8 +280,12 @@ export function EffectModule({
           {module.id === 'bitcrusher' && (
             <label className="algorithm-selector grain-mode-selector">
               <span className="sr-only">Grain mode</span>
-              <select aria-label="Grain mode" value={module.grainMode ?? 'reconstruct'} onChange={(event: ReactChangeEvent<HTMLSelectElement>) => onGrainModeChange(event.target.value as GrainMode)}>
-                {GRAIN_MODE_ORDER.map((mode) => <option key={mode} value={mode}>{formatGrainMode(mode)}</option>)}
+              <select aria-label="Grain mode" value={module.grainMode ?? 'smear'} onChange={(event: ReactChangeEvent<HTMLSelectElement>) => onGrainModeChange(event.target.value as GrainMode)}>
+                {GRAIN_MODE_GROUPS.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.modes.map((mode) => <option key={mode} value={mode}>{formatGrainMode(mode)}</option>)}
+                  </optgroup>
+                ))}
               </select>
             </label>
           )}
@@ -295,7 +303,11 @@ export function EffectModule({
             <label className="algorithm-selector media-mode-selector">
               <span className="sr-only">Format</span>
               <select aria-label="Artifact format" value={module.mediaMode ?? 'cassette'} onChange={(event: ReactChangeEvent<HTMLSelectElement>) => onMediaModeChange(event.target.value as MediaMode)}>
-                {MEDIA_MODE_ORDER.map((mode) => <option key={mode} value={mode}>{formatMediaMode(mode)}</option>)}
+                {MEDIA_MODE_GROUPS.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.modes.map((mode) => <option key={mode} value={mode}>{formatMediaMode(mode)}</option>)}
+                  </optgroup>
+                ))}
               </select>
             </label>
           )}
@@ -375,6 +387,10 @@ function formatEmberMode(mode: EmberMode): string {
   if (mode === 'telefunken') return 'Telefunken ECC83';
   if (mode === 'bugleboy') return 'Amperex Bugle Boy';
   if (mode === 'rcablack') return 'RCA 12AX7 Black Plate';
+  if (mode === 'tascam424') return 'TASCAM 424 Channel';
+  if (mode === 'neve1073') return 'Neve 1073 Path';
+  if (mode === 'ssl4000e') return 'SSL 4000E Path';
+  if (mode === 'api1608') return 'API 1608 Path';
   return mode.charAt(0).toUpperCase() + mode.slice(1);
 }
 
@@ -385,9 +401,6 @@ function formatDriftMode(mode: DriftMode): string {
 }
 
 function formatGrainMode(mode: GrainMode): string {
-  if (mode === 'sp1200') return 'E-mu SP-1200';
-  if (mode === 'mpc60') return 'Akai MPC60';
-  if (mode === 'mirage') return 'Ensoniq Mirage';
   return mode.charAt(0).toUpperCase() + mode.slice(1);
 }
 
@@ -398,16 +411,23 @@ function formatReverbMode(mode: ReverbAlgorithm): string {
 }
 
 function formatMediaMode(mode: MediaMode): string {
-  if (mode === 'tascam424') return 'TASCAM 424 MKI';
+  if (mode === 'sp1200') return 'E-mu SP-1200';
+  if (mode === 'mpc60') return 'Akai MPC60';
+  if (mode === 'mirage') return 'Ensoniq Mirage';
+  if (mode === 's950') return 'Akai S950';
+  if (mode === 'emulator2') return 'E-mu Emulator II';
+  if (mode === 'fairlightiix') return 'Fairlight CMI IIx';
   return mode.charAt(0).toUpperCase() + mode.slice(1);
 }
 
 function parameterPresentation(module: ModuleState, parameterId: string, label: string, display: string, value: number): ParameterPresentation {
-  if (module.id === 'media' && module.mediaMode === 'tascam424') {
-    if (parameterId === 'wear') return { label: 'Trim', display: `${Math.round(value * 100)}%` };
-    if (parameterId === 'wow') return { label: 'Low', display: `${format424Eq(value, 0.16)} dB` };
-    if (parameterId === 'noise') return { label: 'High', display: `${format424Eq(value, 0.10)} dB` };
-    if (parameterId === 'tone') return { label: 'Drive', display: `${Math.round(value * 100)}%` };
+  if (module.id === 'saturation' && module.emberMode && ['tascam424','neve1073','ssl4000e','api1608'].includes(module.emberMode)) {
+    const mode = module.emberMode;
+    if (parameterId === 'drive') return { label: mode === 'tascam424' ? 'Trim' : 'Input', display };
+    if (parameterId === 'tone') return { label: 'Bandwidth', display };
+    if (parameterId === 'heat') return { label: mode === 'ssl4000e' ? 'VCA Drive' : 'Iron', display };
+    if (parameterId === 'character') return { label: mode === 'tascam424' ? 'EQ Color' : 'Presence', display };
+    if (parameterId === 'dynamics') return { label: mode === 'api1608' ? 'Punch' : mode === 'neve1073' ? 'Cohesion' : 'Glue', display };
   }
 
   if (module.id === 'delay' && module.delayAlgorithm === 're201') {
@@ -449,42 +469,69 @@ function parameterPresentation(module: ModuleState, parameterId: string, label: 
     if (parameterId === 'motion') return { label: 'Mod', display };
   }
 
-  if (module.id === 'bitcrusher' && module.grainMode === 'sp1200') {
-    if (parameterId === 'bits') return { label: 'Output', display: sp1200OutputPair(value) };
-    if (parameterId === 'density') return { label: 'Input', display: `${Math.round(value * 100)}%` };
-    if (parameterId === 'pitch') return { label: 'Clock', display: '26.04 kHz FIXED', disabled: true };
-    if (parameterId === 'chaos') return { label: 'Filter Env', display: `${Math.round(value * 100)}%` };
-    if (parameterId === 'bloom') return { label: 'Tone', display: `${Math.round(value * 100)}%` };
+  if (module.id === 'bitcrusher' && module.grainMode) {
+    const mode = module.grainMode;
+    if (parameterId === 'bits') {
+      const labelByMode: Record<GrainMode, string> = { smear:'Window', scatter:'Fragment', slice:'Slice', prism:'Window', freeze:'Capture', mosaic:'Fragment' };
+      return { label: labelByMode[mode], display: grainWindowDisplay(mode, value) };
+    }
+    if (parameterId === 'density') {
+      const labelByMode: Record<GrainMode, string> = { smear:'Overlap', scatter:'Activity', slice:'Tightness', prism:'Voices', freeze:'Texture', mosaic:'Pieces' };
+      return { label: labelByMode[mode], display };
+    }
+    if (parameterId === 'pitch') {
+      const labelByMode: Record<GrainMode, string> = { smear:'Pitch Drift', scatter:'Pitch Range', slice:'Pitch', prism:'Harmony', freeze:'Transpose', mosaic:'Pitch Range' };
+      return { label: labelByMode[mode], display: grainPitchDisplay(mode, value) };
+    }
+    if (parameterId === 'chaos') {
+      const labelByMode: Record<GrainMode, string> = { smear:'Motion', scatter:'Spread', slice:'Offset', prism:'Detune', freeze:'Refresh', mosaic:'Order' };
+      return { label: labelByMode[mode], display };
+    }
+    if (parameterId === 'bloom') {
+      const labelByMode: Record<GrainMode, string> = { smear:'Memory', scatter:'History', slice:'Repeats', prism:'Body', freeze:'Hold', mosaic:'Cohesion' };
+      return { label: labelByMode[mode], display };
+    }
   }
 
-  if (module.id === 'bitcrusher' && module.grainMode === 'mpc60') {
-    if (parameterId === 'bits') return { label: 'Headroom', display: `${Math.round((1 - value) * 12)} dB` };
-    if (parameterId === 'density') return { label: 'Input', display: `${Math.round(value * 100)}%` };
-    if (parameterId === 'pitch') return { label: 'Clock', display: '40 kHz FIXED', disabled: true };
-    if (parameterId === 'chaos') return { label: 'Converter', display: `${Math.round(value * 100)}%` };
-    if (parameterId === 'bloom') return { label: 'Filter', display: `${Math.round(value * 100)}%` };
-  }
-
-  if (module.id === 'bitcrusher' && module.grainMode === 'mirage') {
-    if (parameterId === 'bits') return { label: 'Depth', display: '8 BIT FIXED', disabled: true };
-    if (parameterId === 'density') return { label: 'Drive', display: `${Math.round(value * 100)}%` };
-    if (parameterId === 'pitch') return { label: 'Sample Rate', display: `${mirageRateKhz(value).toFixed(1)} kHz` };
-    if (parameterId === 'chaos') return { label: 'Resonance', display: `${Math.round(value * 100)}%` };
-    if (parameterId === 'bloom') return { label: 'Cutoff', display: `${Math.round(value * 100)}%` };
+  if (module.id === 'media' && module.mediaMode && ARTIFACT_SAMPLER_MODES.some((mode) => mode === module.mediaMode)) {
+    const mode = module.mediaMode;
+    if (parameterId === 'wear') return { label: 'Input', display: `${Math.round(value * 100)}%` };
+    if (parameterId === 'wow') {
+      if (mode === 'sp1200') return { label: 'Output Pair', display: sp1200OutputPair(value) };
+      if (mode === 'mpc60') return { label: 'Clock', display: '40.0 kHz FIXED', disabled: true };
+      if (mode === 'emulator2') return { label: 'Clock', display: '27.0 kHz FIXED', disabled: true };
+      return { label: 'Sample Rate', display: `${artifactSampleRateKhz(mode, value).toFixed(1)} kHz` };
+    }
+    if (parameterId === 'noise') return { label: mode === 'mirage' || mode === 'emulator2' ? 'Resonance' : 'Converter', display };
+    if (parameterId === 'tone') return { label: 'Filter', display };
   }
 
   return { label, display };
 }
 
-function format424Eq(value: number, center: number): string {
-  const normalized = value >= center ? (value - center) / Math.max(1e-6, 1 - center) : (value - center) / Math.max(1e-6, center);
-  const db = normalized * 10;
-  return `${db >= 0 ? '+' : ''}${db.toFixed(1)}`;
-}
-
 function sp1200OutputPair(value: number): string {
   const pair = Math.max(0, Math.min(3, Math.floor(value * 4)));
   return ['1 / 2', '3 / 4', '5 / 6', '7 / 8'][pair] ?? '1 / 2';
+}
+
+function grainWindowDisplay(mode: GrainMode, value: number): string {
+  const milliseconds = mode === 'smear' ? 150 + value * 520
+    : mode === 'scatter' ? 18 + value * 66
+    : mode === 'mosaic' ? 36 + value * 150
+    : mode === 'prism' ? 58 + value * 120
+    : mode === 'slice' ? 24 + value * 210
+    : 120 + value * 640;
+  return `${Math.round(milliseconds)} ms`;
+}
+
+function grainPitchDisplay(mode: GrainMode, value: number): string {
+  if (mode === 'prism') return `SET ${1 + Math.min(4, Math.floor(value * 5))}`;
+  const semitones = mode === 'smear' ? value * 1.8
+    : mode === 'scatter' ? value * 9
+    : mode === 'mosaic' ? value * 7
+    : value * 12;
+  const precision = mode === 'smear' ? 1 : 0;
+  return `±${semitones.toFixed(precision)} st`;
 }
 
 function re201Mode(value: number): number {
@@ -500,6 +547,9 @@ function emt140Decay(value: number): number {
   return 0.5 + Math.max(0, Math.min(1, value)) * 5;
 }
 
-function mirageRateKhz(value: number): number {
-  return value <= 0.005 ? 32 : 10 + value * 23;
+function artifactSampleRateKhz(mode: MediaMode, value: number): number {
+  if (mode === 'mirage') return value <= 0.005 ? 32 : 10 + value * 23;
+  if (mode === 's950') return 7.5 + value * 40.5;
+  if (mode === 'fairlightiix') return 24 + value * 8;
+  return mode === 'sp1200' ? 26.04 : mode === 'mpc60' ? 40 : 27;
 }

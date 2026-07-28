@@ -34,41 +34,17 @@
 .effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-patch-target="delay.width"]) .knob-label::after { content: "MOD / WIDTH"; font-size: .68rem; }
 .effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-patch-target="delay.width"]) .knob-label::after { content: "STEREO"; font-size: .68rem; }
 
-/* Artifact consoles share the five physical controls but expose console/tape terminology. */
-.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label,
-.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label,
-.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label,
+/* The ATR-102 keeps tape-machine terminology; Ember console controls are named in React. */
 .effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label { font-size: 0; }
-.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label::after,
-.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label::after,
-.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label::after { content: "INPUT DRIVE"; font-size: .68rem; }
 .effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label::after { content: "RECORD"; font-size: .68rem; }
 
-.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label,
-.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label,
-.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label,
 .effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label { font-size: 0; }
-.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label::after,
-.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label::after { content: "BODY"; font-size: .68rem; }
-.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label::after { content: "PUNCH"; font-size: .68rem; }
 .effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label::after { content: "TAPE SPEED"; font-size: .68rem; }
 
-.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label,
-.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label,
-.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label,
 .effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label { font-size: 0; }
-.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label::after { content: "AIR"; font-size: .68rem; }
-.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label::after,
-.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label::after { content: "PRESENCE"; font-size: .68rem; }
 .effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label::after { content: "HISS"; font-size: .68rem; }
 
-.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label,
-.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label,
-.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label,
 .effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label { font-size: 0; }
-.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label::after { content: "OUTPUT DRIVE"; font-size: .68rem; }
-.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label::after { content: "VCA DRIVE"; font-size: .68rem; }
-.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label::after { content: "OUTPUT"; font-size: .68rem; }
 .effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label::after { content: "BIAS"; font-size: .68rem; }
 
 /* Machine names inside the viewport. */
@@ -76,17 +52,17 @@
 .effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .viewport-caption,
 .effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .viewport-caption,
 .effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .viewport-caption,
-.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .viewport-caption,
-.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .viewport-caption,
-.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .viewport-caption,
+.effect-module:has(.ember-mode-selector option[value="neve1073"]:checked) .viewport-caption,
+.effect-module:has(.ember-mode-selector option[value="ssl4000e"]:checked) .viewport-caption,
+.effect-module:has(.ember-mode-selector option[value="api1608"]:checked) .viewport-caption,
 .effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .viewport-caption { font-size: 0; }
 .effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .viewport-caption::after { content: "EP-3 · TAPE LOOP"; font-size: 9px; }
 .effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .viewport-caption::after { content: "ECHOREC · MAGNETIC DRUM"; font-size: 9px; }
 .effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .viewport-caption::after { content: "MEMORY MAN · BBD"; font-size: 9px; }
 .effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .viewport-caption::after { content: "DMX 15-80 S · 15 BIT"; font-size: 9px; }
-.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .viewport-caption::after { content: "1073 · CLASS A / TRANSFORMER"; font-size: 9px; }
-.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .viewport-caption::after { content: "4000 E · VCA BUS"; font-size: 9px; }
-.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .viewport-caption::after { content: "1608 · 2520 / TRANSFORMER"; font-size: 9px; }
+.effect-module:has(.ember-mode-selector option[value="neve1073"]:checked) .viewport-caption::after { content: "1073 · CLASS A / TRANSFORMER"; font-size: 9px; }
+.effect-module:has(.ember-mode-selector option[value="ssl4000e"]:checked) .viewport-caption::after { content: "4000 E · VCA BUS"; font-size: 9px; }
+.effect-module:has(.ember-mode-selector option[value="api1608"]:checked) .viewport-caption::after { content: "1608 · 2520 / TRANSFORMER"; font-size: 9px; }
 .effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .viewport-caption::after { content: "ATR-102 · MASTERING TAPE"; font-size: 9px; }
 
 /* Hardware animation overlays. The canvas remains the signal world underneath. */
@@ -94,17 +70,17 @@
 .effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .viewport-glass::before,
 .effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .viewport-glass::before,
 .effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .viewport-glass::before,
-.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .viewport-glass::before,
-.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .viewport-glass::before,
-.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .viewport-glass::before,
+.effect-module:has(.ember-mode-selector option[value="neve1073"]:checked) .viewport-glass::before,
+.effect-module:has(.ember-mode-selector option[value="ssl4000e"]:checked) .viewport-glass::before,
+.effect-module:has(.ember-mode-selector option[value="api1608"]:checked) .viewport-glass::before,
 .effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .viewport-glass::before,
 .effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .viewport-glass::after,
 .effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .viewport-glass::after,
 .effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .viewport-glass::after,
 .effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .viewport-glass::after,
-.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .viewport-glass::after,
-.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .viewport-glass::after,
-.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .viewport-glass::after,
+.effect-module:has(.ember-mode-selector option[value="neve1073"]:checked) .viewport-glass::after,
+.effect-module:has(.ember-mode-selector option[value="ssl4000e"]:checked) .viewport-glass::after,
+.effect-module:has(.ember-mode-selector option[value="api1608"]:checked) .viewport-glass::after,
 .effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .viewport-glass::after {
   content: "";
   position: absolute;
@@ -170,23 +146,23 @@
 }
 
 /* Neve: transformer field / Class-A rails. */
-.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .viewport-glass::before {
+.effect-module:has(.ember-mode-selector option[value="neve1073"]:checked) .viewport-glass::before {
   inset: 20% 13% 24%; opacity: .38;
   background: repeating-radial-gradient(ellipse at 28% 50%, transparent 0 7px, rgba(213,154,93,.48) 8px 9px, transparent 10px 14px), repeating-radial-gradient(ellipse at 72% 50%, transparent 0 7px, rgba(80,210,214,.28) 8px 9px, transparent 10px 14px);
   animation: transformer-field 3.5s ease-in-out infinite alternate;
 }
-.effect-module:has(.media-mode-selector option[value="Neve 1073"]:checked) .viewport-glass::after {
+.effect-module:has(.ember-mode-selector option[value="neve1073"]:checked) .viewport-glass::after {
   left: 17%; right: 17%; top: 49%; height: 1px; opacity: .55;
   background: linear-gradient(90deg, rgba(213,154,93,.7), transparent 44% 56%, rgba(213,154,93,.7));
   box-shadow: 0 0 9px rgba(213,154,93,.25);
 }
 
 /* SSL: console bus matrix with VCA meter movement. */
-.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .viewport-glass::before {
+.effect-module:has(.ember-mode-selector option[value="ssl4000e"]:checked) .viewport-glass::before {
   inset: 18% 12% 24%; opacity: .34;
   background: repeating-linear-gradient(90deg, rgba(80,210,214,.24) 0 1px, transparent 1px 18px), repeating-linear-gradient(0deg, rgba(239,232,215,.20) 0 1px, transparent 1px 13px);
 }
-.effect-module:has(.media-mode-selector option[value="SSL 4000E"]:checked) .viewport-glass::after {
+.effect-module:has(.ember-mode-selector option[value="ssl4000e"]:checked) .viewport-glass::after {
   left: 18%; bottom: 29%; width: 64%; height: 7px; opacity: .72;
   background: repeating-linear-gradient(90deg, rgba(239,232,215,.7) 0 5px, transparent 5px 9px);
   transform-origin: left center;
@@ -194,13 +170,13 @@
 }
 
 /* API: 2520-style modular blocks feeding an output transformer. */
-.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .viewport-glass::before {
+.effect-module:has(.ember-mode-selector option[value="api1608"]:checked) .viewport-glass::before {
   inset: 21% 13% 27%; opacity: .40;
   background: repeating-linear-gradient(90deg, rgba(213,154,93,.46) 0 18px, transparent 18px 25px), repeating-linear-gradient(0deg, transparent 0 15px, rgba(80,210,214,.20) 16px 17px, transparent 18px 30px);
   clip-path: polygon(0 18%, 80% 18%, 80% 0, 100% 50%, 80% 100%, 80% 82%, 0 82%);
   animation: api-pulse 2.2s ease-in-out infinite alternate;
 }
-.effect-module:has(.media-mode-selector option[value="API 1608"]:checked) .viewport-glass::after {
+.effect-module:has(.ember-mode-selector option[value="api1608"]:checked) .viewport-glass::after {
   right: 12%; top: 31%; width: 34px; height: 34px; border-radius: 50%; opacity: .48;
   border: 1px solid rgba(213,154,93,.65);
   box-shadow: inset 0 0 0 7px rgba(80,210,214,.08), 0 0 10px rgba(213,154,93,.18);

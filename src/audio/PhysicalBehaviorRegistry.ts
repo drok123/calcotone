@@ -79,7 +79,10 @@ export function syncPhysicalBehavior(effect: Effect): void {
       case 'furnace': behavior = spec('console', 0.105 + drive * 0.11, heat, 0.76 + dynamics * 0.18, character); break;
       case 'exciter': behavior = spec('converter', 0.05 + character * 0.075, mix(heat, drive, 0.25), 0.24 + dynamics * 0.18, mix(character, tone, 0.2)); break;
       case 'broken': behavior = spec('fracture', 0.085 + drive * 0.13, mix(heat, character, 0.2), 0.82 + dynamics * 0.14, character); break;
-      case 'goldlion': case 'mullard': case 'telefunken': case 'bugleboy': case 'rcablack': behavior = BYPASS; break;
+      case 'goldlion': case 'mullard': case 'telefunken': case 'bugleboy': case 'rcablack':
+      case 'tascam424': case 'neve1073': case 'ssl4000e': case 'api1608':
+        behavior = BYPASS;
+        break;
     }
   } else if (effect.id === 'chorus') {
     const mode = DRIFT_MODE_ORDER[index(effect, 'mode')] ?? 'chorus';
@@ -163,19 +166,13 @@ export function syncPhysicalBehavior(effect: Effect): void {
       case 'lexicon224': behavior = spec('converter', 0.05 + diffusion * 0.05, motion, 0.68 + storedEnergy * 0.16, color); break;
     }
   } else if (effect.id === 'bitcrusher') {
-    const mode = GRAIN_MODE_ORDER[index(effect, 'mode')] ?? 'reconstruct';
-    const density = value(effect, 'density', 0.42);
-    const pitch = value(effect, 'pitch', 0.38);
-    const chaos = value(effect, 'chaos', 0.16);
-    const bloom = value(effect, 'bloom', 0.36);
+    const mode = GRAIN_MODE_ORDER[index(effect, 'mode', 2)] ?? 'smear';
     switch (mode) {
-      case 'reconstruct': behavior = spec('granular', 0.04 + density * 0.045, pitch, 0.54 + bloom * 0.18, bloom); break;
-      case 'shatter': behavior = spec('fracture', 0.06 + chaos * 0.08, pitch, 0.6 + density * 0.16, bloom); break;
-      case 'smear': behavior = spec('fluid', 0.05 + density * 0.06, pitch, 0.82 + bloom * 0.14, bloom); break;
-      case 'prism': behavior = spec('orbital', 0.05 + pitch * 0.06, chaos, 0.7 + density * 0.16, bloom); break;
-      case 'stutter': behavior = spec('charge', 0.05 + density * 0.055, chaos, 0.64 + bloom * 0.16, bloom); break;
-      case 'ruin': behavior = spec('fracture', 0.08 + chaos * 0.095, pitch, 0.82 + density * 0.12, bloom); break;
-      case 'sp1200': case 'mpc60': case 'mirage': case 's950': case 'emulator2': case 'fairlightiix': behavior = BYPASS; break;
+      // Grain owns its complete buffer mechanisms. A second residual memory,
+      // BBD, or fracture stage would blur the distinction between algorithms.
+      case 'mosaic': case 'scatter': case 'smear': case 'prism': case 'slice': case 'freeze':
+        behavior = BYPASS;
+        break;
     }
   } else if (effect.id === 'media') {
     const mode = MEDIA_MODE_ORDER[index(effect, 'mode')] ?? 'cassette';
@@ -193,11 +190,10 @@ export function syncPhysicalBehavior(effect: Effect): void {
       case 'wax': behavior = spec('rotor', 0.055 + wear * 0.07 + noise * 0.012, wow, 0.8 + ageMemory * 0.16, tone); break;
       case 'broken': behavior = spec('fracture', 0.085 + wear * 0.095 + noise * 0.02, wow, 0.84 + ageMemory * 0.14, tone); break;
       case 'archive': behavior = spec('transport', 0.05 + wear * 0.06 + noise * 0.015, wow, 0.84 + ageMemory * 0.12, tone); break;
-      case 'tascam424': behavior = spec('console', 0.05 + wear * 0.06, mix(wow, noise, 0.18), 0.68 + ageMemory * 0.12, tone); break;
-      case 'Neve 1073': behavior = spec('magnetic', 0.04 + wear * 0.05, mix(wow, noise, 0.12), 0.74 + ageMemory * 0.12, tone); break;
-      case 'SSL 4000E': behavior = spec('console', 0.04 + wear * 0.05, mix(wow, noise, 0.16), 0.64 + ageMemory * 0.12, tone); break;
-      case 'API 1608': behavior = spec('console', 0.04 + wear * 0.05, mix(wow, noise, 0.14), 0.6 + ageMemory * 0.12, tone); break;
       case 'Ampex ATR-102': behavior = spec('magnetic', 0.06 + wear * 0.07, wow, 0.84 + ageMemory * 0.12, tone); break;
+      case 'sp1200': case 'mpc60': case 'mirage': case 's950': case 'emulator2': case 'fairlightiix':
+        behavior = BYPASS;
+        break;
     }
   }
 

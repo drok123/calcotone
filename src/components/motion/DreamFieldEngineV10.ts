@@ -512,7 +512,7 @@ export class DreamFieldEngine {
           const nv = valueOf(l.artifact, 'noise', 0.1) * g.artifact;
           const tone = valueOf(l.artifact, 'tone', 0.62);
           const dust = (hash(px + Math.floor(time * 1.5), py + seed) - 0.5) * nv * (7 + audio.high * 6);
-          if (mode === 'cassette' || mode === 'tascam424') {
+          if (mode === 'cassette' || mode === 'sp1200') {
             r += wear * (4 + tone * 6) + dust;
             gg += wear * 1.5 + dust * 0.65;
             b -= wear * 2.4 - dust * 0.45;
@@ -546,8 +546,8 @@ export class DreamFieldEngine {
             r += t * 8 + dust;
             gg -= t * 2;
             b -= t * 5;
-          } else if (modeIs(mode, 'Neve 1073', 'SSL 4000E', 'API 1608')) {
-            const consoleWarmth = mode === 'Neve 1073' ? 1 : mode === 'API 1608' ? 0.6 : 0.25;
+          } else if (modeIs(mode, 'mpc60', 'mirage', 's950', 'emulator2', 'fairlightiix')) {
+            const consoleWarmth = mode === 'mirage' ? 1 : mode === 'emulator2' ? 0.6 : 0.25;
             r += wear * (5 + consoleWarmth * 4);
             gg += wear * (3 + tone * 2);
             b += wear * (1 + (1 - consoleWarmth) * 2);
@@ -854,12 +854,12 @@ export class DreamFieldEngine {
     if (!m || g.grain <= 0) return;
     const w = this.width;
     const h = this.height;
-    const mode = m.grainMode ?? 'reconstruct';
+    const mode = m.grainMode ?? 'smear';
     const density = valueOf(m, 'density', 0.42);
     const chaos = valueOf(m, 'chaos', 0.16);
     const bloom = valueOf(m, 'bloom', 0.36);
     const pitch = valueOf(m, 'pitch', 0.38);
-    const hardware = modeIs(mode, 'sp1200', 'mpc60', 'mirage');
+    const mosaic = mode === 'mosaic';
     const count = 12 + Math.round(density * 40 + g.grain * 10 + g.audio.high * 12);
     const speed = 0.035 + density * 0.045 + pitch * 0.025 + g.audio.high * 0.035;
 
@@ -869,25 +869,25 @@ export class DreamFieldEngine {
       const seed = hash(i * 11.31 + 4.7);
       const lateral = hash(i * 17.2 + 2.3);
       let fall = (time * speed * (0.72 + seed * 0.56) + seed) % 1;
-      if (mode === 'stutter' || mode === 'sp1200') fall = Math.floor(fall * (hardware ? 9 : 12)) / (hardware ? 9 : 12);
+      if (mode === 'slice' || mosaic) fall = Math.floor(fall * (mosaic ? 9 : 12)) / (mosaic ? 9 : 12);
       const x = lateral * w + Math.sin(time * 0.04 + i) * chaos * w * (0.012 + g.audio.mid * 0.008);
       const y = -h * 0.08 + fall * h * 1.12;
       const alpha = (0.025 + g.grain * 0.035 + g.audio.high * 0.025) * (0.55 + seed * 0.45);
 
-      if (mode === 'shatter' || mode === 'ruin') {
+      if (mode === 'scatter' || mode === 'freeze') {
         const size = 1.1 + seed * (2.2 + chaos * 2.2 + g.audio.transient * 3);
-        ctx.fillStyle = mode === 'ruin' ? `rgba(229,132,189,${alpha * 0.76})` : `rgba(116,223,221,${alpha})`;
+        ctx.fillStyle = mode === 'freeze' ? `rgba(229,132,189,${alpha * 0.76})` : `rgba(116,223,221,${alpha})`;
         ctx.beginPath();
         ctx.moveTo(x, y - size);
         ctx.lineTo(x + size * 0.8, y + size * 0.4);
         ctx.lineTo(x - size * 0.6, y + size);
         ctx.closePath();
         ctx.fill();
-      } else if (hardware) {
-        const block = mode === 'mirage' ? 2.2 : mode === 'sp1200' ? 1.7 : 1.35;
+      } else if (mosaic) {
+        const block = 1.7;
         const qx = Math.round(x / block) * block;
         const qy = Math.round(y / block) * block;
-        ctx.fillStyle = mode === 'mirage' ? `rgba(222,91,188,${alpha * 0.72})` : mode === 'sp1200' ? `rgba(242,176,102,${alpha * 0.74})` : `rgba(93,218,219,${alpha * 0.72})`;
+        ctx.fillStyle = `rgba(242,176,102,${alpha * 0.74})`;
         ctx.fillRect(qx, qy, block, block * (1 + seed * 1.6));
       } else {
         const len = mode === 'smear' ? 11 + bloom * 15 + g.audio.low * 10 : mode === 'prism' ? 5 + bloom * 7 : 4 + density * 7;
@@ -908,7 +908,7 @@ export class DreamFieldEngine {
     if (!m || g.artifact <= 0) return;
     const mode = m.mediaMode ?? 'cassette';
     if (mode === 'vhs') this.drawCyberCity(ctx, time, m, g, s);
-    else if (modeIs(mode, 'Neve 1073', 'SSL 4000E', 'API 1608')) this.drawConsoleGrid(ctx, time, mode, g);
+    else if (modeIs(mode, 'sp1200', 'mpc60', 'mirage', 's950', 'emulator2', 'fairlightiix')) this.drawSamplerGrid(ctx, time, mode, g);
     else if (mode === 'archive') this.drawArchiveMonoliths(ctx, g, s);
     else if (mode === 'broken') this.drawBrokenStructures(ctx, time, g, s);
   }
@@ -1008,12 +1008,12 @@ export class DreamFieldEngine {
     ctx.restore();
   }
 
-  private drawConsoleGrid(ctx: CanvasRenderingContext2D, time: number, mode: string, g: Geometry) {
+  private drawSamplerGrid(ctx: CanvasRenderingContext2D, time: number, mode: string, g: Geometry) {
     const w = this.width;
     const h = this.height;
     const hz = g.horizon * h;
-    const warm = mode === 'Neve 1073';
-    const punchy = mode === 'API 1608';
+    const warm = mode === 'sp1200' || mode === 'mirage';
+    const punchy = mode === 'mpc60' || mode === 's950';
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
     const count = punchy ? 9 : 7;
@@ -1112,7 +1112,7 @@ export class DreamFieldEngine {
       grad.addColorStop(1, 'rgba(85,216,220,0)');
       ctx.fillStyle = grad;
       ctx.fillRect(0, y - 12, w, 24);
-    } else if (modeIs(mode, 'reel', 'cassette', 'tascam424', 'Ampex ATR-102')) {
+    } else if (modeIs(mode, 'reel', 'cassette', 'Ampex ATR-102')) {
       const x = w * (0.5 + Math.sin(time * 0.045) * wow * 0.03);
       const sheen = ctx.createLinearGradient(x - w * 0.22, 0, x + w * 0.22, 0);
       sheen.addColorStop(0, 'rgba(245,171,100,0)');

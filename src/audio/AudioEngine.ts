@@ -1,7 +1,7 @@
 import { AudioGraph } from './AudioGraph';
 import { createEffect, type EffectId } from './EffectFactory';
 import type { Effect } from './effects/Effect';
-import type { Preset } from './Preset';
+import { migrateProcessingFamilyPreset, type Preset } from './Preset';
 import { InputMatrix, type InputMode } from './InputMatrix';
 import { WavRecorder, type RecordedWav } from './WavRecorder';
 import type { GrainProfilerStats } from './effects/Bitcrusher';
@@ -17,7 +17,7 @@ export type AudioEngineState =
 
 export type PerformanceMode = 'live' | 'balanced' | 'studio';
 
-const WORKLET_BUILD_VERSION = '8.4.31-hardware-calibration-a';
+const WORKLET_BUILD_VERSION = '8.5.0-processing-families-a';
 export type EngineHealth = 'offline' | 'healthy' | 'warm' | 'critical';
 
 export interface DspProfilerSnapshot {
@@ -452,22 +452,23 @@ export class AudioEngine {
 
   public loadPreset(preset: Preset): void {
     if (!this.context || !this.graph) throw new Error('Start the audio engine before loading a preset.');
+    const migratedPreset = migrateProcessingFamilyPreset(preset);
     const oldEffects = [...this.effects.values()];
     this.effects.clear();
     const presetEffects: Effect[] = [];
 
-    for (const presetEffect of preset.effects) {
+    for (const presetEffect of migratedPreset.effects) {
       const effect = createEffect(presetEffect.id, this.context);
       if (!effect) continue;
 
       for (const [parameterId, value] of Object.entries(presetEffect.parameters)) {
         if (!effect.getParameter(parameterId)) {
           effect.dispose();
-          throw new Error(`Preset "${preset.name}" references unknown parameter "${presetEffect.id}.${parameterId}".`);
+          throw new Error(`Preset "${migratedPreset.name}" references unknown parameter "${presetEffect.id}.${parameterId}".`);
         }
         if (!Number.isFinite(value)) {
           effect.dispose();
-          throw new Error(`Preset "${preset.name}" contains a non-finite value for "${presetEffect.id}.${parameterId}".`);
+          throw new Error(`Preset "${migratedPreset.name}" contains a non-finite value for "${presetEffect.id}.${parameterId}".`);
         }
         effect.setParameter(parameterId, value);
       }
@@ -602,6 +603,7 @@ export class AudioEngine {
     }
     const modules = [
       ['Grain', `grain-processor.js?v=${WORKLET_BUILD_VERSION}`],
+      ['Artifact sampler', `artifact-sampler-processor.js?v=${WORKLET_BUILD_VERSION}`],
       ['Lexicon 224', `lexicon-224-converter.js?v=${WORKLET_BUILD_VERSION}`],
       ['Dream Buffer', `dream-buffer-processor.js?v=${WORKLET_BUILD_VERSION}`],
       ['Recorder', `recorder-processor.js?v=${WORKLET_BUILD_VERSION}`],

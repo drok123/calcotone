@@ -1,7 +1,9 @@
 class CalcotoneGrainProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
-      { name: 'mode', defaultValue: 0, minValue: 0, maxValue: 11, automationRate: 'k-rate' },
+      { name: 'mode', defaultValue: 2, minValue: 0, maxValue: 5, automationRate: 'k-rate' },
+      // "bits" is the compatibility id for the old faceplate control. It now
+      // controls the analysis/window scale and never quantizes the signal.
       { name: 'bits', defaultValue: 13, minValue: 4, maxValue: 16, automationRate: 'k-rate' },
       { name: 'density', defaultValue: 0.42, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
       { name: 'pitch', defaultValue: 0.38, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
@@ -12,35 +14,61 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
 
   constructor() {
     super();
-    this.bufferSize = Math.max(16384, 1 << Math.ceil(Math.log2(sampleRate * 2.5)));
+    this.bufferSize = Math.max(32768, 1 << Math.ceil(Math.log2(sampleRate * 4)));
     this.mask = this.bufferSize - 1;
     this.left = new Float32Array(this.bufferSize);
     this.right = new Float32Array(this.bufferSize);
     this.writeIndex = 0;
+    this.writtenSamples = 0;
+
     this.maxVoices = 6;
     this.effectiveVoiceLimit = 6;
-    this.voices = Array.from({ length: 8 }, () => ({ active: false, phase: 0, length: 0, read: 0, step: 1, gain: 0, pan: 0, panDrift: 0, tone: 0, lastL: 0, lastR: 0 }));
+    this.voices = Array.from({ length: 8 }, () => ({
+      active: false,
+      phase: 0,
+      length: 0,
+      read: 0,
+      step: 1,
+      gain: 0,
+      pan: 0,
+      panDrift: 0,
+      tone: 0,
+      lastL: 0,
+      lastR: 0,
+    }));
     this.spawnCounter = 0;
+    this.spawnSequence = 0;
+    this.randomState = 0x6d2b79f5;
+
     this.smoothedDensity = 0.42;
     this.smoothedPitch = 0.38;
-    this.smoothedChaos = 0.16;
+    this.smoothedMotion = 0.16;
+    this.smoothedMemory = 0.36;
     this.outputL = 0;
     this.outputR = 0;
+    this.smearL = 0;
+    this.smearR = 0;
+    this.inputEnvelope = 0;
+    this.previousEnvelope = 0;
     this.inputEnergy = 1e-5;
     this.wetEnergy = 1e-5;
     this.makeupGain = 1;
-    this.randomState = 0x6d2b79f5;
 
-    this.hardwarePhase = 0;
-    this.hardwareHeldL = 0;
-    this.hardwareHeldR = 0;
-    this.hardwareEnvelope = 0;
-    this.hardwareFilterL = [0, 0, 0, 0];
-    this.hardwareFilterR = [0, 0, 0, 0];
-    this.hardwarePreviousMode = -1;
-    this.hardwareClockMemory = 0;
-    this.hardwareApertureL = 0;
-    this.hardwareApertureR = 0;
+    this.previousMode = -1;
+    this.sliceStart = 0;
+    this.sliceLength = 2048;
+    this.slicePhase = 0;
+    this.sliceStep = 1;
+    this.sliceRefreshCounter = 0;
+    this.sliceReady = false;
+    this.freezeStart = 0;
+    this.freezeLength = 8192;
+    this.freezePhase = 0;
+    this.freezeStep = 1;
+    this.freezeRefreshCounter = 0;
+    this.freezeReady = false;
+    this.specialResult = [0, 0];
+    this.voiceResult = [0, 0, 0];
 
     this.profileBlocks = 0;
     this.profileTotalMs = 0;
@@ -62,61 +90,11 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
 
   random() {
     let x = this.randomState | 0;
-    x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
     this.randomState = x | 0;
     return (x >>> 0) / 4294967296;
-  }
-
-  spawnVoice(density, pitch, chaos, mode, pitchLocked) {
-    let voice = null;
-    for (let i = 0; i < this.effectiveVoiceLimit; i += 1) {
-      if (!this.voices[i].active) { voice = this.voices[i]; break; }
-    }
-    if (!voice) return false;
-
-    const modeGrainScale = [1.0, 0.50, 2.15, 1.15, 0.42, 0.68][mode] || 1;
-    const grainMs = (34 + (1 - density) * 118 + this.random() * (26 + chaos * 30)) * modeGrainScale;
-    const length = Math.max(72, Math.floor(sampleRate * grainMs / 1000));
-    let historySeconds = 0.018 + this.random() * (0.07 + density * 0.12 + chaos * 0.42);
-    if (mode === 1) historySeconds *= 1.5;
-    if (mode === 2) historySeconds = 0.08 + this.random() * 0.55;
-    if (mode === 4) {
-      const cells = [0.025, 0.05, 0.075, 0.10, 0.15, 0.20];
-      historySeconds = cells[(this.random() * cells.length) | 0] * (0.8 + density * 0.6);
-    }
-    if (mode === 5) historySeconds *= 1.9;
-    const history = Math.floor(sampleRate * historySeconds);
-
-    const sets = [[0,0,0,0,2,-2],[0,0,3,-3,5,-5],[0,0,5,-5,7,-7],[0,7,-7,12,-12,5,-5],[0,12,-12,7,-7,19,-19]];
-    const setIndex = Math.min(sets.length - 1, Math.floor(pitch * sets.length));
-    let intervals = pitchLocked ? [0] : sets[setIndex];
-    if (!pitchLocked) {
-      if (mode === 3) {
-        const prismSets = [[0,0,7,-5],[0,4,7,-12],[0,3,7,12],[0,5,7,12,-12],[0,7,12,19,-12]];
-        intervals = prismSets[setIndex];
-      } else if (mode === 4) intervals = [0,0,0,0, pitch > .55 ? 12 : 0, pitch > .75 ? -12 : 0];
-      else if (mode === 5) intervals = [0,-12,12,-7,7,-19,19];
-    }
-
-    let semitones = intervals[(this.random() * intervals.length) | 0];
-    const fineSpread = pitchLocked ? 0 : mode === 3 ? pitch * 0.18 : pitch * (0.16 + chaos * 1.45);
-    semitones += (this.random() * 2 - 1) * fineSpread;
-    let step = Math.pow(2, semitones / 12);
-    const reverseChance = mode === 1 ? 0.20 + chaos * 0.42 : mode === 5 ? 0.34 + chaos * 0.48 : chaos * 0.30;
-    if (this.random() < reverseChance) step *= -1;
-
-    voice.active = true;
-    voice.phase = 0;
-    voice.length = length;
-    voice.read = (this.writeIndex - history + this.bufferSize) & this.mask;
-    voice.step = step;
-    voice.gain = mode === 2 ? 0.42 + density * 0.18 : mode === 1 ? 0.55 + density * 0.25 : mode === 5 ? 0.52 + density * 0.25 : 0.50 + density * 0.22;
-    voice.pan = (this.random() * 2 - 1) * (mode === 3 ? 0.98 : 0.50 + density * 0.42);
-    voice.panDrift = (this.random() * 2 - 1) * (0.08 + chaos * 0.22);
-    voice.tone = mode === 2 ? 0.16 + this.random() * 0.28 : mode === 5 ? 0.10 + this.random() * 0.72 : 0.22 + this.random() * 0.56;
-    voice.lastL = 0;
-    voice.lastR = 0;
-    return true;
   }
 
   interpolate(buffer, position) {
@@ -133,154 +111,244 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     return ((c3 * fraction + c2) * fraction + c1) * fraction + c0;
   }
 
-  quantize(value, bits) {
-    const levels = Math.pow(2, bits - 1);
-    return Math.round(Math.max(-1, Math.min(1, value)) * levels) / levels;
+  wrap(position) {
+    while (position < 0) position += this.bufferSize;
+    while (position >= this.bufferSize) position -= this.bufferSize;
+    return position;
   }
 
-  quantizeNonlinear12(value) {
-    const sign = value < 0 ? -1 : 1;
-    const magnitude = Math.min(1, Math.abs(value));
-    const mu = 7.5;
-    const encoded = Math.log1p(mu * magnitude) / Math.log1p(mu);
-    const quantized = Math.round(encoded * 2047) / 2047;
-    return sign * Math.expm1(quantized * Math.log1p(mu)) / mu;
+  semitoneStep(semitones) {
+    return Math.pow(2, semitones / 12);
   }
 
-  quantizeCompanded8(value, strength) {
-    const sign = value < 0 ? -1 : 1;
-    const magnitude = Math.min(1, Math.abs(value));
-    const mu = 15 + strength * 24;
-    const encoded = Math.log1p(mu * magnitude) / Math.log1p(mu);
-    const quantized = Math.round(encoded * 127) / 127;
-    return sign * Math.expm1(quantized * Math.log1p(mu)) / mu;
-  }
-
-  onePole(value, cutoff, state, index) {
-    const safeCutoff = Math.max(60, Math.min(sampleRate * 0.46, cutoff));
-    const coefficient = 1 - Math.exp(-2 * Math.PI * safeCutoff / sampleRate);
-    state[index] += (value - state[index]) * coefficient;
-    return state[index];
-  }
-
-  fourPole(value, cutoff, resonance, state) {
-    const feedback = state[3] * Math.max(0, Math.min(0.88, resonance));
-    let out = value - feedback;
-    for (let stage = 0; stage < 4; stage += 1) out = this.onePole(out, cutoff, state, stage);
-    return out;
-  }
-
-  resetHardwareState(mode) {
-    if (this.hardwarePreviousMode === mode) return;
-    this.hardwarePreviousMode = mode;
-    this.hardwarePhase = 0;
-    this.hardwareHeldL = 0;
-    this.hardwareHeldR = 0;
-    this.hardwareEnvelope = 0;
-    this.hardwareClockMemory = 0;
-    this.hardwareApertureL = 0;
-    this.hardwareApertureR = 0;
-    this.hardwareFilterL.fill(0);
-    this.hardwareFilterR.fill(0);
-  }
-
-  processHardware(dryL, dryR, mode, bitsControl, density, pitch, chaos, bloom) {
-    this.resetHardwareState(mode);
-    const inputPeak = Math.max(Math.abs(dryL), Math.abs(dryR));
-    this.hardwareEnvelope += (inputPeak - this.hardwareEnvelope) * (inputPeak > this.hardwareEnvelope ? 0.018 : 0.0018);
-
-    let targetRate = 26040;
-    let bitDepth = 12;
-    let inputDrive = 0.9 + density * 1.2;
-    if (mode === 7) {
-      targetRate = 40000; bitDepth = 12; inputDrive = 0.88 + density * 0.52;
-    } else if (mode === 8) {
-      targetRate = pitch <= 0.005 ? 32000 : 10000 + pitch * 23000; bitDepth = 8; inputDrive = 0.8 + density * 1.45;
-    } else if (mode === 9) {
-      // S950: 12-bit linear converter with genuinely variable record clock (7.5-48 kHz).
-      targetRate = 7500 + pitch * 40500; bitDepth = 12; inputDrive = 0.84 + density * 0.82;
-    } else if (mode === 10) {
-      // Emulator II: fixed ~27 kHz, 8-bit storage feeding a resonant 24 dB/oct reconstruction path.
-      targetRate = 27000; bitDepth = 8; inputDrive = 0.86 + density * 0.74;
-    } else if (mode === 11) {
-      // Fairlight IIx study: early 8-bit sampling around a 32 kHz ceiling with simple reconstruction.
-      targetRate = 24000 + pitch * 8000; bitDepth = 8; inputDrive = 0.82 + density * 0.66;
+  resetModeState(mode, window, density, pitch, motion) {
+    if (this.previousMode === mode) return;
+    this.previousMode = mode;
+    this.spawnCounter = 0;
+    for (let index = 0; index < this.voices.length; index += 1) {
+      this.voices[index].active = false;
     }
+    if (mode === 4) {
+      this.sliceReady = false;
+      this.sliceReady = this.captureSlice(window, density, pitch, motion);
+    }
+    if (mode === 5) {
+      this.freezeReady = false;
+      this.freezeReady = this.captureFreeze(window, density, pitch);
+    }
+  }
 
-    // Small deterministic aperture/clock memory keeps the converter from behaving like an ideal sample-and-hold.
-    this.hardwareClockMemory += (targetRate - this.hardwareClockMemory) * 0.00035;
-    const effectiveRate = Math.max(6000, this.hardwareClockMemory || targetRate);
-    this.hardwarePhase += effectiveRate / sampleRate;
-    if (this.hardwarePhase >= 1) {
-      this.hardwarePhase -= Math.floor(this.hardwarePhase);
-      const headroom = mode === 7 ? 0.98 - ((bitsControl - 4) / 12) * 0.12 : 1;
-      const shapedL = Math.tanh((dryL / headroom) * inputDrive) / Math.max(1, inputDrive * 0.72);
-      const shapedR = Math.tanh((dryR / headroom) * inputDrive) / Math.max(1, inputDrive * 0.72);
-      this.hardwareApertureL += (shapedL - this.hardwareApertureL) * (0.82 - chaos * 0.12);
-      this.hardwareApertureR += (shapedR - this.hardwareApertureR) * (0.82 - chaos * 0.12);
-      if (mode === 7) {
-        this.hardwareHeldL = this.quantizeNonlinear12(this.hardwareApertureL);
-        this.hardwareHeldR = this.quantizeNonlinear12(this.hardwareApertureR);
-      } else if (mode === 10 || mode === 11) {
-        this.hardwareHeldL = this.quantizeCompanded8(this.hardwareApertureL, mode === 10 ? 0.7 : 0.35);
-        this.hardwareHeldR = this.quantizeCompanded8(this.hardwareApertureR, mode === 10 ? 0.7 : 0.35);
-      } else {
-        this.hardwareHeldL = this.quantize(this.hardwareApertureL, bitDepth);
-        this.hardwareHeldR = this.quantize(this.hardwareApertureR, bitDepth);
+  captureSlice(window, density, pitch, motion) {
+    const milliseconds = 24 + window * 210 + (1 - density) * 72;
+    const desiredLength = Math.max(128, Math.floor(sampleRate * milliseconds / 1000));
+    const available = Math.min(this.writtenSamples, this.bufferSize - 1);
+    if (available < 256) return false;
+    const desiredHistory = Math.floor(sampleRate * (0.025 + motion * 0.24));
+    const history = Math.min(desiredHistory, Math.max(0, available - 128));
+    this.sliceLength = Math.max(128, Math.min(desiredLength, available - history));
+    this.sliceStart = (this.writeIndex - history - this.sliceLength + this.bufferSize) & this.mask;
+    const intervals = [0, 0, 2, -2, 5, -5, 7, -7, 12, -12];
+    const range = Math.max(2, Math.min(intervals.length, 2 + Math.floor(pitch * (intervals.length - 2))));
+    const semitones = intervals[this.spawnSequence % range];
+    this.sliceStep = this.semitoneStep(semitones);
+    this.slicePhase = 0;
+    this.sliceRefreshCounter = 0;
+    this.spawnSequence += 1;
+    return true;
+  }
+
+  processSlice(window, density, pitch, motion, memory) {
+    const repeats = 2 + Math.floor(memory * 14);
+    const refreshAt = this.sliceLength * repeats;
+    if (this.sliceRefreshCounter >= refreshAt) this.sliceReady = this.captureSlice(window, density, pitch, motion);
+    const phase = this.slicePhase % this.sliceLength;
+    const tightness = 0.48 + (1 - density) * 0.86;
+    const edge = Math.max(16, Math.min(this.sliceLength * 0.16 * tightness, sampleRate * 0.008 * tightness));
+    const fadeIn = Math.min(1, phase / edge);
+    const fadeOut = Math.min(1, (this.sliceLength - phase) / edge);
+    const envelope = Math.sin(Math.min(fadeIn, fadeOut) * Math.PI * 0.5);
+    const read = this.wrap(this.sliceStart + phase);
+    this.specialResult[0] = this.interpolate(this.left, read) * envelope;
+    this.specialResult[1] = this.interpolate(this.right, read) * envelope;
+    this.slicePhase += this.sliceStep;
+    if (this.slicePhase >= this.sliceLength) this.slicePhase -= this.sliceLength;
+    this.sliceRefreshCounter += 1;
+    return this.specialResult;
+  }
+
+  captureFreeze(window, density, pitch) {
+    const milliseconds = 120 + window * 640 + (1 - density) * 240;
+    const desiredLength = Math.max(512, Math.floor(sampleRate * milliseconds / 1000));
+    const available = Math.min(this.writtenSamples, this.bufferSize - 1);
+    // Freeze waits until its full requested window exists. Capturing a tiny
+    // startup fragment would make Capture/Texture appear inert for the entire
+    // first hold cycle.
+    if (available < desiredLength + 96) return false;
+    this.freezeLength = desiredLength;
+    this.freezeStart = (this.writeIndex - this.freezeLength - 96 + this.bufferSize) & this.mask;
+    const semitones = pitch <= 0.005 ? 0 : (this.spawnSequence % 2 === 0 ? 1 : -1) * Math.round(pitch * 12);
+    this.freezeStep = this.semitoneStep(semitones);
+    this.freezePhase = 0;
+    this.freezeRefreshCounter = 0;
+    this.spawnSequence += 1;
+    return true;
+  }
+
+  processFreeze(window, density, pitch, motion, memory, transient) {
+    const holdSeconds = 1.4 + memory * 10;
+    const refreshSamples = Math.floor(sampleRate * holdSeconds);
+    const mayRefresh = this.freezeRefreshCounter >= refreshSamples
+      && (transient > 0.004 + (1 - motion) * 0.012 || this.freezeRefreshCounter > refreshSamples * 2.5);
+    if (mayRefresh) this.freezeReady = this.captureFreeze(window, density, pitch);
+
+    const phase = this.freezePhase % this.freezeLength;
+    const crossfade = Math.max(64, Math.min(this.freezeLength * (0.10 + density * 0.15), sampleRate * (0.018 + density * 0.018)));
+    // Refresh also adds a tiny pre-refresh scan so the control has an audible,
+    // subtle response before the next transient is eligible to replace the hold.
+    const textureOffset = Math.sin(phase * (0.002 + density * 0.009)) * density * 3.5
+      + Math.sin(phase * (0.0007 + motion * 0.0012)) * motion * 1.1;
+    const readA = this.wrap(this.freezeStart + phase + textureOffset);
+    let left = this.interpolate(this.left, readA);
+    let right = this.interpolate(this.right, readA);
+    if (phase > this.freezeLength - crossfade) {
+      const amount = (phase - (this.freezeLength - crossfade)) / crossfade;
+      const readB = this.wrap(this.freezeStart + phase - this.freezeLength);
+      const curve = amount * amount * (3 - 2 * amount);
+      left += (this.interpolate(this.left, readB) - left) * curve;
+      right += (this.interpolate(this.right, readB) - right) * curve;
+    }
+    this.freezePhase += this.freezeStep;
+    if (this.freezePhase >= this.freezeLength) this.freezePhase -= this.freezeLength;
+    this.freezeRefreshCounter += 1;
+    this.specialResult[0] = left;
+    this.specialResult[1] = right;
+    return this.specialResult;
+  }
+
+  spawnGranularVoice(mode, window, density, pitch, motion, memory) {
+    let voice = null;
+    for (let index = 0; index < this.effectiveVoiceLimit; index += 1) {
+      if (!this.voices[index].active) {
+        voice = this.voices[index];
+        break;
       }
     }
+    if (!voice) return false;
 
-    let outL = this.hardwareHeldL;
-    let outR = this.hardwareHeldR;
+    let grainMs = 42 + window * 120;
+    let historySeconds = 0.035 + this.random() * (0.14 + motion * 0.28);
+    let semitones = 0;
+    let reverseChance = motion * 0.08;
+    let pan = (this.random() * 2 - 1) * (0.24 + density * 0.42);
+    let panDrift = (this.random() * 2 - 1) * motion * 0.14;
+    let gain = 0.48 + density * 0.18;
+    let tone = 0.34 + this.random() * 0.44;
 
-    if (mode === 6) {
-      const pair = Math.max(0, Math.min(3, Math.floor(((bitsControl - 4) / 12) * 4)));
-      if (pair === 0) {
-        const cutoff = 3600 + bloom * 5600 + this.hardwareEnvelope * (1800 + chaos * 3200);
-        outL = this.fourPole(outL, cutoff, 0.08 + chaos * 0.30, this.hardwareFilterL);
-        outR = this.fourPole(outR, cutoff * 0.985, 0.08 + chaos * 0.30, this.hardwareFilterR);
-      } else if (pair === 1) {
-        const cutoff = 7200 + bloom * 2200;
-        outL = this.onePole(this.onePole(outL, cutoff, this.hardwareFilterL, 0), cutoff, this.hardwareFilterL, 1);
-        outR = this.onePole(this.onePole(outR, cutoff, this.hardwareFilterR, 0), cutoff, this.hardwareFilterR, 1);
-      } else if (pair === 2) {
-        const cutoff = 9800 + bloom * 2300;
-        outL = this.onePole(outL, cutoff, this.hardwareFilterL, 0);
-        outR = this.onePole(outR, cutoff, this.hardwareFilterR, 0);
-      }
-      const imaging = Math.sin(this.writeIndex * (26040 / sampleRate) * Math.PI * 2) * (0.0015 + chaos * 0.0035);
-      outL += imaging; outR -= imaging * 0.82;
-    } else if (mode === 7) {
-      const cutoff = 15_500 + bloom * 2_600;
-      outL = this.onePole(this.onePole(outL, cutoff, this.hardwareFilterL, 0), cutoff, this.hardwareFilterL, 1);
-      outR = this.onePole(this.onePole(outR, cutoff, this.hardwareFilterR, 0), cutoff, this.hardwareFilterR, 1);
-      const converterTexture = (chaos - 0.5) * 0.006;
-      outL = Math.tanh(outL * (1 + converterTexture)); outR = Math.tanh(outR * (1 + converterTexture));
-    } else if (mode === 8) {
-      const cutoff = 700 + bloom * 13_500;
-      const resonance = 0.05 + chaos * 0.72;
-      outL = this.fourPole(outL, cutoff, resonance, this.hardwareFilterL);
-      outR = this.fourPole(outR, cutoff * 0.992, resonance, this.hardwareFilterR);
-    } else if (mode === 9) {
-      // S950 bandwidth follows record rate rather than remaining a fixed post-filter.
-      const bandwidth = Math.min(19_200, effectiveRate * 0.40);
-      const cutoff = Math.max(1600, bandwidth * (0.74 + bloom * 0.24));
-      outL = this.onePole(this.onePole(outL, cutoff, this.hardwareFilterL, 0), cutoff, this.hardwareFilterL, 1);
-      outR = this.onePole(this.onePole(outR, cutoff * 0.994, this.hardwareFilterR, 0), cutoff * 0.994, this.hardwareFilterR, 1);
-    } else if (mode === 10) {
-      const cutoff = 1800 + bloom * 10_600 + this.hardwareEnvelope * 900;
-      const resonance = 0.10 + chaos * 0.56;
-      outL = this.fourPole(outL, cutoff, resonance, this.hardwareFilterL);
-      outR = this.fourPole(outR, cutoff * 0.987, resonance, this.hardwareFilterR);
-    } else if (mode === 11) {
-      const cutoff = 3900 + bloom * 8200;
-      outL = this.onePole(this.onePole(outL, cutoff, this.hardwareFilterL, 0), cutoff * 0.86, this.hardwareFilterL, 1);
-      outR = this.onePole(this.onePole(outR, cutoff * 0.991, this.hardwareFilterR, 0), cutoff * 0.85, this.hardwareFilterR, 1);
-      const edge = (outL - outR) * chaos * 0.018;
-      outL += edge; outR -= edge;
+    if (mode === 0) {
+      // Mosaic: medium fragments are pulled from quantized memory cells so the
+      // source remains recognizable while its chronology is rebuilt.
+      grainMs = 36 + window * 150 + this.random() * 34;
+      const cellSeconds = 0.045 + window * 0.08;
+      const cell = 1 + Math.floor(this.random() * (3 + density * 12));
+      historySeconds = cellSeconds * cell * (0.52 + memory * 1.1);
+      const range = Math.round(pitch * 7);
+      semitones = range > 0 ? Math.round((this.random() * 2 - 1) * range) : 0;
+      reverseChance = motion * 0.22;
+      gain = 0.52 + density * 0.16;
+    } else if (mode === 1) {
+      // Scatter: short transient fragments leave wide, sparse trajectories.
+      grainMs = 18 + window * 66 + this.random() * 22;
+      historySeconds = 0.018 + this.random() * (0.06 + memory * 0.52 + motion * 0.22);
+      semitones = (this.random() * 2 - 1) * pitch * 9;
+      reverseChance = 0.08 + motion * 0.38;
+      pan = (this.random() * 2 - 1) * (0.72 + density * 0.26);
+      panDrift = (this.random() * 2 - 1) * (0.12 + motion * 0.32);
+      gain = 0.58 + density * 0.18;
+      tone = 0.42 + this.random() * 0.48;
+    } else if (mode === 2) {
+      // Smear: long, highly overlapped grains retain stable pitch and feed a
+      // continuous memory body instead of turning into random glitch events.
+      grainMs = 150 + window * 520 + this.random() * 90;
+      historySeconds = 0.10 + this.random() * (0.34 + memory * 1.28 + motion * 0.55);
+      semitones = (this.random() * 2 - 1) * pitch * 1.8;
+      reverseChance = 0;
+      pan *= 0.46;
+      panDrift *= 0.55;
+      gain = 0.34 + density * 0.12;
+      tone = 0.14 + this.random() * 0.24;
+    } else if (mode === 3) {
+      // Prism: deterministic harmonic voices, not arbitrary pitch scatter.
+      grainMs = 58 + window * 120 + memory * 110 + this.random() * 24;
+      historySeconds = 0.032 + this.random() * (0.08 + memory * 0.20 + motion * 0.12);
+      const sets = [
+        [0, 0, 7, -5],
+        [0, 4, 7, -12],
+        [0, 3, 7, 12],
+        [0, 5, 7, 12, -12],
+        [0, 7, 12, 19, -12],
+      ];
+      const set = sets[Math.min(sets.length - 1, Math.floor(pitch * sets.length))];
+      semitones = set[this.spawnSequence % set.length] + (this.random() * 2 - 1) * motion * 0.12;
+      reverseChance = 0;
+      pan = Math.sin(this.spawnSequence * 2.399) * (0.58 + density * 0.36);
+      panDrift = 0;
+      gain = 0.46 + density * 0.14;
+      tone = 0.46 + this.random() * 0.40;
     }
 
-    return [Math.max(-1.15, Math.min(1.15, outL)), Math.max(-1.15, Math.min(1.15, outR))];
+    const length = Math.max(72, Math.floor(sampleRate * grainMs / 1000));
+    let step = this.semitoneStep(semitones);
+    if (this.random() < reverseChance) step *= -1;
+    voice.active = true;
+    voice.phase = 0;
+    voice.length = length;
+    voice.read = (this.writeIndex - Math.floor(sampleRate * historySeconds) + this.bufferSize) & this.mask;
+    voice.step = step;
+    voice.gain = gain;
+    voice.pan = pan;
+    voice.panDrift = panDrift;
+    voice.tone = tone;
+    voice.lastL = 0;
+    voice.lastR = 0;
+    this.spawnSequence += 1;
+    return true;
+  }
+
+  renderGranularVoices(mode) {
+    let wetL = 0;
+    let wetR = 0;
+    let active = 0;
+    for (let index = 0; index < this.effectiveVoiceLimit; index += 1) {
+      const voice = this.voices[index];
+      if (!voice.active) continue;
+      const normalized = voice.phase / voice.length;
+      if (normalized >= 1) {
+        voice.active = false;
+        continue;
+      }
+      const sine = Math.sin(normalized * Math.PI);
+      const envelope = mode === 2 ? Math.sqrt(sine) * sine : sine * sine;
+      let sampleL = this.interpolate(this.left, voice.read);
+      let sampleR = this.interpolate(this.right, voice.read);
+      const toneCoefficient = mode === 2 ? 0.08 + voice.tone * 0.26 : 0.24 + voice.tone * 0.62;
+      voice.lastL += (sampleL - voice.lastL) * toneCoefficient;
+      voice.lastR += (sampleR - voice.lastR) * toneCoefficient;
+      sampleL = voice.lastL;
+      sampleR = voice.lastR;
+      const movingPan = Math.max(-1, Math.min(1, voice.pan + Math.sin(normalized * Math.PI * 2) * voice.panDrift));
+      const leftGain = Math.sqrt((1 - movingPan) * 0.5);
+      const rightGain = Math.sqrt((1 + movingPan) * 0.5);
+      const gain = envelope * voice.gain;
+      wetL += (sampleL * 0.90 + sampleR * 0.10) * gain * leftGain;
+      wetR += (sampleR * 0.90 + sampleL * 0.10) * gain * rightGain;
+      voice.read = this.wrap(voice.read + voice.step);
+      voice.phase += 1;
+      active += 1;
+    }
+    this.voiceResult[0] = wetL;
+    this.voiceResult[1] = wetR;
+    this.voiceResult[2] = active;
+    return this.voiceResult;
   }
 
   updateEmergencyGuard(callbackMs, callbackBudgetMs) {
@@ -290,9 +358,12 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     this.guardStressBlocks = stressed ? this.guardStressBlocks + 1 : 0;
     this.guardRecoveryBlocks = relaxed ? this.guardRecoveryBlocks + 1 : 0;
     if (this.guardStressBlocks >= 2 && this.effectiveVoiceLimit > 2) {
-      this.effectiveVoiceLimit -= 1; this.guardStressBlocks = 0; this.guardRecoveryBlocks = 0;
+      this.effectiveVoiceLimit -= 1;
+      this.guardStressBlocks = 0;
+      this.guardRecoveryBlocks = 0;
     } else if (this.guardRecoveryBlocks >= 220 && this.effectiveVoiceLimit < this.maxVoices) {
-      this.effectiveVoiceLimit += 1; this.guardRecoveryBlocks = 0;
+      this.effectiveVoiceLimit += 1;
+      this.guardRecoveryBlocks = 0;
     }
   }
 
@@ -304,116 +375,112 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     const inR = input?.[1] || inL;
     const outL = output[0];
     const outR = output[1] || output[0];
-    const mode = Math.max(0, Math.min(11, Math.round(parameters.mode[0])));
-    const bits = Math.max(4, Math.min(16, parameters.bits[0]));
+    const mode = Math.max(0, Math.min(5, Math.round(parameters.mode[0])));
+    const window = Math.max(0, Math.min(1, (parameters.bits[0] - 4) / 12));
     const targetDensity = Math.max(0, Math.min(1, parameters.density[0]));
     const targetPitch = Math.max(0, Math.min(1, parameters.pitch[0]));
-    const targetChaos = Math.max(0, Math.min(1, parameters.chaos[0]));
-    const bloom = Math.max(0, Math.min(1, parameters.bloom[0]));
-    const pitchLocked = targetPitch <= 0.005;
+    const targetMotion = Math.max(0, Math.min(1, parameters.chaos[0]));
+    const targetMemory = Math.max(0, Math.min(1, parameters.bloom[0]));
     this.smoothedDensity += (targetDensity - this.smoothedDensity) * 0.08;
     this.smoothedPitch += (targetPitch - this.smoothedPitch) * 0.06;
-    this.smoothedChaos += (targetChaos - this.smoothedChaos) * 0.06;
+    this.smoothedMotion += (targetMotion - this.smoothedMotion) * 0.06;
+    this.smoothedMemory += (targetMemory - this.smoothedMemory) * 0.06;
     const density = this.smoothedDensity;
-    const pitch = pitchLocked ? 0 : this.smoothedPitch;
-    const chaos = this.smoothedChaos;
-    const hardwareMode = mode >= 6;
-    const spawnRateScale = mode === 2 ? 0.72 : mode === 1 ? 1.35 : mode === 4 ? 1.55 : mode === 5 ? 1.18 : 1;
-    const spawnInterval = Math.max(24, Math.floor(sampleRate / ((14 + density * 104) * spawnRateScale)));
+    const pitch = this.smoothedPitch;
+    const motion = this.smoothedMotion;
+    const memory = this.smoothedMemory;
+    this.resetModeState(mode, window, density, pitch, motion);
 
-    for (let i = 0; i < outL.length; i += 1) {
-      let dryL = inL ? inL[i] : 0;
-      let dryR = inR ? inR[i] : dryL;
+    const rates = [18 + density * 62, 6 + density * 48, 10 + density * 36, 16 + density * 54];
+    const spawnInterval = Math.max(24, Math.floor(sampleRate / rates[Math.min(3, mode)]));
+
+    for (let sample = 0; sample < outL.length; sample += 1) {
+      let dryL = inL ? inL[sample] : 0;
+      let dryR = inR ? inR[sample] : dryL;
       if (!Number.isFinite(dryL) || Math.abs(dryL) < 1e-20) dryL = 0;
       if (!Number.isFinite(dryR) || Math.abs(dryR) < 1e-20) dryR = 0;
-      this.left[this.writeIndex] = dryL;
-      this.right[this.writeIndex] = dryR;
 
-      if (hardwareMode) {
-        const processed = this.processHardware(dryL, dryR, mode, bits, density, pitch, chaos, bloom);
-        this.outputL += (processed[0] - this.outputL) * 0.88;
-        this.outputR += (processed[1] - this.outputR) * 0.88;
-        outL[i] = this.outputL; outR[i] = this.outputR;
-        this.writeIndex = (this.writeIndex + 1) & this.mask;
-        continue;
-      }
+      const peak = Math.max(Math.abs(dryL), Math.abs(dryR));
+      this.previousEnvelope = this.inputEnvelope;
+      this.inputEnvelope += (peak - this.inputEnvelope) * (peak > this.inputEnvelope ? 0.075 : 0.0018);
+      const transient = Math.max(0, this.inputEnvelope - this.previousEnvelope);
+      const feedback = mode === 2 ? memory * 0.24 : 0;
+      this.left[this.writeIndex] = Math.max(-1.2, Math.min(1.2, dryL + this.outputL * feedback));
+      this.right[this.writeIndex] = Math.max(-1.2, Math.min(1.2, dryR + this.outputR * feedback));
+      this.writtenSamples = Math.min(this.bufferSize - 1, this.writtenSamples + 1);
 
-      this.spawnCounter -= 1;
-      if (this.spawnCounter <= 0) {
-        const spawned = this.spawnVoice(density, pitch, chaos, mode, pitchLocked);
-        this.spawnCounter = spawned ? Math.max(16, spawnInterval + (((this.random() - 0.5) * spawnInterval * chaos) | 0)) : 32;
-        if (!spawned) this.profileDroppedSpawns += 1;
-      }
-
-      let wetL = 0, wetR = 0, active = 0;
-      for (let v = 0; v < this.effectiveVoiceLimit; v += 1) {
-        const voice = this.voices[v];
-        if (!voice.active) continue;
-        const normalized = voice.phase / voice.length;
-        if (normalized >= 1) { voice.active = false; continue; }
-        const sine = Math.sin(normalized * Math.PI);
-        const envelope = sine * sine;
-        let sampleL = this.interpolate(this.left, voice.read);
-        let sampleR = this.interpolate(this.right, voice.read);
-        const toneCoefficient = mode === 2 ? 0.12 + voice.tone * 0.38 : mode === 5 ? 0.10 + voice.tone * 0.76 : 0.22 + voice.tone * 0.66;
-        voice.lastL += (sampleL - voice.lastL) * toneCoefficient;
-        voice.lastR += (sampleR - voice.lastR) * toneCoefficient;
-        sampleL = voice.lastL; sampleR = voice.lastR;
-        const movingPan = Math.max(-1, Math.min(1, voice.pan + Math.sin(normalized * Math.PI * 2) * voice.panDrift));
-        const leftGain = Math.sqrt((1 - movingPan) * 0.5);
-        const rightGain = Math.sqrt((1 + movingPan) * 0.5);
-        const gain = envelope * voice.gain;
-        wetL += (sampleL * 0.86 + sampleR * 0.14) * gain * leftGain;
-        wetR += (sampleR * 0.86 + sampleL * 0.14) * gain * rightGain;
-        voice.read += voice.step;
-        while (voice.read < 0) voice.read += this.bufferSize;
-        while (voice.read >= this.bufferSize) voice.read -= this.bufferSize;
-        voice.phase += 1; active += 1;
-      }
-
-      const normalization = active > 1 ? 1 / Math.sqrt(0.62 + active * 0.40) : 1;
-      const anchorByMode = [0.46, 0.28, 0.34, 0.42, 0.36, 0.24];
-      const wetGainByMode = [1.22, 1.34, 1.28, 1.24, 1.30, 1.38];
-      const anchor = anchorByMode[mode] + (1 - density) * 0.08;
-      const reconstructionGain = wetGainByMode[mode] + density * 0.14;
-      let processedL = dryL * anchor + wetL * normalization * reconstructionGain;
-      let processedR = dryR * anchor + wetR * normalization * reconstructionGain;
-
-      if (mode === 1) {
-        const hold = 1 + Math.floor(chaos * 9 + (1 - bits / 16) * 5);
-        if ((this.writeIndex % hold) !== 0) { processedL = this.outputL; processedR = this.outputR; }
-      } else if (mode === 2) {
-        const mid = (processedL + processedR) * 0.5;
-        processedL = processedL * 0.72 + mid * 0.28; processedR = processedR * 0.72 + mid * 0.28;
-      } else if (mode === 4) {
-        const cell = Math.max(64, Math.floor(sampleRate * (0.018 + (1-density) * 0.055)));
-        const phase = (this.writeIndex % cell) / cell;
-        const gate = 0.62 + 0.38 * Math.sin(Math.PI * phase);
-        processedL *= gate; processedR *= gate;
+      let processedL = 0;
+      let processedR = 0;
+      if (mode === 4) {
+        if (!this.sliceReady) this.sliceReady = this.captureSlice(window, density, pitch, motion);
+        if (this.sliceReady) {
+          const slice = this.processSlice(window, density, pitch, motion, memory);
+          const anchor = 0.18 + (1 - memory) * 0.14;
+          processedL = dryL * anchor + slice[0] * 1.02;
+          processedR = dryR * anchor + slice[1] * 1.02;
+        } else {
+          processedL = dryL;
+          processedR = dryR;
+        }
       } else if (mode === 5) {
-        const fold = 1.1 + chaos * 1.8;
-        processedL = Math.tanh(processedL * fold + processedR * 0.08 * chaos);
-        processedR = Math.tanh(processedR * fold - processedL * 0.08 * chaos);
+        if (!this.freezeReady) this.freezeReady = this.captureFreeze(window, density, pitch);
+        if (this.freezeReady) {
+          const freeze = this.processFreeze(window, density, pitch, motion, memory, transient);
+          const anchor = 0.10 + (1 - memory) * 0.18;
+          processedL = dryL * anchor + freeze[0] * (0.90 + memory * 0.18);
+          processedR = dryR * anchor + freeze[1] * (0.90 + memory * 0.18);
+        } else {
+          processedL = dryL;
+          processedR = dryR;
+        }
+      } else {
+        this.spawnCounter -= 1;
+        if (this.spawnCounter <= 0) {
+          const transientReady = mode !== 1 || transient > 0.0018 + (1 - density) * 0.004 || this.random() < 0.05 + motion * 0.10;
+          const spawned = transientReady && this.spawnGranularVoice(mode, window, density, pitch, motion, memory);
+          this.spawnCounter = spawned
+            ? Math.max(16, spawnInterval + (((this.random() - 0.5) * spawnInterval * motion) | 0))
+            : Math.max(24, Math.floor(spawnInterval * 0.35));
+          if (transientReady && !spawned) this.profileDroppedSpawns += 1;
+        }
+        const rendered = this.renderGranularVoices(mode);
+        const active = rendered[2];
+        const normalization = active > 1 ? 1 / Math.sqrt(0.72 + active * 0.38) : 1;
+        const anchors = [0.38, 0.24, 0.16, 0.28];
+        const gains = [1.18, 1.30, 1.32, 1.20];
+        const cohesion = mode === 0 ? memory : 0;
+        const body = mode === 3 ? memory : 0;
+        processedL = dryL * Math.max(0.12, anchors[mode] - cohesion * 0.10)
+          + rendered[0] * normalization * (gains[mode] + cohesion * 0.12 + body * 0.10);
+        processedR = dryR * Math.max(0.12, anchors[mode] - cohesion * 0.10)
+          + rendered[1] * normalization * (gains[mode] + cohesion * 0.12 + body * 0.10);
+        if (mode === 2) {
+          const coefficient = 0.035 + (1 - window) * 0.08;
+          this.smearL += (processedL - this.smearL) * coefficient;
+          this.smearR += (processedR - this.smearR) * coefficient;
+          const mid = (this.smearL + this.smearR) * 0.5;
+          processedL = this.smearL * 0.84 + mid * 0.16;
+          processedR = this.smearR * 0.84 + mid * 0.16;
+        }
       }
 
-      const effectiveBits = mode === 5 ? Math.max(4, bits - Math.round(chaos * 5)) : mode === 1 ? Math.max(5, bits - Math.round(chaos * 2)) : bits;
-      const modeQuantization = Math.pow(2, effectiveBits - 1);
-      const quantizedL = Math.round(processedL * modeQuantization) / modeQuantization;
-      const quantizedR = Math.round(processedR * modeQuantization) / modeQuantization;
-      let safeL = Math.tanh(quantizedL * 1.04) / Math.tanh(1.04);
-      let safeR = Math.tanh(quantizedR * 1.04) / Math.tanh(1.04);
+      let safeL = Math.tanh(processedL * 1.02) / Math.tanh(1.02);
+      let safeR = Math.tanh(processedR * 1.02) / Math.tanh(1.02);
       const inputPower = (dryL * dryL + dryR * dryR) * 0.5;
       const wetPower = (safeL * safeL + safeR * safeR) * 0.5;
-      this.inputEnergy += (inputPower - this.inputEnergy) * 0.0018;
-      this.wetEnergy += (wetPower - this.wetEnergy) * 0.0018;
-      const targetMakeup = Math.max(0.82, Math.min(1.72, Math.sqrt((this.inputEnergy + 1e-6) / (this.wetEnergy + 1e-6))));
-      this.makeupGain += (targetMakeup - this.makeupGain) * 0.0012;
-      safeL *= this.makeupGain; safeR *= this.makeupGain;
-      this.outputL += (safeL - this.outputL) * 0.82;
-      this.outputR += (safeR - this.outputR) * 0.82;
+      this.inputEnergy += (inputPower - this.inputEnergy) * 0.0016;
+      this.wetEnergy += (wetPower - this.wetEnergy) * 0.0016;
+      const targetMakeup = Math.max(0.88, Math.min(1.48, Math.sqrt((this.inputEnergy + 1e-6) / (this.wetEnergy + 1e-6))));
+      this.makeupGain += (targetMakeup - this.makeupGain) * 0.001;
+      safeL *= this.makeupGain;
+      safeR *= this.makeupGain;
+      const smoothing = mode === 4 ? 0.92 : mode === 5 ? 0.86 : 0.82;
+      this.outputL += (safeL - this.outputL) * smoothing;
+      this.outputR += (safeR - this.outputR) * smoothing;
       if (Math.abs(this.outputL) < 1e-20) this.outputL = 0;
       if (Math.abs(this.outputR) < 1e-20) this.outputR = 0;
-      outL[i] = this.outputL; outR[i] = this.outputR;
+      outL[sample] = this.outputL;
+      outR[sample] = this.outputR;
       this.writeIndex = (this.writeIndex + 1) & this.mask;
     }
 
@@ -427,16 +494,28 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     if (callbackMs > callbackBudgetMs) this.profileOverruns += 1;
     if (this.profileBlocks >= 160) {
       let activeVoices = 0;
-      for (let i = 0; i < this.effectiveVoiceLimit; i += 1) if (this.voices[i].active) activeVoices += 1;
+      for (let index = 0; index < this.effectiveVoiceLimit; index += 1) {
+        if (this.voices[index].active) activeVoices += 1;
+      }
       const averageCallbackMs = this.profileTotalMs / this.profileBlocks;
       const variance = Math.max(0, this.profileTotalSquaredMs / this.profileBlocks - averageCallbackMs * averageCallbackMs);
       this.port.postMessage({
-        type: 'profile', averageCallbackMs, worstCallbackMs: this.profileWorstMs, callbackBudgetMs,
+        type: 'profile',
+        averageCallbackMs,
+        worstCallbackMs: this.profileWorstMs,
+        callbackBudgetMs,
         cpuLoad: callbackBudgetMs > 0 ? averageCallbackMs / callbackBudgetMs : 0,
-        callbackJitterMs: Math.sqrt(variance), activeVoices, maxVoices: this.maxVoices,
-        effectiveVoiceLimit: this.effectiveVoiceLimit, overruns: this.profileOverruns, droppedSpawns: this.profileDroppedSpawns,
+        callbackJitterMs: Math.sqrt(variance),
+        activeVoices,
+        maxVoices: this.maxVoices,
+        effectiveVoiceLimit: this.effectiveVoiceLimit,
+        overruns: this.profileOverruns,
+        droppedSpawns: this.profileDroppedSpawns,
       });
-      this.profileBlocks = 0; this.profileTotalMs = 0; this.profileTotalSquaredMs = 0; this.profileWorstMs = 0;
+      this.profileBlocks = 0;
+      this.profileTotalMs = 0;
+      this.profileTotalSquaredMs = 0;
+      this.profileWorstMs = 0;
     }
     return true;
   }

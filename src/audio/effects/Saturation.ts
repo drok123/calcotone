@@ -15,12 +15,23 @@ export type EmberMode =
   | 'mullard'
   | 'telefunken'
   | 'bugleboy'
-  | 'rcablack';
+  | 'rcablack'
+  | 'tascam424'
+  | 'neve1073'
+  | 'ssl4000e'
+  | 'api1608';
 
 export const EMBER_MODE_ORDER: EmberMode[] = [
   'velvet','tube','console','transformer','furnace','exciter','broken',
   'goldlion','mullard','telefunken','bugleboy','rcablack',
+  'tascam424','neve1073','ssl4000e','api1608',
 ];
+
+export const EMBER_MODE_GROUPS = [
+  { label: 'CHARACTER', modes: ['velvet','tube','console','transformer','furnace','exciter','broken'] },
+  { label: 'TUBES', modes: ['goldlion','mullard','telefunken','bugleboy','rcablack'] },
+  { label: 'CONSOLE PATHS', modes: ['tascam424','neve1073','ssl4000e','api1608'] },
+] as const satisfies ReadonlyArray<{ label: string; modes: readonly EmberMode[] }>;
 
 const MODE = { id: 'mode', label: 'Mode', min: 0, max: EMBER_MODE_ORDER.length - 1, defaultValue: 0, step: 1 };
 const DRIVE = { id: 'drive', label: 'Drive', min: 0, max: 1, defaultValue: 0.14, step: 0.01 };
@@ -58,6 +69,27 @@ const TUBE_POST: Record<Exclude<TubeColorModel, 'bypass'>, TubePostProfile> = {
   telefunken: { toneScale: 1.12, toneHeat: 0.025, presenceHz: 4100, presenceSpan: 2200, presenceBase: 0.10, presenceCharacter: 0.85, thresholdBase: -0.55, thresholdDynamics: 1.35, ratioBase: 1.005, ratioDynamics: 0.18, postBase: 1.005, postDrive: 0.010 },
   bugleboy: { toneScale: 1.00, toneHeat: 0.055, presenceHz: 2850, presenceSpan: 1250, presenceBase: 0.55, presenceCharacter: 1.70, thresholdBase: -1.25, thresholdDynamics: 2.9, ratioBase: 1.025, ratioDynamics: 0.48, postBase: 0.995, postDrive: 0.026 },
   rcablack: { toneScale: 0.78, toneHeat: 0.13, presenceHz: 1450, presenceSpan: 650, presenceBase: 0.10, presenceCharacter: 0.55, thresholdBase: -2.6, thresholdDynamics: 5.8, ratioBase: 1.08, ratioDynamics: 1.05, postBase: 0.97, postDrive: 0.052 },
+};
+
+interface ConsolePathProfile {
+  inputScale: number;
+  heatScale: number;
+  toneScale: number;
+  presenceHz: number;
+  presenceDb: number;
+  characterDb: number;
+  threshold: number;
+  dynamicsThreshold: number;
+  ratio: number;
+  dynamicsRatio: number;
+  trimPower: number;
+}
+
+const CONSOLE_PATHS: Partial<Record<EmberMode, ConsolePathProfile>> = {
+  tascam424: { inputScale: 3.0, heatScale: 0.75, toneScale: 0.92, presenceHz: 4800, presenceDb: -0.2, characterDb: 2.0, threshold: -3.0, dynamicsThreshold: 5.0, ratio: 1.08, dynamicsRatio: 1.10, trimPower: 0.62 },
+  neve1073: { inputScale: 2.45, heatScale: 0.92, toneScale: 0.96, presenceHz: 3200, presenceDb: 0.25, characterDb: 1.55, threshold: -2.0, dynamicsThreshold: 3.2, ratio: 1.04, dynamicsRatio: 0.62, trimPower: 0.55 },
+  ssl4000e: { inputScale: 2.05, heatScale: 0.52, toneScale: 1.04, presenceHz: 4700, presenceDb: 0.15, characterDb: 1.85, threshold: -3.4, dynamicsThreshold: 6.6, ratio: 1.10, dynamicsRatio: 1.85, trimPower: 0.58 },
+  api1608: { inputScale: 2.7, heatScale: 0.72, toneScale: 1.01, presenceHz: 3900, presenceDb: 0.35, characterDb: 2.1, threshold: -2.6, dynamicsThreshold: 4.2, ratio: 1.06, dynamicsRatio: 0.95, trimPower: 0.60 },
 };
 
 export class SaturationEffect extends BaseEffect {
@@ -137,6 +169,7 @@ export class SaturationEffect extends BaseEffect {
     const tubeModel = NAMED_TUBE_MODEL[this.mode] ?? 'bypass';
     const namedTube = tubeModel !== 'bypass';
     const magnetic = this.mode === 'transformer';
+    const consolePath = CONSOLE_PATHS[this.mode];
     this.setGenericBranchAttached(!(namedTube || magnetic));
     this.tubeStage.setModel(tubeModel); this.tubeStage.setParameters(this.drive, this.heat, this.character, this.dynamics);
     this.magneticStage.setEnabled(magnetic); this.magneticStage.setParameters(this.drive, this.heat, this.character, this.dynamics);
@@ -165,8 +198,41 @@ export class SaturationEffect extends BaseEffect {
     }
 
     this.genericGain.gain.setTargetAtTime(1, now, 0.018); this.tubeGain.gain.setTargetAtTime(0, now, 0.018); this.magneticGain.gain.setTargetAtTime(0, now, 0.018);
+    if (consolePath) {
+      const input = 1 + Math.pow(this.drive, 1.3) * consolePath.inputScale + this.heat * consolePath.heatScale;
+      this.preGain.gain.setTargetAtTime(input, now, 0.012);
+      this.shaper.curve = getCurve(this.mode, this.drive, this.heat, this.character);
+      this.tone.frequency.setTargetAtTime(
+        Math.max(1800, Math.min(18000, this.toneHz * consolePath.toneScale * (1 - this.heat * 0.08))),
+        now,
+        0.025,
+      );
+      this.presence.frequency.setTargetAtTime(consolePath.presenceHz, now, 0.025);
+      this.presence.gain.setTargetAtTime(
+        consolePath.presenceDb + (this.character - 0.5) * consolePath.characterDb,
+        now,
+        0.025,
+      );
+      this.compressor.threshold.setTargetAtTime(
+        consolePath.threshold - this.dynamics * consolePath.dynamicsThreshold,
+        now,
+        0.03,
+      );
+      this.compressor.ratio.setTargetAtTime(
+        consolePath.ratio + this.dynamics * consolePath.dynamicsRatio,
+        now,
+        0.03,
+      );
+      this.post.gain.setTargetAtTime(1 / Math.pow(input, consolePath.trimPower), now, 0.02);
+      return;
+    }
+
     const fallbackMode = this.mode; const modeIndex = EMBER_MODE_ORDER.indexOf(fallbackMode);
-    const aggressionByMode: Record<EmberMode, number> = { velvet:0.7,tube:0.42,console:1.15,transformer:1.0,furnace:2.2,exciter:1.05,broken:2.8,goldlion:0.42,mullard:0.42,telefunken:0.42,bugleboy:0.42,rcablack:0.42 };
+    const aggressionByMode: Record<EmberMode, number> = {
+      velvet:0.7,tube:0.42,console:1.15,transformer:1.0,furnace:2.2,exciter:1.05,broken:2.8,
+      goldlion:0.42,mullard:0.42,telefunken:0.42,bugleboy:0.42,rcablack:0.42,
+      tascam424:1.0,neve1073:1.0,ssl4000e:1.0,api1608:1.0,
+    };
     const aggression = aggressionByMode[fallbackMode] ?? (modeIndex >= 0 ? 1 : 1);
     const input = fallbackMode === 'tube' ? 1 + Math.pow(this.drive, 1.5) * 1.15 + this.heat * 0.24 : 1 + Math.pow(this.drive, 1.35) * (4.2 * aggression) + this.heat * 1.4;
     this.preGain.gain.setTargetAtTime(input, now, 0.012);

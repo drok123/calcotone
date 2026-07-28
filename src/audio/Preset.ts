@@ -7,6 +7,7 @@ export interface PresetEffect {
 }
 
 export interface Preset {
+  schemaVersion?: number;
   id: string;
   name: string;
   inputGain: number;
@@ -15,6 +16,7 @@ export interface Preset {
 }
 
 export const DEFAULT_PRESET: Preset = {
+  schemaVersion: 2,
   id: 'default-warm-drive',
   name: 'Warm Drive',
   inputGain: 1,
@@ -80,3 +82,55 @@ export const DEFAULT_PRESET: Preset = {
     },
   ],
 };
+
+const LEGACY_GRAIN_SAMPLERS = ['sp1200','mpc60','mirage','s950','emulator2','fairlightiix'] as const;
+const CURRENT_ARTIFACT_MODE_INDEX: Record<typeof LEGACY_GRAIN_SAMPLERS[number], number> = {
+  sp1200: 8,
+  mpc60: 9,
+  mirage: 10,
+  s950: 11,
+  emulator2: 13,
+  fairlightiix: 14,
+};
+const LEGACY_ARTIFACT_CONSOLE_TO_EMBER = new Map<number, number>([
+  [8, 12],
+  [9, 13],
+  [10, 14],
+  [11, 15],
+]);
+
+/**
+ * Moves v1 machine selections to their processing-family owners. The transform
+ * is intentionally centralized at preset load so numeric mode indices never
+ * select a different machine by accident after the dropdown reorganization.
+ */
+export function migrateProcessingFamilyPreset(preset: Preset): Preset {
+  if ((preset.schemaVersion ?? 1) >= 2) return preset;
+  const effects = preset.effects.map((effect) => ({
+    ...effect,
+    parameters: { ...effect.parameters },
+  }));
+  const grain = effects.find((effect) => effect.id === 'bitcrusher');
+  const artifact = effects.find((effect) => effect.id === 'media');
+  const ember = effects.find((effect) => effect.id === 'saturation');
+
+  const legacyArtifactMode = Math.round(artifact?.parameters.mode ?? 0);
+  const emberMode = LEGACY_ARTIFACT_CONSOLE_TO_EMBER.get(legacyArtifactMode);
+  if (emberMode !== undefined && artifact && ember) {
+    ember.parameters.mode = emberMode;
+    ember.enabled = ember.enabled || artifact.enabled;
+    artifact.enabled = false;
+    artifact.parameters.mode = 0;
+  }
+
+  const legacyGrainMode = Math.round(grain?.parameters.mode ?? -1);
+  const sampler = LEGACY_GRAIN_SAMPLERS[legacyGrainMode - 6];
+  if (sampler && grain && artifact) {
+    artifact.parameters.mode = CURRENT_ARTIFACT_MODE_INDEX[sampler];
+    artifact.enabled = artifact.enabled || grain.enabled;
+    grain.enabled = false;
+    grain.parameters.mode = 2;
+  }
+
+  return { ...preset, schemaVersion: 2, effects };
+}
