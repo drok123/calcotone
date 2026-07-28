@@ -22,6 +22,7 @@ const field = read('src/components/motion/XYSignalField.tsx');
 const motionPad = read('src/components/motion/MotionPad.tsx');
 const app = read('src/App.tsx');
 const appCss = read('src/App.css');
+const hardwarePalette = read('src/components/layout/CharcoalHardwarePass.css');
 const vite = read('vite.config.ts');
 const main = read('src/main.tsx');
 
@@ -57,6 +58,21 @@ forbidText(ascii, 'audio.driftPhase', 'Unbounded ASCII drift phase');
 forbidText(appCss, '.viewport-caption', 'Retired duplicate artwork label styles');
 requireText(asciiCss, 'repeating-linear-gradient', 'ASCII scanline optics');
 requireText(asciiCss, '@media (prefers-reduced-motion: reduce)', 'Reduced motion support');
+
+
+requireText(hardwarePalette, '--calcotone-cream-ink: #101315', 'Patches-charcoal ink on cream');
+requireText(hardwarePalette, '.spectrum-header {', 'Cream Spectrum title/LIVE box');
+requireText(hardwarePalette, '.sample-recorder {', 'Cream Recorder chassis');
+requireText(hardwarePalette, '.level-meter span.lit', 'Cream level-meter illumination');
+requireText(hardwarePalette, '.output-meter span.lit', 'Cream output-meter illumination');
+requireText(hardwarePalette, '.knob-patch-jack.assigned', 'Dark metallic knob jacks');
+requireText(hardwarePalette, '.xy-patch-destination.axis-y i', 'Dark metallic XY sockets');
+requireText(hardwarePalette, '.pressure-panel .knob-label', 'Charcoal Pressure labels');
+const hardwarePolishImport = main.indexOf("import './components/layout/HardwarePolishPass.css'");
+const charcoalPassImport = main.indexOf("import './components/layout/CharcoalHardwarePass.css'");
+if (hardwarePolishImport < 0 || charcoalPassImport < 0 || charcoalPassImport < hardwarePolishImport) {
+  failures.push('Hardware palette cascade: CharcoalHardwarePass must load after HardwarePolishPass');
+}
 
 // Preserve the restored UI/Pressure ownership. This transplant may consume the existing
 // Signal state visually, but it must not move or replace the panel, store, or App subscription model.
