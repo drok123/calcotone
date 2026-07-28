@@ -203,6 +203,7 @@ function pressureField(state: SignalLabState | undefined, u: number, v: number, 
     case 'vca':
       return Math.cos((Math.abs(u) + Math.abs(v)) * (14 + drive * 8)) * (0.10 + character * 0.17);
   }
+  return 0;
 }
 
 function framedLine(columns: number, label: string): string {
