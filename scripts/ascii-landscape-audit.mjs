@@ -86,6 +86,13 @@ const retired = [
   'src/components/effects/ModuleViewportVideo.css',
   'src/components/effects/VideoColorStability.css',
   'build/dreamFieldCompositionTransform.ts',
+  'public/visuals/ember.mp4',
+  'public/visuals/drift.mp4',
+  'public/visuals/drift-alt.mp4',
+  'public/visuals/halo.mp4',
+  'public/visuals/artifact.mp4',
+  'public/visuals/atmos.mp4',
+  'public/visuals/grain.mp4',
 ];
 for (const relative of retired) {
   if (existsSync(resolve(root, relative))) failures.push(`Retired decoder path still exists: ${relative}`);
