@@ -196,7 +196,7 @@ requireText(registry, "case 'sp1200': case 'mpc60': case 'mirage': case 's950': 
 
 requireText(grainEffect, 'stats.cpuLoad = Number.NaN', 'Grain fake timing guard');
 requireText(visualEngine, 'if (!running || !analyser)', 'Idle visual sleep');
-requireText(visualEngine, 'const reactInterval = 1000 / 20', 'React visual cadence cap');
+requireText(visualEngine, 'const reactInterval = 1000 / 15', 'React visual cadence cap');
 requireText(recorder, 'this.disconnectNodes();', 'Recorder processor-error cleanup');
 requireText(app, 'auditUiAgainstEngine(engine, modules)', 'Runtime UI/DSP control self-check');
 
