@@ -53,6 +53,14 @@ requireText(ascii, '1000 / 18', 'Bounded ASCII cadence');
 requireText(ascii, 'const horizontalScale = width / gridWidth', 'Edge-to-edge ASCII width fit');
 requireText(ascii, 'const verticalScale = height / gridHeight', 'Edge-to-edge ASCII height fit');
 requireText(ascii, 'dpr * horizontalScale', 'Measured ASCII canvas transform');
+requireText(ascii, 'createEmberSampler', 'Ember centered flame emblem');
+requireText(ascii, 'createDriftSampler', 'Drift centered water emblem');
+requireText(ascii, 'createHaloSampler', 'Halo centered ring emblem');
+requireText(ascii, 'createAtmosSampler', 'Atmos centered globe emblem');
+requireText(ascii, 'createGrainSampler', 'Grain centered tesseract emblem');
+requireText(ascii, 'createArtifactSampler', 'Artifact centered circuit emblem');
+requireText(ascii, 'Math.max(54, Math.min(104, Math.floor(width / 4.15)))', 'High-density module glyph grid');
+requireText(ascii, 'if (!isModule && row === 0)', 'Module emblem has no duplicate ASCII header');
 forbidText(ascii, 'requestAnimationFrame(', 'Independent ASCII animation loop');
 forbidText(ascii, 'Math.random()', 'Random per-frame artwork');
 forbidText(ascii, 'audio.driftPhase', 'Unbounded ASCII drift phase');
@@ -60,10 +68,32 @@ forbidText(appCss, '.viewport-caption', 'Retired duplicate artwork label styles'
 requireText(asciiCss, 'repeating-linear-gradient', 'ASCII scanline optics');
 requireText(asciiCss, '@media (prefers-reduced-motion: reduce)', 'Reduced motion support');
 
-requireText(faceplate, 'viewportHeight: 312', 'Approved module viewport height');
-requireText(faceplate, 'stageHeight: 457.81022074542363', 'Approved compact faceplate height');
-requireText(faceplate, '{ x: 0.08839779005524862, y: 411.81022074542363 }', 'Approved leftmost control position');
-requireText(faceplate, '{ x: 0.8987108655616943, y: 411.81022074542363 }', 'Approved rightmost control position');
+const approvedFaceplateGeometry = [
+  'version: 2',
+  'custom: true',
+  'viewportHeight: 312',
+  'stageHeight: 457.81022074542363',
+  '{ x: 0.2504604051565378, y: 411.81022074542363 }',
+  '{ x: 0.4125230202578269, y: 411.81022074542363 }',
+  '{ x: 0.08839779005524862, y: 411.81022074542363 }',
+  '{ x: 0.574585635359116, y: 411.81022074542363 }',
+  '{ x: 0.7366482504604052, y: 411.81022074542363 }',
+  '{ x: 0.8987108655616943, y: 411.81022074542363 }',
+  'snap: 8',
+];
+let faceplateGeometryCursor = faceplate.indexOf('export const FACTORY_FACEPLATE_LAYOUT');
+for (const field of approvedFaceplateGeometry) {
+  const fieldPosition = faceplate.indexOf(field, faceplateGeometryCursor + 1);
+  if (fieldPosition < 0) {
+    failures.push(`Approved faceplate geometry/order: missing ${JSON.stringify(field)}`);
+    break;
+  }
+  faceplateGeometryCursor = fieldPosition;
+}
+requireText(faceplate, "const FACTORY_LAYOUT_REVISION = '2026-07-28-compact-single-row'", 'Approved layout revision');
+requireText(faceplate, 'window.localStorage.getItem(FACTORY_LAYOUT_REVISION_KEY) !== FACTORY_LAYOUT_REVISION', 'Stale saved-layout replacement');
+requireText(faceplate, 'return cloneLayout(FACTORY_FACEPLATE_LAYOUT)', 'Factory layout fallback');
+forbidText(faceplate, 'AUTO_FACEPLATE_LAYOUT', 'Automatic layout can override approved geometry');
 requireText(faceplate, 'Math.max(...knobs.map((point) => point.y)) + 46', 'Exact saved-layout floor preservation');
 
 requireText(hardwarePalette, '--calcotone-cream-ink: #101315', 'Patches-charcoal ink on cream');

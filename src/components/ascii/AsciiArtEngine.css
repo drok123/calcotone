@@ -28,14 +28,14 @@
   background:
     repeating-linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.018) 0,
-      rgba(255, 255, 255, 0.018) 1px,
+      rgba(255, 255, 255, 0.012) 0,
+      rgba(255, 255, 255, 0.012) 1px,
       transparent 1px,
-      transparent 4px
+      transparent 3px
     ),
-    radial-gradient(circle at 50% 48%, transparent 48%, rgba(0, 0, 0, 0.38) 100%);
+    radial-gradient(circle at 50% 48%, transparent 54%, rgba(0, 0, 0, 0.34) 100%);
   mix-blend-mode: screen;
-  opacity: 0.62;
+  opacity: 0.42;
 }
 
 .dsp-viewport.ascii-viewport.is-reconfiguring .ascii-art-engine {

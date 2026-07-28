@@ -41,6 +41,8 @@ export interface FaceplateEditorSnapshot {
 
 const STORAGE_KEY = 'calcotone.faceplate-layout.v2';
 const LEGACY_STORAGE_KEY = 'calcotone.faceplate-layout.v1';
+const FACTORY_LAYOUT_REVISION_KEY = 'calcotone.faceplate-layout.factory-revision';
+const FACTORY_LAYOUT_REVISION = '2026-07-28-compact-single-row';
 const KNOB_COUNT = 6;
 const listeners = new Set<() => void>();
 
@@ -60,14 +62,9 @@ export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
   snap: 8,
 };
 
-const AUTO_FACEPLATE_LAYOUT: FaceplateLayout = {
-  ...cloneLayout(FACTORY_FACEPLATE_LAYOUT),
-  custom: false,
-};
-
 let state: FaceplateEditorState = {
   savedLayout: loadSavedLayout(),
-  layout: AUTO_FACEPLATE_LAYOUT,
+  layout: cloneLayout(FACTORY_FACEPLATE_LAYOUT),
   editing: false,
   snapEnabled: true,
   guides: { x: null, y: null },
@@ -115,6 +112,7 @@ export function saveFaceplateLayout(): void {
   };
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    window.localStorage.setItem(FACTORY_LAYOUT_REVISION_KEY, FACTORY_LAYOUT_REVISION);
   } catch {
     // The live layout still works when storage is blocked by the browser.
   }
@@ -333,8 +331,19 @@ function pushUndo(): void {
 }
 
 function loadSavedLayout(): FaceplateLayout {
-  if (typeof window === 'undefined') return cloneLayout(AUTO_FACEPLATE_LAYOUT);
+  if (typeof window === 'undefined') return cloneLayout(FACTORY_FACEPLATE_LAYOUT);
   try {
+    if (window.localStorage.getItem(FACTORY_LAYOUT_REVISION_KEY) !== FACTORY_LAYOUT_REVISION) {
+      const approved = cloneLayout(FACTORY_FACEPLATE_LAYOUT);
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(approved));
+        window.localStorage.setItem(FACTORY_LAYOUT_REVISION_KEY, FACTORY_LAYOUT_REVISION);
+      } catch {
+        // The approved layout still applies when storage is blocked by the browser.
+      }
+      return approved;
+    }
+
     const current = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? 'null') as Partial<FaceplateLayout> | null;
     if (current?.version === 2 && current.custom && Array.isArray(current.knobs) && current.knobs.length === KNOB_COUNT) {
       return sanitizeV2Layout(current);
@@ -366,12 +375,17 @@ function loadSavedLayout(): FaceplateLayout {
         })),
         snap: clamp(Number(legacy.snap) || 8, 2, 24),
       };
-      try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated)); } catch { /* live migration still works */ }
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+        window.localStorage.setItem(FACTORY_LAYOUT_REVISION_KEY, FACTORY_LAYOUT_REVISION);
+      } catch {
+        // The live migration still works when storage is blocked by the browser.
+      }
       return migrated;
     }
-    return cloneLayout(AUTO_FACEPLATE_LAYOUT);
+    return cloneLayout(FACTORY_FACEPLATE_LAYOUT);
   } catch {
-    return cloneLayout(AUTO_FACEPLATE_LAYOUT);
+    return cloneLayout(FACTORY_FACEPLATE_LAYOUT);
   }
 }
 
