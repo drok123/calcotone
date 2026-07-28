@@ -16,21 +16,27 @@ export type EmberMode =
   | 'telefunken'
   | 'bugleboy'
   | 'rcablack'
-  | 'tascam424'
-  | 'neve1073'
-  | 'ssl4000e'
-  | 'api1608';
+  | 'sp1200'
+  | 'mpc60'
+  | 'mirage'
+  | 's950'
+  | 'emulator2'
+  | 'fairlightiix';
+
+export const EMBER_DIGITAL_CAPTURE_MODES = [
+  'sp1200','mpc60','mirage','s950','emulator2','fairlightiix',
+] as const satisfies readonly EmberMode[];
 
 export const EMBER_MODE_ORDER: EmberMode[] = [
   'velvet','tube','console','transformer','furnace','exciter','broken',
   'goldlion','mullard','telefunken','bugleboy','rcablack',
-  'tascam424','neve1073','ssl4000e','api1608',
+  'sp1200','mpc60','mirage','s950','emulator2','fairlightiix',
 ];
 
 export const EMBER_MODE_GROUPS = [
   { label: 'CHARACTER', modes: ['velvet','tube','console','transformer','furnace','exciter','broken'] },
   { label: 'TUBES', modes: ['goldlion','mullard','telefunken','bugleboy','rcablack'] },
-  { label: 'CONSOLE PATHS', modes: ['tascam424','neve1073','ssl4000e','api1608'] },
+  { label: 'DIGITAL CAPTURE', modes: EMBER_DIGITAL_CAPTURE_MODES },
 ] as const satisfies ReadonlyArray<{ label: string; modes: readonly EmberMode[] }>;
 
 const MODE = { id: 'mode', label: 'Mode', min: 0, max: EMBER_MODE_ORDER.length - 1, defaultValue: 0, step: 1 };
@@ -71,27 +77,6 @@ const TUBE_POST: Record<Exclude<TubeColorModel, 'bypass'>, TubePostProfile> = {
   rcablack: { toneScale: 0.78, toneHeat: 0.13, presenceHz: 1450, presenceSpan: 650, presenceBase: 0.10, presenceCharacter: 0.55, thresholdBase: -2.6, thresholdDynamics: 5.8, ratioBase: 1.08, ratioDynamics: 1.05, postBase: 0.97, postDrive: 0.052 },
 };
 
-interface ConsolePathProfile {
-  inputScale: number;
-  heatScale: number;
-  toneScale: number;
-  presenceHz: number;
-  presenceDb: number;
-  characterDb: number;
-  threshold: number;
-  dynamicsThreshold: number;
-  ratio: number;
-  dynamicsRatio: number;
-  trimPower: number;
-}
-
-const CONSOLE_PATHS: Partial<Record<EmberMode, ConsolePathProfile>> = {
-  tascam424: { inputScale: 3.0, heatScale: 0.75, toneScale: 0.92, presenceHz: 4800, presenceDb: -0.2, characterDb: 2.0, threshold: -3.0, dynamicsThreshold: 5.0, ratio: 1.08, dynamicsRatio: 1.10, trimPower: 0.62 },
-  neve1073: { inputScale: 2.45, heatScale: 0.92, toneScale: 0.96, presenceHz: 3200, presenceDb: 0.25, characterDb: 1.55, threshold: -2.0, dynamicsThreshold: 3.2, ratio: 1.04, dynamicsRatio: 0.62, trimPower: 0.55 },
-  ssl4000e: { inputScale: 2.05, heatScale: 0.52, toneScale: 1.04, presenceHz: 4700, presenceDb: 0.15, characterDb: 1.85, threshold: -3.4, dynamicsThreshold: 6.6, ratio: 1.10, dynamicsRatio: 1.85, trimPower: 0.58 },
-  api1608: { inputScale: 2.7, heatScale: 0.72, toneScale: 1.01, presenceHz: 3900, presenceDb: 0.35, characterDb: 2.1, threshold: -2.6, dynamicsThreshold: 4.2, ratio: 1.06, dynamicsRatio: 0.95, trimPower: 0.60 },
-};
-
 export class SaturationEffect extends BaseEffect {
   public readonly id = 'saturation';
   public readonly name = 'Ember';
@@ -108,6 +93,9 @@ export class SaturationEffect extends BaseEffect {
   private readonly presence: BiquadFilterNode;
   private readonly compressor: DynamicsCompressorNode;
   private readonly post: GainNode;
+  private readonly analogGain: GainNode;
+  private readonly digitalCaptureProcessor: AudioWorkletNode;
+  private readonly digitalCaptureGain: GainNode;
 
   private mode: EmberMode = 'velvet';
   private drive = 0.14;
@@ -115,7 +103,9 @@ export class SaturationEffect extends BaseEffect {
   private character = 0.22;
   private dynamics = 0.38;
   private toneHz = 9500;
+  private emberMix = MIX.defaultValue;
   private genericAttached = true;
+  private readonly digitalCaptureValues = new Map<string, number>();
 
   public constructor(context: AudioContext) {
     super(context);
@@ -123,15 +113,29 @@ export class SaturationEffect extends BaseEffect {
     this.genericGain = context.createGain(); this.tubeStage = new TubeColorStage(context); this.tubeGain = context.createGain();
     this.magneticStage = new MagneticCoreStage(context); this.magneticGain = context.createGain(); this.tone = context.createBiquadFilter();
     this.presence = context.createBiquadFilter(); this.compressor = context.createDynamicsCompressor(); this.post = context.createGain();
+    this.analogGain = context.createGain();
+    this.digitalCaptureProcessor = new AudioWorkletNode(context, 'calcotone-ember-digital-capture-processor', {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [2],
+      channelCount: 2,
+      channelCountMode: 'explicit',
+      channelInterpretation: 'speakers',
+    });
+    this.digitalCaptureProcessor.onprocessorerror = () => console.error('CALCOTONE Ember digital-capture AudioWorklet stopped unexpectedly.');
+    this.digitalCaptureGain = context.createGain();
     this.hp.type = 'highpass'; this.hp.frequency.value = 22; this.hp.Q.value = 0.5;
     this.tone.type = 'lowpass'; this.presence.type = 'peaking'; this.presence.frequency.value = 3200; this.presence.Q.value = 0.65;
     this.shaper.oversample = '4x'; this.compressor.attack.value = 0.004; this.compressor.release.value = 0.09; this.compressor.knee.value = 12;
     this.genericGain.gain.value = 1; this.tubeGain.gain.value = 0; this.magneticGain.gain.value = 0;
+    this.analogGain.gain.value = 1; this.digitalCaptureGain.gain.value = 0;
     this.input.connect(this.preGain); this.preGain.connect(this.hp);
     this.hp.connect(this.shaper); this.shaper.connect(this.genericGain); this.genericGain.connect(this.tone);
     this.hp.connect(this.tubeStage.input); this.tubeStage.connect(this.tubeGain); this.tubeGain.connect(this.tone);
     this.hp.connect(this.magneticStage.input); this.magneticStage.connect(this.magneticGain); this.magneticGain.connect(this.tone);
-    this.tone.connect(this.presence); this.presence.connect(this.compressor); this.compressor.connect(this.post); this.post.connect(this.wetGain);
+    this.tone.connect(this.presence); this.presence.connect(this.compressor); this.compressor.connect(this.post);
+    this.post.connect(this.analogGain); this.analogGain.connect(this.wetGain);
+    this.input.connect(this.digitalCaptureProcessor); this.digitalCaptureProcessor.connect(this.digitalCaptureGain); this.digitalCaptureGain.connect(this.wetGain);
     this.initializeParameters([MODE, DRIVE, TONE, HEAT, CHARACTER, DYNAMICS, MIX]);
     for (const parameter of [MODE, DRIVE, TONE, HEAT, CHARACTER, DYNAMICS, MIX]) this.setParameter(parameter.id, parameter.defaultValue);
   }
@@ -144,13 +148,13 @@ export class SaturationEffect extends BaseEffect {
 
   public setParameter(id: string, value: number): void {
     const now = this.context.currentTime;
-    if (id === 'mode') { const next = clampParameter(value, MODE); this.parameterValues.set(id, next); this.mode = EMBER_MODE_ORDER[Math.round(next)] ?? 'velvet'; this.apply(now); return; }
+    if (id === 'mode') { const next = clampParameter(value, MODE); this.parameterValues.set(id, next); this.mode = EMBER_MODE_ORDER[Math.round(next)] ?? 'velvet'; this.applyMixRouting(); this.apply(now); return; }
     if (id === 'drive') this.drive = clampParameter(value, DRIVE);
     else if (id === 'tone') this.toneHz = clampParameter(value, TONE);
     else if (id === 'heat') this.heat = clampParameter(value, HEAT);
     else if (id === 'character') this.character = clampParameter(value, CHARACTER);
     else if (id === 'dynamics') this.dynamics = clampParameter(value, DYNAMICS);
-    else if (id === 'mix') { const next = clampParameter(value, MIX); this.parameterValues.set(id, next); this.setWetDryMix(next); return; }
+    else if (id === 'mix') { const next = clampParameter(value, MIX); this.parameterValues.set(id, next); this.emberMix = next; this.applyMixRouting(); return; }
     else { console.warn(`Unknown parameter "${id}" for ${this.name}.`); return; }
     this.parameterValues.set(id, id === 'drive' ? this.drive : id === 'tone' ? this.toneHz : id === 'heat' ? this.heat : id === 'character' ? this.character : this.dynamics);
     this.apply(now);
@@ -169,10 +173,25 @@ export class SaturationEffect extends BaseEffect {
     const tubeModel = NAMED_TUBE_MODEL[this.mode] ?? 'bypass';
     const namedTube = tubeModel !== 'bypass';
     const magnetic = this.mode === 'transformer';
-    const consolePath = CONSOLE_PATHS[this.mode];
-    this.setGenericBranchAttached(!(namedTube || magnetic));
+    const digitalCaptureMode = EMBER_DIGITAL_CAPTURE_MODES.indexOf(this.mode as typeof EMBER_DIGITAL_CAPTURE_MODES[number]);
+    const digitalCapture = digitalCaptureMode >= 0;
+    this.setGenericBranchAttached(!(namedTube || magnetic || digitalCapture));
     this.tubeStage.setModel(tubeModel); this.tubeStage.setParameters(this.drive, this.heat, this.character, this.dynamics);
     this.magneticStage.setEnabled(magnetic); this.magneticStage.setParameters(this.drive, this.heat, this.character, this.dynamics);
+    this.analogGain.gain.setTargetAtTime(digitalCapture ? 0 : 1, now, 0.025);
+    this.digitalCaptureGain.gain.setTargetAtTime(digitalCapture ? 1.04 : 0, now, 0.025);
+
+    if (digitalCapture) {
+      this.genericGain.gain.setTargetAtTime(0, now, 0.018);
+      this.tubeGain.gain.setTargetAtTime(0, now, 0.018);
+      this.magneticGain.gain.setTargetAtTime(0, now, 0.018);
+      this.setDigitalCaptureParameter('mode', digitalCaptureMode, now);
+      this.setDigitalCaptureParameter('drive', this.drive, now);
+      this.setDigitalCaptureParameter('clock', (this.toneHz - TONE.min) / (TONE.max - TONE.min), now);
+      this.setDigitalCaptureParameter('character', Math.min(1, this.heat * 0.82 + this.dynamics * 0.18), now);
+      this.setDigitalCaptureParameter('filter', Math.min(1, this.character * 0.82 + this.dynamics * 0.18), now);
+      return;
+    }
 
     if (namedTube) {
       const profile = TUBE_POST[tubeModel];
@@ -198,40 +217,11 @@ export class SaturationEffect extends BaseEffect {
     }
 
     this.genericGain.gain.setTargetAtTime(1, now, 0.018); this.tubeGain.gain.setTargetAtTime(0, now, 0.018); this.magneticGain.gain.setTargetAtTime(0, now, 0.018);
-    if (consolePath) {
-      const input = 1 + Math.pow(this.drive, 1.3) * consolePath.inputScale + this.heat * consolePath.heatScale;
-      this.preGain.gain.setTargetAtTime(input, now, 0.012);
-      this.shaper.curve = getCurve(this.mode, this.drive, this.heat, this.character);
-      this.tone.frequency.setTargetAtTime(
-        Math.max(1800, Math.min(18000, this.toneHz * consolePath.toneScale * (1 - this.heat * 0.08))),
-        now,
-        0.025,
-      );
-      this.presence.frequency.setTargetAtTime(consolePath.presenceHz, now, 0.025);
-      this.presence.gain.setTargetAtTime(
-        consolePath.presenceDb + (this.character - 0.5) * consolePath.characterDb,
-        now,
-        0.025,
-      );
-      this.compressor.threshold.setTargetAtTime(
-        consolePath.threshold - this.dynamics * consolePath.dynamicsThreshold,
-        now,
-        0.03,
-      );
-      this.compressor.ratio.setTargetAtTime(
-        consolePath.ratio + this.dynamics * consolePath.dynamicsRatio,
-        now,
-        0.03,
-      );
-      this.post.gain.setTargetAtTime(1 / Math.pow(input, consolePath.trimPower), now, 0.02);
-      return;
-    }
-
     const fallbackMode = this.mode; const modeIndex = EMBER_MODE_ORDER.indexOf(fallbackMode);
     const aggressionByMode: Record<EmberMode, number> = {
       velvet:0.7,tube:0.42,console:1.15,transformer:1.0,furnace:2.2,exciter:1.05,broken:2.8,
       goldlion:0.42,mullard:0.42,telefunken:0.42,bugleboy:0.42,rcablack:0.42,
-      tascam424:1.0,neve1073:1.0,ssl4000e:1.0,api1608:1.0,
+      sp1200:1.0,mpc60:1.0,mirage:1.0,s950:1.0,emulator2:1.0,fairlightiix:1.0,
     };
     const aggression = aggressionByMode[fallbackMode] ?? (modeIndex >= 0 ? 1 : 1);
     const input = fallbackMode === 'tube' ? 1 + Math.pow(this.drive, 1.5) * 1.15 + this.heat * 0.24 : 1 + Math.pow(this.drive, 1.35) * (4.2 * aggression) + this.heat * 1.4;
@@ -245,9 +235,30 @@ export class SaturationEffect extends BaseEffect {
     this.shaper.curve = getCurve(fallbackMode, this.drive, this.heat, this.character);
   }
 
+  private applyMixRouting(): void {
+    if (!EMBER_DIGITAL_CAPTURE_MODES.some((candidate) => candidate === this.mode)) {
+      this.setWetDryMix(this.emberMix);
+      return;
+    }
+    const now = this.context.currentTime;
+    this.dryGain.gain.setTargetAtTime(1 - this.emberMix, now, 0.025);
+    this.wetGain.gain.setTargetAtTime(this.emberMix, now, 0.025);
+  }
+
+  private setDigitalCaptureParameter(name: string, value: number, now: number): void {
+    if (this.digitalCaptureValues.get(name) === value) return;
+    const parameter = this.digitalCaptureProcessor.parameters.get(name);
+    if (!parameter) throw new Error(`Ember digital-capture parameter "${name}" is unavailable.`);
+    this.digitalCaptureValues.set(name, value);
+    parameter.setTargetAtTime(value, now, 0.012);
+  }
+
   public override dispose(): void {
     this.tubeStage.dispose(); this.magneticStage.dispose();
-    for (const node of [this.preGain,this.hp,this.shaper,this.genericGain,this.tubeGain,this.magneticGain,this.tone,this.presence,this.compressor,this.post]) node.disconnect();
+    for (const node of [this.preGain,this.hp,this.shaper,this.genericGain,this.tubeGain,this.magneticGain,this.tone,this.presence,this.compressor,this.post,this.analogGain,this.digitalCaptureProcessor,this.digitalCaptureGain]) node.disconnect();
+    this.digitalCaptureProcessor.onprocessorerror = null;
+    this.digitalCaptureProcessor.port.close();
+    this.digitalCaptureValues.clear();
     super.dispose();
   }
 }

@@ -17,7 +17,7 @@ export type AudioEngineState =
 
 export type PerformanceMode = 'live' | 'balanced' | 'studio';
 
-const WORKLET_BUILD_VERSION = '8.5.0-processing-families-a';
+const WORKLET_BUILD_VERSION = '8.5.2-family-swap-a';
 export type EngineHealth = 'offline' | 'healthy' | 'warm' | 'critical';
 
 export interface DspProfilerSnapshot {
@@ -603,7 +603,7 @@ export class AudioEngine {
     }
     const modules = [
       ['Grain', `grain-processor.js?v=${WORKLET_BUILD_VERSION}`],
-      ['Artifact sampler', `artifact-sampler-processor.js?v=${WORKLET_BUILD_VERSION}`],
+      ['Ember digital capture', `ember-digital-capture-processor.js?v=${WORKLET_BUILD_VERSION}`],
       ['Lexicon 224', `lexicon-224-converter.js?v=${WORKLET_BUILD_VERSION}`],
       ['Dream Buffer', `dream-buffer-processor.js?v=${WORKLET_BUILD_VERSION}`],
       ['Recorder', `recorder-processor.js?v=${WORKLET_BUILD_VERSION}`],

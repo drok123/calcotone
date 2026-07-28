@@ -1,7 +1,23 @@
+const GRAIN_DRY_ANCHORS = [0.38, 0.24, 0.16, 0.28, 0.18, 0.10, 0.14, 0.18, 0.22, 0.16, 0.20, 0.18];
+const GRAIN_WET_GAINS = [1.18, 1.30, 1.32, 1.20, 1, 1, 1.18, 1.12, 1.17, 1.16, 1.22, 1.18];
+const SLICE_INTERVALS = [0, 0, 2, -2, 5, -5, 7, -7, 12, -12];
+const PRISM_INTERVAL_SETS = [
+  [0, 0, 7, -5],
+  [0, 4, 7, -12],
+  [0, 3, 7, 12],
+  [0, 5, 7, 12, -12],
+  [0, 7, 12, 19, -12],
+];
+const BEADS_CLOCK_STEPS = [3, 4, 6, 8, 10, 12, 14, 16];
+const MORPHAGENE_INTERVALS = [0, 0, 7, -5, 12, -12, 19, -19];
+const MICROCOSM_DIVISIONS = [32, 24, 16, 12, 8, 6, 4, 2];
+const MICROCOSM_PATTERN = [0, 1, 3, 2, 5, 3, 7, 4];
+const MICROCOSM_INTERVAL_SETS = [[0], [0, 7], [0, 7, 12], [0, 5, 7, 12], [0, 7, 12, 19]];
+
 class CalcotoneGrainProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
-      { name: 'mode', defaultValue: 2, minValue: 0, maxValue: 5, automationRate: 'k-rate' },
+      { name: 'mode', defaultValue: 2, minValue: 0, maxValue: 11, automationRate: 'k-rate' },
       // "bits" is the compatibility id for the old faceplate control. It now
       // controls the analysis/window scale and never quantizes the signal.
       { name: 'bits', defaultValue: 13, minValue: 4, maxValue: 16, automationRate: 'k-rate' },
@@ -48,6 +64,11 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     this.outputR = 0;
     this.smearL = 0;
     this.smearR = 0;
+    this.hardwareL = 0;
+    this.hardwareR = 0;
+    this.hardwareAuxL = 0;
+    this.hardwareAuxR = 0;
+    this.hardwareResult = [0, 0];
     this.inputEnvelope = 0;
     this.previousEnvelope = 0;
     this.inputEnergy = 1e-5;
@@ -125,6 +146,10 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     if (this.previousMode === mode) return;
     this.previousMode = mode;
     this.spawnCounter = 0;
+    this.hardwareL = 0;
+    this.hardwareR = 0;
+    this.hardwareAuxL = 0;
+    this.hardwareAuxR = 0;
     for (let index = 0; index < this.voices.length; index += 1) {
       this.voices[index].active = false;
     }
@@ -147,9 +172,8 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     const history = Math.min(desiredHistory, Math.max(0, available - 128));
     this.sliceLength = Math.max(128, Math.min(desiredLength, available - history));
     this.sliceStart = (this.writeIndex - history - this.sliceLength + this.bufferSize) & this.mask;
-    const intervals = [0, 0, 2, -2, 5, -5, 7, -7, 12, -12];
-    const range = Math.max(2, Math.min(intervals.length, 2 + Math.floor(pitch * (intervals.length - 2))));
-    const semitones = intervals[this.spawnSequence % range];
+    const range = Math.max(2, Math.min(SLICE_INTERVALS.length, 2 + Math.floor(pitch * (SLICE_INTERVALS.length - 2))));
+    const semitones = SLICE_INTERVALS[this.spawnSequence % range];
     this.sliceStep = this.semitoneStep(semitones);
     this.slicePhase = 0;
     this.sliceRefreshCounter = 0;
@@ -280,23 +304,96 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       // Prism: deterministic harmonic voices, not arbitrary pitch scatter.
       grainMs = 58 + window * 120 + memory * 110 + this.random() * 24;
       historySeconds = 0.032 + this.random() * (0.08 + memory * 0.20 + motion * 0.12);
-      const sets = [
-        [0, 0, 7, -5],
-        [0, 4, 7, -12],
-        [0, 3, 7, 12],
-        [0, 5, 7, 12, -12],
-        [0, 7, 12, 19, -12],
-      ];
-      const set = sets[Math.min(sets.length - 1, Math.floor(pitch * sets.length))];
+      const set = PRISM_INTERVAL_SETS[Math.min(PRISM_INTERVAL_SETS.length - 1, Math.floor(pitch * PRISM_INTERVAL_SETS.length))];
       semitones = set[this.spawnSequence % set.length] + (this.random() * 2 - 1) * motion * 0.12;
       reverseChance = 0;
       pan = Math.sin(this.spawnSequence * 2.399) * (0.58 + density * 0.36);
       panDrift = 0;
       gain = 0.46 + density * 0.14;
       tone = 0.46 + this.random() * 0.40;
+    } else if (mode === 6) {
+      // Clouds study: overlapping delayed grains dissolve into a softly
+      // diffused stereo body. Position and texture stay continuous.
+      grainMs = 32 + window * 760 + this.random() * 110;
+      historySeconds = 0.04 + motion * 1.65 + this.random() * (0.10 + motion * 0.72);
+      semitones = (this.random() * 2 - 1) * pitch * 24;
+      reverseChance = motion * 0.16;
+      pan = (this.random() * 2 - 1) * (0.34 + density * 0.52);
+      panDrift = (this.random() * 2 - 1) * motion * 0.12;
+      gain = 0.30 + density * 0.14;
+      tone = 0.16 + (1 - memory) * 0.42 + this.random() * 0.16;
+    } else if (mode === 7) {
+      // Beads study: a high-fidelity stereo stream with independent random
+      // offsets and a density-dependent periodic/random clock.
+      grainMs = 30 + window * 1180 + this.random() * motion * 180;
+      const clockCell = 0.025 + window * 0.12;
+      const clockStep = Math.max(1, Math.floor(this.spawnSequence % (2 + Math.floor(density * 7))));
+      historySeconds = clockCell * clockStep + this.random() * motion * 0.48;
+      semitones = (this.random() * 2 - 1) * pitch * 24;
+      reverseChance = Math.max(0, (window - 0.72) * 1.6) + motion * 0.08;
+      pan = Math.sin(this.spawnSequence * 2.399) * (0.62 + density * 0.32);
+      panDrift = (this.random() * 2 - 1) * motion * 0.08;
+      gain = 0.34 + density * 0.14;
+      tone = 0.68 + this.random() * 0.28;
+    } else if (mode === 8) {
+      // Morphagene study: the recent reel is divided into splices, then Gene
+      // Size, Slide, Morph, Vari-Speed and Organize rebuild its chronology.
+      grainMs = 40 + window * 940;
+      const spliceSeconds = 0.10 + window * 0.34;
+      const spliceCount = 2 + Math.floor(memory * 10);
+      const organizedSplice = (this.spawnSequence * 5 + Math.floor(motion * 7)) % spliceCount;
+      historySeconds = spliceSeconds * (1 + organizedSplice) + (this.random() * 2 - 1) * motion * spliceSeconds;
+      const reelRange = Math.max(2, Math.min(MORPHAGENE_INTERVALS.length, 2 + Math.floor(pitch * (MORPHAGENE_INTERVALS.length - 2))));
+      semitones = MORPHAGENE_INTERVALS[this.spawnSequence % reelRange];
+      reverseChance = motion * 0.34;
+      pan = Math.sin(this.spawnSequence * 1.618) * (0.30 + density * 0.46);
+      panDrift = (this.random() * 2 - 1) * density * 0.10;
+      gain = 0.38 + density * 0.13;
+      tone = 0.36 + this.random() * 0.34;
+    } else if (mode === 9) {
+      // Arbhar study: six circular capture strata are scanned in sequence;
+      // Spray moves around each layer and onsets can seed new grain clusters.
+      grainMs = 20 + window * 1420 + this.random() * 95;
+      const layer = this.spawnSequence % 6;
+      const layerSpan = 0.24 + memory * 0.34;
+      const layerOffset = layer * layerSpan;
+      historySeconds = 0.05 + layerOffset + (this.random() * 2 - 1) * motion * layerSpan;
+      semitones = (this.random() * 2 - 1) * pitch * 12;
+      reverseChance = 0.05 + motion * 0.45;
+      pan = (layer / 5) * 1.8 - 0.9;
+      panDrift = (this.random() * 2 - 1) * motion * 0.20;
+      gain = 0.31 + density * 0.15;
+      tone = 0.42 + this.random() * 0.42;
+    } else if (mode === 10) {
+      // Particle 2 study: a granular delay line with 15–250 ms chops,
+      // bidirectional playback, pitch scatter and feedback-colored repeats.
+      grainMs = 15 + window * 235;
+      const delaySeconds = 0.055 + window * 0.82;
+      historySeconds = delaySeconds + (this.random() * 2 - 1) * motion * delaySeconds * 0.72;
+      semitones = (this.random() * 2 - 1) * pitch * 12;
+      reverseChance = 0.06 + motion * 0.72;
+      pan = (this.random() * 2 - 1) * (0.48 + motion * 0.46);
+      panDrift = (this.random() * 2 - 1) * motion * 0.28;
+      gain = 0.46 + density * 0.18;
+      tone = 0.28 + (1 - memory) * 0.48;
+    } else if (mode === 11) {
+      // Microcosm study: deterministic subdivision patterns address a bank of
+      // micro-loops, creating repeatable cascades instead of random glitch.
+      const division = MICROCOSM_DIVISIONS[Math.min(MICROCOSM_DIVISIONS.length - 1, Math.floor(window * MICROCOSM_DIVISIONS.length))];
+      const pulseSeconds = 2 / division;
+      historySeconds = pulseSeconds * (1 + MICROCOSM_PATTERN[this.spawnSequence % MICROCOSM_PATTERN.length]) * (1 + memory * 0.65);
+      grainMs = Math.max(28, pulseSeconds * 1000 * (0.46 + density * 0.78));
+      const set = MICROCOSM_INTERVAL_SETS[Math.min(MICROCOSM_INTERVAL_SETS.length - 1, Math.floor(pitch * MICROCOSM_INTERVAL_SETS.length))];
+      semitones = set[this.spawnSequence % set.length] * (this.spawnSequence % 6 === 5 ? -1 : 1);
+      reverseChance = motion * 0.26;
+      pan = Math.sin(this.spawnSequence * Math.PI * 0.5) * (0.38 + density * 0.42);
+      panDrift = 0;
+      gain = 0.39 + density * 0.14;
+      tone = 0.40 + this.random() * 0.38;
     }
 
-    const length = Math.max(72, Math.floor(sampleRate * grainMs / 1000));
+    historySeconds = Math.max(0.012, Math.min(3.75, historySeconds));
+    const length = Math.max(72, Math.min(this.bufferSize - 256, Math.floor(sampleRate * grainMs / 1000)));
     let step = this.semitoneStep(semitones);
     if (this.random() < reverseChance) step *= -1;
     voice.active = true;
@@ -327,10 +424,22 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
         continue;
       }
       const sine = Math.sin(normalized * Math.PI);
-      const envelope = mode === 2 ? Math.sqrt(sine) * sine : sine * sine;
+      const envelope = mode === 2 || mode === 6
+        ? Math.sqrt(sine) * sine
+        : mode === 8
+          ? Math.min(1, sine * 2.4) * Math.sqrt(sine)
+          : mode === 9
+            ? sine
+            : sine * sine;
       let sampleL = this.interpolate(this.left, voice.read);
       let sampleR = this.interpolate(this.right, voice.read);
-      const toneCoefficient = mode === 2 ? 0.08 + voice.tone * 0.26 : 0.24 + voice.tone * 0.62;
+      const toneCoefficient = mode === 2 || mode === 6
+        ? 0.08 + voice.tone * 0.26
+        : mode === 8
+          ? 0.16 + voice.tone * 0.38
+          : mode === 10
+            ? 0.12 + voice.tone * 0.42
+            : 0.24 + voice.tone * 0.62;
       voice.lastL += (sampleL - voice.lastL) * toneCoefficient;
       voice.lastR += (sampleR - voice.lastR) * toneCoefficient;
       sampleL = voice.lastL;
@@ -349,6 +458,106 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     this.voiceResult[1] = wetR;
     this.voiceResult[2] = active;
     return this.voiceResult;
+  }
+
+  spawnRateForMode(mode, density, window) {
+    switch (mode) {
+      case 0: return 18 + density * 62;
+      case 1: return 6 + density * 48;
+      case 2: return 10 + density * 36;
+      case 3: return 16 + density * 54;
+      case 6: return 4 + density * 14;
+      case 7: return BEADS_CLOCK_STEPS[Math.min(BEADS_CLOCK_STEPS.length - 1, Math.floor(density * BEADS_CLOCK_STEPS.length))];
+      case 8: return 3 + density * 12;
+      case 9: return 4 + density * 15;
+      case 10: return 5 + density * 24;
+      case 11: return 3 + density * 15 + (1 - window) * 4;
+      default: return 12;
+    }
+  }
+
+  feedbackForMode(mode, memory) {
+    switch (mode) {
+      case 2: return memory * 0.24;
+      case 6: return memory * 0.30;
+      case 7: return memory * 0.12;
+      case 8: return memory * 0.18;
+      case 9: return memory * 0.20;
+      case 10: return memory * 0.48;
+      case 11: return memory * 0.34;
+      default: return 0;
+    }
+  }
+
+  transientAllowsSpawn(mode, transient, density, motion) {
+    if (mode === 1) {
+      return transient > 0.0018 + (1 - density) * 0.004 || this.random() < 0.05 + motion * 0.10;
+    }
+    if (mode === 9) {
+      return transient > 0.0012 + (1 - density) * 0.003 || this.random() < 0.10 + motion * 0.18;
+    }
+    return true;
+  }
+
+  applyHardwareCharacter(mode, left, right, window, density, motion, memory) {
+    let outputL = left;
+    let outputR = right;
+    if (mode === 6) {
+      // Clouds: soft diffusion and cross-channel accumulation after the grain cloud.
+      const coefficient = 0.018 + (1 - window) * 0.065;
+      this.hardwareL += (left - this.hardwareL) * coefficient;
+      this.hardwareR += (right - this.hardwareR) * coefficient;
+      this.hardwareAuxL += (this.hardwareR - this.hardwareAuxL) * (0.012 + memory * 0.024);
+      this.hardwareAuxR += (this.hardwareL - this.hardwareAuxR) * (0.012 + memory * 0.024);
+      outputL = this.hardwareL * 0.84 + this.hardwareAuxL * (0.10 + memory * 0.18);
+      outputR = this.hardwareR * 0.84 + this.hardwareAuxR * (0.10 + memory * 0.18);
+    } else if (mode === 7) {
+      // Beads: preserve the direct detail and add a small decorrelated stereo edge.
+      const coefficient = 0.42 + (1 - window) * 0.34;
+      this.hardwareL += (left - this.hardwareL) * coefficient;
+      this.hardwareR += (right - this.hardwareR) * coefficient;
+      const detailL = left - this.hardwareL;
+      const detailR = right - this.hardwareR;
+      outputL = left * 0.94 + detailL * (0.10 + motion * 0.12) + detailR * density * 0.04;
+      outputR = right * 0.94 + detailR * (0.10 + motion * 0.12) + detailL * density * 0.04;
+    } else if (mode === 8) {
+      // Morphagene: modest reel bandwidth and compaction accumulate with Organize.
+      const coefficient = 0.18 + (1 - window) * 0.28;
+      this.hardwareL += (left - this.hardwareL) * coefficient;
+      this.hardwareR += (right - this.hardwareR) * coefficient;
+      const reelDrive = 1.02 + memory * 0.34;
+      outputL = Math.tanh(this.hardwareL * reelDrive) / Math.tanh(reelDrive);
+      outputR = Math.tanh(this.hardwareR * reelDrive) / Math.tanh(reelDrive);
+    } else if (mode === 9) {
+      // Arbhar: six strata read as a wide bed with a restrained feedback-delay halo.
+      this.hardwareL += (left - this.hardwareL) * (0.20 + density * 0.16);
+      this.hardwareR += (right - this.hardwareR) * (0.20 + density * 0.16);
+      this.hardwareAuxL += (this.hardwareR - this.hardwareAuxL) * (0.026 + memory * 0.032);
+      this.hardwareAuxR += (this.hardwareL - this.hardwareAuxR) * (0.026 + memory * 0.032);
+      outputL = this.hardwareL * 0.88 + this.hardwareAuxL * (0.08 + motion * 0.12);
+      outputR = this.hardwareR * 0.88 + this.hardwareAuxR * (0.08 + motion * 0.12);
+    } else if (mode === 10) {
+      // Particle 2: darken successive granular-delay repeats as feedback rises.
+      const coefficient = 0.14 + (1 - memory) * 0.46;
+      this.hardwareL += (left - this.hardwareL) * coefficient;
+      this.hardwareR += (right - this.hardwareR) * coefficient;
+      outputL = left * 0.38 + this.hardwareL * 0.72;
+      outputR = right * 0.38 + this.hardwareR * 0.72;
+    } else if (mode === 11) {
+      // Microcosm: two gentle integration stages bind the subdivision taps
+      // into a repeating micro-loop cascade.
+      const first = 0.24 + (1 - window) * 0.20;
+      const second = 0.08 + (1 - memory) * 0.14;
+      this.hardwareL += (left - this.hardwareL) * first;
+      this.hardwareR += (right - this.hardwareR) * first;
+      this.hardwareAuxL += (this.hardwareL - this.hardwareAuxL) * second;
+      this.hardwareAuxR += (this.hardwareR - this.hardwareAuxR) * second;
+      outputL = left * 0.28 + this.hardwareL * 0.46 + this.hardwareAuxL * (0.34 + memory * 0.12);
+      outputR = right * 0.28 + this.hardwareR * 0.46 + this.hardwareAuxR * (0.34 + memory * 0.12);
+    }
+    this.hardwareResult[0] = outputL;
+    this.hardwareResult[1] = outputR;
+    return this.hardwareResult;
   }
 
   updateEmergencyGuard(callbackMs, callbackBudgetMs) {
@@ -375,7 +584,7 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     const inR = input?.[1] || inL;
     const outL = output[0];
     const outR = output[1] || output[0];
-    const mode = Math.max(0, Math.min(5, Math.round(parameters.mode[0])));
+    const mode = Math.max(0, Math.min(11, Math.round(parameters.mode[0])));
     const window = Math.max(0, Math.min(1, (parameters.bits[0] - 4) / 12));
     const targetDensity = Math.max(0, Math.min(1, parameters.density[0]));
     const targetPitch = Math.max(0, Math.min(1, parameters.pitch[0]));
@@ -391,8 +600,8 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     const memory = this.smoothedMemory;
     this.resetModeState(mode, window, density, pitch, motion);
 
-    const rates = [18 + density * 62, 6 + density * 48, 10 + density * 36, 16 + density * 54];
-    const spawnInterval = Math.max(24, Math.floor(sampleRate / rates[Math.min(3, mode)]));
+    const spawnRate = this.spawnRateForMode(mode, density, window);
+    const spawnInterval = Math.max(24, Math.floor(sampleRate / spawnRate));
 
     for (let sample = 0; sample < outL.length; sample += 1) {
       let dryL = inL ? inL[sample] : 0;
@@ -404,7 +613,7 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       this.previousEnvelope = this.inputEnvelope;
       this.inputEnvelope += (peak - this.inputEnvelope) * (peak > this.inputEnvelope ? 0.075 : 0.0018);
       const transient = Math.max(0, this.inputEnvelope - this.previousEnvelope);
-      const feedback = mode === 2 ? memory * 0.24 : 0;
+      const feedback = this.feedbackForMode(mode, memory);
       this.left[this.writeIndex] = Math.max(-1.2, Math.min(1.2, dryL + this.outputL * feedback));
       this.right[this.writeIndex] = Math.max(-1.2, Math.min(1.2, dryR + this.outputR * feedback));
       this.writtenSamples = Math.min(this.bufferSize - 1, this.writtenSamples + 1);
@@ -436,24 +645,25 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       } else {
         this.spawnCounter -= 1;
         if (this.spawnCounter <= 0) {
-          const transientReady = mode !== 1 || transient > 0.0018 + (1 - density) * 0.004 || this.random() < 0.05 + motion * 0.10;
+          const transientReady = this.transientAllowsSpawn(mode, transient, density, motion);
           const spawned = transientReady && this.spawnGranularVoice(mode, window, density, pitch, motion, memory);
+          const intervalVariation = mode === 11
+            ? (this.spawnSequence % 4 === 0 ? -0.28 : this.spawnSequence % 4 === 3 ? 0.22 : 0)
+            : (this.random() - 0.5) * motion;
           this.spawnCounter = spawned
-            ? Math.max(16, spawnInterval + (((this.random() - 0.5) * spawnInterval * motion) | 0))
+            ? Math.max(16, spawnInterval + ((intervalVariation * spawnInterval) | 0))
             : Math.max(24, Math.floor(spawnInterval * 0.35));
           if (transientReady && !spawned) this.profileDroppedSpawns += 1;
         }
         const rendered = this.renderGranularVoices(mode);
         const active = rendered[2];
         const normalization = active > 1 ? 1 / Math.sqrt(0.72 + active * 0.38) : 1;
-        const anchors = [0.38, 0.24, 0.16, 0.28];
-        const gains = [1.18, 1.30, 1.32, 1.20];
         const cohesion = mode === 0 ? memory : 0;
         const body = mode === 3 ? memory : 0;
-        processedL = dryL * Math.max(0.12, anchors[mode] - cohesion * 0.10)
-          + rendered[0] * normalization * (gains[mode] + cohesion * 0.12 + body * 0.10);
-        processedR = dryR * Math.max(0.12, anchors[mode] - cohesion * 0.10)
-          + rendered[1] * normalization * (gains[mode] + cohesion * 0.12 + body * 0.10);
+        processedL = dryL * Math.max(0.12, GRAIN_DRY_ANCHORS[mode] - cohesion * 0.10)
+          + rendered[0] * normalization * (GRAIN_WET_GAINS[mode] + cohesion * 0.12 + body * 0.10);
+        processedR = dryR * Math.max(0.12, GRAIN_DRY_ANCHORS[mode] - cohesion * 0.10)
+          + rendered[1] * normalization * (GRAIN_WET_GAINS[mode] + cohesion * 0.12 + body * 0.10);
         if (mode === 2) {
           const coefficient = 0.035 + (1 - window) * 0.08;
           this.smearL += (processedL - this.smearL) * coefficient;
@@ -461,6 +671,10 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
           const mid = (this.smearL + this.smearR) * 0.5;
           processedL = this.smearL * 0.84 + mid * 0.16;
           processedR = this.smearR * 0.84 + mid * 0.16;
+        } else if (mode >= 6) {
+          const hardware = this.applyHardwareCharacter(mode, processedL, processedR, window, density, motion, memory);
+          processedL = hardware[0];
+          processedR = hardware[1];
         }
       }
 
@@ -474,7 +688,7 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       this.makeupGain += (targetMakeup - this.makeupGain) * 0.001;
       safeL *= this.makeupGain;
       safeR *= this.makeupGain;
-      const smoothing = mode === 4 ? 0.92 : mode === 5 ? 0.86 : 0.82;
+      const smoothing = mode === 4 ? 0.92 : mode === 5 ? 0.86 : mode >= 6 ? 0.88 : 0.82;
       this.outputL += (safeL - this.outputL) * smoothing;
       this.outputR += (safeR - this.outputR) * smoothing;
       if (Math.abs(this.outputL) < 1e-20) this.outputL = 0;

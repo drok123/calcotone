@@ -64,7 +64,7 @@ interface ModeArtVariant {
 }
 
 // Each dropdown is a named visual variation inside its parent module's art
-// language. The explicit table makes semantic coverage auditable for all 79
+// language. The explicit table makes semantic coverage auditable for all 85
 // modes instead of relying on a seed to make nominally different noise.
 export const MODE_ART_VARIANTS = {
   'saturation:velvet': { motif: 'bloom', scale: 3.2, amount: 0.34, bias: 0.08 },
@@ -79,10 +79,12 @@ export const MODE_ART_VARIANTS = {
   'saturation:telefunken': { motif: 'tubes', scale: 5.0, amount: 0.35, bias: 0.62 },
   'saturation:bugleboy': { motif: 'tubes', scale: 6.0, amount: 0.34, bias: 0.68 },
   'saturation:rcablack': { motif: 'tubes', scale: 7.0, amount: 0.36, bias: 0.74 },
-  'saturation:tascam424': { motif: 'channels', scale: 4.0, amount: 0.40, bias: 0.80 },
-  'saturation:neve1073': { motif: 'channels', scale: 6.0, amount: 0.38, bias: 0.86 },
-  'saturation:ssl4000e': { motif: 'channels', scale: 8.0, amount: 0.39, bias: 0.92 },
-  'saturation:api1608': { motif: 'channels', scale: 10.0, amount: 0.38, bias: 0.98 },
+  'saturation:sp1200': { motif: 'pixels', scale: 5.0, amount: 0.38, bias: 0.80 },
+  'saturation:mpc60': { motif: 'pixels', scale: 7.0, amount: 0.38, bias: 0.86 },
+  'saturation:mirage': { motif: 'pixels', scale: 9.0, amount: 0.37, bias: 0.92 },
+  'saturation:s950': { motif: 'pixels', scale: 11.0, amount: 0.36, bias: 0.98 },
+  'saturation:emulator2': { motif: 'pixels', scale: 13.0, amount: 0.37, bias: 1.04 },
+  'saturation:fairlightiix': { motif: 'digital', scale: 9.0, amount: 0.40, bias: 1.10 },
 
   'chorus:chorus': { motif: 'waves', scale: 4.0, amount: 0.34, bias: 0.06 },
   'chorus:ensemble': { motif: 'voices', scale: 5.0, amount: 0.40, bias: 0.12 },
@@ -135,6 +137,12 @@ export const MODE_ART_VARIANTS = {
   'bitcrusher:prism': { motif: 'prism', scale: 7.0, amount: 0.40, bias: 0.27 },
   'bitcrusher:slice': { motif: 'repeat', scale: 10.0, amount: 0.39, bias: 0.35 },
   'bitcrusher:freeze': { motif: 'crystal', scale: 6.0, amount: 0.41, bias: 0.43 },
+  'bitcrusher:clouds': { motif: 'cloud', scale: 5.0, amount: 0.39, bias: 0.51 },
+  'bitcrusher:beads': { motif: 'stars', scale: 9.0, amount: 0.38, bias: 0.59 },
+  'bitcrusher:morphagene': { motif: 'reels', scale: 7.0, amount: 0.40, bias: 0.67 },
+  'bitcrusher:arbhar': { motif: 'shelves', scale: 6.0, amount: 0.41, bias: 0.75 },
+  'bitcrusher:particle2': { motif: 'scatter', scale: 11.0, amount: 0.39, bias: 0.83 },
+  'bitcrusher:microcosm': { motif: 'repeat', scale: 8.0, amount: 0.41, bias: 0.91 },
 
   'media:cassette': { motif: 'cassette', scale: 5.0, amount: 0.41, bias: 0.02 },
   'media:reel': { motif: 'reels', scale: 5.0, amount: 0.40, bias: 0.10 },
@@ -145,12 +153,10 @@ export const MODE_ART_VARIANTS = {
   'media:broken': { motif: 'fracture', scale: 9.0, amount: 0.40, bias: 0.50 },
   'media:archive': { motif: 'shelves', scale: 6.0, amount: 0.39, bias: 0.58 },
   'media:ampex atr-102': { motif: 'deck', scale: 6.0, amount: 0.42, bias: 0.66 },
-  'media:sp1200': { motif: 'pixels', scale: 5.0, amount: 0.38, bias: 0.72 },
-  'media:mpc60': { motif: 'pixels', scale: 7.0, amount: 0.38, bias: 0.78 },
-  'media:mirage': { motif: 'pixels', scale: 9.0, amount: 0.37, bias: 0.84 },
-  'media:s950': { motif: 'pixels', scale: 11.0, amount: 0.36, bias: 0.90 },
-  'media:emulator2': { motif: 'pixels', scale: 13.0, amount: 0.37, bias: 0.96 },
-  'media:fairlightiix': { motif: 'digital', scale: 9.0, amount: 0.40, bias: 1.02 },
+  'media:tascam424': { motif: 'channels', scale: 4.0, amount: 0.40, bias: 0.72 },
+  'media:neve 1073': { motif: 'channels', scale: 6.0, amount: 0.38, bias: 0.80 },
+  'media:ssl 4000e': { motif: 'channels', scale: 8.0, amount: 0.39, bias: 0.88 },
+  'media:api 1608': { motif: 'channels', scale: 10.0, amount: 0.38, bias: 0.96 },
 } as const satisfies Record<string, ModeArtVariant>;
 
 const TAU = Math.PI * 2;

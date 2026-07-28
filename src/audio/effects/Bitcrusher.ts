@@ -8,17 +8,25 @@ export type GrainMode =
   | 'smear'
   | 'prism'
   | 'slice'
-  | 'freeze';
+  | 'freeze'
+  | 'clouds'
+  | 'beads'
+  | 'morphagene'
+  | 'arbhar'
+  | 'particle2'
+  | 'microcosm';
 
 // The first six legacy indices retain their conceptual destination:
 // reconstruct→mosaic, shatter→scatter, smear→smear, prism→prism,
 // stutter→slice, and ruin→freeze. Sampler hardware is migrated to Artifact.
 export const GRAIN_MODE_ORDER: GrainMode[] = [
   'mosaic','scatter','smear','prism','slice','freeze',
+  'clouds','beads','morphagene','arbhar','particle2','microcosm',
 ];
 
 export const GRAIN_MODE_GROUPS = [
   { label: 'LIVE MEMORY', modes: ['smear','scatter','slice','prism','freeze','mosaic'] },
+  { label: 'GRANULAR HARDWARE', modes: ['clouds','beads','morphagene','arbhar','particle2','microcosm'] },
 ] as const satisfies ReadonlyArray<{ label: string; modes: readonly GrainMode[] }>;
 
 export interface GrainProfilerStats {
