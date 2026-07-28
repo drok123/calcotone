@@ -4,77 +4,67 @@ import { resolve } from 'node:path';
 const root = process.cwd();
 const failures = [];
 const read = (relative) => {
-  const path = resolve(root, relative);
-  if (!existsSync(path)) { failures.push(`Missing required file: ${relative}`); return ''; }
-  return readFileSync(path, 'utf8');
+  const file = resolve(root, relative);
+  if (!existsSync(file)) { failures.push(`Missing required file: ${relative}`); return ''; }
+  return readFileSync(file, 'utf8');
 };
-const requireText = (source, needle, label) => { if (!source.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`); };
-const forbidText = (source, needle, label) => { if (source.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`); };
+const requireText = (source, needle, label) => {
+  if (!source.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
+};
+const forbidText = (source, needle, label) => {
+  if (source.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`);
+};
 
+const ascii = read('src/components/ascii/AsciiArtEngine.tsx');
+const asciiCss = read('src/components/ascii/AsciiArtEngine.css');
 const viewport = read('src/components/effects/ModuleViewport.tsx');
-const temporal = read('src/components/video/TemporalVideo.tsx');
-const temporalCss = read('src/components/video/TemporalVideo.css');
-const main = read('src/main.tsx');
-const signalArt = read('src/components/motion/SignalFieldArt.ts');
-const xyField = read('src/components/motion/XYSignalField.tsx');
+const field = read('src/components/motion/XYSignalField.tsx');
 const motionPad = read('src/components/motion/MotionPad.tsx');
 const app = read('src/App.tsx');
+const bridge = read('src/pressureBridge.tsx');
+const store = read('src/components/signal/pressureStore.ts');
+const main = read('src/main.tsx');
 
-const videoTags = (temporal.match(/<video\b/g) ?? []).length;
-if (videoTags !== 1) failures.push(`TemporalVideo must own exactly one decoder template; found ${videoTags}`);
-forbidText(viewport, 'module-video-void-mask', 'Viewport black-mask overlay');
-forbidText(viewport, 'module-video-fx-a', 'Viewport sliced overlay A');
-forbidText(viewport, 'module-video-fx-b', 'Viewport sliced overlay B');
-forbidText(viewport, 'module-video-fx-c', 'Viewport sliced overlay C');
-forbidText(viewport, 'PING_PONG_FILES', 'Dead ping-pong asset dependency');
-requireText(viewport, '<TemporalVideo', 'Viewport temporal smoothing renderer');
-requireText(temporal, 'preload={preload}', 'Viewport eager media preload support');
-requireText(viewport, "video.addEventListener('stalled', scheduleRecovery)", 'Viewport stalled recovery');
-requireText(viewport, "video.addEventListener('waiting', scheduleRecovery)", 'Viewport waiting recovery');
-requireText(viewport, "video.addEventListener('error', reload)", 'Viewport media-error recovery');
-requireText(viewport, 'video.videoWidth === 0', 'Viewport no-frame recovery');
-requireText(viewport, 'video.load()', 'Viewport decoder reload');
-requireText(viewport, 'const videoUrl = key ? assetUrl(VIDEO_FILES[key]) : null', 'Viewport direct known-good source');
-requireText(viewport, 'visibilitychange', 'Viewport resume-after-background recovery');
-requireText(viewport, 'const MODULE_PLAYBACK_RATE = 0.40', 'Viewport glacial module playback');
-requireText(viewport, 'video.playbackRate = MODULE_PLAYBACK_RATE', 'Viewport playback-rate enforcement');
-requireText(temporal, 'requestVideoFrameCallback', 'Frame-synchronized temporal capture');
-requireText(temporal, 'easeFrameBlend', 'Temporal frame interpolation');
-requireText(temporal, "output.globalCompositeOperation = 'copy'", 'Opaque temporal base frame');
-requireText(temporal, 'output.globalAlpha = blend', 'Current-frame temporal blend');
-requireText(temporal, 'SEEK_DISCONTINUITY_SECONDS', 'Loop and seek discontinuity guard');
-requireText(temporal, 'presentCurrentImmediately()', 'Discontinuity snap without crossfade');
-forbidText(temporal, 'output.clearRect(', 'Visible temporal canvas clearing');
-requireText(temporalCss, '.temporal-video-source', 'Decoder fallback styling');
-requireText(temporalCss, "opacity: 1 !important", 'Visible decoder fallback frame');
-requireText(temporalCss, ".temporal-video-canvas[data-ready='true']", 'Temporal canvas readiness gate');
-forbidText(main, "import './videoStabilityPatch'", 'Removed video repair monkey patch');
-requireText(viewport, "return (module.driftMode ?? 'chorus') === 'rotary' ? 'drift-alt' : 'drift';", 'Native Drift stable video selection');
-forbidText(viewport, "['liquid', 'orbit', 'doppler', 'rotary'].includes(mode) ? 'drift-alt' : 'drift'", 'Old unstable Drift video mapping');
+requireText(viewport, '<AsciiArtEngine kind="module" module={module}', 'Module ASCII surface');
+requireText(viewport, 'moduleModeKey(module)', 'Dropdown-driven module scene');
+requireText(viewport, 'is-reconfiguring', 'Dropdown reconfiguration transition');
+forbidText(viewport, '<TemporalVideo', 'Module decoder');
+forbidText(viewport, '.mp4', 'Module media asset');
 
-// SIGNAL art must inherit the Dream landscape rather than behave like an unrelated overlay.
-requireText(signalArt, 'scenePalette(modules', 'Signal art derives landscape palette');
-requireText(signalArt, 'landscapeVocabulary(modules', 'Signal art derives landscape vocabulary');
-requireText(signalArt, "'architectural' | 'mechanical' | 'fluid' | 'organic'", 'Signal art vocabulary families');
-requireText(signalArt, "case 'fet'", 'Pressure FET composition');
-requireText(signalArt, "case 'opto'", 'Pressure Opto composition');
-requireText(signalArt, "case 'varimu'", 'Pressure Vari-Mu composition');
-requireText(signalArt, "case 'vca'", 'Pressure VCA composition');
-requireText(signalArt, "ctx.globalCompositeOperation = 'screen'", 'Signal art integrated luminosity');
-forbidText(signalArt, "strokeStyle = 'black'", 'Signal black-line overlay');
-forbidText(signalArt, 'Math.random()', 'Signal per-frame random spaghetti');
-requireText(xyField, 'if (signal?.enabled) drawSignalFieldArt', 'Signal artwork only while enabled');
-requireText(motionPad, 'signalLab={signalLab}', 'MotionPad forwards Signal visual state');
-requireText(app, 'const pressureState = usePressureState()', 'App subscribes to live Pressure state');
-requireText(app, 'signalLab={pressureState}', 'App forwards Pressure state to XY');
+requireText(field, '<AsciiArtEngine', 'XY ASCII surface');
+requireText(field, 'kind="landscape"', 'XY combined landscape');
+requireText(field, 'pressure={signalLab}', 'Pressure ASCII integration');
+forbidText(field, 'DreamFieldEngine', 'Retired Dream fallback');
+forbidText(field, 'VideoLandscapeEngine', 'XY decoder world');
 
-for (const name of ['ember', 'drift', 'drift-alt', 'halo', 'artifact', 'atmos', 'grain']) {
-  const file = `public/visuals/${name}.mp4`;
-  if (!existsSync(resolve(root, file))) failures.push(`Missing visual asset: ${file}`);
-}
+requireText(ascii, 'hashAsciiScene', 'Deterministic scene identity');
+requireText(ascii, 'moduleModeKey', 'Per-dropdown scene identity');
+requireText(ascii, 'subscribeViewportAnimation(render)', 'Shared viewport scheduler');
+requireText(ascii, 'getLatestVisualAudioState()', 'Non-React audio snapshot');
+requireText(ascii, 'IntersectionObserver', 'Offscreen renderer sleep');
+requireText(ascii, '1000 / 18', 'Bounded ASCII cadence');
+forbidText(ascii, 'requestAnimationFrame(', 'Independent ASCII animation loop');
+forbidText(ascii, 'Math.random()', 'Random per-frame artwork');
+requireText(asciiCss, 'repeating-linear-gradient', 'ASCII scanline optics');
+requireText(asciiCss, '@media (prefers-reduced-motion: reduce)', 'Reduced motion support');
+
+requireText(motionPad, 'const signalLab = usePressureState()', 'Local Motion Pressure subscription');
+requireText(motionPad, 'signalLab={signalLab}', 'Pressure forwarded to ASCII world');
+forbidText(app, 'usePressureState', 'Workstation-wide Pressure subscription');
+forbidText(app, 'signalLab={pressureState}', 'Workstation Pressure prop drilling');
+requireText(app, 'if (profilerOpen)', 'Profiler snapshot visibility gate');
+requireText(app, '[isRunning, profilerOpen]', 'Profiler interval lifecycle');
+
+requireText(bridge, 'const wasEnabled = processors.has(activeEngine)', 'Pressure topology boundary');
+requireText(bridge, 'if (pressure && !wasEnabled)', 'Pressure graph rebuild only on enable');
+requireText(store, 'schedulePersist()', 'Coalesced Pressure persistence');
+requireText(store, 'const PERSIST_DELAY_MS = 180', 'Pressure persistence delay');
+forbidText(main, "import './components/effects/VideoColorStability.css'", 'Retired video color pass');
+
 if (failures.length) {
   console.error('\nCALCOTONE visual audit failed:\n');
   for (const failure of failures) console.error(` - ${failure}`);
-  console.error(''); process.exit(1);
+  console.error('');
+  process.exit(1);
 }
-console.log('CALCOTONE visual audit passed.');
+console.log('CALCOTONE visual audit passed (shared ASCII renderer; isolated state updates; zero decoder wiring).');
