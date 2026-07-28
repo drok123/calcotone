@@ -15,7 +15,7 @@ type VideoFrameMetadata = {
   mediaTime?: number;
 };
 
-type FrameCallbackVideo = HTMLVideoElement & {
+type FrameCallbackVideo = {
   requestVideoFrameCallback?: (callback: (now: number, metadata: VideoFrameMetadata) => void) => number;
   cancelVideoFrameCallback?: (handle: number) => void;
 };
