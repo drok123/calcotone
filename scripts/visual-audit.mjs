@@ -42,6 +42,9 @@ requireText(ascii, 'subscribeViewportAnimation(render)', 'Shared viewport schedu
 requireText(ascii, 'getLatestVisualAudioState()', 'Non-React audio snapshot');
 requireText(ascii, 'IntersectionObserver', 'Offscreen renderer sleep');
 requireText(ascii, '1000 / 18', 'Bounded ASCII cadence');
+requireText(ascii, 'const horizontalScale = width / gridWidth', 'Edge-to-edge ASCII width fit');
+requireText(ascii, 'const verticalScale = height / gridHeight', 'Edge-to-edge ASCII height fit');
+requireText(ascii, 'dpr * horizontalScale', 'Measured ASCII canvas transform');
 forbidText(ascii, 'requestAnimationFrame(', 'Independent ASCII animation loop');
 forbidText(ascii, 'Math.random()', 'Random per-frame artwork');
 requireText(asciiCss, 'repeating-linear-gradient', 'ASCII scanline optics');

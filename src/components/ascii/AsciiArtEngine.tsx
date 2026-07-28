@@ -241,6 +241,16 @@ function drawAscii(
   context.fillStyle = '#050706';
   context.fillRect(0, 0, width, height);
   context.font = `600 ${fontSize}px "IBM Plex Mono", "SFMono-Regular", Consolas, monospace`;
+
+  // The canvas already follows the glass, but the glyph grid used to keep its
+  // natural font metrics and leave dead bands around wide or resized module
+  // windows. Measure the complete character frame and independently scale both
+  // axes so its outer ASCII border lands on every edge of the viewport.
+  const gridWidth = Math.max(1, context.measureText('M'.repeat(columns)).width);
+  const gridHeight = Math.max(1, (rows - 1) * lineHeight + fontSize);
+  const horizontalScale = width / gridWidth;
+  const verticalScale = height / gridHeight;
+  context.setTransform(dpr * horizontalScale, 0, 0, dpr * verticalScale, 0, 0);
   context.textBaseline = 'top';
   context.shadowBlur = scene.active ? 4 : 1;
   context.shadowColor = theme.primary;
