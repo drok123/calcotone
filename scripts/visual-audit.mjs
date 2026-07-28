@@ -23,6 +23,7 @@ const motionPad = read('src/components/motion/MotionPad.tsx');
 const app = read('src/App.tsx');
 const appCss = read('src/App.css');
 const hardwarePalette = read('src/components/layout/CharcoalHardwarePass.css');
+const faceplate = read('src/ui/faceplateLayout.ts');
 const vite = read('vite.config.ts');
 const main = read('src/main.tsx');
 
@@ -59,6 +60,11 @@ forbidText(appCss, '.viewport-caption', 'Retired duplicate artwork label styles'
 requireText(asciiCss, 'repeating-linear-gradient', 'ASCII scanline optics');
 requireText(asciiCss, '@media (prefers-reduced-motion: reduce)', 'Reduced motion support');
 
+requireText(faceplate, 'viewportHeight: 312', 'Approved module viewport height');
+requireText(faceplate, 'stageHeight: 457.81022074542363', 'Approved compact faceplate height');
+requireText(faceplate, '{ x: 0.08839779005524862, y: 411.81022074542363 }', 'Approved leftmost control position');
+requireText(faceplate, '{ x: 0.8987108655616943, y: 411.81022074542363 }', 'Approved rightmost control position');
+requireText(faceplate, 'Math.max(...knobs.map((point) => point.y)) + 46', 'Exact saved-layout floor preservation');
 
 requireText(hardwarePalette, '--calcotone-cream-ink: #101315', 'Patches-charcoal ink on cream');
 requireText(hardwarePalette, '.spectrum-header {', 'Cream Spectrum title/LIVE box');
