@@ -1607,6 +1607,10 @@ export default function App() {
             <span>CALLBACK <b title="Portable AudioWorklet wall-clock timing is disabled to protect audio stability">N/A</b></span>
             <span>TIMING <b title="AudioWorkletGlobalScope does not guarantee a wall-clock performance timer">AUDIO SAFE</b></span>
             <span>GRAIN <b>{profiler ? `${profiler.grain.activeVoices}/${profiler.grain.maxVoices}` : '0/0'}</b></span>
+            <span>SYNTH <b>{profiler ? `${profiler.synth.activeVoices}/${profiler.synth.maxVoices}` : '0/10'}</b></span>
+            <span>TOPOLOGY <b title={profiler?.synth.machine ?? 'model-d'}>{profiler?.synth.topology ?? 'TRANSISTOR LADDER'}</b></span>
+            <span>SYNTH OS <b>{profiler ? `${profiler.synth.oversample}×` : '1×'}</b></span>
+            <span>SYNTH PEAK <b>{profiler ? profiler.synth.peak.toFixed(2) : '0.00'}</b></span>
             <span>GUARD <b>{profiler ? `${profiler.grain.effectiveVoiceLimit}/${profiler.grain.maxVoices}` : '0/0'}</b></span>
             <span>OVERRUN <b className={profiler && profiler.grain.overruns > 0 ? 'warn' : ''}>{profiler?.grain.overruns ?? 0}</b></span>
             <span>DROP <b>{profiler?.grain.droppedSpawns ?? 0}</b></span>

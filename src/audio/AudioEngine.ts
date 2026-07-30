@@ -6,7 +6,7 @@ import { InputMatrix, type InputMode } from './InputMatrix';
 import { WavRecorder, type RecordedWav } from './WavRecorder';
 import type { GrainProfilerStats } from './effects/Bitcrusher';
 import { DreamBuffer, type DreamBufferStats } from './DreamBuffer';
-import { SynthEngine, type SynthMachine } from './SynthEngine';
+import { SynthEngine, type SynthMachine, type SynthTelemetryStats } from './SynthEngine';
 
 export type AudioEngineState =
   | 'idle'
@@ -18,7 +18,7 @@ export type AudioEngineState =
 
 export type PerformanceMode = 'live' | 'balanced' | 'studio';
 
-const WORKLET_BUILD_VERSION = '8.5.3-dsp-audit-a';
+const WORKLET_BUILD_VERSION = '8.6.0-synth-circuit-a';
 export type EngineHealth = 'offline' | 'healthy' | 'warm' | 'critical';
 
 export interface DspProfilerSnapshot {
@@ -33,6 +33,7 @@ export interface DspProfilerSnapshot {
   adaptiveMode: boolean;
   adaptiveAction: string;
   dreamBuffer: DreamBufferStats;
+  synth: SynthTelemetryStats;
 }
 
 export interface StartAudioOptions {
@@ -120,6 +121,15 @@ export class AudioEngine {
       adaptiveMode: this.adaptiveMode,
       adaptiveAction: this.adaptiveAction,
       dreamBuffer: this.dreamBuffer?.getStats() ?? { fillRatio: 0, historySeconds: 8, inputPeak: 0, captures: 0, activeRoutes: 0 },
+      synth: this.synth?.getTelemetry() ?? {
+        activeVoices: 0,
+        maxVoices: 10,
+        peak: 0,
+        oversample: this.performanceMode === 'studio' ? 4 : this.performanceMode === 'balanced' ? 2 : 1,
+        machine: 'model-d',
+        topology: 'TRANSISTOR LADDER',
+        clippedSamples: 0,
+      },
     };
   }
 
@@ -628,6 +638,7 @@ export class AudioEngine {
 
   private configureQualityMode(): void {
     if (!this.analyser || !this.limiter) return;
+    this.synth?.setQualityMode(this.performanceMode);
     if (this.safetyClipper) {
       this.safetyClipper.oversample = this.performanceMode === 'studio' ? '4x' : '2x';
     }
@@ -669,6 +680,7 @@ export class AudioEngine {
       ['Lexicon 224', `lexicon-224-converter.js?v=${WORKLET_BUILD_VERSION}`],
       ['Dream Buffer', `dream-buffer-processor.js?v=${WORKLET_BUILD_VERSION}`],
       ['Recorder', `recorder-processor.js?v=${WORKLET_BUILD_VERSION}`],
+      ['Synth circuit', `synth-circuit-processor.js?v=${WORKLET_BUILD_VERSION}`],
     ] as const;
     for (const [label, file] of modules) {
       const moduleUrl = new URL(`${import.meta.env.BASE_URL}${file}`, window.location.origin).toString();

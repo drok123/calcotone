@@ -16,6 +16,7 @@ export type EngineStabilityInternals = {
   lastOverrunCount: number;
   routeTransition: Promise<void>;
   dreamBuffer: { getStats(): DspProfilerSnapshot['dreamBuffer'] } | null;
+  synth: { getTelemetry(): DspProfilerSnapshot['synth'] } | null;
 };
 
 type GrainEffect = Effect & { getProfilerStats(): GrainProfilerStats };
@@ -126,6 +127,15 @@ export function buildHiddenProfilerSnapshot(engine: AudioEngine): DspProfilerSna
       inputPeak: 0,
       captures: 0,
       activeRoutes: 0,
+    },
+    synth: internal.synth?.getTelemetry() ?? {
+      activeVoices: 0,
+      maxVoices: 10,
+      peak: 0,
+      oversample: engine.getPerformanceMode() === 'studio' ? 4 : engine.getPerformanceMode() === 'balanced' ? 2 : 1,
+      machine: 'model-d',
+      topology: 'TRANSISTOR LADDER',
+      clippedSamples: 0,
     },
   };
 }
