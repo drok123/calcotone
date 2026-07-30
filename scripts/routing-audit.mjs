@@ -18,7 +18,9 @@ const requireText = (source, needle, label) => {
 const routing = read('src/routing/serialRouting.ts');
 const hook = read('src/routing/useSerialRouting.ts');
 const app = read('src/App.tsx');
+const railCModules = read('src/components/effects/RailCModules.tsx');
 const vite = read('vite.config.ts');
+const routingModule = await import('../src/routing/serialRouting.ts');
 
 requireText(routing, 'SERIAL_SLOT_COUNT = 6', 'six-slot routing model');
 requireText(routing, 'SERIAL_ROW_SIZE = 3', 'two-row visual projection');
@@ -29,6 +31,11 @@ requireText(routing, 'shuffledSerialOrder(', 'full-chain random primitive');
 requireText(routing, "next.push(next.shift()!)", 'SIGNAL RANDOM visible-change guard');
 requireText(routing, 'top: normalized.slice(0, SERIAL_ROW_SIZE)', 'top row projection');
 requireText(routing, 'bottom: normalized.slice(SERIAL_ROW_SIZE, SERIAL_SLOT_COUNT)', 'bottom row projection');
+requireText(routing, 'moveRackModule(', 'cross-rail rack move primitive');
+requireText(routing, 'next[source.rail][source.index] = targetId', 'fixed-slot cross-rail exchange');
+requireText(routing, 'serialOrderFromRack(', 'rack-to-six-effect projection');
+requireText(routing, 'restoreRackRail(', 'per-rail factory restore');
+requireText(routing, 'shuffledRackOrder(', 'family-safe rack randomization');
 
 requireText(hook, 'orderRef = useRef<string[]>(initial)', 'native routing hook owns immediate order');
 requireText(hook, 'orderRef.current = next', 'routing ref updates synchronously');
@@ -39,14 +46,38 @@ requireText(hook, 'topRow: rows.top', 'hook projects top row');
 requireText(hook, 'bottomRow: rows.bottom', 'hook projects bottom row');
 
 requireText(app, "from './routing/serialRouting'", 'App directly uses routing owner');
-requireText(app, 'moveSerialModule([...railAOrder, ...railBOrder]', 'native cross-row drag');
-requireText(app, 'nudgeSerialModule([...railAOrder, ...railBOrder]', 'native cross-row keyboard routing');
-requireText(app, 'shuffledSerialOrder([...railAOrder, ...railBOrder]', 'native SIGNAL RANDOM routing');
+requireText(app, 'moveRackModule(', 'native cross-rail drag');
+requireText(app, 'nudgeRackModule(', 'native rack keyboard routing');
+requireText(app, 'shuffledRackOrder(', 'native SIGNAL RANDOM routing');
 requireText(app, "const DEFAULT_RAIL_C_ORDER = ['synth', 'chaos', 'pressure']", 'third rail ownership');
-requireText(app, "(sourceRail === 'C') !== (rail === 'C')", 'Rail C boundary guard');
-requireText(app, 'setRailCOrder(nextC)', 'Rail C reorder state');
-requireText(app, 'setRailCRandomOrder(railCOrder)', 'Rail C RANDOM serialization follows routing order');
+requireText(app, 'serialOrderFromRack({ A: nextA, B: nextB, C: nextC })', 'engine receives filtered six-effect order');
+requireText(app, 'setRailCOrder(next.C)', 'Rail C reorder state');
+requireText(app, 'setRailCRandomOrder([...railAOrder, ...railBOrder, ...railCOrder])', 'controller RANDOM serialization follows rack order');
+requireText(railCModules, 'SYNTH_RACK_STATE', 'Synth state survives cross-rail remount');
+requireText(railCModules, 'CHAOS_RACK_STATE', 'Chaos state survives cross-rail remount');
 if (vite.includes('serialRoutingTransform()')) failures.push('Retired serial routing transform is still enabled');
+
+const defaultRack = {
+  A: ['saturation', 'chorus', 'delay'],
+  B: ['reverb', 'bitcrusher', 'media'],
+  C: ['synth', 'chaos', 'pressure'],
+};
+const exchanged = routingModule.moveRackModule(defaultRack, 'synth', 'saturation');
+if (exchanged.A.join(',') !== 'synth,chorus,delay' || exchanged.C.join(',') !== 'saturation,chaos,pressure') {
+  failures.push('Rail C → Rail A drag did not exchange fixed rack slots');
+}
+const exchangedIds = [...exchanged.A, ...exchanged.B, ...exchanged.C];
+if (exchanged.A.length !== 3 || exchanged.B.length !== 3 || exchanged.C.length !== 3 || new Set(exchangedIds).size !== 9) {
+  failures.push('Cross-rail drag changed the three-by-three rack topology');
+}
+const serialAfterExchange = routingModule.serialOrderFromRack(exchanged);
+if (serialAfterExchange.join(',') !== 'chorus,delay,reverb,bitcrusher,media,saturation') {
+  failures.push(`Cross-rail drag lost the six-effect serial chain (${serialAfterExchange.join(',')})`);
+}
+const restored = routingModule.restoreRackRail(exchanged, 'A', defaultRack);
+if (restored.A.join(',') !== defaultRack.A.join(',')) {
+  failures.push('Rail A reset did not restore its factory modules after a cross-rail exchange');
+}
 
 if (failures.length) {
   console.error('\nCALCOTONE routing audit failed:\n');
@@ -55,4 +86,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE routing audit passed (native six-effect chain plus bounded Rail C).');
+console.log('CALCOTONE routing audit passed (fixed nine-slot rack with cross-rail exchange and six-effect projection).');

@@ -21,7 +21,11 @@ import {
   type SignalLabMode,
   type SignalLabStyle,
 } from '../../audio/SignalLab';
-import type { SynthMachine } from '../../audio/SynthEngine';
+import type {
+  SynthMachine,
+  SynthSequencerState,
+  SynthSequencerStep,
+} from '../../audio/SynthEngine';
 import {
   randomizePressure,
   setPressureState,
@@ -117,7 +121,7 @@ function RailModuleFrame({
           draggable={!faceplateEditor.editing}
           role="button"
           tabIndex={faceplateEditor.editing ? -1 : 0}
-          aria-label={`${name}, signal slot ${slotLabel}. Drag or use left and right arrow keys to reorder.`}
+          aria-label={`${name}, signal slot ${slotLabel}. Drag to reorder or exchange rack rails; use left and right arrow keys within this rail.`}
           onDragStart={onRoutingDragStart}
           onDragEnd={onRoutingDragEnd}
           onKeyDown={(event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -129,6 +133,7 @@ function RailModuleFrame({
               onRoutingNudge(1);
             }
           }}
+          title="Drag to any rack slot · or focus and use ← / → within this rail"
         >
           <span className="module-number" aria-hidden="true">{slotLabel}</span>
           <span className="module-jewel" aria-hidden="true" />
@@ -426,12 +431,34 @@ const INITIAL_PATTERNS: number[][] = [
   [4, -1, 7, -1, 9, -1, 7, -1, 2, 4, -1, 7, 9, -1, 4, -1],
 ];
 
+// Rack exchanges move a module between separate rail containers, which remounts
+// its React subtree. Keep performance state outside that subtree so moving the
+// physical chassis never resets the panel or sequencer.
+const SYNTH_RACK_STATE = {
+  enabled: false,
+  machine: 'model-d' as SynthMachine,
+  values: [0.58, 0.46, 0.26, 0.54, 0.22, 0.08],
+  presetId: 'panel-init',
+  patterns: INITIAL_PATTERNS.map((pattern) => [...pattern]),
+  patternIndex: 0,
+  chain: [0, 1, 2, 3],
+  chainArmed: false,
+  chainPosition: 0,
+  bpm: 100,
+  playing: false,
+  playhead: 0,
+};
+
 type SynthModuleProps = RailInteractionProps & {
   engineRunning: boolean;
   onEnabledChange: (enabled: boolean) => void;
   onMachineChange: (machine: SynthMachine) => void;
   onParametersChange: (values: readonly number[]) => void;
   onTriggerNote: (midi: number, durationSeconds: number) => void;
+  onSequencerChange: (state: SynthSequencerState) => void;
+  onSequencerStepListenerChange: (
+    listener: ((position: SynthSequencerStep) => void) | null
+  ) => void;
 };
 
 function SynthModule({
@@ -440,25 +467,41 @@ function SynthModule({
   onMachineChange,
   onParametersChange,
   onTriggerNote,
+  onSequencerChange,
+  onSequencerStepListenerChange,
   ...props
 }: SynthModuleProps) {
-  const [enabled, setEnabled] = useState(false);
-  const [machine, setMachine] = useState<SynthMachine>('model-d');
-  const [values, setValues] = useState([0.58, 0.46, 0.26, 0.54, 0.22, 0.08]);
-  const [presetId, setPresetId] = useState('panel-init');
-  const [patterns, setPatterns] = useState<number[][]>(() => INITIAL_PATTERNS.map((pattern) => [...pattern]));
-  const [patternIndex, setPatternIndex] = useState(0);
-  const [chain, setChain] = useState([0, 1, 2, 3]);
-  const [chainArmed, setChainArmed] = useState(false);
-  const [chainPosition, setChainPosition] = useState(0);
-  const [bpm, setBpm] = useState(100);
-  const [playing, setPlaying] = useState(false);
-  const [playhead, setPlayhead] = useState(0);
+  const [enabled, setEnabled] = useState(SYNTH_RACK_STATE.enabled);
+  const [machine, setMachine] = useState<SynthMachine>(SYNTH_RACK_STATE.machine);
+  const [values, setValues] = useState(() => [...SYNTH_RACK_STATE.values]);
+  const [presetId, setPresetId] = useState(SYNTH_RACK_STATE.presetId);
+  const [patterns, setPatterns] = useState<number[][]>(() => SYNTH_RACK_STATE.patterns.map((pattern) => [...pattern]));
+  const [patternIndex, setPatternIndex] = useState(SYNTH_RACK_STATE.patternIndex);
+  const [chain, setChain] = useState(() => [...SYNTH_RACK_STATE.chain]);
+  const [chainArmed, setChainArmed] = useState(SYNTH_RACK_STATE.chainArmed);
+  const [chainPosition, setChainPosition] = useState(SYNTH_RACK_STATE.chainPosition);
+  const [bpm, setBpm] = useState(SYNTH_RACK_STATE.bpm);
+  const [playing, setPlaying] = useState(SYNTH_RACK_STATE.playing);
+  const [playhead, setPlayhead] = useState(SYNTH_RACK_STATE.playhead);
   const patternsRef = useRef(patterns);
   const patternIndexRef = useRef(patternIndex);
   const chainRef = useRef(chain);
   const chainArmedRef = useRef(chainArmed);
   const chainPositionRef = useRef(chainPosition);
+  const playheadRef = useRef(playhead);
+
+  SYNTH_RACK_STATE.enabled = enabled;
+  SYNTH_RACK_STATE.machine = machine;
+  SYNTH_RACK_STATE.values = values;
+  SYNTH_RACK_STATE.presetId = presetId;
+  SYNTH_RACK_STATE.patterns = patterns;
+  SYNTH_RACK_STATE.patternIndex = patternIndex;
+  SYNTH_RACK_STATE.chain = chain;
+  SYNTH_RACK_STATE.chainArmed = chainArmed;
+  SYNTH_RACK_STATE.chainPosition = chainPosition;
+  SYNTH_RACK_STATE.bpm = bpm;
+  SYNTH_RACK_STATE.playing = playing;
+  SYNTH_RACK_STATE.playhead = playhead;
 
   const definition = SYNTH_MACHINES.find((candidate) => candidate.id === machine) ?? SYNTH_MACHINES[0];
   const machinePresets = SYNTH_PRESETS[machine];
@@ -469,6 +512,7 @@ function SynthModule({
   useEffect(() => { chainRef.current = chain; }, [chain]);
   useEffect(() => { chainArmedRef.current = chainArmed; }, [chainArmed]);
   useEffect(() => { chainPositionRef.current = chainPosition; }, [chainPosition]);
+  useEffect(() => { playheadRef.current = playhead; }, [playhead]);
 
   useEffect(() => {
     onEnabledChange(enabled);
@@ -483,31 +527,46 @@ function SynthModule({
   }, [values, engineRunning, onParametersChange]);
 
   useEffect(() => {
-    if (!playing || !enabled) return;
-    const stepSeconds = 60 / bpm / 4;
-    const playStep = (pattern: readonly number[], step: number) => {
-      const pitch = pattern[step];
-      if (pitch >= 0) onTriggerNote(71 - pitch, stepSeconds * .72);
-    };
-    playStep(patternsRef.current[patternIndexRef.current], playhead);
-    const timer = window.setInterval(() => {
-      setPlayhead((current) => {
-        const next = (current + 1) % 16;
-        let nextPattern = patternIndexRef.current;
-        if (next === 0 && chainArmedRef.current && chainRef.current.length > 0) {
-          const nextChainPosition = (chainPositionRef.current + 1) % chainRef.current.length;
-          nextPattern = chainRef.current[nextChainPosition];
-          chainPositionRef.current = nextChainPosition;
-          patternIndexRef.current = nextPattern;
-          setChainPosition(nextChainPosition);
-          setPatternIndex(nextPattern);
-        }
-        playStep(patternsRef.current[nextPattern], next);
-        return next;
-      });
-    }, stepSeconds * 1000);
-    return () => window.clearInterval(timer);
-  }, [playing, enabled, engineRunning, bpm, onTriggerNote]);
+    if (!engineRunning) return;
+    onSequencerChange({
+      patterns,
+      patternIndex,
+      chain,
+      chainArmed,
+      chainPosition,
+      bpm,
+      playing: playing && enabled,
+      startStep: playheadRef.current,
+    });
+  }, [
+    patterns,
+    patternIndex,
+    chain,
+    chainArmed,
+    chainPosition,
+    bpm,
+    playing,
+    enabled,
+    engineRunning,
+    onSequencerChange,
+  ]);
+
+  useEffect(() => {
+    if (!engineRunning) return;
+    onSequencerStepListenerChange((position) => {
+      playheadRef.current = position.step;
+      setPlayhead(position.step);
+      if (patternIndexRef.current !== position.patternIndex) {
+        patternIndexRef.current = position.patternIndex;
+        setPatternIndex(position.patternIndex);
+      }
+      if (chainPositionRef.current !== position.chainPosition) {
+        chainPositionRef.current = position.chainPosition;
+        setChainPosition(position.chainPosition);
+      }
+    });
+    return () => onSequencerStepListenerChange(null);
+  }, [engineRunning, onSequencerStepListenerChange]);
 
   function toggleCell(step: number, pitch: number): void {
     setPatterns((current) => current.map((pattern, index) => {
@@ -705,6 +764,13 @@ function SynthModule({
 
 type ChaosMode = 'chaos-pad' | 'performance-fx';
 
+const CHAOS_RACK_STATE = {
+  enabled: true,
+  mode: 'chaos-pad' as ChaosMode,
+  effect: 'grain-delay',
+  values: [0.42, 0.34, 0.52, 0.68],
+};
+
 const CHAOS_PROGRAMS: Record<ChaosMode, readonly { id: string; label: string }[]> = {
   'chaos-pad': [
     { id: 'grain-delay', label: 'Grain Delay' },
@@ -728,10 +794,14 @@ function ChaosModule({
 }: RailInteractionProps & {
   motionPadProps: MotionPadProps;
 }) {
-  const [enabled, setEnabled] = useState(true);
-  const [mode, setMode] = useState<ChaosMode>('chaos-pad');
-  const [effect, setEffect] = useState('grain-delay');
-  const [values, setValues] = useState([0.42, 0.34, 0.52, 0.68]);
+  const [enabled, setEnabled] = useState(CHAOS_RACK_STATE.enabled);
+  const [mode, setMode] = useState<ChaosMode>(CHAOS_RACK_STATE.mode);
+  const [effect, setEffect] = useState(CHAOS_RACK_STATE.effect);
+  const [values, setValues] = useState(() => [...CHAOS_RACK_STATE.values]);
+  CHAOS_RACK_STATE.enabled = enabled;
+  CHAOS_RACK_STATE.mode = mode;
+  CHAOS_RACK_STATE.effect = effect;
+  CHAOS_RACK_STATE.values = values;
   const labels = mode === 'chaos-pad'
     ? ['Depth', 'Feedback', 'Drift', 'Mix']
     : ['Scatter', 'Rate', 'Color', 'Mix'];
@@ -907,6 +977,8 @@ export function RailCModule({
   onSynthMachineChange,
   onSynthParametersChange,
   onSynthTriggerNote,
+  onSynthSequencerChange,
+  onSynthSequencerStepListenerChange,
   ...interaction
 }: RailInteractionProps & {
   moduleId: string;
@@ -919,6 +991,10 @@ export function RailCModule({
   onSynthMachineChange: (machine: SynthMachine) => void;
   onSynthParametersChange: (values: readonly number[]) => void;
   onSynthTriggerNote: (midi: number, durationSeconds: number) => void;
+  onSynthSequencerChange: (state: SynthSequencerState) => void;
+  onSynthSequencerStepListenerChange: (
+    listener: ((position: SynthSequencerStep) => void) | null
+  ) => void;
 }) {
   void modules;
   void assignments;
@@ -931,6 +1007,8 @@ export function RailCModule({
         onMachineChange={onSynthMachineChange}
         onParametersChange={onSynthParametersChange}
         onTriggerNote={onSynthTriggerNote}
+        onSequencerChange={onSynthSequencerChange}
+        onSequencerStepListenerChange={onSynthSequencerStepListenerChange}
       />
     );
   }

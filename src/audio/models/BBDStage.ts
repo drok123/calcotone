@@ -1,17 +1,12 @@
 import { CompanderStage } from './CompanderStage';
-
-function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
-}
+import { bbdClockTransfer, bbdOperatingPoint } from './HardwareCalibration';
 
 function makeClockCurve(amount: number): Float32Array<ArrayBuffer> {
   const size = 2048;
   const curve = new Float32Array(size);
-  const drive = 1 + clamp01(amount) * 2.2;
-  const norm = Math.tanh(drive);
   for (let i = 0; i < size; i += 1) {
     const x = (i / (size - 1)) * 2 - 1;
-    curve[i] = Math.tanh(x * drive) / norm;
+    curve[i] = bbdClockTransfer(x, amount);
   }
   return curve;
 }
@@ -74,19 +69,18 @@ export class BBDStage {
   }
 
   public configure(delayTimeSeconds: number, character: number, color: number, modulation: number): void {
-    const time = Math.max(0.0005, Number.isFinite(delayTimeSeconds) ? delayTimeSeconds : 0.02);
-    const c = clamp01(character);
-    const tone = clamp01(color);
-    const mod = clamp01(modulation);
+    const point = bbdOperatingPoint(delayTimeSeconds, character, color, modulation);
     const now = this.context.currentTime;
-    const clockLoss = clamp01(Math.log10(1 + time * 75) / Math.log10(1 + 6.2 * 75));
-    const cutoff = 9200 - clockLoss * 5200 - c * 1500 + tone * 1700;
-    this.bucketLoss.frequency.setTargetAtTime(Math.max(1400, cutoff), now, 0.04);
-    this.preEmphasis.gain.setTargetAtTime(1.2 + c * 3.8, now, 0.035);
-    this.deEmphasis.gain.setTargetAtTime(-1.0 - c * 3.4, now, 0.035);
-    this.trim.gain.setTargetAtTime(0.99 - c * 0.08, now, 0.03);
-    this.compander.configure(0.36 + c * 0.46, 0.5 + mod * 0.35, tone);
-    const key = Math.round((c * 0.72 + clockLoss * 0.28) * 48);
+    this.bucketLoss.frequency.setTargetAtTime(point.bucketCutoffHz, now, 0.04);
+    this.preEmphasis.gain.setTargetAtTime(point.preEmphasisDb, now, 0.035);
+    this.deEmphasis.gain.setTargetAtTime(point.deEmphasisDb, now, 0.035);
+    this.trim.gain.setTargetAtTime(point.trimGain, now, 0.03);
+    this.compander.configure(
+      point.companderAmount,
+      point.companderSpeed,
+      point.companderColor,
+    );
+    const key = Math.round(point.clockCurveAmount * 48);
     if (key !== this.curveKey) {
       this.curveKey = key;
       this.clockShaper.curve = makeClockCurve(key / 48);

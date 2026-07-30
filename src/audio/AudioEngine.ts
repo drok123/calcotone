@@ -6,7 +6,13 @@ import { InputMatrix, type InputMode } from './InputMatrix';
 import { WavRecorder, type RecordedWav } from './WavRecorder';
 import type { GrainProfilerStats } from './effects/Bitcrusher';
 import { DreamBuffer, type DreamBufferStats } from './DreamBuffer';
-import { SynthEngine, type SynthMachine, type SynthTelemetryStats } from './SynthEngine';
+import {
+  SynthEngine,
+  type SynthMachine,
+  type SynthSequencerState,
+  type SynthSequencerStep,
+  type SynthTelemetryStats,
+} from './SynthEngine';
 
 export type AudioEngineState =
   | 'idle'
@@ -27,7 +33,7 @@ type ExtendedAudioContext = AudioContext & {
   readonly renderQuantumSize?: number;
 };
 
-const WORKLET_BUILD_VERSION = '8.7.0-synth-spice-a';
+const WORKLET_BUILD_VERSION = '8.7.1-synth-realtime-clock';
 export type EngineHealth = 'offline' | 'healthy' | 'warm' | 'critical';
 
 export interface DspProfilerSnapshot {
@@ -76,6 +82,7 @@ export class AudioEngine {
   private recorder: WavRecorder | null = null;
   private dreamBuffer: DreamBuffer | null = null;
   private synth: SynthEngine | null = null;
+  private synthSequencerStepListener: ((position: SynthSequencerStep) => void) | null = null;
 
   private effects = new Map<string, Effect>();
   private state: AudioEngineState = 'idle';
@@ -270,6 +277,7 @@ export class AudioEngine {
       this.analyser = this.context.createAnalyser();
       this.dreamBuffer = new DreamBuffer(this.context);
       this.synth = new SynthEngine(this.context, this.graph.input);
+      this.synth.setSequencerStepListener(this.synthSequencerStepListener);
 
       this.dcBlock.type = 'highpass';
       this.dcBlock.frequency.value = 18;
@@ -410,6 +418,17 @@ export class AudioEngine {
 
   public triggerSynthNote(midi: number, durationSeconds: number, velocity = .78): void {
     this.synth?.triggerNote(midi, durationSeconds, velocity);
+  }
+
+  public setSynthSequencerState(state: SynthSequencerState): void {
+    this.synth?.setSequencerState(state);
+  }
+
+  public setSynthSequencerStepListener(
+    listener: ((position: SynthSequencerStep) => void) | null
+  ): void {
+    this.synthSequencerStepListener = listener;
+    this.synth?.setSequencerStepListener(listener);
   }
 
   public addEffect(effectId: EffectId): Effect | null {

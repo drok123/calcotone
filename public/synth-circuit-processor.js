@@ -14,6 +14,14 @@ const ELECTRON_CHARGE = 1.602176634e-19;
 const ROOM_TEMPERATURE_K = 300.15;
 const MODEL_D_CAPACITANCE_F = 68e-9;
 const MODEL_D_SIGNAL_VOLTAGE = .12;
+const OUTPUT_SATURATION_GAIN = 1.08;
+const OUTPUT_SATURATION_NORMALIZATION = 1 / Math.tanh(OUTPUT_SATURATION_GAIN);
+const FM_RATIOS = [
+  [1, 1, 2, 3, 4, 6],
+  [1, 2, 3, 1, 5, 7],
+  [.5, 1, 1.5, 2, 3, 4],
+  [1, 1.01, 2, 2.01, 4, 4.02],
+];
 const PROFILES = {
   'model-d':  { topology: '4× BJT-C SPICE LADDER', family: 'ladder', solver: 'BJT-C NEWTON', attack: .008, decay: .18, sustain: .58, release: .14, cutoff: 5400, resonance: .67, drive: 2.1, level: .17 },
   'juno-106': { topology: 'IR3109 OTA CASCADE', family: 'ota', attack: .015, decay: .26, sustain: .68, release: .24, cutoff: 7200, resonance: .40, drive: 1.25, level: .15 },
@@ -40,10 +48,7 @@ const thermalVoltage = (temperatureK) => BOLTZMANN_CONSTANT * temperatureK / ELE
  * a bounded differential-pair current suitable for a realtime Newton solve.
  */
 function bjtDifferentialPair(normalizedVoltage) {
-  const exponent = clamp(normalizedVoltage, -12, 12);
-  const forwardJunction = Math.exp(exponent);
-  const reverseJunction = Math.exp(-exponent);
-  return (forwardJunction - reverseJunction) / (forwardJunction + reverseJunction);
+  return Math.tanh(clamp(normalizedVoltage, -12, 12));
 }
 
 /**
@@ -55,27 +60,26 @@ function solveBjtCapacitorStage(
   previousVoltage,
   previousCurrent,
   driveVoltage,
-  capacitance,
   tailCurrent,
-  junctionVoltage,
+  inverseTwoJunctionVoltage,
+  conductanceScale,
   mismatch,
   railVoltage,
-  dt,
+  companionScale,
   iterations,
   result,
 ) {
   let voltage = previousVoltage;
-  const companionScale = dt / (2 * capacitance);
   for (let iteration = 0; iteration < iterations; iteration += 1) {
-    const normalized = (driveVoltage - voltage) / (2 * junctionVoltage) + mismatch;
+    const normalized = (driveVoltage - voltage) * inverseTwoJunctionVoltage + mismatch;
     const pairTransfer = bjtDifferentialPair(normalized);
     const current = tailCurrent * pairTransfer;
-    const conductance = tailCurrent * (1 - pairTransfer * pairTransfer) / (2 * junctionVoltage);
+    const conductance = conductanceScale * (1 - pairTransfer * pairTransfer);
     const residual = voltage - previousVoltage - companionScale * (current + previousCurrent);
     voltage -= residual / Math.max(1e-9, 1 + companionScale * conductance);
     voltage = clamp(voltage, -railVoltage, railVoltage);
   }
-  const normalized = (driveVoltage - voltage) / (2 * junctionVoltage) + mismatch;
+  const normalized = (driveVoltage - voltage) * inverseTwoJunctionVoltage + mismatch;
   result[0] = voltage;
   result[1] = tailCurrent * bjtDifferentialPair(normalized);
 }
@@ -118,6 +122,18 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     this.renderQuantumFrames = 0;
     this.dcL = { input: 0, output: 0 };
     this.dcR = { input: 0, output: 0 };
+    this.sequencer = {
+      patterns: Array.from({ length: 4 }, () => Array(16).fill(-1)),
+      patternIndex: 0,
+      chain: [0, 1, 2, 3],
+      chainArmed: false,
+      chainPosition: 0,
+      bpm: 100,
+      playing: false,
+      step: 0,
+      stepFrames: sampleRate * .15,
+      nextStepFrame: 0,
+    };
     this.port.onmessage = (event) => this.handleMessage(event.data);
   }
 
@@ -125,13 +141,24 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     if (!data || typeof data.type !== 'string') return;
     if (data.type === 'enabled') {
       this.enabled = Boolean(data.value);
-      if (!this.enabled) this.releaseAll();
+      if (!this.enabled) {
+        this.releaseAll();
+        this.voices.length = 0;
+      }
     } else if (data.type === 'machine' && PROFILES[data.value]) {
       this.machine = data.value;
     } else if (data.type === 'parameters' && Array.isArray(data.values)) {
       this.parameters = Array.from({ length: 6 }, (_, i) => clamp(data.values[i] ?? .5));
     } else if (data.type === 'quality') {
-      this.quality = data.factor >= 4 ? 4 : data.factor >= 2 ? 2 : 1;
+      const nextQuality = data.factor >= 4 ? 4 : data.factor >= 2 ? 2 : 1;
+      if (nextQuality !== this.quality) {
+        this.quality = nextQuality;
+        for (let index = 0; index < this.voices.length; index += 1) {
+          this.refreshVoiceCoefficients(this.voices[index]);
+        }
+      }
+    } else if (data.type === 'sequencer-state') {
+      this.setSequencerState(data);
     } else if (data.type === 'note-on' && this.enabled) {
       this.noteOn(data);
     } else if (data.type === 'all-notes-off' || data.type === 'dispose') {
@@ -139,10 +166,82 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     }
   }
 
+  setSequencerState(data) {
+    const sequence = this.sequencer;
+    const wasPlaying = sequence.playing;
+    const previousStepFrames = sequence.stepFrames;
+    if (Array.isArray(data.patterns)) {
+      sequence.patterns = Array.from({ length: 4 }, (_, patternIndex) => {
+        const source = Array.isArray(data.patterns[patternIndex]) ? data.patterns[patternIndex] : [];
+        return Array.from({ length: 16 }, (_, step) => {
+          const pitch = source[step];
+          return Number.isInteger(pitch) && pitch >= 0 && pitch < 12 ? pitch : -1;
+        });
+      });
+    }
+    sequence.patternIndex = Math.trunc(clamp(data.patternIndex, 0, 3));
+    if (Array.isArray(data.chain)) {
+      sequence.chain = data.chain
+        .slice(0, 8)
+        .map((index) => Math.trunc(clamp(index, 0, 3)));
+    }
+    sequence.chainArmed = Boolean(data.chainArmed);
+    sequence.chainPosition = Math.trunc(clamp(
+      data.chainPosition,
+      0,
+      Math.max(0, sequence.chain.length - 1),
+    ));
+    sequence.bpm = clamp(data.bpm, 60, 180);
+    sequence.stepFrames = sampleRate * 15 / sequence.bpm;
+    sequence.playing = Boolean(data.playing);
+    if (sequence.playing && !wasPlaying) {
+      sequence.step = Math.trunc(clamp(data.startStep, 0, 15));
+      sequence.nextStepFrame = this.frameCounter;
+    } else if (sequence.playing && previousStepFrames !== sequence.stepFrames) {
+      const remainingRatio = clamp(
+        (sequence.nextStepFrame - this.frameCounter) / Math.max(1, previousStepFrames),
+      );
+      sequence.nextStepFrame = this.frameCounter + remainingRatio * sequence.stepFrames;
+    }
+  }
+
+  triggerSequencerStep() {
+    const sequence = this.sequencer;
+    const pattern = sequence.patterns[sequence.patternIndex] || sequence.patterns[0];
+    const pitch = pattern?.[sequence.step] ?? -1;
+    if (this.enabled && pitch >= 0) {
+      this.noteOn({
+        midi: 71 - pitch,
+        durationSeconds: sequence.stepFrames / sampleRate * .72,
+        velocity: .78,
+      });
+    }
+    this.port.postMessage({
+      type: 'sequencer-step',
+      step: sequence.step,
+      patternIndex: sequence.patternIndex,
+      chainPosition: sequence.chainPosition,
+      frame: this.frameCounter,
+    });
+    sequence.step = (sequence.step + 1) & 15;
+    if (sequence.step === 0 && sequence.chainArmed && sequence.chain.length > 0) {
+      sequence.chainPosition = (sequence.chainPosition + 1) % sequence.chain.length;
+      sequence.patternIndex = sequence.chain[sequence.chainPosition];
+    }
+    sequence.nextStepFrame += sequence.stepFrames;
+  }
+
   noteOn(data) {
     if (this.voices.length >= MAX_VOICES) {
-      this.voices.sort((a, b) => a.env - b.env || b.age - a.age);
-      this.voices.shift();
+      let stealIndex = 0;
+      for (let index = 1; index < this.voices.length; index += 1) {
+        const candidate = this.voices[index];
+        const selected = this.voices[stealIndex];
+        if (candidate.env < selected.env || (candidate.env === selected.env && candidate.age > selected.age)) {
+          stealIndex = index;
+        }
+      }
+      this.voices.splice(stealIndex, 1);
     }
     const midi = clamp(data.midi, 0, 127);
     const profile = PROFILES[this.machine];
@@ -155,7 +254,8 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       ladderCapacitances[pole] = MODEL_D_CAPACITANCE_F * (1 + componentDrift(pole * 4) * .018);
       ladderMismatch[pole] = componentDrift(12 + pole * 3) * .009;
     }
-    this.voices.push({
+    const pan = ((((seed >>> 8) & 255) / 255) * 2 - 1) * this.parameters[5] * .24;
+    const voice = {
       machine: this.machine,
       profile,
       parameters: [...this.parameters],
@@ -176,6 +276,9 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       ladderSolve: new Float64Array(2),
       ladderCapacitances,
       ladderMismatch,
+      spiceCompanionScales: new Float64Array(4),
+      fmRatios: new Float64Array(6),
+      fmLevels: new Float64Array(6),
       temperatureK,
       thermalVoltage: thermalVoltage(temperatureK),
       supplySag: 0,
@@ -183,8 +286,101 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       hold: 0,
       holdCounter: 0,
       noise: seed,
-      pan: ((((seed >>> 8) & 255) / 255) * 2 - 1) * this.parameters[5] * .24,
-    });
+      pan,
+      panL: Math.sqrt((1 - pan) * .5),
+      panR: Math.sqrt((1 + pan) * .5),
+    };
+    this.refreshVoiceCoefficients(voice);
+    this.voices.push(voice);
+  }
+
+  refreshVoiceCoefficients(voice) {
+    const parameters = voice.parameters;
+    const profile = voice.profile;
+    const dt = 1 / (sampleRate * this.quality);
+    const source = parameters[0];
+    const color = parameters[1];
+    const resonance = parameters[2];
+    const contour = parameters[3];
+    const character = parameters[4];
+    const motion = parameters[5];
+
+    const attack = Math.max(.002, profile.attack * (.3 + contour * 1.4));
+    const decay = Math.max(.012, profile.decay * (.5 + contour));
+    const release = Math.max(.018, profile.release * (.45 + contour * 1.8));
+    voice.attackRate = Math.min(1, dt * 6 / attack);
+    voice.attackSeconds = attack;
+    voice.decayRate = Math.min(1, dt * 4 / decay);
+    voice.releaseMultiplier = Math.exp(-dt * 7.2 / release);
+
+    const detune = (motion - .5) * .013;
+    const secondOscillatorOctaves = voice.machine === 'prophet-5' || voice.machine === 'ob-xa'
+      ? detune
+      : -1 + detune;
+    voice.phaseIncrementA = clamp(voice.frequency * (1 - detune) * dt, 1e-7, .45);
+    voice.phaseIncrementB = clamp(voice.frequency * Math.pow(2, secondOscillatorOctaves) * dt, 1e-7, .45);
+    voice.subPhaseIncrement = clamp(voice.frequency * .5 * dt, 1e-7, .45);
+    voice.pulseWidth = .34 + character * .32;
+    voice.sourceMixA = .72 - source * .42;
+    voice.sourceMixB = .28 + source * .42;
+
+    const ladderCutoff = clamp(
+      profile.cutoff * (.055 + color * color * 1.22) * (.7 + contour * .35),
+      45,
+      sampleRate * .43,
+    );
+    voice.ladderG = 1 - Math.exp(-TAU * ladderCutoff * dt);
+    voice.ladderFeedback = clamp(profile.resonance * (.22 + resonance * 1.34), 0, .96) * 4.05;
+    voice.ladderDrive = profile.drive * (.72 + character * 2.15);
+
+    const spiceCutoff = Math.min(ladderCutoff, sampleRate * .34);
+    const ideality = 1.08;
+    voice.spiceJunctionVoltage = voice.thermalVoltage * ideality;
+    voice.spiceInverseTwoJunctionVoltage = 1 / (2 * voice.spiceJunctionVoltage);
+    voice.spiceTailCurrent = 2 * voice.spiceJunctionVoltage * MODEL_D_CAPACITANCE_F * TAU * spiceCutoff;
+    voice.spiceConductanceScale = voice.spiceTailCurrent * voice.spiceInverseTwoJunctionVoltage;
+    voice.spiceFeedback = clamp(profile.resonance * (.20 + resonance * 1.32), 0, .95) * 3.82;
+    voice.spiceSignalVoltage = MODEL_D_SIGNAL_VOLTAGE * (.82 + character * .36);
+    voice.spiceDrive = profile.drive * (.68 + character * 1.82);
+    voice.spiceSupplyCoefficient = 1 - Math.exp(-dt / (120 * 47e-6));
+    for (let pole = 0; pole < 4; pole += 1) {
+      voice.spiceCompanionScales[pole] = dt / (2 * voice.ladderCapacitances[pole]);
+    }
+
+    const otaCutoff = clamp(profile.cutoff * (.06 + color * color * 1.18), 55, sampleRate * .43);
+    voice.otaG = 1 - Math.exp(-TAU * otaCutoff * dt);
+    voice.otaFeedback = clamp(profile.resonance * (.20 + resonance * 1.45), 0, .92) * 3.7;
+    voice.otaDrive = profile.drive * (.75 + character * 1.45);
+    voice.otaStageDrive = 1.02 + character * .18;
+
+    const korgCutoff = clamp(profile.cutoff * (.045 + color * color * 1.18), 45, sampleRate * .40);
+    voice.korgG = Math.tan(Math.PI * korgCutoff * dt);
+    voice.korgDamp = .58 + (1 - resonance) * 1.15;
+    voice.korgDrive = profile.drive * (.72 + character * 2.35);
+    voice.korgFeedback = profile.resonance * (.35 + resonance * 1.75) * 2.5;
+    voice.korgHighpass = color < .18;
+
+    voice.fmAlgorithm = Math.min(3, Math.floor(source * 4));
+    const ratios = FM_RATIOS[voice.fmAlgorithm];
+    for (let operator = 0; operator < 6; operator += 1) {
+      voice.fmRatios[operator] = voice.frequency * ratios[operator] * dt;
+    }
+    voice.fmLevels[0] = 1;
+    voice.fmLevels[1] = .75 + color;
+    voice.fmLevels[2] = .50 + motion;
+    voice.fmLevels[3] = .38 + resonance;
+    voice.fmLevels[4] = .30 + contour;
+    voice.fmLevels[5] = .22 + character;
+
+    voice.digitalPhaseIncrement = clamp(
+      voice.frequency * Math.pow(2, (parameters[2] - .5)) * dt,
+      1e-7,
+      .45,
+    );
+    voice.digitalHarmonic = 2 + Math.floor(parameters[1] * 7);
+    voice.phaseDistortionHarmonic = 2 + Math.floor(parameters[4] * 6);
+    voice.sampleHarmonic = 2 + Math.floor(parameters[0] * 8);
+    voice.sampleHoldLength = 2 + Math.floor((1 - parameters[4]) * 15);
   }
 
   releaseAll() {
@@ -193,96 +389,65 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
 
   envelope(voice, dt) {
     const p = voice.profile;
-    const contour = voice.parameters[3];
-    const attack = Math.max(.002, p.attack * (.3 + contour * 1.4));
-    const decay = Math.max(.012, p.decay * (.5 + contour));
-    const release = Math.max(.018, p.release * (.45 + contour * 1.8));
     voice.age += dt;
     if (!voice.releasing && voice.age >= voice.duration) voice.releasing = true;
     if (voice.releasing) {
       voice.releaseAge += dt;
-      voice.env *= Math.exp(-dt * 7.2 / release);
+      voice.env *= voice.releaseMultiplier;
       return voice.env;
     }
-    if (voice.age < attack) {
-      voice.env += (1 - voice.env) * Math.min(1, dt * 6 / attack);
+    if (voice.age < voice.attackSeconds) {
+      voice.env += (1 - voice.env) * voice.attackRate;
     } else {
-      const sustain = p.sustain;
-      voice.env += (sustain - voice.env) * Math.min(1, dt * 4 / decay);
+      voice.env += (p.sustain - voice.env) * voice.decayRate;
     }
     return voice.env;
   }
 
-  advance(voice, key, frequency, dt) {
-    const increment = clamp(frequency * dt, 1e-7, .45);
-    voice[key] = wrap(voice[key] + increment);
-    return increment;
-  }
-
-  analogSource(voice, dt) {
-    const [source, , , , character, motion] = voice.parameters;
-    const frequency = voice.frequency;
-    const detune = (motion - .5) * .013;
-    const incA = this.advance(voice, 'phaseA', frequency * (1 - detune), dt);
-    const incB = this.advance(voice, 'phaseB', frequency * Math.pow(2, voice.machine === 'prophet-5' || voice.machine === 'ob-xa' ? detune : -1 + detune), dt);
+  analogSource(voice) {
+    const incA = voice.phaseIncrementA;
+    const incB = voice.phaseIncrementB;
+    voice.phaseA = wrap(voice.phaseA + incA);
+    voice.phaseB = wrap(voice.phaseB + incB);
     let a = saw(voice.phaseA, incA);
-    let b = pulse(voice.phaseB, incB, .34 + character * .32);
+    let b = pulse(voice.phaseB, incB, voice.pulseWidth);
     if (voice.machine === 'ob-xa') b = saw(voice.phaseB, incB);
     if (voice.machine === 'sh-101') {
-      this.advance(voice, 'subPhase', frequency * .5, dt);
+      voice.subPhase = wrap(voice.subPhase + voice.subPhaseIncrement);
       b = pulse(voice.subPhase, incA * .5, .5) * .85;
     }
-    return a * (.72 - source * .42) + b * (.28 + source * .42);
+    return a * voice.sourceMixA + b * voice.sourceMixB;
   }
 
-  ladder(voice, input, dt, hybrid = false) {
-    const [, color, resonance, contour, character] = voice.parameters;
-    const profile = voice.profile;
-    const cutoff = clamp(profile.cutoff * (.055 + color * color * 1.22) * (.7 + contour * .35), 45, sampleRate * .43);
-    const g = 1 - Math.exp(-TAU * cutoff * dt);
-    const feedback = clamp(profile.resonance * (.22 + resonance * 1.34), 0, .96) * 4.05;
-    let stage = Math.tanh(input * profile.drive * (.72 + character * 2.15) - voice.poles[3] * feedback);
+  ladder(voice, input, hybrid = false) {
+    let stage = Math.tanh(input * voice.ladderDrive - voice.poles[3] * voice.ladderFeedback);
     for (let pole = 0; pole < 4; pole += 1) {
       const target = Math.tanh(stage - voice.poles[pole] * (hybrid ? .18 : .11));
-      voice.poles[pole] += g * (target - Math.tanh(voice.poles[pole]));
+      voice.poles[pole] += voice.ladderG * (target - Math.tanh(voice.poles[pole]));
       stage = voice.poles[pole];
     }
     return Math.tanh(voice.poles[3] * 1.25);
   }
 
-  spiceLadder(voice, input, dt) {
-    const [, color, resonance, contour, character] = voice.parameters;
-    const profile = voice.profile;
-    const cutoff = clamp(
-      profile.cutoff * (.055 + color * color * 1.22) * (.7 + contour * .35),
-      45,
-      sampleRate * .34,
-    );
-    const feedback = clamp(profile.resonance * (.20 + resonance * 1.32), 0, .95) * 3.82;
-    const signalVoltage = MODEL_D_SIGNAL_VOLTAGE * (.82 + character * .36);
-    const drivenInput = Math.tanh(input * profile.drive * (.68 + character * 1.82)) * signalVoltage;
-
-    // The current source that biases each differential pair sets gm and therefore
-    // cutoff: gm/C = 2πfc, with gm ≈ Itail/(2 n Vt).
-    const ideality = 1.08;
-    const junctionVoltage = voice.thermalVoltage * ideality;
-    const nominalTailCurrent = 2 * junctionVoltage * MODEL_D_CAPACITANCE_F * TAU * cutoff;
+  spiceLadder(voice, input) {
+    const character = voice.parameters[4];
+    const signalVoltage = voice.spiceSignalVoltage;
+    const drivenInput = Math.tanh(input * voice.spiceDrive) * signalVoltage;
     const railVoltage = Math.max(.24, .42 - voice.supplySag);
     const iterations = this.quality >= 4 ? 2 : 1;
-    let stageVoltage = drivenInput - voice.poles[3] * feedback;
+    let stageVoltage = drivenInput - voice.poles[3] * voice.spiceFeedback;
 
     for (let pole = 0; pole < 4; pole += 1) {
-      const capacitance = voice.ladderCapacitances[pole];
       solveBjtCapacitorStage(
         voice.poles[pole],
         voice.ladderCurrents[pole],
         stageVoltage,
-        capacitance,
-        nominalTailCurrent,
-        junctionVoltage,
+        voice.spiceTailCurrent,
+        voice.spiceInverseTwoJunctionVoltage,
+        voice.spiceConductanceScale,
         voice.ladderMismatch[pole],
         railVoltage,
-        dt,
+        voice.spiceCompanionScales[pole],
         iterations,
         voice.ladderSolve,
       );
@@ -298,61 +463,45 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       0,
       .075,
     );
-    const supplyTimeConstant = 120 * 47e-6;
-    voice.supplySag += (1 - Math.exp(-dt / supplyTimeConstant)) * (supplyLoad - voice.supplySag);
+    voice.supplySag += voice.spiceSupplyCoefficient * (supplyLoad - voice.supplySag);
     return Math.tanh(voice.poles[3] / signalVoltage * 1.18);
   }
 
-  ota(voice, input, dt) {
-    const [, color, resonance, , character, motion] = voice.parameters;
-    const p = voice.profile;
-    const cutoff = clamp(p.cutoff * (.06 + color * color * 1.18), 55, sampleRate * .43);
-    const g = 1 - Math.exp(-TAU * cutoff * dt);
-    const feedback = clamp(p.resonance * (.20 + resonance * 1.45), 0, .92) * 3.7;
-    let stage = Math.tanh(input * p.drive * (.75 + character * 1.45) - voice.poles[3] * feedback);
+  ota(voice, input) {
+    let stage = Math.tanh(input * voice.otaDrive - voice.poles[3] * voice.otaFeedback);
     for (let pole = 0; pole < 4; pole += 1) {
-      voice.poles[pole] += g * (stage - voice.poles[pole]);
-      stage = Math.tanh(voice.poles[pole] * (1.02 + character * .18));
+      voice.poles[pole] += voice.otaG * (stage - voice.poles[pole]);
+      stage = Math.tanh(voice.poles[pole] * voice.otaStageDrive);
     }
-    if (voice.machine === 'ob-xa') return motion < .5 ? voice.poles[1] * .75 : voice.poles[3] * 1.05;
+    if (voice.machine === 'ob-xa') return voice.parameters[5] < .5 ? voice.poles[1] * .75 : voice.poles[3] * 1.05;
     return voice.poles[3];
   }
 
-  korg35(voice, input, dt) {
-    const [, color, resonance, , character] = voice.parameters;
-    const p = voice.profile;
-    const cutoff = clamp(p.cutoff * (.045 + color * color * 1.18), 45, sampleRate * .40);
-    const g = Math.tan(Math.PI * cutoff * dt);
-    const damp = .58 + (1 - resonance) * 1.15;
-    const drive = p.drive * (.72 + character * 2.35);
-    const x = Math.tanh(input * drive - voice.poles[1] * p.resonance * (.35 + resonance * 1.75) * 2.5);
-    const high = (x - voice.poles[0] * damp - voice.poles[1]) / (1 + g * (g + damp));
+  korg35(voice, input) {
+    const g = voice.korgG;
+    const x = Math.tanh(input * voice.korgDrive - voice.poles[1] * voice.korgFeedback);
+    const high = (x - voice.poles[0] * voice.korgDamp - voice.poles[1])
+      / (1 + g * (g + voice.korgDamp));
     const band = high * g + voice.poles[0];
     const low = band * g + voice.poles[1];
     voice.poles[0] = high * g + band;
     voice.poles[1] = band * g + low;
-    return Math.tanh((color < .18 ? high : low) * 1.45);
+    return Math.tanh((voice.korgHighpass ? high : low) * 1.45);
   }
 
-  fmSource(voice, dt) {
-    const [algorithm, ratio, feedback, envelope, touch, brightness] = voice.parameters;
-    const ratios = [
-      [1, 1, 2, 3, 4, 6], [1, 2, 3, 1, 5, 7],
-      [.5, 1, 1.5, 2, 3, 4], [1, 1.01, 2, 2.01, 4, 4.02],
-    ][Math.min(3, Math.floor(algorithm * 4))];
-    const levels = [1, .75 + ratio, .50 + brightness, .38 + feedback, .30 + envelope, .22 + touch];
+  fmSource(voice) {
+    const feedback = voice.parameters[2];
     const values = voice.opMemory;
-    const algo = Math.min(3, Math.floor(algorithm * 4));
+    const algo = voice.fmAlgorithm;
     for (let op = 5; op >= 0; op -= 1) {
-      const inc = voice.frequency * ratios[op] * dt;
-      voice.opPhases[op] = wrap(voice.opPhases[op] + inc);
+      voice.opPhases[op] = wrap(voice.opPhases[op] + voice.fmRatios[op]);
       let modulation = 0;
       if (algo === 0 && op < 5) modulation = values[op + 1] * (1.5 + feedback * 8);
       else if (algo === 1) modulation = op < 3 ? values[op + 3] * (1 + feedback * 6) : 0;
       else if (algo === 2) modulation = op === 0 ? (values[1] + values[2] + values[3]) * (1 + feedback * 3) : op >= 4 ? values[5] * feedback * 5 : 0;
       else modulation = op % 2 === 0 ? values[op + 1] * (1 + feedback * 5) : 0;
       if (op === 5) modulation += values[5] * feedback * 1.35;
-      values[op] = Math.sin(TAU * voice.opPhases[op] + modulation) * levels[op];
+      values[op] = Math.sin(TAU * voice.opPhases[op] + modulation) * voice.fmLevels[op];
     }
     if (algo === 0) return values[0];
     if (algo === 1) return (values[0] + values[1] + values[2]) * .42;
@@ -360,50 +509,55 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     return (values[0] + values[2] + values[4]) * .38;
   }
 
-  digitalSource(voice, dt) {
-    const [source, start, tune, loop, color, character] = voice.parameters;
-    const frequency = voice.frequency * Math.pow(2, (tune - .5));
-    const inc = this.advance(voice, 'phaseA', frequency, dt);
+  digitalSource(voice) {
+    const parameters = voice.parameters;
+    const source = parameters[0];
+    const loop = parameters[3];
+    const color = parameters[4];
+    const character = parameters[5];
+    const inc = voice.digitalPhaseIncrement;
+    voice.phaseA = wrap(voice.phaseA + inc);
     if (voice.profile.family === 'phase') {
       const phase = voice.phaseA;
       const bend = .08 + source * .84;
       const distorted = phase < bend ? phase * .5 / bend : .5 + (phase - bend) * .5 / (1 - bend);
-      const resonant = Math.sin(TAU * distorted) + Math.sin(TAU * distorted * (2 + Math.floor(color * 6))) * character * .38;
+      const resonant = Math.sin(TAU * distorted)
+        + Math.sin(TAU * distorted * voice.phaseDistortionHarmonic) * character * .38;
       return Math.tanh(resonant * (1 + loop));
     }
     if (voice.profile.family === 'sample') {
-      const holdLength = 2 + Math.floor((1 - color) * 15);
       if (voice.holdCounter-- <= 0) {
         voice.noise = (Math.imul(1664525, voice.noise) + 1013904223) >>> 0;
         const noise = (voice.noise / 2147483648 - 1) * .04 * character;
-        const harmonic = Math.sin(TAU * voice.phaseA) + Math.sin(TAU * voice.phaseA * (2 + Math.floor(source * 8))) * .35;
+        const harmonic = Math.sin(TAU * voice.phaseA)
+          + Math.sin(TAU * voice.phaseA * voice.sampleHarmonic) * .35;
         voice.hold = Math.round((harmonic + noise) * 63) / 63;
-        voice.holdCounter = holdLength;
+        voice.holdCounter = voice.sampleHoldLength;
       }
       voice.poles[0] += (.10 + color * .55) * (voice.hold - voice.poles[0]);
       return voice.poles[0];
     }
     const tableA = Math.sin(TAU * voice.phaseA);
     const tableB = saw(voice.phaseA, inc);
-    const tableC = Math.sin(TAU * voice.phaseA) * Math.sin(TAU * voice.phaseA * (2 + Math.floor(start * 7)));
+    const tableC = tableA * Math.sin(TAU * voice.phaseA * voice.digitalHarmonic);
     return tableA * (1 - source) + (tableB * (1 - character) + tableC * character) * source;
   }
 
-  renderVoice(voice, dt) {
+  renderVoice(voice) {
     const family = voice.profile.family;
-    if (family === 'fm') return this.fmSource(voice, dt);
+    if (family === 'fm') return this.fmSource(voice);
     if (family === 'phase' || family === 'sample' || family === 'wavetable') {
-      const source = this.digitalSource(voice, dt);
-      return family === 'wavetable' ? this.ota(voice, source, dt) : source;
+      const source = this.digitalSource(voice);
+      return family === 'wavetable' ? this.ota(voice, source) : source;
     }
-    const source = this.analogSource(voice, dt);
-    if (family === 'ladder') return this.spiceLadder(voice, source, dt);
-    if (family === 'korg35') return this.korg35(voice, source, dt);
+    const source = this.analogSource(voice);
+    if (family === 'ladder') return this.spiceLadder(voice, source);
+    if (family === 'korg35') return this.korg35(voice, source);
     if (family === 'hybrid') {
-      const digital = this.digitalSource(voice, dt);
-      return this.ladder(voice, source * .52 + digital * .48, dt, true);
+      const digital = this.digitalSource(voice);
+      return this.ladder(voice, source * .52 + digital * .48, true);
     }
-    return this.ota(voice, source, dt);
+    return this.ota(voice, source);
   }
 
   dcBlock(value, state) {
@@ -411,6 +565,17 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     state.input = value;
     state.output = output;
     return output;
+  }
+
+  compactVoices() {
+    let writeIndex = 0;
+    for (let readIndex = 0; readIndex < this.voices.length; readIndex += 1) {
+      const voice = this.voices[readIndex];
+      if (voice.releasing && voice.env < .00008) continue;
+      this.voices[writeIndex] = voice;
+      writeIndex += 1;
+    }
+    this.voices.length = writeIndex;
   }
 
   process(_inputs, outputs) {
@@ -421,57 +586,73 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     this.renderQuantumFrames = left.length;
     const quality = this.quality;
     const dt = 1 / (sampleRate * quality);
+    let normalizationVoiceCount = -1;
+    let normalization = quality;
     for (let i = 0; i < left.length; i += 1) {
+      if (this.sequencer.playing) {
+        let scheduledSteps = 0;
+        while (this.frameCounter >= this.sequencer.nextStepFrame && scheduledSteps < 4) {
+          this.triggerSequencerStep();
+          scheduledSteps += 1;
+        }
+        if (scheduledSteps === 4 && this.frameCounter >= this.sequencer.nextStepFrame) {
+          this.sequencer.nextStepFrame = this.frameCounter + this.sequencer.stepFrames;
+        }
+      }
       let sumL = 0;
       let sumR = 0;
+      let hasFinishedVoice = false;
       if (this.enabled) {
         for (let sub = 0; sub < quality; sub += 1) {
           let subL = 0;
           let subR = 0;
-          for (const voice of this.voices) {
+          for (let voiceIndex = 0; voiceIndex < this.voices.length; voiceIndex += 1) {
+            const voice = this.voices[voiceIndex];
             const envelope = this.envelope(voice, dt);
-            const value = this.renderVoice(voice, dt) * envelope * voice.profile.level * voice.velocity;
-            const panL = Math.sqrt((1 - voice.pan) * .5);
-            const panR = Math.sqrt((1 + voice.pan) * .5);
-            subL += value * panL;
-            subR += value * panR;
+            const value = this.renderVoice(voice) * envelope * voice.profile.level * voice.velocity;
+            subL += value * voice.panL;
+            subR += value * voice.panR;
+            if (voice.releasing && voice.env < .00008) hasFinishedVoice = true;
           }
           sumL += subL;
           sumR += subR;
         }
       }
-      this.voices = this.voices.filter((voice) => !(voice.releasing && voice.env < .00008));
-      const normalization = quality * Math.sqrt(Math.max(1, this.voices.length) * .72);
+      if (hasFinishedVoice) this.compactVoices();
+      if (normalizationVoiceCount !== this.voices.length) {
+        normalizationVoiceCount = this.voices.length;
+        normalization = quality * Math.sqrt(Math.max(1, normalizationVoiceCount) * .72);
+      }
       let outL = this.dcBlock(sumL / normalization, this.dcL);
       let outR = this.dcBlock(sumR / normalization, this.dcR);
       if (Math.abs(outL) > .98 || Math.abs(outR) > .98) this.clippedSamples += 1;
-      outL = Math.tanh(outL * 1.08) / Math.tanh(1.08);
-      outR = Math.tanh(outR * 1.08) / Math.tanh(1.08);
+      outL = Math.tanh(outL * OUTPUT_SATURATION_GAIN) * OUTPUT_SATURATION_NORMALIZATION;
+      outR = Math.tanh(outR * OUTPUT_SATURATION_GAIN) * OUTPUT_SATURATION_NORMALIZATION;
       left[i] = Number.isFinite(outL) ? outL : 0;
       right[i] = Number.isFinite(outR) ? outR : 0;
       this.peak = Math.max(this.peak * .9997, Math.abs(left[i]), Math.abs(right[i]));
       this.frameCounter += 1;
-      this.telemetryCountdown -= 1;
-      if (this.telemetryCountdown <= 0) {
-        const profile = PROFILES[this.machine];
-        this.port.postMessage({
-          type: 'telemetry',
-          activeVoices: this.voices.length,
-          maxVoices: MAX_VOICES,
-          peak: this.peak,
-          oversample: this.quality,
-          machine: this.machine,
-          topology: profile.topology,
-          solver: profile.solver || 'TOPOLOGY DSP',
-          solverIterations: profile.family === 'ladder' ? (this.quality >= 4 ? 2 : 1) : 0,
-          temperatureC: profile.family === 'ladder' && this.voices[0]
-            ? this.voices[0].temperatureK - 273.15
-            : 27,
-          renderQuantumFrames: this.renderQuantumFrames,
-          clippedSamples: this.clippedSamples,
-        });
-        this.telemetryCountdown = sampleRate >> 2;
-      }
+    }
+    this.telemetryCountdown -= left.length;
+    if (this.telemetryCountdown <= 0) {
+      const profile = PROFILES[this.machine];
+      this.port.postMessage({
+        type: 'telemetry',
+        activeVoices: this.voices.length,
+        maxVoices: MAX_VOICES,
+        peak: this.peak,
+        oversample: this.quality,
+        machine: this.machine,
+        topology: profile.topology,
+        solver: profile.solver || 'TOPOLOGY DSP',
+        solverIterations: profile.family === 'ladder' ? (this.quality >= 4 ? 2 : 1) : 0,
+        temperatureC: profile.family === 'ladder' && this.voices[0]
+          ? this.voices[0].temperatureK - 273.15
+          : 27,
+        renderQuantumFrames: this.renderQuantumFrames,
+        clippedSamples: this.clippedSamples,
+      });
+      this.telemetryCountdown += sampleRate >> 2;
     }
     return true;
   }

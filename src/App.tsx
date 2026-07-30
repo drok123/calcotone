@@ -31,7 +31,11 @@ import {
 import { useVisualEngine } from './visual/VisualEngine';
 import { EffectModule } from './components/effects/EffectModule';
 import { RailCModule } from './components/effects/RailCModules';
-import type { SynthMachine } from './audio/SynthEngine';
+import type {
+  SynthMachine,
+  SynthSequencerState,
+  SynthSequencerStep,
+} from './audio/SynthEngine';
 import { LinearControl } from './components/controls/LinearControl';
 import { LevelMeter } from './components/meters/LevelMeter';
 import { SpectrumWaterfall } from './components/meters/SpectrumWaterfall';
@@ -41,11 +45,13 @@ import type { ModuleState, XYAssignment, XYAxis } from './ui/types';
 import { clamp } from './ui/math';
 import { shapeMotionSource } from './ui/motion';
 import {
-  DEFAULT_SERIAL_ORDER,
-  moveSerialModule,
-  nudgeSerialModule,
-  serialRows,
-  shuffledSerialOrder,
+  moveRackModule,
+  nudgeRackModule,
+  restoreRackRail,
+  serialOrderFromRack,
+  shuffledRackOrder,
+  type RackOrders,
+  type RackRail,
 } from './routing/serialRouting';
 import {
   RANDOM_UI_COMPLETE_EVENT,
@@ -73,12 +79,17 @@ const REVERB_ALGORITHMS: ReverbAlgorithm[] = [...REVERB_ALGORITHM_ORDER];
 const DEFAULT_RAIL_A_ORDER = ['saturation', 'chorus', 'delay'] as const;
 const DEFAULT_RAIL_B_ORDER = ['reverb', 'bitcrusher', 'media'] as const;
 const DEFAULT_RAIL_C_ORDER = ['synth', 'chaos', 'pressure'] as const;
+const DEFAULT_RACK_ORDERS: RackOrders = {
+  A: [...DEFAULT_RAIL_A_ORDER],
+  B: [...DEFAULT_RAIL_B_ORDER],
+  C: [...DEFAULT_RAIL_C_ORDER],
+};
 const RAIL_C_MODULE_NAMES: Record<RailCRandomModuleId, string> = {
   synth: 'Synth',
   chaos: 'Chaos',
   pressure: 'Pressure',
 };
-type RoutingRail = 'A' | 'B' | 'C';
+type RoutingRail = RackRail;
 
 
 const INITIAL_XY_ASSIGNMENTS: XYAssignment[] = [];
@@ -225,24 +236,6 @@ function randomMusicalValue(range: MusicalRange, centerBias = 0.35): number {
 
 function chooseMusical<T>(values: readonly T[]): T {
   return values[Math.floor(Math.random() * values.length)]!;
-}
-
-function shuffledSignalOrder(current: readonly string[]): string[] {
-  const next = [...current];
-
-  // Fisher-Yates keeps every routing permutation equally reachable.
-  for (let index = next.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
-  }
-
-  // A randomize button that appears to do nothing feels broken. With three
-  // modules there are five alternative orders, so force a visible change.
-  if (next.length > 1 && next.every((id, index) => id === current[index])) {
-    next.push(next.shift()!);
-  }
-
-  return next;
 }
 
 const MUSICAL_RANDOM_RANGES: Record<string, Record<string, MusicalRange>> = {
@@ -534,9 +527,19 @@ export default function App() {
     engineRef.current?.triggerSynthNote(midi, durationSeconds);
   }, []);
 
+  const setSynthSequencerState = useCallback((state: SynthSequencerState) => {
+    engineRef.current?.setSynthSequencerState(state);
+  }, []);
+
+  const setSynthSequencerStepListener = useCallback((
+    listener: ((position: SynthSequencerStep) => void) | null
+  ) => {
+    engineRef.current?.setSynthSequencerStepListener(listener);
+  }, []);
+
   useEffect(() => {
-    setRailCRandomOrder(railCOrder);
-  }, [railCOrder]);
+    setRailCRandomOrder([...railAOrder, ...railBOrder, ...railCOrder]);
+  }, [railAOrder, railBOrder, railCOrder]);
 
   function getEngine(): AudioEngine {
     if (!engineRef.current) {
@@ -563,7 +566,7 @@ export default function App() {
     if (!engine || engineState !== 'running') return;
 
     try {
-      await engine.reorderEffectsClickSafe([...nextA, ...nextB]);
+      await engine.reorderEffectsClickSafe(serialOrderFromRack({ A: nextA, B: nextB, C: nextC }));
       setMessage(
         `Routing updated · A ${formatRailOrder(nextA)} · B ${formatRailOrder(nextB)} · C ${formatRailOrder(nextC)}`
       );
@@ -574,91 +577,62 @@ export default function App() {
 
   function reorderWithinRail(sourceId: string, targetId: string): void {
     if (sourceId === targetId) return;
-    const sourceRail = railForModule(sourceId);
-    const targetRail = railForModule(targetId);
-
-    if (!sourceRail || !targetRail) return;
-
-    if (sourceRail === 'C' || targetRail === 'C') {
-      if (sourceRail !== 'C' || targetRail !== 'C') {
-        setMessage('Generator and performance modules stay on Rail C.');
-        return;
-      }
-      const nextC = [...railCOrder];
-      const from = nextC.indexOf(sourceId);
-      const to = nextC.indexOf(targetId);
-      if (from < 0 || to < 0) return;
-      nextC.splice(from, 1);
-      nextC.splice(to, 0, sourceId);
-      setRailCOrder(nextC);
-      void applyRoutingOrder(railAOrder, railBOrder, nextC);
-      return;
-    }
-
-    const rows = serialRows(moveSerialModule([...railAOrder, ...railBOrder], sourceId, targetId));
-    setRailAOrder(rows.top);
-    setRailBOrder(rows.bottom);
-    void applyRoutingOrder(rows.top, rows.bottom, railCOrder);
+    const next = moveRackModule(
+      { A: railAOrder, B: railBOrder, C: railCOrder },
+      sourceId,
+      targetId,
+    );
+    setRailAOrder(next.A);
+    setRailBOrder(next.B);
+    setRailCOrder(next.C);
+    void applyRoutingOrder(next.A, next.B, next.C);
   }
 
   function nudgeModuleWithinRail(moduleId: string, direction: -1 | 1): void {
-    const rail = railForModule(moduleId);
-    if (!rail) return;
-
-    if (rail === 'C') {
-      const index = railCOrder.indexOf(moduleId);
-      const targetIndex = index + direction;
-      if (index < 0 || targetIndex < 0 || targetIndex >= railCOrder.length) return;
-      const nextC = [...railCOrder];
-      [nextC[index], nextC[targetIndex]] = [nextC[targetIndex], nextC[index]];
-      setRailCOrder(nextC);
-      void applyRoutingOrder(railAOrder, railBOrder, nextC);
-      return;
-    }
-
-    const rows = serialRows(nudgeSerialModule([...railAOrder, ...railBOrder], moduleId, direction));
-    setRailAOrder(rows.top);
-    setRailBOrder(rows.bottom);
-    void applyRoutingOrder(rows.top, rows.bottom, railCOrder);
+    const next = nudgeRackModule(
+      { A: railAOrder, B: railBOrder, C: railCOrder },
+      moduleId,
+      direction,
+    );
+    setRailAOrder(next.A);
+    setRailBOrder(next.B);
+    setRailCOrder(next.C);
+    void applyRoutingOrder(next.A, next.B, next.C);
   }
 
   function resetRailOrder(rail: RoutingRail): void {
-    const rows = rail === 'C'
-      ? { top: railAOrder, bottom: railBOrder }
-      : serialRows(DEFAULT_SERIAL_ORDER);
-    const nextC = rail === 'C' ? [...DEFAULT_RAIL_C_ORDER] : railCOrder;
-
-    setRailAOrder(rows.top);
-    setRailBOrder(rows.bottom);
-    if (rail === 'C') setRailCOrder(nextC);
+    const next = restoreRackRail(
+      { A: railAOrder, B: railBOrder, C: railCOrder },
+      rail,
+      DEFAULT_RACK_ORDERS,
+    );
+    setRailAOrder(next.A);
+    setRailBOrder(next.B);
+    setRailCOrder(next.C);
 
     setDraggedModuleId(null);
     setDragOverModuleId(null);
 
     if (engineState === 'running') {
-      void applyRoutingOrder(rows.top, rows.bottom, nextC);
+      void applyRoutingOrder(next.A, next.B, next.C);
     } else {
-      setMessage(`${rail === 'C' ? 'Rail C' : 'Core signal chain'} reset to factory order. Applies on power-up.`);
+      setMessage(`Rail ${rail} reset to factory order. Applies on power-up.`);
     }
   }
 
   function randomizeSignalOrder(): void {
-    const rows = serialRows(shuffledSerialOrder([...railAOrder, ...railBOrder]));
-    const nextA = rows.top;
-    const nextB = rows.bottom;
-    const nextC = shuffledSignalOrder(railCOrder);
-
-    setRailAOrder(nextA);
-    setRailBOrder(nextB);
-    setRailCOrder(nextC);
+    const next = shuffledRackOrder({ A: railAOrder, B: railBOrder, C: railCOrder });
+    setRailAOrder(next.A);
+    setRailBOrder(next.B);
+    setRailCOrder(next.C);
     setDraggedModuleId(null);
     setDragOverModuleId(null);
 
     if (engineState === 'running') {
-      void applyRoutingOrder(nextA, nextB, nextC);
+      void applyRoutingOrder(next.A, next.B, next.C);
     } else {
       setMessage(
-        `Signal randomized · A ${formatRailOrder(nextA)} · B ${formatRailOrder(nextB)} · C ${formatRailOrder(nextC)} · applies on power-up`
+        `Signal randomized · A ${formatRailOrder(next.A)} · B ${formatRailOrder(next.B)} · C ${formatRailOrder(next.C)} · applies on power-up`
       );
     }
   }
@@ -674,7 +648,7 @@ export default function App() {
 
       await engine.start({ performanceMode, inputMode, diagnosticSignal: diagnosticAudio });
       engine.loadPreset(DEFAULT_PRESET);
-      engine.reorderEffects([...railAOrder, ...railBOrder]);
+      engine.reorderEffects(serialOrderFromRack({ A: railAOrder, B: railBOrder, C: railCOrder }));
       engine.setInputGain(inputGain);
       engine.setInputMode(inputMode);
       engine.setInputWidth(inputWidth);
@@ -1817,7 +1791,7 @@ export default function App() {
                         onRoutingDragOver: (event: ReactDragEvent<HTMLElement>) => {
                           if (!draggedModuleId) return;
                           const sourceRail = railForModule(draggedModuleId);
-                          if (!sourceRail || (sourceRail === 'C') !== (rail === 'C')) return;
+                          if (!sourceRail) return;
                           event.preventDefault();
                           event.dataTransfer.dropEffect = 'move';
                           setDragOverModuleId(moduleId);
@@ -1837,7 +1811,8 @@ export default function App() {
                           nudgeModuleWithinRail(moduleId, direction),
                       };
 
-                      if (rail === 'C') {
+                      const module = getModuleById(moduleId);
+                      if (!module) {
                         return (
                           <RailCModule
                             key={moduleId}
@@ -1850,6 +1825,8 @@ export default function App() {
                             onSynthMachineChange={setSynthMachine}
                             onSynthParametersChange={setSynthParameters}
                             onSynthTriggerNote={triggerSynthNote}
+                            onSynthSequencerChange={setSynthSequencerState}
+                            onSynthSequencerStepListenerChange={setSynthSequencerStepListener}
                             motionPadProps={{
                               padRef: xyPadRef,
                               modules,
@@ -1868,8 +1845,6 @@ export default function App() {
                         );
                       }
 
-                      const module = getModuleById(moduleId);
-                      if (!module) return null;
                       return (
                         <EffectModule
                           key={module.id}

@@ -48,16 +48,28 @@ requireText(processorSource, 'const MAX_VOICES = 10', 'Synth polyphony guard');
 requireText(synth, 'this.output.connect(destination)', 'Synth effect-chain routing');
 requireText(synth, "'calcotone-synth-circuit-processor'", 'Synth AudioWorklet controller');
 requireText(synth, 'public setQualityMode(', 'Synth quality scaling');
+requireText(synth, 'public setSequencerState(', 'Audio-thread sequencer controller');
 requireText(processorSource, "topology: '4× BJT-C SPICE LADDER'", 'Component-level transistor ladder topology');
 requireText(processorSource, 'function bjtDifferentialPair(', 'Shockley-derived BJT differential pair');
 requireText(processorSource, 'function solveBjtCapacitorStage(', 'Implicit capacitor/Newton solver');
-requireText(processorSource, 'const companionScale = dt / (2 * capacitance)', 'Trapezoidal capacitor companion');
+requireText(
+  processorSource,
+  'voice.spiceCompanionScales[pole] = dt / (2 * voice.ladderCapacitances[pole])',
+  'Cached trapezoidal capacitor companion',
+);
 requireText(processorSource, 'this.renderQuantumFrames = left.length', 'Variable render-quantum handling');
 requireText(processorSource, "topology: 'KORG-35 HP/LP'", 'MS-20 topology');
 requireText(processorSource, "topology: '6-OP PHASE MODULATION'", 'DX-style six-operator topology');
 requireText(processorSource, 'function polyBlep(', 'Band-limited analog oscillators');
 requireText(processorSource, 'this.dcBlock(', 'Synth DC protection');
-requireText(processorSource, 'Math.tanh(outL * 1.08)', 'Synth output safety saturation');
+requireText(processorSource, 'OUTPUT_SATURATION_NORMALIZATION', 'Synth output safety saturation');
+requireText(processorSource, 'while (this.frameCounter >= this.sequencer.nextStepFrame', 'Sample-clock sequencer');
+requireText(processorSource, 'sequence.stepFrames = sampleRate * 15 / sequence.bpm', 'Fractional-frame tempo clock');
+requireText(processorSource, 'voice.panL', 'Cached constant-power voice pan');
+requireText(processorSource, 'compactVoices()', 'Allocation-free voice retirement');
+if (processorSource.includes('this.voices = this.voices.filter(')) {
+  failures.push('Synth realtime loop still allocates a filtered voice array');
+}
 requireText(audioEngine, 'this.synth = new SynthEngine(this.context, this.graph.input)', 'AudioEngine synth ownership');
 requireText(audioEngine, 'public triggerSynthNote(', 'AudioEngine note API');
 requireText(audioEngine, 'this.synth?.dispose()', 'Synth teardown');
@@ -73,10 +85,12 @@ requireText(rail, "setPresetId('custom')", 'Manual panel edit state');
 requireText(rail, 'aria-label="Sequencer tempo"', 'Sequencer BPM selector');
 requireText(rail, 'onWheel={changeTempoFromWheel}', 'Sequencer BPM wheel control');
 requireText(rail, 'event.deltaY < 0 ? 1 : -1', 'BPM wheel direction');
-requireText(rail, 'const stepSeconds = 60 / bpm / 4', 'Tempo-driven sixteenth-note clock');
+requireText(rail, 'onSequencerChange({', 'Audio-thread sequencer state handoff');
 requireText(rail, 'piano-roll-step-numbers', 'Visible step numbering');
-requireText(rail, 'nextChainPosition', 'Functional chained playback');
-requireText(rail, 'onTriggerNote(71 - pitch, stepSeconds * .72)', 'Tempo-scaled piano-roll note trigger');
+requireText(rail, 'onSequencerStepListenerChange((position)', 'Worklet-driven visual playhead');
+if (rail.includes('window.setInterval(')) {
+  failures.push('Synth sequencer timing must not depend on a main-thread interval');
+}
 requireText(css, '.piano-roll-step-numbers span:nth-child(4n + 1)', 'Quarter-note beat emphasis');
 requireText(css, '.piano-roll-row button.playhead', 'Readable playhead');
 requireText(css, 'grid-template-rows: 18px 58px 16px', 'Full-size Rail C knob typography');
@@ -185,6 +199,56 @@ function renderMachine(
   return { rms, peak, derivative: derivative / Math.max(1, samples), tailRms, telemetry };
 }
 
+function auditSequencerClock(blockSize, bpm) {
+  const processor = new Processor();
+  const silentPattern = Array(16).fill(-1);
+  processor.port.onmessage({ data: { type: 'enabled', value: true } });
+  processor.port.onmessage({
+    data: {
+      type: 'sequencer-state',
+      patterns: Array.from({ length: 4 }, () => [...silentPattern]),
+      patternIndex: 0,
+      chain: [0, 1, 2, 3],
+      chainArmed: true,
+      chainPosition: 0,
+      bpm,
+      playing: true,
+      startStep: 0,
+    },
+  });
+
+  const requiredSteps = 40;
+  const stepFrames = SAMPLE_RATE * 15 / bpm;
+  const totalFrames = Math.ceil(stepFrames * requiredSteps);
+  for (let rendered = 0; rendered < totalFrames; rendered += blockSize) {
+    const frames = Math.min(blockSize, totalFrames - rendered);
+    processor.process([], [[new Float32Array(frames), new Float32Array(frames)]]);
+  }
+  const steps = processor.port.messages
+    .filter((message) => message.type === 'sequencer-step')
+    .slice(0, requiredSteps);
+  if (steps.length !== requiredSteps) {
+    failures.push(`Sequencer ${bpm} BPM/${blockSize}-frame quantum emitted ${steps.length}/${requiredSteps} steps`);
+    return;
+  }
+  for (let index = 0; index < steps.length; index += 1) {
+    const expectedFrame = Math.ceil(index * stepFrames - 1e-9);
+    if (steps[index].frame !== expectedFrame) {
+      failures.push(
+        `Sequencer ${bpm} BPM/${blockSize}-frame quantum step ${index} landed at frame ${steps[index].frame}, expected ${expectedFrame}`,
+      );
+      break;
+    }
+    const expectedPattern = Math.floor(index / 16) % 4;
+    if (steps[index].patternIndex !== expectedPattern) {
+      failures.push(
+        `Sequencer chain step ${index} used pattern ${steps[index].patternIndex}, expected ${expectedPattern}`,
+      );
+      break;
+    }
+  }
+}
+
 if (Processor) {
   const signatures = new Set();
   for (const machine of machines) {
@@ -205,6 +269,9 @@ if (Processor) {
     }
   }
   renderMachine('model-d', 4, 256, [.61, .82, 1, .52, .92, .31]);
+  for (const blockSize of [64, 128, 256, 512]) {
+    auditSequencerClock(blockSize, 174);
+  }
 }
 
 if (failures.length) {
@@ -214,4 +281,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`CALCOTONE synth engine audit passed (${machines.length} circuit topologies × 3 quality modes, 64–512-frame render quanta, component-level Model D stress test, functional 16-step chain).`);
+console.log(`CALCOTONE synth engine audit passed (${machines.length} circuit topologies × 3 quality modes, 64–512-frame render quanta, sample-clock 16-step chain, allocation-free voice retirement, component-level Model D stress test).`);

@@ -215,8 +215,9 @@ class CalcotoneEmberTubeProcessor extends AudioWorkletProcessor {
   }
 }
 
-// Theory-crafted operating studies. These are intentionally differentiated by electrical
-// behavior, not merely EQ. Exact coefficients are musical approximations rather than lab data.
+// Electrically differentiated operating studies: plate supply/load, bias, cathode memory,
+// blocking, sag, recovery, and harmonic behavior are guarded by the module hardware
+// calibration probe. They are circuit-calibrated emulations, not tube-brand EQ presets.
 const TUBE_PROFILES = [
   // Gold Lion: firm supply, high headroom, quick recovery, articulate upper harmonics.
   {

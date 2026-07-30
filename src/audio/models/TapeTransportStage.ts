@@ -1,17 +1,14 @@
-function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
-}
+import {
+  tapeTransportOperatingPoint,
+  tapeTransportTransfer,
+} from './HardwareCalibration';
 
 function makeTapeCurve(drive: number, bias: number): Float32Array<ArrayBuffer> {
   const size = 4096;
   const curve = new Float32Array(size);
-  const gain = 1 + clamp01(drive) * 4.4;
-  const asym = (clamp01(bias) - 0.5) * 0.12;
-  const norm = Math.tanh(gain);
   for (let i = 0; i < size; i += 1) {
     const x = (i / (size - 1)) * 2 - 1;
-    const shifted = x + Math.max(0, x) * asym;
-    curve[i] = Math.tanh(shifted * gain) / norm;
+    curve[i] = tapeTransportTransfer(x, drive, bias);
   }
   return curve;
 }
@@ -88,21 +85,21 @@ export class TapeTransportStage {
   }
 
   public configure(speed: number, wear: number, tone: number, drive: number): void {
-    const s = clamp01(speed); const w = clamp01(wear); const t = clamp01(tone); const d = clamp01(drive);
+    const point = tapeTransportOperatingPoint(speed, wear, tone, drive);
     const now = this.context.currentTime;
-    this.headBump.frequency.setTargetAtTime(58 + s * 52, now, 0.04);
-    this.headBump.gain.setTargetAtTime(0.4 + d * 2.3 + (1 - s) * 0.8, now, 0.04);
-    this.headLoss.frequency.setTargetAtTime(Math.max(2800, 7200 + t * 10_000 - w * 4400 - (1 - s) * 2200), now, 0.045);
-    this.transportDelay.delayTime.setTargetAtTime(0.010 + (1 - s) * 0.006, now, 0.06);
-    this.wowLfo.frequency.setTargetAtTime(0.18 + s * 0.34, now, 0.08);
-    this.flutterLfo.frequency.setTargetAtTime(4.1 + s * 4.8, now, 0.08);
-    this.wowDepth.gain.setTargetAtTime(0.00004 + w * w * 0.00175, now, 0.08);
-    this.flutterDepth.gain.setTargetAtTime(0.000015 + w * w * 0.00042, now, 0.08);
-    this.trim.gain.setTargetAtTime(1 - d * 0.045, now, 0.035);
-    const key = `${Math.round(d * 48)}:${Math.round((0.35 + w * 0.45) * 48)}`;
+    this.headBump.frequency.setTargetAtTime(point.headBumpHz, now, 0.04);
+    this.headBump.gain.setTargetAtTime(point.headBumpDb, now, 0.04);
+    this.headLoss.frequency.setTargetAtTime(point.headLossHz, now, 0.045);
+    this.transportDelay.delayTime.setTargetAtTime(point.delaySeconds, now, 0.06);
+    this.wowLfo.frequency.setTargetAtTime(point.wowHz, now, 0.08);
+    this.flutterLfo.frequency.setTargetAtTime(point.flutterHz, now, 0.08);
+    this.wowDepth.gain.setTargetAtTime(point.wowDepthSeconds, now, 0.08);
+    this.flutterDepth.gain.setTargetAtTime(point.flutterDepthSeconds, now, 0.08);
+    this.trim.gain.setTargetAtTime(point.trimGain, now, 0.035);
+    const key = `${Math.round(point.curveDrive * 48)}:${Math.round(point.curveBias * 48)}`;
     if (key !== this.curveKey) {
       this.curveKey = key;
-      this.saturator.curve = makeTapeCurve(d, 0.35 + w * 0.45);
+      this.saturator.curve = makeTapeCurve(point.curveDrive, point.curveBias);
     }
   }
 

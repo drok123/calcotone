@@ -118,7 +118,7 @@ forbidText(grainProcessor, 'quantizeNonlinear12', 'Grain must not contain conver
 requireText(artifact, "this.mode === 'Ampex ATR-102'", 'Artifact ATR-102 implementation');
 requireText(artifact, "this.mode === 'tascam424'", 'Artifact TASCAM 424 path');
 for (const mode of ['Neve 1073','SSL 4000E','API 1608']) requireText(artifact, `this.mode === '${mode}'`, `Artifact ${mode} console path`);
-requireText(artifact, 'this.configureSummingBus(now, {', 'Artifact summing-bus routing');
+requireText(artifact, 'summingBusOperatingPoint(this.mode', 'Artifact calibrated summing-bus routing');
 requireText(artifact, 'getOpAmpCurve(', 'Artifact op-amp path');
 forbidText(artifact, 'AudioWorkletNode', 'Artifact digital-capture ownership');
 requireText(artifact, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve caches');

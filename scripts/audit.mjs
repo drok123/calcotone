@@ -241,7 +241,7 @@ requireText(driftEffect, 'const orbitWidth = Math.min', 'Drift Orbit spread cont
 requireText(mediaEffect, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve cache');
 requireText(mediaEffect, 'function cacheCurve(', 'Artifact curve cache');
 requireText(mediaEffect, "this.mode === 'tascam424'", 'Artifact TASCAM console path');
-requireText(mediaEffect, 'this.configureSummingBus(now, {', 'Artifact console summing paths');
+requireText(mediaEffect, 'summingBusOperatingPoint(this.mode', 'Artifact calibrated console summing paths');
 forbidText(mediaEffect, 'AudioWorkletNode', 'Artifact digital-capture worklet');
 requireText(mediaEffect, 'this.setSaturatorCurve(getSaturationCurve', 'Artifact cached media saturation');
 requireText(mediaEffect, 'if (this.parameterValues.get(parameterId) === next) return', 'Artifact duplicate-value guards');

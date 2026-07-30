@@ -1,14 +1,14 @@
-function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
-}
+import {
+  companderExpansionTransfer,
+  companderOperatingPoint,
+} from './HardwareCalibration';
 
 function makeExpansionCurve(amount: number): Float32Array<ArrayBuffer> {
   const size = 2048;
   const curve = new Float32Array(size);
-  const power = 1 + clamp01(amount) * 0.34;
   for (let i = 0; i < size; i += 1) {
     const x = (i / (size - 1)) * 2 - 1;
-    curve[i] = Math.sign(x) * Math.pow(Math.abs(x), power);
+    curve[i] = companderExpansionTransfer(x, amount);
   }
   return curve;
 }
@@ -69,19 +69,16 @@ export class CompanderStage {
   }
 
   public configure(amount: number, speed: number, color: number): void {
-    const a = clamp01(amount);
-    const s = clamp01(speed);
-    const c = clamp01(color);
+    const point = companderOperatingPoint(amount, speed, color);
     const now = this.context.currentTime;
-    this.compressor.threshold.setTargetAtTime(-16 - a * 22, now, 0.025);
-    this.compressor.ratio.setTargetAtTime(1.5 + a * 3.5, now, 0.025);
-    this.compressor.attack.setTargetAtTime(0.0015 + (1 - s) * 0.012, now, 0.025);
-    this.compressor.release.setTargetAtTime(0.055 + (1 - s) * 0.24, now, 0.03);
-    this.makeup.gain.setTargetAtTime(1.02 + a * 0.24 + c * 0.05, now, 0.025);
-    const curveAmount = Math.round((0.18 + a * 0.58) * 48) / 48;
-    if (curveAmount !== this.curveAmount) {
-      this.curveAmount = curveAmount;
-      this.expander.curve = makeExpansionCurve(curveAmount);
+    this.compressor.threshold.setTargetAtTime(point.thresholdDb, now, 0.025);
+    this.compressor.ratio.setTargetAtTime(point.ratio, now, 0.025);
+    this.compressor.attack.setTargetAtTime(point.attackSeconds, now, 0.025);
+    this.compressor.release.setTargetAtTime(point.releaseSeconds, now, 0.03);
+    this.makeup.gain.setTargetAtTime(point.makeupGain, now, 0.025);
+    if (point.expansionAmount !== this.curveAmount) {
+      this.curveAmount = point.expansionAmount;
+      this.expander.curve = makeExpansionCurve(point.expansionAmount);
     }
   }
 

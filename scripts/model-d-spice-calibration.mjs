@@ -172,6 +172,7 @@ function renderRealtimeProbe(ProcessorClass, testCase) {
   voice.ladderCurrents.fill(0);
   voice.poles.fill(0);
   voice.supplySag = 0;
+  processor.refreshVoiceCoefficients(voice);
 
   const samples = [];
   const times = [];
@@ -180,7 +181,7 @@ function renderRealtimeProbe(ProcessorClass, testCase) {
   for (let index = 0; index < totalSamples; index += 1) {
     const time = index * dt;
     const input = Math.sin(TAU * testCase.frequency * time) * testCase.amplitude;
-    const output = processor.spiceLadder(voice, input, dt);
+    const output = processor.spiceLadder(voice, input);
     if (time >= START_TIME) {
       times.push(time);
       samples.push(output);
@@ -345,7 +346,8 @@ function validateAssets(processor, netlist) {
     'const MODEL_D_SIGNAL_VOLTAGE = .12',
     'const ideality = 1.08',
     'const iterations = this.quality >= 4 ? 2 : 1',
-    'spiceLadder(voice, input, dt)',
+    'voice.spiceCompanionScales[pole] = dt / (2 * voice.ladderCapacitances[pole])',
+    'spiceLadder(voice, input)',
   ];
   const netlistRequirements = [
     '.func pair(x)',

@@ -221,7 +221,7 @@ export function EffectModule({
           draggable={module.available && !faceplateEditor.editing}
           role="button"
           tabIndex={module.available && !faceplateEditor.editing ? 0 : -1}
-          aria-label={`${module.name}, signal slot ${slotLabel}. Drag or use left and right arrow keys to reorder.`}
+          aria-label={`${module.name}, signal slot ${slotLabel}. Drag to reorder or exchange rack rails; use left and right arrow keys within this rail.`}
           onDragStart={onRoutingDragStart}
           onDragEnd={onRoutingDragEnd}
           onKeyDown={(event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -234,7 +234,7 @@ export function EffectModule({
               onRoutingNudge(1);
             }
           }}
-          title="Drag horizontally · or focus and use ← / → to reorder"
+          title="Drag to any rack slot · or focus and use ← / → within this rail"
         >
           <span className="module-number" aria-hidden="true">{slotLabel}</span>
           <span className="module-jewel" aria-hidden="true" />

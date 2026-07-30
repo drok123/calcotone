@@ -14,6 +14,23 @@ export type SynthMachine =
 
 export type SynthQualityMode = 'live' | 'balanced' | 'studio';
 
+export interface SynthSequencerState {
+  patterns: readonly (readonly number[])[];
+  patternIndex: number;
+  chain: readonly number[];
+  chainArmed: boolean;
+  chainPosition: number;
+  bpm: number;
+  playing: boolean;
+  startStep: number;
+}
+
+export interface SynthSequencerStep {
+  step: number;
+  patternIndex: number;
+  chainPosition: number;
+}
+
 export interface SynthTelemetryStats {
   activeVoices: number;
   maxVoices: number;
@@ -53,6 +70,7 @@ export class SynthEngine {
   private readonly processor: AudioWorkletNode;
   private enabled = false;
   private telemetry: SynthTelemetryStats = { ...EMPTY_TELEMETRY };
+  private sequencerStepListener: ((position: SynthSequencerStep) => void) | null = null;
 
   public constructor(context: AudioContext, destination: AudioNode) {
     this.context = context;
@@ -67,20 +85,27 @@ export class SynthEngine {
     });
     this.processor.port.onmessage = (event: MessageEvent<unknown>) => {
       const data = event.data;
-      if (!isSynthTelemetry(data)) return;
-      this.telemetry = {
-        activeVoices: data.activeVoices,
-        maxVoices: data.maxVoices,
-        peak: data.peak,
-        oversample: data.oversample,
-        machine: data.machine,
-        topology: data.topology,
-        solver: data.solver,
-        solverIterations: data.solverIterations,
-        temperatureC: data.temperatureC,
-        renderQuantumFrames: data.renderQuantumFrames,
-        clippedSamples: data.clippedSamples,
-      };
+      if (isSynthTelemetry(data)) {
+        this.telemetry = {
+          activeVoices: data.activeVoices,
+          maxVoices: data.maxVoices,
+          peak: data.peak,
+          oversample: data.oversample,
+          machine: data.machine,
+          topology: data.topology,
+          solver: data.solver,
+          solverIterations: data.solverIterations,
+          temperatureC: data.temperatureC,
+          renderQuantumFrames: data.renderQuantumFrames,
+          clippedSamples: data.clippedSamples,
+        };
+      } else if (isSynthSequencerStep(data)) {
+        this.sequencerStepListener?.({
+          step: data.step,
+          patternIndex: data.patternIndex,
+          chainPosition: data.chainPosition,
+        });
+      }
     };
     this.processor.connect(this.output);
     this.output.connect(destination);
@@ -120,16 +145,48 @@ export class SynthEngine {
     });
   }
 
+  public setSequencerState(state: SynthSequencerState): void {
+    this.processor.port.postMessage({
+      type: 'sequencer-state',
+      patterns: state.patterns.slice(0, 4).map((pattern) =>
+        pattern.slice(0, 16).map((pitch) =>
+          Number.isInteger(pitch) && pitch >= 0 && pitch < 12 ? pitch : -1
+        )
+      ),
+      patternIndex: clampInteger(state.patternIndex, 0, 3),
+      chain: state.chain.slice(0, 8).map((index) => clampInteger(index, 0, 3)),
+      chainArmed: state.chainArmed,
+      chainPosition: clampInteger(state.chainPosition, 0, Math.max(0, state.chain.length - 1)),
+      bpm: Math.min(180, Math.max(60, Number.isFinite(state.bpm) ? state.bpm : 100)),
+      playing: state.playing,
+      startStep: clampInteger(state.startStep, 0, 15),
+    });
+  }
+
+  public setSequencerStepListener(listener: ((position: SynthSequencerStep) => void) | null): void {
+    this.sequencerStepListener = listener;
+  }
+
   public getTelemetry(): SynthTelemetryStats {
     return { ...this.telemetry };
   }
 
   public dispose(): void {
+    this.sequencerStepListener = null;
     this.processor.port.postMessage({ type: 'dispose' });
     this.processor.port.close();
     this.processor.disconnect();
     this.output.disconnect();
   }
+}
+
+function isSynthSequencerStep(value: unknown): value is SynthSequencerStep & { type: 'sequencer-step' } {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Partial<SynthSequencerStep> & { type?: unknown };
+  return data.type === 'sequencer-step'
+    && typeof data.step === 'number'
+    && typeof data.patternIndex === 'number'
+    && typeof data.chainPosition === 'number';
 }
 
 function isSynthTelemetry(value: unknown): value is SynthTelemetryStats & { type: 'telemetry' } {
@@ -151,4 +208,9 @@ function isSynthTelemetry(value: unknown): value is SynthTelemetryStats & { type
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, Number.isFinite(value) ? value : .5));
+}
+
+function clampInteger(value: number, minimum: number, maximum: number): number {
+  const finite = Number.isFinite(value) ? Math.trunc(value) : minimum;
+  return Math.min(maximum, Math.max(minimum, finite));
 }

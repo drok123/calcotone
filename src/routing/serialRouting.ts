@@ -18,6 +18,14 @@ export interface SerialRows {
   bottom: string[];
 }
 
+export type RackRail = 'A' | 'B' | 'C';
+
+export interface RackOrders {
+  A: string[];
+  B: string[];
+  C: string[];
+}
+
 export function isValidSerialOrder(order: SerialOrder): boolean {
   if (order.length !== SERIAL_SLOT_COUNT) return false;
   if (new Set(order).size !== SERIAL_SLOT_COUNT) return false;
@@ -86,4 +94,119 @@ export function shuffledSerialOrder(order: SerialOrder, random = Math.random): s
 
 export function describeSerialOrder(order: SerialOrder): string {
   return normalizeSerialOrder(order).join(' → ');
+}
+
+export function serialOrderFromRack(rack: RackOrders): string[] {
+  const serialIds = new Set<string>(DEFAULT_SERIAL_ORDER);
+  return normalizeSerialOrder(
+    ([...rack.A, ...rack.B, ...rack.C]).filter((moduleId) => serialIds.has(moduleId)),
+  );
+}
+
+function locateRackModule(rack: RackOrders, moduleId: string): { rail: RackRail; index: number } | null {
+  for (const rail of ['A', 'B', 'C'] as const) {
+    const index = rack[rail].indexOf(moduleId);
+    if (index >= 0) return { rail, index };
+  }
+  return null;
+}
+
+function cloneRack(rack: RackOrders): RackOrders {
+  return { A: [...rack.A], B: [...rack.B], C: [...rack.C] };
+}
+
+/**
+ * Same-rail drops reorder. Cross-rail drops exchange fixed rack slots so the
+ * three-column faceplate geometry never changes.
+ */
+export function moveRackModule(rack: RackOrders, sourceId: string, targetId: string): RackOrders {
+  if (sourceId === targetId) return cloneRack(rack);
+  const source = locateRackModule(rack, sourceId);
+  const target = locateRackModule(rack, targetId);
+  if (!source || !target) return cloneRack(rack);
+
+  const next = cloneRack(rack);
+  if (source.rail === target.rail) {
+    const order = next[source.rail];
+    order.splice(source.index, 1);
+    order.splice(target.index, 0, sourceId);
+    return next;
+  }
+
+  next[source.rail][source.index] = targetId;
+  next[target.rail][target.index] = sourceId;
+  return next;
+}
+
+export function nudgeRackModule(rack: RackOrders, moduleId: string, direction: -1 | 1): RackOrders {
+  const location = locateRackModule(rack, moduleId);
+  if (!location) return cloneRack(rack);
+  const targetIndex = location.index + direction;
+  if (targetIndex < 0 || targetIndex >= rack[location.rail].length) return cloneRack(rack);
+  return moveRackModule(rack, moduleId, rack[location.rail][targetIndex]!);
+}
+
+export function restoreRackRail(
+  rack: RackOrders,
+  rail: RackRail,
+  defaults: RackOrders,
+): RackOrders {
+  const next = cloneRack(rack);
+  for (let index = 0; index < defaults[rail].length; index += 1) {
+    const wanted = defaults[rail][index]!;
+    const location = locateRackModule(next, wanted);
+    if (!location) continue;
+    const displaced = next[rail][index]!;
+    next[rail][index] = wanted;
+    next[location.rail][location.index] = displaced;
+  }
+  return next;
+}
+
+function shuffled(values: readonly string[], random: () => number): string[] {
+  const next = [...values];
+  for (let index = next.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [next[index], next[swapIndex]] = [next[swapIndex]!, next[index]!];
+  }
+  if (next.length > 1 && next.every((value, index) => value === values[index])) {
+    next.push(next.shift()!);
+  }
+  return next;
+}
+
+/**
+ * SIGNAL RANDOM changes order without silently moving controller modules into
+ * new rack rows. If the user already exchanged rows manually, those positions
+ * remain valid and each family shuffles inside its current set of slots.
+ */
+export function shuffledRackOrder(rack: RackOrders, random = Math.random): RackOrders {
+  const next = cloneRack(rack);
+  const serialIds = new Set<string>(DEFAULT_SERIAL_ORDER);
+  const serialSlots: Array<{ rail: RackRail; index: number }> = [];
+  const controllerSlots: Array<{ rail: RackRail; index: number }> = [];
+  const serialModules: string[] = [];
+  const controllerModules: string[] = [];
+
+  for (const rail of ['A', 'B', 'C'] as const) {
+    rack[rail].forEach((moduleId, index) => {
+      if (serialIds.has(moduleId)) {
+        serialSlots.push({ rail, index });
+        serialModules.push(moduleId);
+      } else {
+        controllerSlots.push({ rail, index });
+        controllerModules.push(moduleId);
+      }
+    });
+  }
+
+  shuffled(serialModules, random).forEach((moduleId, index) => {
+    const slot = serialSlots[index]!;
+    next[slot.rail][slot.index] = moduleId;
+  });
+  shuffled(controllerModules, random).forEach((moduleId, index) => {
+    const slot = controllerSlots[index]!;
+    next[slot.rail][slot.index] = moduleId;
+  });
+  return next;
 }

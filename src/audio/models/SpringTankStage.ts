@@ -1,6 +1,7 @@
-function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
-}
+import {
+  springTankOperatingPoint,
+  springTransducerTransfer,
+} from './HardwareCalibration';
 
 /**
  * Lightweight mechanical spring tank: multiple dispersive taps, damping,
@@ -74,20 +75,18 @@ export class SpringTankStage {
   }
 
   public configure(decay: number, size: number, color: number, drive: number): void {
-    const d = clamp01(decay); const s = clamp01(size); const c = clamp01(color); const x = clamp01(drive);
+    const point = springTankOperatingPoint(decay, size, color, drive);
     const now = this.context.currentTime;
-    const scale = 0.72 + s * 0.72;
-    const bases = [0.019, 0.027, 0.036, 0.048];
-    this.taps.forEach((tap, i) => tap.delayTime.setTargetAtTime(bases[i] * scale, now, 0.06));
+    this.taps.forEach((tap, i) => tap.delayTime.setTargetAtTime(point.tapTimesSeconds[i], now, 0.06));
     this.allpasses.forEach((ap, i) => {
-      ap.frequency.setTargetAtTime(520 + c * 1850 + i * 470, now, 0.05);
-      ap.Q.setTargetAtTime(1.8 + d * 3.1 + i * 0.25, now, 0.05);
+      ap.frequency.setTargetAtTime(point.allpassFrequenciesHz[i], now, 0.05);
+      ap.Q.setTargetAtTime(point.allpassQ[i], now, 0.05);
     });
-    this.dampers.forEach((lp, i) => lp.frequency.setTargetAtTime(Math.max(1700, 4200 + c * 6400 - d * 900 - i * 420), now, 0.05));
-    this.feedback.gain.setTargetAtTime(Math.min(0.86, 0.34 + d * 0.5), now, 0.06);
-    this.feedbackTone.frequency.setTargetAtTime(3000 + c * 6200, now, 0.05);
-    this.transducerOut.gain.setTargetAtTime(0.5 + x * 3.5, now, 0.04);
-    const key = Math.round(x * 48);
+    this.dampers.forEach((lp, i) => lp.frequency.setTargetAtTime(point.damperFrequenciesHz[i], now, 0.05));
+    this.feedback.gain.setTargetAtTime(point.feedbackGain, now, 0.06);
+    this.feedbackTone.frequency.setTargetAtTime(point.feedbackToneHz, now, 0.05);
+    this.transducerOut.gain.setTargetAtTime(point.transducerOutputDb, now, 0.04);
+    const key = Math.round(point.transducerDrive * 48);
     if (key !== this.curveKey) {
       this.curveKey = key;
       this.transducerDrive.curve = makeSpringCurve(key / 48);
@@ -101,10 +100,9 @@ export class SpringTankStage {
 
 function makeSpringCurve(amount: number): Float32Array<ArrayBuffer> {
   const size = 2048; const curve = new Float32Array(size);
-  const gain = 1 + clamp01(amount) * 3.1; const norm = Math.tanh(gain);
   for (let i = 0; i < size; i += 1) {
     const x = (i / (size - 1)) * 2 - 1;
-    curve[i] = Math.tanh((x + Math.max(0, x) * amount * 0.05) * gain) / norm;
+    curve[i] = springTransducerTransfer(x, amount);
   }
   return curve;
 }

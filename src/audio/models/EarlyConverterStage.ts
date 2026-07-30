@@ -1,3 +1,5 @@
+import { converterOperatingPoint } from './HardwareCalibration';
+
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
 }
@@ -55,17 +57,15 @@ export class EarlyConverterStage {
   }
 
   public configure(bits: number, bandwidth: number, drive: number): void {
-    const bw = clamp01(bandwidth); const d = clamp01(drive);
-    const b = Math.max(6, Math.min(16, bits));
+    const point = converterOperatingPoint(bits, bandwidth, drive);
     const now = this.context.currentTime;
-    const cutoff = 4200 + bw * 12_500;
-    this.antiAlias.frequency.setTargetAtTime(cutoff * 0.96, now, 0.035);
-    this.reconstruction.frequency.setTargetAtTime(cutoff, now, 0.035);
-    this.trim.gain.setTargetAtTime(0.99 - d * 0.06, now, 0.03);
-    const key = `${Math.round(b)}:${Math.round(d * 48)}`;
+    this.antiAlias.frequency.setTargetAtTime(point.antiAliasHz, now, 0.035);
+    this.reconstruction.frequency.setTargetAtTime(point.reconstructionHz, now, 0.035);
+    this.trim.gain.setTargetAtTime(point.trimGain, now, 0.03);
+    const key = `${point.curveBits}:${Math.round(point.curveDrive * 48)}`;
     if (key !== this.key) {
       this.key = key;
-      this.quantizer.curve = makeQuantizer(b, d);
+      this.quantizer.curve = makeQuantizer(point.curveBits, point.curveDrive);
     }
   }
 
