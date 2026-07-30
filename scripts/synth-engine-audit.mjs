@@ -55,9 +55,11 @@ requireText(rail, '16-STEP PIANO ROLL', 'Readable sequencer heading');
 requireText(rail, 'const SYNTH_PRESETS: Record<SynthMachine', 'Machine-aware hardware presets');
 requireText(rail, 'aria-label="Synth hardware preset"', 'Hardware preset selector');
 requireText(rail, "setPresetId('custom')", 'Manual panel edit state');
+requireText(rail, 'aria-label="Sequencer tempo"', 'Sequencer BPM selector');
+requireText(rail, 'const stepSeconds = 60 / bpm / 4', 'Tempo-driven sixteenth-note clock');
 requireText(rail, 'piano-roll-step-numbers', 'Visible step numbering');
 requireText(rail, 'nextChainPosition', 'Functional chained playback');
-requireText(rail, 'onTriggerNote(71 - pitch, .11)', 'Piano-roll note trigger');
+requireText(rail, 'onTriggerNote(71 - pitch, stepSeconds * .72)', 'Tempo-scaled piano-roll note trigger');
 requireText(css, '.piano-roll-step-numbers span:nth-child(4n + 1)', 'Quarter-note beat emphasis');
 requireText(css, '.piano-roll-row button.playhead', 'Readable playhead');
 

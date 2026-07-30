@@ -210,6 +210,7 @@ const SYNTH_PRESETS: Record<SynthMachine, readonly SynthPreset[]> = {
 };
 
 const PITCHES = ['B4', 'A#4', 'A4', 'G#4', 'G4', 'F#4', 'F4', 'E4', 'D#4', 'D4', 'C#4', 'C4'] as const;
+const SYNTH_TEMPOS = [60, 70, 80, 90, 100, 110, 120, 128, 130, 140, 150, 160, 174, 180] as const;
 const INITIAL_PATTERNS: number[][] = [
   [9, -1, 9, -1, 7, -1, 9, -1, 4, -1, 7, -1, 9, 7, 4, -1],
   [9, 9, -1, 7, 4, -1, 7, -1, 2, -1, 4, -1, 7, 4, 2, -1],
@@ -242,6 +243,7 @@ function SynthModule({
   const [chain, setChain] = useState([0, 1, 2, 3]);
   const [chainArmed, setChainArmed] = useState(false);
   const [chainPosition, setChainPosition] = useState(0);
+  const [bpm, setBpm] = useState(100);
   const [playing, setPlaying] = useState(false);
   const [playhead, setPlayhead] = useState(0);
   const patternsRef = useRef(patterns);
@@ -274,9 +276,10 @@ function SynthModule({
 
   useEffect(() => {
     if (!playing || !enabled) return;
+    const stepSeconds = 60 / bpm / 4;
     const playStep = (pattern: readonly number[], step: number) => {
       const pitch = pattern[step];
-      if (pitch >= 0) onTriggerNote(71 - pitch, .11);
+      if (pitch >= 0) onTriggerNote(71 - pitch, stepSeconds * .72);
     };
     playStep(patternsRef.current[patternIndexRef.current], playhead);
     const timer = window.setInterval(() => {
@@ -294,9 +297,9 @@ function SynthModule({
         playStep(patternsRef.current[nextPattern], next);
         return next;
       });
-    }, 150);
+    }, stepSeconds * 1000);
     return () => window.clearInterval(timer);
-  }, [playing, enabled, engineRunning, onTriggerNote]);
+  }, [playing, enabled, engineRunning, bpm, onTriggerNote]);
 
   function toggleCell(step: number, pitch: number): void {
     setPatterns((current) => current.map((pattern, index) => {
@@ -305,7 +308,7 @@ function SynthModule({
       next[step] = next[step] === pitch ? -1 : pitch;
       return next;
     }));
-    if (enabled) onTriggerNote(71 - pitch, .11);
+    if (enabled) onTriggerNote(71 - pitch, 60 / bpm / 4 * .72);
   }
 
   function selectPattern(index: number): void {
@@ -364,11 +367,17 @@ function SynthModule({
         <div className="synth-roll-toolbar">
           <div>
             <strong>16-STEP PIANO ROLL</strong>
-            <span>P{String(patternIndex + 1).padStart(2, '0')} · 100 BPM · 1/16</span>
+            <span>P{String(patternIndex + 1).padStart(2, '0')} · 1/16 NOTES</span>
           </div>
           <span className={`synth-engine-badge ${engineRunning ? 'online' : ''}`}>
             {engineRunning ? 'DSP ONLINE' : 'START ENGINE'}
           </span>
+          <label className="synth-tempo-selector">
+            <span>BPM</span>
+            <select aria-label="Sequencer tempo" value={bpm} onChange={(event) => setBpm(Number(event.target.value))}>
+              {SYNTH_TEMPOS.map((tempo) => <option key={tempo} value={tempo}>{tempo}</option>)}
+            </select>
+          </label>
           <button type="button" className={playing ? 'active' : ''} aria-pressed={playing} onClick={() => setPlaying((current) => !current)}>
             {playing ? 'STOP' : 'PLAY'}
           </button>

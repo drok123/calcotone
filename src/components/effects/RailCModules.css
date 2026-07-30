@@ -113,7 +113,7 @@
 
 .synth-roll-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   justify-content: space-between;
   padding: 7px 9px;
   border-bottom: 1px solid rgba(125,232,255,.13);
@@ -147,6 +147,26 @@
   border-color: rgba(125,232,255,.42);
   color: #a7eef2 !important;
   box-shadow: inset 0 0 7px rgba(125,232,255,.1);
+}
+
+.synth-tempo-selector {
+  display: grid;
+  grid-template-columns: auto 42px;
+  align-items: center;
+  gap: 4px;
+  color: #5f9297;
+}
+
+.synth-tempo-selector select {
+  width: 42px;
+  min-width: 42px;
+  height: 20px;
+  padding: 0 3px;
+  border: 1px solid #315358;
+  border-radius: 2px;
+  color: #bceff2;
+  background: #071315;
+  font: 800 .48rem/1 var(--mono);
 }
 
 .synth-roll button,
