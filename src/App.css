@@ -3301,6 +3301,30 @@ body {
   filter: brightness(1.24) contrast(1.08) saturate(1.16);
 }
 
+/* Rail C replaces the old global motion column. Quality and recording now live
+   in the otherwise under-used I/O chassis, leaving the three rails full width. */
+.main-grid {
+  grid-template-columns: 340px minmax(0, 1fr);
+}
+
+.io-utility-dock {
+  display: grid;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0,0,0,.42);
+}
+
+.io-utility-dock .sample-recorder {
+  margin-top: 0;
+}
+
+@media (max-width: 1380px), (max-width: 1180px), (max-width: 900px), (max-width: 760px), (max-width: 680px), (max-width: 460px) {
+  .main-grid {
+    grid-template-columns: 340px minmax(0, 1fr);
+  }
+}
+
 
 /* =====================================================================
    V8.4.28 Ã¢â‚¬â€ TWO-RAIL SIGNAL ROUTING

@@ -1704,6 +1704,41 @@ export default function App() {
                 </div>
               </div>
             </div>
+
+            <div className="io-utility-dock">
+              <div className="performance-mode" role="group" aria-label="Processing quality">
+                {(['live', 'balanced', 'studio'] as PerformanceMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={performanceMode === mode ? 'active' : ''}
+                    aria-pressed={performanceMode === mode}
+                    onClick={() => changePerformanceMode(mode)}
+                  >
+                    <span className="mode-led" aria-hidden="true" />
+                    {mode}
+                  </button>
+                ))}
+              </div>
+
+              <RecorderPanel
+                state={recordingState}
+                name={recordingName}
+                seconds={recordingSeconds}
+                take={recordedTake}
+                previewUrl={previewUrl}
+                running={isRunning}
+                onNameChange={setRecordingName}
+                onNameCommit={() => setRecordingName((current) => sanitizeFileName(current))}
+                onStart={startRecording}
+                onFinish={() => void finishRecording()}
+                onSave={saveRecording}
+                onDiscard={discardRecording}
+                formatDuration={formatDuration}
+                formatBytes={formatBytes}
+                formatPeak={formatPeak}
+              />
+            </div>
           </aside>
 
           <section className="modules-section" aria-label="Effects modules">
@@ -1825,46 +1860,6 @@ export default function App() {
             </div>
           </section>
 
-          <aside className="performance-panel">
-            <div className="panel-heading motion-heading">
-              <h2>SYSTEM</h2>
-              <span className={`jewel-light ${xyAssignments.length > 0 ? 'active' : ''}`} aria-hidden="true" />
-            </div>
-
-            <div className="performance-mode" role="group" aria-label="Processing quality">
-              {(['live', 'balanced', 'studio'] as PerformanceMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  className={performanceMode === mode ? 'active' : ''}
-                  aria-pressed={performanceMode === mode}
-                  onClick={() => changePerformanceMode(mode)}
-                >
-                  <span className="mode-led" aria-hidden="true" />
-                  {mode}
-                </button>
-              ))}
-            </div>
-
-            <RecorderPanel
-              state={recordingState}
-              name={recordingName}
-              seconds={recordingSeconds}
-              take={recordedTake}
-              previewUrl={previewUrl}
-              running={isRunning}
-              onNameChange={setRecordingName}
-              onNameCommit={() => setRecordingName((current) => sanitizeFileName(current))}
-              onStart={startRecording}
-              onFinish={() => void finishRecording()}
-              onSave={saveRecording}
-              onDiscard={discardRecording}
-              formatDuration={formatDuration}
-              formatBytes={formatBytes}
-              formatPeak={formatPeak}
-            />
-
-          </aside>
         </section>
 
         <footer className="footer-bar">
