@@ -79,8 +79,7 @@
 }
 
 .synth-roll-toolbar,
-.synth-pattern-strip,
-.chaos-program-row {
+.synth-pattern-strip {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -221,21 +220,31 @@
   text-align: center;
 }
 
-.chaos-program-row {
-  min-height: 24px;
-  margin: 0 0 4px;
-  color: #7a7180;
+.module-chaos .module-header {
+  grid-template-columns: minmax(72px, 1fr) minmax(210px, 248px) 42px;
 }
 
-.chaos-program-row select {
+.module-chaos .module-header-control {
+  width: 100%;
+  max-width: none;
+}
+
+.chaos-selector-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
   min-width: 0;
-  flex: 1;
-  height: 24px;
-  border: 1px solid #403849;
-  border-radius: 4px;
-  color: #beb5c4;
-  background: #0d0b10;
-  font: 800 .50rem/1 var(--mono);
+  width: 100%;
+}
+
+.module-header-control .chaos-selector-pair .algorithm-selector {
+  min-width: 0;
+  width: 100%;
+}
+
+.module-header-control .chaos-selector-pair select {
+  width: 100%;
+  min-width: 0;
 }
 
 .chaos-pad-shell {

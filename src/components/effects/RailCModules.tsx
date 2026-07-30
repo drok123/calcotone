@@ -285,37 +285,47 @@ function ChaosModule({
       enabled={enabled}
       onToggle={() => setEnabled((current) => !current)}
       headerControl={(
-        <label className="algorithm-selector chaos-mode-selector">
-          <span className="sr-only">Chaos machine</span>
-          <select aria-label="Chaos machine" value={mode} onChange={(event) => setMode(event.target.value as ChaosMode)}>
-            <option value="chaos-pad">Chaos Pad</option>
-            <option value="performance-fx">Performance FX</option>
-          </select>
-        </label>
+        <div className="chaos-selector-pair">
+          <label className="algorithm-selector chaos-mode-selector">
+            <span className="sr-only">Chaos machine</span>
+            <select
+              aria-label="Chaos machine"
+              value={mode}
+              onChange={(event) => {
+                const nextMode = event.target.value as ChaosMode;
+                setMode(nextMode);
+                setEffect(nextMode === 'chaos-pad' ? 'grain-delay' : 'djfx-looper');
+              }}
+            >
+              <option value="chaos-pad">Chaos Pad</option>
+              <option value="performance-fx">Performance FX</option>
+            </select>
+          </label>
+          <label className="algorithm-selector chaos-program-selector">
+            <span className="sr-only">Chaos program</span>
+            <select aria-label="Chaos program" value={effect} onChange={(event) => setEffect(event.target.value)}>
+              {mode === 'chaos-pad' ? (
+                <>
+                  <option value="grain-delay">Grain Delay</option>
+                  <option value="dub-space">Dub Space</option>
+                  <option value="spectral-freeze">Spectral Freeze</option>
+                  <option value="pitch-vortex">Pitch Vortex</option>
+                  <option value="filter-feedback">Filter Feedback</option>
+                </>
+              ) : (
+                <>
+                  <option value="djfx-looper">DJFX Looper</option>
+                  <option value="vinyl-brake">Vinyl Brake</option>
+                  <option value="scatter">Scatter</option>
+                  <option value="isolator">Isolator</option>
+                  <option value="stutter">Stutter</option>
+                </>
+              )}
+            </select>
+          </label>
+        </div>
       )}
     >
-      <div className="chaos-program-row">
-        <span>PROGRAM</span>
-        <select aria-label="Chaos program" value={effect} onChange={(event) => setEffect(event.target.value)}>
-          {mode === 'chaos-pad' ? (
-            <>
-              <option value="grain-delay">Grain Delay</option>
-              <option value="dub-space">Dub Space</option>
-              <option value="spectral-freeze">Spectral Freeze</option>
-              <option value="pitch-vortex">Pitch Vortex</option>
-              <option value="filter-feedback">Filter Feedback</option>
-            </>
-          ) : (
-            <>
-              <option value="djfx-looper">DJFX Looper</option>
-              <option value="vinyl-brake">Vinyl Brake</option>
-              <option value="scatter">Scatter</option>
-              <option value="isolator">Isolator</option>
-              <option value="stutter">Stutter</option>
-            </>
-          )}
-        </select>
-      </div>
       <div className={`chaos-pad-shell ${enabled ? 'active' : 'is-off'}`}>
         <MotionPad {...motionPadProps} />
       </div>
