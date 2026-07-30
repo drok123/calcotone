@@ -35,7 +35,6 @@
 .recorder-master-selector button,
 .footer-safe-toggle,
 .spectrum-unit,
-.engine-info-grid > div,
 .record-start,
 .record-stop,
 .record-cancel,
@@ -221,10 +220,7 @@ input[type="text"],
 }
 
 .spectrum-header strong,
-.spectrum-status,
-.engine-info-grid span,
-.engine-info-grid strong,
-.engine-info-grid strong.active {
+.spectrum-status {
   color: var(--cream-text) !important;
   text-shadow: 0 1px 2px rgba(0,0,0,.64) !important;
 }
@@ -317,13 +313,6 @@ input[type="text"],
   .spectrum-screen canvas {
     min-height: 210px !important;
     height: 100% !important;
-  }
-
-  .engine-info-grid { gap: 9px !important; }
-
-  .engine-info-grid > div {
-    min-height: 52px;
-    padding: 10px 11px 9px !important;
   }
 
   .performance-panel {

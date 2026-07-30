@@ -52,8 +52,7 @@ input[type="text"],
 .take-preview,
 .take-preview div,
 .route-controls,
-.motion-route-list,
-.engine-info-grid {
+.motion-route-list {
   background-color: transparent !important;
 }
 

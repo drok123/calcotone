@@ -3164,42 +3164,6 @@ body {
   padding-top: 10px;
   border-top: 1px solid rgba(255,255,255,.055);
 }
-.engine-info-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0,1fr));
-  gap: 7px;
-}
-.engine-info-grid > div {
-  min-width: 0;
-  padding: 8px 9px 7px;
-  border: 1px solid #3f4648;
-  border-radius: 6px;
-  background: linear-gradient(180deg,#202527,#15191b);
-  box-shadow: inset 0 1px rgba(255,255,255,.025), inset 0 -1px rgba(0,0,0,.7);
-}
-.engine-info-grid > div.wide {
-  grid-column: 1 / -1;
-}
-.engine-info-grid span {
-  display: block;
-  color: #747e78;
-  font: 800 .50rem/1 var(--mono);
-  letter-spacing: .11em;
-  text-transform: uppercase;
-}
-.engine-info-grid strong {
-  display: block;
-  margin-top: 5px;
-  overflow: hidden;
-  color: #b8c1bb;
-  font: 700 .60rem/1.15 var(--mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.engine-info-grid strong.active {
-  color: #bfffd2;
-  text-shadow: 0 0 6px rgba(101,255,154,.20);
-}
 
 @media (prefers-reduced-motion: reduce) {
   .brand-power.running .brand-power-window,
@@ -3325,8 +3289,7 @@ body {
   }
 }
 
-/* Engine identity belongs on the master footer; detailed transport numbers stay
-   in I/O. The three footer columns keep the two primary readouts truly centered. */
+/* Master engine and connection readouts share one centered footer instrument. */
 .footer-bar {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -3340,7 +3303,12 @@ body {
 
 .footer-engine-status {
   display: grid;
-  grid-template-columns: 112px minmax(190px, 280px);
+  grid-template-columns:
+    104px
+    minmax(180px, 240px)
+    112px
+    136px
+    118px;
   justify-self: center;
   min-width: 0;
   overflow: hidden;

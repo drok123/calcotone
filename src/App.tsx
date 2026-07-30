@@ -1696,21 +1696,6 @@ export default function App() {
 
               <div className="io-spectrum-section">
                 <SpectrumWaterfall analyser={analyser} running={isRunning} />
-
-                <div className="engine-info-grid" aria-label="Audio connection information">
-                  <div>
-                    <span>Latency</span>
-                    <strong>{latency}</strong>
-                  </div>
-                  <div>
-                    <span>Sample Rate</span>
-                    <strong>{sampleRate}</strong>
-                  </div>
-                  <div className="wide">
-                    <span>Channels</span>
-                    <strong>{channelInfo.input} → {channelInfo.output}</strong>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -1866,6 +1851,18 @@ export default function App() {
             <div>
               <span>INPUT</span>
               <strong>{inputDevice}</strong>
+            </div>
+            <div>
+              <span>LATENCY</span>
+              <strong>{latency}</strong>
+            </div>
+            <div>
+              <span>SAMPLE RATE</span>
+              <strong>{sampleRate}</strong>
+            </div>
+            <div>
+              <span>CHANNELS</span>
+              <strong>{channelInfo.input} → {channelInfo.output}</strong>
             </div>
           </div>
           <div className="footer-actions">

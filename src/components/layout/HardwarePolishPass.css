@@ -81,10 +81,6 @@
   border-radius: 3px !important;
 }
 
-.engine-info-grid > div {
-  border-radius: 4px !important;
-}
-
 /* Transfer some I/O height from the spectrum into the input level meter. */
 @media (min-width: 1421px) {
   .io-unified-box {
