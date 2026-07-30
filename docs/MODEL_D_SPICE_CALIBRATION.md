@@ -21,6 +21,12 @@ is installed:
 npm run audit:spice:strict
 ```
 
+The `Calcotone Check` GitHub Actions workflow installs the Ubuntu ngspice
+package and runs this strict command in its own `Model D ngspice calibration`
+job. The general browser build remains separate, so a reference mismatch is
+reported as a circuit-calibration failure rather than a generic application
+failure.
+
 Machine-readable output is available with:
 
 ```bash
