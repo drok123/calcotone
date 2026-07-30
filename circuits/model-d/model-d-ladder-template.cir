@@ -1,0 +1,49 @@
+CALCOTONE Model D four-stage BJT-capacitor reference
+*
+* Offline calibration fixture for public/synth-circuit-processor.js.
+* Tokens wrapped in double braces are filled by scripts/model-d-spice-calibration.mjs.
+* The normalized pair current is the ratio of two matched Shockley junction
+* currents. Capacitors and feedback remain explicit SPICE circuit elements.
+
+.param junctionVoltage={{JUNCTION_VOLTAGE}}
+.param tailCurrent={{TAIL_CURRENT}}
+.param capacitance={{CAPACITANCE}}
+.param feedback={{FEEDBACK}}
+.param driveScale={{DRIVE_SCALE}}
+.param signalVoltage={{SIGNAL_VOLTAGE}}
+
+.func pair(x) (exp(x)-exp(-x))/(exp(x)+exp(-x))
+
+Vin input 0 SIN(0 {{INPUT_AMPLITUDE}} {{INPUT_FREQUENCY}})
+Bpre pre 0 V={tanh(V(input)*driveScale)*signalVoltage}
+Bfeedback drive 0 V={V(pre)-feedback*V(stage4)}
+
+Bpair1 0 stage1 I={tailCurrent*pair((V(drive)-V(stage1))/(2*junctionVoltage))}
+Bpair2 0 stage2 I={tailCurrent*pair((V(stage1)-V(stage2))/(2*junctionVoltage))}
+Bpair3 0 stage3 I={tailCurrent*pair((V(stage2)-V(stage3))/(2*junctionVoltage))}
+Bpair4 0 stage4 I={tailCurrent*pair((V(stage3)-V(stage4))/(2*junctionVoltage))}
+
+C1 stage1 0 {capacitance} IC=0
+C2 stage2 0 {capacitance} IC=0
+C3 stage3 0 {capacitance} IC=0
+C4 stage4 0 {capacitance} IC=0
+
+Rleak1 stage1 0 100Meg
+Rleak2 stage2 0 100Meg
+Rleak3 stage3 0 100Meg
+Rleak4 stage4 0 100Meg
+
+Bout output 0 V={tanh(V(stage4)/signalVoltage*1.18)}
+
+.options method=trap reltol=1e-7 abstol=1e-10 vntol=1e-8 plotwinsize=0 numdgt=12
+.tran {{OUTPUT_STEP}} {{STOP_TIME}} {{START_TIME}} {{MAX_STEP}} UIC
+
+.control
+set wr_vecnames
+set wr_singlescale
+run
+wrdata {{OUTPUT_PATH}} v(output)
+quit
+.endc
+
+.end
