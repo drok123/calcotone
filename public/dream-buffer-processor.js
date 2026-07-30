@@ -75,6 +75,10 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
     return (buffer[index0] + (buffer[index1] - buffer[index0]) * fraction) / 255;
   }
 
+  canRecall(offsetL, offsetR) {
+    return this.samplesWritten >= Math.ceil(Math.max(offsetL, offsetR)) + 2;
+  }
+
   updateHeadTargets(frames) {
     const blockSeconds = frames / sampleRate;
     for (let head = 0; head < 3; head += 1) {
@@ -115,14 +119,20 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
     const inL = input && input[0];
     const inR = input && (input[1] || input[0]);
     const frames = outputs[0]?.[0]?.length || 128;
-    const hasInput = Boolean(inL || inR);
+    let hasSignal = false;
+    for (let i = 0; i < frames && !hasSignal; i += 1) {
+      const l = inL?.[i];
+      const r = inR?.[i];
+      hasSignal = (Number.isFinite(l) && Math.abs(l) > 1e-12)
+        || (Number.isFinite(r) && Math.abs(r) > 1e-12);
+    }
 
-    if (!hasInput && this.samplesWritten === 0) {
+    if (!hasSignal && this.samplesWritten === 0) {
       this.publishProfile(frames);
       return true;
     }
 
-    if (hasInput) this.silentFrames = 0;
+    if (hasSignal) this.silentFrames = 0;
     else this.silentFrames += frames;
 
     this.updateHeadTargets(frames);
@@ -181,30 +191,33 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
       const offsetR0 = startR0 + stepR0 * i;
       const out0 = outputs[0];
       if (out0) {
-        const intent = 0.60 + this.readIntent(this.intentNow, this.writeIndex, (offsetL0 + offsetR0) * 0.5) * 0.40;
+        const ready = this.canRecall(offsetL0, offsetR0);
+        const intent = ready ? 0.60 + this.readIntent(this.intentNow, this.writeIndex, (offsetL0 + offsetR0) * 0.5) * 0.40 : 0;
         const oL = out0[0], oR = out0[1] || out0[0];
-        if (oL) oL[i] = this.readInterpolated(this.left, this.writeIndex, offsetL0) * intent;
-        if (oR) oR[i] = this.readInterpolated(this.right, this.writeIndex, offsetR0) * intent;
+        if (oL) oL[i] = ready ? this.readInterpolated(this.left, this.writeIndex, offsetL0) * intent : 0;
+        if (oR) oR[i] = ready ? this.readInterpolated(this.right, this.writeIndex, offsetR0) * intent : 0;
       }
 
       const offsetL1 = startL1 + stepL1 * i;
       const offsetR1 = startR1 + stepR1 * i;
       const out1 = outputs[1];
       if (out1) {
-        const intent = 0.48 + this.readIntent(this.intentEcho, this.writeIndex, (offsetL1 + offsetR1) * 0.5) * 0.52;
+        const ready = this.canRecall(offsetL1, offsetR1);
+        const intent = ready ? 0.48 + this.readIntent(this.intentEcho, this.writeIndex, (offsetL1 + offsetR1) * 0.5) * 0.52 : 0;
         const oL = out1[0], oR = out1[1] || out1[0];
-        if (oL) oL[i] = this.readInterpolated(this.left, this.writeIndex, offsetL1) * intent;
-        if (oR) oR[i] = this.readInterpolated(this.right, this.writeIndex, offsetR1) * intent;
+        if (oL) oL[i] = ready ? this.readInterpolated(this.left, this.writeIndex, offsetL1) * intent : 0;
+        if (oR) oR[i] = ready ? this.readInterpolated(this.right, this.writeIndex, offsetR1) * intent : 0;
       }
 
       const offsetL2 = startL2 + stepL2 * i;
       const offsetR2 = startR2 + stepR2 * i;
       const out2 = outputs[2];
       if (out2) {
-        const intent = 0.28 + this.readIntent(this.intentGhost, this.writeIndex, (offsetL2 + offsetR2) * 0.5) * 0.72;
+        const ready = this.canRecall(offsetL2, offsetR2);
+        const intent = ready ? 0.28 + this.readIntent(this.intentGhost, this.writeIndex, (offsetL2 + offsetR2) * 0.5) * 0.72 : 0;
         const oL = out2[0], oR = out2[1] || out2[0];
-        if (oL) oL[i] = this.readInterpolated(this.left, this.writeIndex, offsetL2) * intent;
-        if (oR) oR[i] = this.readInterpolated(this.right, this.writeIndex, offsetR2) * intent;
+        if (oL) oL[i] = ready ? this.readInterpolated(this.left, this.writeIndex, offsetL2) * intent : 0;
+        if (oR) oR[i] = ready ? this.readInterpolated(this.right, this.writeIndex, offsetR2) * intent : 0;
       }
 
       this.writeIndex += 1;
@@ -222,7 +235,7 @@ class CalcotoneDreamBufferProcessor extends AudioWorkletProcessor {
     this.offsetsR[1] = this.heads[1].targetR;
     this.offsetsR[2] = this.heads[2].targetR;
 
-    if (!hasInput && this.silentFrames >= this.maxRecallSamples + frames) {
+    if (!hasSignal && this.silentFrames >= this.maxRecallSamples + frames) {
       this.samplesWritten = 0;
       this.silentFrames = 0;
       this.profilePeak = 0;

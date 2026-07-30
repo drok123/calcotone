@@ -25,7 +25,7 @@ const MODEL_INDEX: Record<TubeColorModel, number> = {
 };
 
 const tubeWorkletLoads = new WeakMap<AudioContext, Promise<void>>();
-const TUBE_WORKLET_VERSION = '10.0.0-electrical-profiles';
+const TUBE_WORKLET_VERSION = '10.0.1-quality-modes';
 
 async function ensureTubeWorklet(context: AudioContext): Promise<void> {
   const existing = tubeWorkletLoads.get(context);
@@ -101,7 +101,7 @@ export class TubeColorStage {
   }
 
   public setQuality(factor: number): void {
-    const next = factor >= 4 ? 4 : 2;
+    const next = factor >= 4 ? 4 : factor >= 2 ? 2 : 1;
     if (this.quality === next) return;
     this.quality = next;
     this.processor?.port.postMessage({ type: 'quality', factor: this.quality });

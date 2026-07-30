@@ -73,7 +73,7 @@ export class MagneticCoreStage {
   }
 
   public setQuality(factor: number): void {
-    const next = factor >= 4 ? 4 : 2;
+    const next = factor >= 4 ? 4 : factor >= 2 ? 2 : 1;
     if (this.quality === next) return;
     this.quality = next;
     this.processor?.port.postMessage({ type: 'quality', factor: this.quality });

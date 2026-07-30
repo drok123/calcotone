@@ -105,6 +105,10 @@ export class SaturationEffect extends BaseEffect {
   private toneHz = 9500;
   private emberMix = MIX.defaultValue;
   private genericAttached = true;
+  private genericDisconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+  private digitalCaptureConnected = false;
+  private digitalCaptureDisconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+  private saturationDisposed = false;
   private readonly digitalCaptureValues = new Map<string, number>();
 
   public constructor(context: AudioContext) {
@@ -135,14 +139,14 @@ export class SaturationEffect extends BaseEffect {
     this.hp.connect(this.magneticStage.input); this.magneticStage.connect(this.magneticGain); this.magneticGain.connect(this.tone);
     this.tone.connect(this.presence); this.presence.connect(this.compressor); this.compressor.connect(this.post);
     this.post.connect(this.analogGain); this.analogGain.connect(this.wetGain);
-    this.input.connect(this.digitalCaptureProcessor); this.digitalCaptureProcessor.connect(this.digitalCaptureGain); this.digitalCaptureGain.connect(this.wetGain);
+    this.digitalCaptureGain.connect(this.wetGain);
     this.initializeParameters([MODE, DRIVE, TONE, HEAT, CHARACTER, DYNAMICS, MIX]);
     for (const parameter of [MODE, DRIVE, TONE, HEAT, CHARACTER, DYNAMICS, MIX]) this.setParameter(parameter.id, parameter.defaultValue);
   }
 
   public setOversampling(value: OverSampleType): void {
-    this.shaper.oversample = value === 'none' ? '2x' : value;
-    const factor = value === '4x' ? 4 : 2;
+    this.shaper.oversample = value;
+    const factor = value === '4x' ? 4 : value === '2x' ? 2 : 1;
     this.tubeStage.setQuality(factor); this.magneticStage.setQuality(factor);
   }
 
@@ -161,12 +165,54 @@ export class SaturationEffect extends BaseEffect {
   }
 
   private setGenericBranchAttached(shouldAttach: boolean): void {
-    if (shouldAttach === this.genericAttached) return;
-    if (shouldAttach) this.hp.connect(this.shaper);
-    else {
-      try { this.hp.disconnect(this.shaper); } catch { /* already detached */ }
+    if (shouldAttach) {
+      if (this.genericDisconnectTimer !== null) {
+        globalThis.clearTimeout(this.genericDisconnectTimer);
+        this.genericDisconnectTimer = null;
+      }
+      if (!this.genericAttached) {
+        this.hp.connect(this.shaper);
+        this.genericAttached = true;
+      }
+      return;
     }
-    this.genericAttached = shouldAttach;
+    if (!this.genericAttached || this.genericDisconnectTimer !== null) return;
+    this.genericDisconnectTimer = globalThis.setTimeout(() => {
+      this.genericDisconnectTimer = null;
+      if (this.saturationDisposed || this.usesGenericBranch() || !this.genericAttached) return;
+      try { this.hp.disconnect(this.shaper); } catch { /* already detached */ }
+      this.genericAttached = false;
+    }, 72);
+  }
+
+  private usesGenericBranch(): boolean {
+    return NAMED_TUBE_MODEL[this.mode] === undefined
+      && this.mode !== 'transformer'
+      && !EMBER_DIGITAL_CAPTURE_MODES.some((candidate) => candidate === this.mode);
+  }
+
+  private setDigitalCaptureBranchAttached(shouldAttach: boolean): void {
+    if (shouldAttach) {
+      if (this.digitalCaptureDisconnectTimer !== null) {
+        globalThis.clearTimeout(this.digitalCaptureDisconnectTimer);
+        this.digitalCaptureDisconnectTimer = null;
+      }
+      if (!this.digitalCaptureConnected) {
+        this.digitalCaptureProcessor.port.postMessage({ type: 'reset' });
+        this.input.connect(this.digitalCaptureProcessor);
+        this.digitalCaptureProcessor.connect(this.digitalCaptureGain);
+        this.digitalCaptureConnected = true;
+      }
+      return;
+    }
+    if (!this.digitalCaptureConnected || this.digitalCaptureDisconnectTimer !== null) return;
+    this.digitalCaptureDisconnectTimer = globalThis.setTimeout(() => {
+      this.digitalCaptureDisconnectTimer = null;
+      if (this.saturationDisposed || EMBER_DIGITAL_CAPTURE_MODES.some((candidate) => candidate === this.mode)) return;
+      try { this.input.disconnect(this.digitalCaptureProcessor); } catch { /* already detached */ }
+      try { this.digitalCaptureProcessor.disconnect(this.digitalCaptureGain); } catch { /* already detached */ }
+      this.digitalCaptureConnected = false;
+    }, 72);
   }
 
   private apply(now = this.context.currentTime): void {
@@ -176,6 +222,7 @@ export class SaturationEffect extends BaseEffect {
     const digitalCaptureMode = EMBER_DIGITAL_CAPTURE_MODES.indexOf(this.mode as typeof EMBER_DIGITAL_CAPTURE_MODES[number]);
     const digitalCapture = digitalCaptureMode >= 0;
     this.setGenericBranchAttached(!(namedTube || magnetic || digitalCapture));
+    this.setDigitalCaptureBranchAttached(digitalCapture);
     this.tubeStage.setModel(tubeModel); this.tubeStage.setParameters(this.drive, this.heat, this.character, this.dynamics);
     this.magneticStage.setEnabled(magnetic); this.magneticStage.setParameters(this.drive, this.heat, this.character, this.dynamics);
     this.analogGain.gain.setTargetAtTime(digitalCapture ? 0 : 1, now, 0.025);
@@ -185,7 +232,7 @@ export class SaturationEffect extends BaseEffect {
       this.genericGain.gain.setTargetAtTime(0, now, 0.018);
       this.tubeGain.gain.setTargetAtTime(0, now, 0.018);
       this.magneticGain.gain.setTargetAtTime(0, now, 0.018);
-      this.setDigitalCaptureParameter('mode', digitalCaptureMode, now);
+      this.setDigitalCaptureParameter('mode', digitalCaptureMode, now, true);
       this.setDigitalCaptureParameter('drive', this.drive, now);
       this.setDigitalCaptureParameter('clock', (this.toneHz - TONE.min) / (TONE.max - TONE.min), now);
       this.setDigitalCaptureParameter('character', Math.min(1, this.heat * 0.82 + this.dynamics * 0.18), now);
@@ -245,15 +292,27 @@ export class SaturationEffect extends BaseEffect {
     this.wetGain.gain.setTargetAtTime(this.emberMix, now, 0.025);
   }
 
-  private setDigitalCaptureParameter(name: string, value: number, now: number): void {
+  private setDigitalCaptureParameter(name: string, value: number, now: number, discrete = false): void {
     if (this.digitalCaptureValues.get(name) === value) return;
     const parameter = this.digitalCaptureProcessor.parameters.get(name);
     if (!parameter) throw new Error(`Ember digital-capture parameter "${name}" is unavailable.`);
     this.digitalCaptureValues.set(name, value);
-    parameter.setTargetAtTime(value, now, 0.012);
+    if (discrete) parameter.setValueAtTime(value, now);
+    else parameter.setTargetAtTime(value, now, 0.012);
   }
 
   public override dispose(): void {
+    if (this.saturationDisposed) return;
+    this.saturationDisposed = true;
+    if (this.genericDisconnectTimer !== null) globalThis.clearTimeout(this.genericDisconnectTimer);
+    if (this.digitalCaptureDisconnectTimer !== null) globalThis.clearTimeout(this.digitalCaptureDisconnectTimer);
+    this.genericDisconnectTimer = null;
+    this.digitalCaptureDisconnectTimer = null;
+    if (this.digitalCaptureConnected) {
+      try { this.input.disconnect(this.digitalCaptureProcessor); } catch { /* already detached */ }
+      try { this.digitalCaptureProcessor.disconnect(this.digitalCaptureGain); } catch { /* already detached */ }
+      this.digitalCaptureConnected = false;
+    }
     this.tubeStage.dispose(); this.magneticStage.dispose();
     for (const node of [this.preGain,this.hp,this.shaper,this.genericGain,this.tubeGain,this.magneticGain,this.tone,this.presence,this.compressor,this.post,this.analogGain,this.digitalCaptureProcessor,this.digitalCaptureGain]) node.disconnect();
     this.digitalCaptureProcessor.onprocessorerror = null;

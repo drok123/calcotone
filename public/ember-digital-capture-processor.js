@@ -11,6 +11,14 @@ class CalcotoneEmberDigitalCaptureProcessor extends AudioWorkletProcessor {
 
   constructor() {
     super();
+    this.result = [0, 0];
+    this.port.onmessage = (event) => {
+      if (event.data?.type === 'reset') this.resetState();
+    };
+    this.resetState();
+  }
+
+  resetState() {
     this.phase = 0;
     this.heldL = 0;
     this.heldR = 0;
@@ -21,7 +29,6 @@ class CalcotoneEmberDigitalCaptureProcessor extends AudioWorkletProcessor {
     this.clockMemory = 0;
     this.apertureL = 0;
     this.apertureR = 0;
-    this.result = [0, 0];
     this.sampleCounter = 0;
   }
 
@@ -135,7 +142,6 @@ class CalcotoneEmberDigitalCaptureProcessor extends AudioWorkletProcessor {
       if (pair === 0) {
         const cutoff = 3600 + filter * 5600 + this.envelope * (1800 + character * 3200);
         outL = this.fourPole(outL, cutoff, 0.08 + character * 0.30, this.filterL);
-        outL = this.fourPole(outL, cutoff, 0.08 + character * 0.30, this.filterL);
         outR = this.fourPole(outR, cutoff * 0.985, 0.08 + character * 0.30, this.filterR);
       } else if (pair === 1) {
         const cutoff = 7200 + filter * 2200;
@@ -200,8 +206,10 @@ class CalcotoneEmberDigitalCaptureProcessor extends AudioWorkletProcessor {
     const character = Math.max(0, Math.min(1, parameters.character[0]));
     const filter = Math.max(0, Math.min(1, parameters.filter[0]));
     for (let sample = 0; sample < outL.length; sample += 1) {
-      const dryL = inL ? inL[sample] : 0;
-      const dryR = inR ? inR[sample] : dryL;
+      const inputL = inL ? inL[sample] : 0;
+      const inputR = inR ? inR[sample] : inputL;
+      const dryL = Number.isFinite(inputL) && Math.abs(inputL) >= 1e-20 ? inputL : 0;
+      const dryR = Number.isFinite(inputR) && Math.abs(inputR) >= 1e-20 ? inputR : 0;
       const processed = this.processModel(dryL, dryR, mode, drive, clock, character, filter);
       outL[sample] = processed[0];
       outR[sample] = processed[1];

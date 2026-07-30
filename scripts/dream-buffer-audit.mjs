@@ -53,7 +53,7 @@ requireText(worklet, 'this.echoIntentState += (echoTarget - this.echoIntentState
 requireText(worklet, 'this.ghostIntentState += (ghostTarget - this.ghostIntentState) * 0.0009', 'Dream slow GHOST phrase envelope');
 requireText(worklet, 'this.intentGhost[this.writeIndex]', 'Dream historical Ghost tagging');
 requireText(worklet, 'this.readIntent(this.intentGhost', 'Dream historical Ghost recall weighting');
-requireText(worklet, 'const intent = 0.28 +', 'Dream Ghost minimum recall floor');
+requireText(worklet, '0.28 + this.readIntent(this.intentGhost', 'Dream Ghost minimum recall floor');
 requireText(worklet, 'memoryIntent: [this.profileIntent[0]', 'Dream intent profile publication');
 requireText(owner, 'memoryIntent?: [number, number, number]', 'Dream intent diagnostic type');
 requireText(owner, 'const nextIntent = event.data.memoryIntent', 'Dream intent profile ingestion');
@@ -64,7 +64,7 @@ forbidText(worklet, 'new Array(', 'Dream realtime Array allocation');
 
 // Capture / recall safety and idle retirement remain hard invariants.
 requireText(worklet, 'if (Math.abs(l) > 1.25) l = Math.tanh(l)', 'Dream capture poison guard');
-requireText(worklet, 'if (!hasInput && this.samplesWritten === 0)', 'Dream idle fast path');
+requireText(worklet, 'if (!hasSignal && this.samplesWritten === 0)', 'Dream idle fast path');
 requireText(worklet, 'this.maxRecallSamples', 'Dream silence retirement horizon');
 requireText(owner, 'Math.min(0.06, value)', 'Dream bounded recall amount');
 requireText(owner, 'setTargetAtTime(route.amount', 'Dream smoothed recall gain');

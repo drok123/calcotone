@@ -69,7 +69,7 @@ requireText(ember, "'calcotone-ember-digital-capture-processor'", 'Ember digital
 for (const mode of [0,1,2,3,4,5]) requireText(emberDigitalCapture, `mode === ${mode}`, `Ember digital-capture model ${mode}`);
 requireText(emberDigitalCapture, 'quantizeNonlinear12', 'Ember MPC60 nonlinear converter');
 requireText(emberDigitalCapture, 'quantizeCompanded8', 'Ember vintage 8-bit companding');
-requireText(ember, 'this.setDigitalCaptureParameter(\'mode\', digitalCaptureMode, now)', 'Ember digital-capture model routing');
+requireText(ember, 'this.setDigitalCaptureParameter(\'mode\', digitalCaptureMode, now, true)', 'Ember digital-capture model routing');
 requireText(ember, 'this.setGenericBranchAttached(!(namedTube || magnetic || digitalCapture))', 'Ember inactive generic branch suspension');
 forbidText(ember, 'CONSOLE_PATHS', 'Ember console path ownership');
 requireText(ember, 'const MAX_CURVE_CACHE = 192', 'Ember bounded curve cache');

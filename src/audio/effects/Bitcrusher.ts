@@ -84,7 +84,7 @@ export class BitcrusherEffect extends BaseEffect {
 
     this.initializeParameters([MODE, WINDOW, DENSITY, PITCH, CHAOS, BLOOM, MIX]);
     const now = this.context.currentTime;
-    this.setWorkletParameter('mode', MODE.defaultValue, now);
+    this.setWorkletParameter('mode', MODE.defaultValue, now, true);
     this.setWorkletParameter('bits', WINDOW.defaultValue, now);
     this.setWorkletParameter('density', DENSITY.defaultValue, now);
     this.setWorkletParameter('pitch', PITCH.defaultValue, now);
@@ -114,7 +114,7 @@ export class BitcrusherEffect extends BaseEffect {
         const next = Math.round(clampParameter(value, MODE));
         if (this.parameterValues.get(parameterId) === next) return;
         this.parameterValues.set(parameterId, next);
-        this.setWorkletParameter('mode', next, now);
+        this.setWorkletParameter('mode', next, now, true);
         return;
       }
       case 'bits': {
@@ -164,12 +164,13 @@ export class BitcrusherEffect extends BaseEffect {
     }
   }
 
-  private setWorkletParameter(name: string, value: number, now: number): void {
+  private setWorkletParameter(name: string, value: number, now: number, discrete = false): void {
     if (this.workletValues.get(name) === value) return;
     const parameter = this.processor.parameters.get(name);
     if (!parameter) throw new Error(`Grain processor parameter "${name}" is unavailable.`);
     this.workletValues.set(name, value);
-    parameter.setTargetAtTime(value, now, 0.012);
+    if (discrete) parameter.setValueAtTime(value, now);
+    else parameter.setTargetAtTime(value, now, 0.012);
   }
 
   public override dispose(): void {

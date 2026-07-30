@@ -17,7 +17,7 @@ export type AudioEngineState =
 
 export type PerformanceMode = 'live' | 'balanced' | 'studio';
 
-const WORKLET_BUILD_VERSION = '8.5.2-family-swap-a';
+const WORKLET_BUILD_VERSION = '8.5.3-dsp-audit-a';
 export type EngineHealth = 'offline' | 'healthy' | 'warm' | 'critical';
 
 export interface DspProfilerSnapshot {
@@ -289,16 +289,7 @@ export class AudioEngine {
     if (!this.context || !this.graph || !this.analyser || !this.outputGain || !this.limiter) return;
     this.configureQualityMode();
 
-    const grain = this.effects.get('bitcrusher');
-    if (grain && 'setQualityMode' in grain) {
-      (grain as Effect & { setQualityMode(value: PerformanceMode): void }).setQualityMode(mode);
-    }
-
-    const saturation = this.effects.get('saturation');
-    if (saturation && 'setOversampling' in saturation) {
-      const target = mode === 'studio' ? '4x' : mode === 'balanced' ? '2x' : 'none';
-      (saturation as Effect & { setOversampling(value: OverSampleType): void }).setOversampling(target);
-    }
+    for (const effect of this.effects.values()) this.configureEffectQuality(effect);
   }
 
   public getPerformanceMode(): PerformanceMode {
@@ -364,9 +355,7 @@ export class AudioEngine {
 
     this.effects.set(effect.id, effect);
     this.attachDreamSource(effect);
-    if ('setQualityMode' in effect) {
-      (effect as Effect & { setQualityMode(value: PerformanceMode): void }).setQualityMode(this.performanceMode);
-    }
+    this.configureEffectQuality(effect);
     this.graph.addEffect(effect);
     this.rebuildDreamRoutes();
     this.connectMasterChain();
@@ -476,9 +465,7 @@ export class AudioEngine {
       effect.setBypassed(!presetEffect.enabled);
       this.effects.set(effect.id, effect);
       this.attachDreamSource(effect);
-      if ('setQualityMode' in effect) {
-        (effect as Effect & { setQualityMode(value: PerformanceMode): void }).setQualityMode(this.performanceMode);
-      }
+      this.configureEffectQuality(effect);
       presetEffects.push(effect);
     }
 
@@ -587,6 +574,20 @@ export class AudioEngine {
     this.analyser.smoothingTimeConstant = this.performanceMode === 'live' ? 0.72 : 0.8;
     this.limiter.threshold.setValueAtTime(this.performanceMode === 'live' ? -1.2 : -3, this.context?.currentTime ?? 0);
     this.limiter.ratio.setValueAtTime(this.performanceMode === 'live' ? 6 : 12, this.context?.currentTime ?? 0);
+  }
+
+  private configureEffectQuality(effect: Effect): void {
+    if ('setQualityMode' in effect) {
+      (effect as Effect & { setQualityMode(value: PerformanceMode): void }).setQualityMode(this.performanceMode);
+    }
+    if ('setOversampling' in effect) {
+      const target: OverSampleType = this.performanceMode === 'studio'
+        ? '4x'
+        : this.performanceMode === 'balanced'
+          ? '2x'
+          : 'none';
+      (effect as Effect & { setOversampling(value: OverSampleType): void }).setOversampling(target);
+    }
   }
 
   private configureLimiter(limiter: DynamicsCompressorNode): void {

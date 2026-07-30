@@ -244,7 +244,7 @@ requireText(mediaEffect, 'if (this.parameterValues.get(parameterId) === next) re
 forbidText(mediaEffect, 'this.preampStage.curve = makeOpAmpCurve', 'Artifact stale live curve allocation');
 forbidText(mediaEffect, 'this.saturator.curve = makeSaturationCurve', 'Artifact stale live curve allocation');
 requireText(emberEffect, "'calcotone-ember-digital-capture-processor'", 'Ember digital-capture worklet');
-requireText(emberEffect, "this.setDigitalCaptureParameter('mode', digitalCaptureMode, now)", 'Ember digital-capture routing');
+requireText(emberEffect, "this.setDigitalCaptureParameter('mode', digitalCaptureMode, now, true)", 'Ember digital-capture routing');
 
 forbidText(randomBridge, 'randomProfiler', 'RANDOM bridge');
 forbidText(randomBatch, '__calcotoneRandomProfiler', 'RANDOM batch');

@@ -14,6 +14,7 @@ class CalcotoneLexicon224Converter extends AudioWorkletProcessor {
     this.gainRangeR = 1;
     this.rangeHoldL = 0;
     this.rangeHoldR = 0;
+    this.result = [0, 0];
   }
 
   lowpass(value, cutoff, state, stage) {
@@ -30,29 +31,28 @@ class CalcotoneLexicon224Converter extends AudioWorkletProcessor {
     return Math.tanh(biased * 1.035) / Math.tanh(1.035);
   }
 
-  selectGainRange(value, current, hold) {
+  selectGainRange(value, channel) {
+    const current = channel === 0 ? this.gainRangeL : this.gainRangeR;
+    const hold = channel === 0 ? this.rangeHoldL : this.rangeHoldR;
     const magnitude = Math.abs(value);
     let wanted = magnitude < 0.055 ? 8 : magnitude < 0.12 ? 4 : magnitude < 0.24 ? 2 : 1;
     if (hold > 0 && wanted < current) wanted = current;
     const nextHold = wanted !== current ? 20 : Math.max(0, hold - 1);
-    return [wanted, nextHold];
+    if (channel === 0) {
+      this.gainRangeL = wanted;
+      this.rangeHoldL = nextHold;
+    } else {
+      this.gainRangeR = wanted;
+      this.rangeHoldR = nextHold;
+    }
+    return wanted;
   }
 
   quantizeGainStepped(value, channel) {
-    let range = channel === 0 ? this.gainRangeL : this.gainRangeR;
-    let hold = channel === 0 ? this.rangeHoldL : this.rangeHoldR;
-    [range, hold] = this.selectGainRange(value, range, hold);
+    const range = this.selectGainRange(value, channel);
     const levels = 2047;
     const scaled = Math.max(-1, Math.min(1, value * range));
-    const stepped = Math.round(scaled * levels) / levels / range;
-    if (channel === 0) {
-      this.gainRangeL = range;
-      this.rangeHoldL = hold;
-    } else {
-      this.gainRangeR = range;
-      this.rangeHoldR = hold;
-    }
-    return stepped;
+    return Math.round(scaled * levels) / levels / range;
   }
 
   processInput(left, right) {
@@ -70,7 +70,9 @@ class CalcotoneLexicon224Converter extends AudioWorkletProcessor {
       this.heldL = this.quantizeGainStepped(left, 0);
       this.heldR = this.quantizeGainStepped(right, 1);
     }
-    return [this.heldL, this.heldR];
+    this.result[0] = this.heldL;
+    this.result[1] = this.heldR;
+    return this.result;
   }
 
   processOutput(left, right) {
@@ -81,7 +83,9 @@ class CalcotoneLexicon224Converter extends AudioWorkletProcessor {
     right = this.quantizeGainStepped(right, 1);
     left = this.lowpass(this.lowpass(left, 8800, this.outputFilterL, 0), 8800, this.outputFilterL, 1);
     right = this.lowpass(this.lowpass(right, 8800, this.outputFilterR, 0), 8800, this.outputFilterR, 1);
-    return [left, right];
+    this.result[0] = left;
+    this.result[1] = right;
+    return this.result;
   }
 
   process(inputs, outputs) {
