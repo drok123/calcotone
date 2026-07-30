@@ -17,7 +17,7 @@ const requireText = (source, needle, label) => {
 
 const routing = read('src/routing/serialRouting.ts');
 const hook = read('src/routing/useSerialRouting.ts');
-const transform = read('build/serialRoutingTransform.ts');
+const app = read('src/App.tsx');
 const vite = read('vite.config.ts');
 
 requireText(routing, 'SERIAL_SLOT_COUNT = 6', 'six-slot routing model');
@@ -38,12 +38,14 @@ requireText(hook, 'shuffledSerialOrder(orderRef.current)', 'hook delegates SIGNA
 requireText(hook, 'topRow: rows.top', 'hook projects top row');
 requireText(hook, 'bottomRow: rows.bottom', 'hook projects bottom row');
 
-requireText(transform, "from './routing/serialRouting'", 'temporary App adapter uses routing owner');
-requireText(transform, 'if (!draggedModuleId) return;', 'cross-row drag-over acceptance');
-requireText(transform, 'cross-row lockout survived transform', 'adapter fail-closed guard');
-requireText(transform, 'replaceRegexRequired(', 'adapter uses robust source matching');
-
-requireText(vite, 'serialRoutingTransform()', 'temporary routing adapter enabled');
+requireText(app, "from './routing/serialRouting'", 'App directly uses routing owner');
+requireText(app, 'moveSerialModule([...railAOrder, ...railBOrder]', 'native cross-row drag');
+requireText(app, 'nudgeSerialModule([...railAOrder, ...railBOrder]', 'native cross-row keyboard routing');
+requireText(app, 'shuffledSerialOrder([...railAOrder, ...railBOrder]', 'native SIGNAL RANDOM routing');
+requireText(app, "const DEFAULT_RAIL_C_ORDER = ['synth', 'chaos', 'pressure']", 'third rail ownership');
+requireText(app, "(sourceRail === 'C') !== (rail === 'C')", 'Rail C boundary guard');
+requireText(app, 'setRailCOrder(nextC)', 'Rail C reorder state');
+if (vite.includes('serialRoutingTransform()')) failures.push('Retired serial routing transform is still enabled');
 
 if (failures.length) {
   console.error('\nCALCOTONE routing audit failed:\n');
@@ -52,4 +54,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE routing audit passed (native routing owner + temporary App wiring adapter).');
+console.log('CALCOTONE routing audit passed (native six-effect chain plus bounded Rail C).');

@@ -1,8 +1,6 @@
-import { createRoot, type Root } from 'react-dom/client';
 import { AudioEngine } from './audio/AudioEngine';
 import { SignalLab } from './audio/SignalLab';
-import { SignalLabPanel } from './components/signal/SignalLabPanel';
-import { getPressureState, setPressureState, usePressureState } from './components/signal/pressureStore';
+import { getPressureState } from './components/signal/pressureStore';
 
 interface EngineInternals {
   context: AudioContext | null;
@@ -29,20 +27,6 @@ const originalStop = enginePrototype.stop;
 
 const processors = new WeakMap<AudioEngine, SignalLab>();
 let activeEngine: AudioEngine | null = null;
-let pressureRoot: Root | null = null;
-let pressureHost: HTMLElement | null = null;
-let mountFrame = 0;
-let mountAttempts = 0;
-
-function PressureMount() {
-  const state = usePressureState();
-  const running = activeEngine?.getState() === 'running';
-  return <SignalLabPanel state={state} running={running} onChange={setPressureState} />;
-}
-
-function renderPressure(): void {
-  pressureRoot?.render(<PressureMount />);
-}
 
 function applyPostRackPressure(engine: AudioEngine): void {
   const pressure = processors.get(engine);
@@ -104,7 +88,6 @@ function disablePressure(engine: AudioEngine): void {
 function attachPressure(engine: AudioEngine): void {
   activeEngine = engine;
   if (getPressureState().enabled) enablePressure(engine);
-  renderPressure();
 }
 
 function detachPressure(engine: AudioEngine): void {
@@ -115,7 +98,6 @@ function detachPressure(engine: AudioEngine): void {
     processors.delete(engine);
   }
   if (activeEngine === engine) activeEngine = null;
-  renderPressure();
 }
 
 enginePrototype.connectMasterChain = function patchedConnectMasterChain(this: AudioEngine): void {
@@ -147,29 +129,6 @@ enginePrototype.stop = async function patchedPressureStop(
   await originalStop.apply(this, args);
 };
 
-function mountPressurePanel(): boolean {
-  if (document.querySelector('.pressure-panel')) return true;
-  const modules = document.querySelector<HTMLElement>('.modules-section');
-  if (!modules || pressureHost?.isConnected) return false;
-
-  const host = document.createElement('div');
-  host.className = 'pressure-host';
-  host.setAttribute('data-pressure-host', 'true');
-  const grid = modules.querySelector('.module-grid');
-  modules.insertBefore(host, grid ?? modules.firstChild);
-  pressureHost = host;
-  pressureRoot = createRoot(host);
-  renderPressure();
-  return true;
-}
-
-function scheduleMount(): void {
-  if (mountPressurePanel()) return;
-  if (mountAttempts >= 30) return;
-  mountAttempts += 1;
-  mountFrame = requestAnimationFrame(scheduleMount);
-}
-
 function onPressureChange(event: Event): void {
   const detail = (event as CustomEvent<ReturnType<typeof getPressureState>>).detail ?? getPressureState();
 
@@ -185,23 +144,14 @@ function onPressureChange(event: Event): void {
       disablePressure(activeEngine);
     }
   }
-  renderPressure();
 }
 
 function install(): void {
   window.addEventListener('calcotone:pressure-change', onPressureChange);
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', scheduleMount, { once: true });
-  } else {
-    scheduleMount();
-  }
 }
 
 function uninstall(): void {
   window.removeEventListener('calcotone:pressure-change', onPressureChange);
-  if (mountFrame) cancelAnimationFrame(mountFrame);
-  mountFrame = 0;
-  mountAttempts = 0;
 
   if (activeEngine) {
     detachPressure(activeEngine);
@@ -213,10 +163,6 @@ function uninstall(): void {
   enginePrototype.resume = originalResume;
   enginePrototype.stop = originalStop;
 
-  pressureRoot?.unmount();
-  pressureRoot = null;
-  pressureHost?.remove();
-  pressureHost = null;
 }
 
 install();

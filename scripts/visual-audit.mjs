@@ -20,6 +20,8 @@ const asciiCss = read('src/components/ascii/AsciiArtEngine.css');
 const viewport = read('src/components/effects/ModuleViewport.tsx');
 const field = read('src/components/motion/XYSignalField.tsx');
 const motionPad = read('src/components/motion/MotionPad.tsx');
+const railC = read('src/components/effects/RailCModules.tsx');
+const railCCss = read('src/components/effects/RailCModules.css');
 const app = read('src/App.tsx');
 const appCss = read('src/App.css');
 const hardwarePalette = read('src/components/layout/CharcoalHardwarePass.css');
@@ -114,12 +116,19 @@ if (hardwarePolishImport < 0 || charcoalPassImport < 0 || charcoalPassImport < h
   failures.push('Hardware palette cascade: CharcoalHardwarePass must load after HardwarePolishPass');
 }
 
-// Preserve the restored UI/Pressure ownership. This transplant may consume the existing
-// Signal state visually, but it must not move or replace the panel, store, or App subscription model.
-requireText(vite, 'signalLabUiTransform()', 'Restored Signal panel placement');
+// Rail C deliberately mixes the six existing ASCII worlds with a functional
+// piano-roll screen, the existing XY signal field, and a conventional Pressure logo.
+forbidText(vite, 'signalLabUiTransform()', 'Retired Signal panel placement transform');
 forbidText(vite, 'dreamFieldCompositionTransform()', 'Obsolete Dream visual transform');
 requireText(motionPad, 'signalLab={signalLab}', 'Existing Signal state forwarded to XY');
-forbidText(app, 'usePressureState', 'No new workstation-wide Pressure subscription');
+requireText(app, "const DEFAULT_RAIL_C_ORDER = ['synth', 'chaos', 'pressure']", 'Three-module Rail C');
+requireText(railC, 'aria-label="16-step piano roll"', 'Functional Synth piano roll');
+requireText(railC, 'toggleCell(step, pitchIndex)', 'Editable Synth notes');
+requireText(railC, 'setChain((current)', 'Synth pattern chaining');
+requireText(railC, '<MotionPad {...motionPadProps}', 'Chaos owns the XY surface');
+requireText(railC, 'pressure-ascii dsp-viewport', 'Pressure conventional ASCII display');
+requireText(railCCss, '.piano-roll-grid', 'Piano-roll screen geometry');
+requireText(railCCss, '@keyframes pressure-scan', 'Pressure ASCII display motion');
 requireText(main, "import './pressureBridge'", 'Existing Pressure DSP bridge preserved');
 forbidText(main, "import './components/effects/VideoColorStability.css'", 'Retired video color pass');
 
@@ -129,4 +138,4 @@ if (failures.length) {
   console.error('');
   process.exit(1);
 }
-console.log('CALCOTONE visual audit passed (ASCII-only visuals on the restored UI/Pressure layout).');
+console.log('CALCOTONE visual audit passed (six ASCII effects plus functional Rail C displays).');

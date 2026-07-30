@@ -6,6 +6,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ChangeEvent as ReactChangeEvent,
+  type DragEvent as ReactDragEvent,
 } from 'react';
 
 import './App.css';
@@ -28,7 +29,7 @@ import {
 } from './audio/effects/Delay';
 import { useVisualEngine } from './visual/VisualEngine';
 import { EffectModule } from './components/effects/EffectModule';
-import { MotionPad } from './components/motion/MotionPad';
+import { RailCModule } from './components/effects/RailCModules';
 import { LinearControl } from './components/controls/LinearControl';
 import { LevelMeter } from './components/meters/LevelMeter';
 import { SpectrumWaterfall } from './components/meters/SpectrumWaterfall';
@@ -37,6 +38,13 @@ import { FaceplateLayoutEditor } from './components/layout/FaceplateLayoutEditor
 import type { ModuleState, XYAssignment, XYAxis } from './ui/types';
 import { clamp } from './ui/math';
 import { shapeMotionSource } from './ui/motion';
+import {
+  DEFAULT_SERIAL_ORDER,
+  moveSerialModule,
+  nudgeSerialModule,
+  serialRows,
+  shuffledSerialOrder,
+} from './routing/serialRouting';
 import {
   RANDOM_UI_COMPLETE_EVENT,
   RANDOM_UI_EFFECT_ORDER,
@@ -56,7 +64,8 @@ const REVERB_ALGORITHMS: ReverbAlgorithm[] = [...REVERB_ALGORITHM_ORDER];
 
 const DEFAULT_RAIL_A_ORDER = ['saturation', 'chorus', 'delay'] as const;
 const DEFAULT_RAIL_B_ORDER = ['reverb', 'bitcrusher', 'media'] as const;
-type RoutingRail = 'A' | 'B';
+const DEFAULT_RAIL_C_ORDER = ['synth', 'chaos', 'pressure'] as const;
+type RoutingRail = 'A' | 'B' | 'C';
 
 
 const INITIAL_XY_ASSIGNMENTS: XYAssignment[] = [];
@@ -444,6 +453,7 @@ export default function App() {
   const [modules, setModules] = useState<ModuleState[]>(INITIAL_MODULES);
   const [railAOrder, setRailAOrder] = useState<string[]>([...DEFAULT_RAIL_A_ORDER]);
   const [railBOrder, setRailBOrder] = useState<string[]>([...DEFAULT_RAIL_B_ORDER]);
+  const [railCOrder, setRailCOrder] = useState<string[]>([...DEFAULT_RAIL_C_ORDER]);
   const [draggedModuleId, setDraggedModuleId] = useState<string | null>(null);
   const [dragOverModuleId, setDragOverModuleId] = useState<string | null>(null);
   const [inputGain, setInputGain] = useState(1);
@@ -504,6 +514,7 @@ export default function App() {
   function railForModule(moduleId: string): RoutingRail | null {
     if (railAOrder.includes(moduleId)) return 'A';
     if (railBOrder.includes(moduleId)) return 'B';
+    if (railCOrder.includes(moduleId)) return 'C';
     return null;
   }
 
@@ -512,14 +523,14 @@ export default function App() {
   }
 
 
-  async function applyRoutingOrder(nextA: string[], nextB: string[]): Promise<void> {
+  async function applyRoutingOrder(nextA: string[], nextB: string[], nextC: string[]): Promise<void> {
     const engine = engineRef.current;
     if (!engine || engineState !== 'running') return;
 
     try {
       await engine.reorderEffectsClickSafe([...nextA, ...nextB]);
       setMessage(
-        `Routing updated · A ${formatRailOrder(nextA)} · B ${formatRailOrder(nextB)}`
+        `Routing updated · A ${formatRailOrder(nextA)} · B ${formatRailOrder(nextB)} · C ${formatRailOrder(nextC)}`
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Signal routing could not be updated.');
@@ -531,89 +542,88 @@ export default function App() {
     const sourceRail = railForModule(sourceId);
     const targetRail = railForModule(targetId);
 
-    if (!sourceRail || sourceRail !== targetRail) {
-      setMessage('Modules stay on their three-slot rail in this routing version.');
+    if (!sourceRail || !targetRail) return;
+
+    if (sourceRail === 'C' || targetRail === 'C') {
+      if (sourceRail !== 'C' || targetRail !== 'C') {
+        setMessage('Generator and performance modules stay on Rail C.');
+        return;
+      }
+      const nextC = [...railCOrder];
+      const from = nextC.indexOf(sourceId);
+      const to = nextC.indexOf(targetId);
+      if (from < 0 || to < 0) return;
+      nextC.splice(from, 1);
+      nextC.splice(to, 0, sourceId);
+      setRailCOrder(nextC);
+      void applyRoutingOrder(railAOrder, railBOrder, nextC);
       return;
     }
 
-    const current = sourceRail === 'A' ? railAOrder : railBOrder;
-    const next = [...current];
-    const from = next.indexOf(sourceId);
-    const to = next.indexOf(targetId);
-    if (from < 0 || to < 0) return;
-
-    next.splice(from, 1);
-    next.splice(to, 0, sourceId);
-
-    const nextA = sourceRail === 'A' ? next : railAOrder;
-    const nextB = sourceRail === 'B' ? next : railBOrder;
-
-    if (sourceRail === 'A') setRailAOrder(next);
-    else setRailBOrder(next);
-
-    void applyRoutingOrder(nextA, nextB);
+    const rows = serialRows(moveSerialModule([...railAOrder, ...railBOrder], sourceId, targetId));
+    setRailAOrder(rows.top);
+    setRailBOrder(rows.bottom);
+    void applyRoutingOrder(rows.top, rows.bottom, railCOrder);
   }
 
   function nudgeModuleWithinRail(moduleId: string, direction: -1 | 1): void {
     const rail = railForModule(moduleId);
     if (!rail) return;
 
-    const current = rail === 'A' ? railAOrder : railBOrder;
-    const index = current.indexOf(moduleId);
-    const targetIndex = index + direction;
-    if (index < 0 || targetIndex < 0 || targetIndex >= current.length) return;
+    if (rail === 'C') {
+      const index = railCOrder.indexOf(moduleId);
+      const targetIndex = index + direction;
+      if (index < 0 || targetIndex < 0 || targetIndex >= railCOrder.length) return;
+      const nextC = [...railCOrder];
+      [nextC[index], nextC[targetIndex]] = [nextC[targetIndex], nextC[index]];
+      setRailCOrder(nextC);
+      void applyRoutingOrder(railAOrder, railBOrder, nextC);
+      return;
+    }
 
-    const next = [...current];
-    [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
-
-    const nextA = rail === 'A' ? next : railAOrder;
-    const nextB = rail === 'B' ? next : railBOrder;
-
-    if (rail === 'A') setRailAOrder(next);
-    else setRailBOrder(next);
-
-    void applyRoutingOrder(nextA, nextB);
+    const rows = serialRows(nudgeSerialModule([...railAOrder, ...railBOrder], moduleId, direction));
+    setRailAOrder(rows.top);
+    setRailBOrder(rows.bottom);
+    void applyRoutingOrder(rows.top, rows.bottom, railCOrder);
   }
 
   function resetRailOrder(rail: RoutingRail): void {
-    const nextA = rail === 'A' ? [...DEFAULT_RAIL_A_ORDER] : railAOrder;
-    const nextB = rail === 'B' ? [...DEFAULT_RAIL_B_ORDER] : railBOrder;
+    const rows = rail === 'C'
+      ? { top: railAOrder, bottom: railBOrder }
+      : serialRows(DEFAULT_SERIAL_ORDER);
+    const nextC = rail === 'C' ? [...DEFAULT_RAIL_C_ORDER] : railCOrder;
 
-    if (rail === 'A') setRailAOrder(nextA);
-    else setRailBOrder(nextB);
+    setRailAOrder(rows.top);
+    setRailBOrder(rows.bottom);
+    if (rail === 'C') setRailCOrder(nextC);
 
     setDraggedModuleId(null);
     setDragOverModuleId(null);
 
     if (engineState === 'running') {
-      void applyRoutingOrder(nextA, nextB);
+      void applyRoutingOrder(rows.top, rows.bottom, nextC);
     } else {
-      setMessage(`Rail ${rail} reset to factory order. Applies on power-up.`);
+      setMessage(`${rail === 'C' ? 'Rail C' : 'Core signal chain'} reset to factory order. Applies on power-up.`);
     }
   }
 
   function randomizeSignalOrder(): void {
-    let nextA = shuffledSignalOrder(railAOrder);
-    let nextB = shuffledSignalOrder(railBOrder);
-
-    // Extremely defensive: make sure the combined topology changes even if
-    // future rail sizes/memberships alter the shuffle behavior.
-    const unchangedA = nextA.every((id, index) => id === railAOrder[index]);
-    const unchangedB = nextB.every((id, index) => id === railBOrder[index]);
-    if (unchangedA && unchangedB) {
-      nextA = [...railAOrder.slice(1), railAOrder[0]];
-    }
+    const rows = serialRows(shuffledSerialOrder([...railAOrder, ...railBOrder]));
+    const nextA = rows.top;
+    const nextB = rows.bottom;
+    const nextC = shuffledSignalOrder(railCOrder);
 
     setRailAOrder(nextA);
     setRailBOrder(nextB);
+    setRailCOrder(nextC);
     setDraggedModuleId(null);
     setDragOverModuleId(null);
 
     if (engineState === 'running') {
-      void applyRoutingOrder(nextA, nextB);
+      void applyRoutingOrder(nextA, nextB, nextC);
     } else {
       setMessage(
-        `Signal randomized · A ${formatRailOrder(nextA)} · B ${formatRailOrder(nextB)} · applies on power-up`
+        `Signal randomized · A ${formatRailOrder(nextA)} · B ${formatRailOrder(nextB)} · C ${formatRailOrder(nextC)} · applies on power-up`
       );
     }
   }
@@ -665,7 +675,7 @@ export default function App() {
       setAnalyser(engine.getAnalyser());
       setEngineState('running');
       setMessage(
-        'Audio is active. All six effect modules and the spectrum display are live.'
+        'Audio is active. The effect rails, internal instruments, and spectrum display are live.'
       );
     } catch (error) {
       // engine.start() is transactional internally, but failures after it returns
@@ -1445,7 +1455,7 @@ export default function App() {
       window.removeEventListener('resize', refreshPersistentPatchLines);
       window.removeEventListener('scroll', refreshPersistentPatchLines, true);
     };
-  }, [xyAssignments, railAOrder, railBOrder]);
+  }, [xyAssignments, railAOrder, railBOrder, railCOrder]);
 
   useLayoutEffect(() => {
     const fitCanvas = (): void => {
@@ -1701,6 +1711,7 @@ export default function App() {
               {([
                 ['A', railAOrder],
                 ['B', railBOrder],
+                ['C', railCOrder],
               ] as const).map(([rail, order]) => (
                 <section className={`module-rail rail-${rail.toLowerCase()}`} key={rail} aria-label={`Signal rail ${rail}`}>
                   <div className="rail-track">
@@ -1717,13 +1728,73 @@ export default function App() {
 
                   <div className="rail-modules">
                     {order.map((moduleId) => {
+                      const slotLabel = `${rail}${order.indexOf(moduleId) + 1}`;
+                      const routingProps = {
+                        slotLabel,
+                        routingDragging: draggedModuleId === moduleId,
+                        routingDropTarget: dragOverModuleId === moduleId,
+                        onRoutingDragStart: (event: ReactDragEvent<HTMLDivElement>) => {
+                          setDraggedModuleId(moduleId);
+                          setDragOverModuleId(null);
+                          event.dataTransfer.effectAllowed = 'move';
+                          event.dataTransfer.setData('text/plain', moduleId);
+                        },
+                        onRoutingDragOver: (event: ReactDragEvent<HTMLElement>) => {
+                          if (!draggedModuleId) return;
+                          const sourceRail = railForModule(draggedModuleId);
+                          if (!sourceRail || (sourceRail === 'C') !== (rail === 'C')) return;
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = 'move';
+                          setDragOverModuleId(moduleId);
+                        },
+                        onRoutingDrop: (event: ReactDragEvent<HTMLElement>) => {
+                          event.preventDefault();
+                          const sourceId = draggedModuleId || event.dataTransfer.getData('text/plain');
+                          if (sourceId) reorderWithinRail(sourceId, moduleId);
+                          setDraggedModuleId(null);
+                          setDragOverModuleId(null);
+                        },
+                        onRoutingDragEnd: () => {
+                          setDraggedModuleId(null);
+                          setDragOverModuleId(null);
+                        },
+                        onRoutingNudge: (direction: -1 | 1) =>
+                          nudgeModuleWithinRail(moduleId, direction),
+                      };
+
+                      if (rail === 'C') {
+                        return (
+                          <RailCModule
+                            key={moduleId}
+                            moduleId={moduleId}
+                            modules={modules}
+                            assignments={xyAssignments}
+                            visualState={visualState}
+                            running={isRunning}
+                            motionPadProps={{
+                              padRef: xyPadRef,
+                              modules,
+                              assignments: xyAssignments,
+                              position: xyPosition,
+                              dragging: xyDragging,
+                              patchActive: Boolean(patchDraft),
+                              hoverAxis: patchDraft?.hoverAxis ?? null,
+                              onDraggingChange: setXyDragging,
+                              onPadPointer: handleXYPad,
+                              onDisconnect: disconnectPatch,
+                              onRouteChange: updateMotionRoute,
+                            }}
+                            {...routingProps}
+                          />
+                        );
+                      }
+
                       const module = getModuleById(moduleId);
                       if (!module) return null;
                       return (
                         <EffectModule
                           key={module.id}
                           module={module}
-                          slotLabel={`${rail}${order.indexOf(module.id) + 1}`}
                           onToggle={() => toggleModule(module.id)}
                           onParameterChange={(parameterId, value) =>
                             updateParameter(module.id, parameterId, value)
@@ -1744,34 +1815,7 @@ export default function App() {
                           onPatchMove={movePatch}
                           onPatchEnd={finishPatch}
                           onPatchDisconnect={disconnectPatch}
-                          routingDragging={draggedModuleId === module.id}
-                          routingDropTarget={dragOverModuleId === module.id}
-                          onRoutingDragStart={(event) => {
-                            setDraggedModuleId(module.id);
-                            setDragOverModuleId(null);
-                            event.dataTransfer.effectAllowed = 'move';
-                            event.dataTransfer.setData('text/plain', module.id);
-                          }}
-                          onRoutingDragOver={(event) => {
-                            if (!draggedModuleId || railForModule(draggedModuleId) !== rail) return;
-                            event.preventDefault();
-                            event.dataTransfer.dropEffect = 'move';
-                            setDragOverModuleId(module.id);
-                          }}
-                          onRoutingDrop={(event) => {
-                            event.preventDefault();
-                            const sourceId = draggedModuleId || event.dataTransfer.getData('text/plain');
-                            if (sourceId) reorderWithinRail(sourceId, module.id);
-                            setDraggedModuleId(null);
-                            setDragOverModuleId(null);
-                          }}
-                          onRoutingDragEnd={() => {
-                            setDraggedModuleId(null);
-                            setDragOverModuleId(null);
-                          }}
-                          onRoutingNudge={(direction) =>
-                            nudgeModuleWithinRail(module.id, direction)
-                          }
+                          {...routingProps}
                         />
                       );
                     })}
@@ -1783,7 +1827,7 @@ export default function App() {
 
           <aside className="performance-panel">
             <div className="panel-heading motion-heading">
-              <h2>MOTION</h2>
+              <h2>SYSTEM</h2>
               <span className={`jewel-light ${xyAssignments.length > 0 ? 'active' : ''}`} aria-hidden="true" />
             </div>
 
@@ -1801,21 +1845,6 @@ export default function App() {
                 </button>
               ))}
             </div>
-
-            <MotionPad
-              padRef={xyPadRef}
-              modules={modules}
-              assignments={xyAssignments}
-              position={xyPosition}
-              dragging={xyDragging}
-              patchActive={Boolean(patchDraft)}
-              hoverAxis={patchDraft?.hoverAxis ?? null}
-              onDraggingChange={setXyDragging}
-              onPadPointer={handleXYPad}
-              onDisconnect={disconnectPatch}
-              onRouteChange={updateMotionRoute}
-            />
-
 
             <RecorderPanel
               state={recordingState}
@@ -2097,6 +2126,9 @@ function formatRailOrder(order: readonly string[]): string {
     reverb: 'ATMOS',
     bitcrusher: 'GRAIN',
     media: 'ARTIFACT',
+    synth: 'SYNTH',
+    chaos: 'CHAOS',
+    pressure: 'PRESSURE',
   };
   return order.map((id) => names[id] ?? id.toUpperCase()).join(' → ');
 }
