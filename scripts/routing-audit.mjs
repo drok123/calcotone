@@ -45,6 +45,7 @@ requireText(app, 'shuffledSerialOrder([...railAOrder, ...railBOrder]', 'native S
 requireText(app, "const DEFAULT_RAIL_C_ORDER = ['synth', 'chaos', 'pressure']", 'third rail ownership');
 requireText(app, "(sourceRail === 'C') !== (rail === 'C')", 'Rail C boundary guard');
 requireText(app, 'setRailCOrder(nextC)', 'Rail C reorder state');
+requireText(app, 'setRailCRandomOrder(railCOrder)', 'Rail C RANDOM serialization follows routing order');
 if (vite.includes('serialRoutingTransform()')) failures.push('Retired serial routing transform is still enabled');
 
 if (failures.length) {

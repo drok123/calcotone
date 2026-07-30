@@ -71,6 +71,8 @@ requireText(rail, 'const SYNTH_PRESETS: Record<SynthMachine', 'Machine-aware har
 requireText(rail, 'aria-label="Synth hardware preset"', 'Hardware preset selector');
 requireText(rail, "setPresetId('custom')", 'Manual panel edit state');
 requireText(rail, 'aria-label="Sequencer tempo"', 'Sequencer BPM selector');
+requireText(rail, 'onWheel={changeTempoFromWheel}', 'Sequencer BPM wheel control');
+requireText(rail, 'event.deltaY < 0 ? 1 : -1', 'BPM wheel direction');
 requireText(rail, 'const stepSeconds = 60 / bpm / 4', 'Tempo-driven sixteenth-note clock');
 requireText(rail, 'piano-roll-step-numbers', 'Visible step numbering');
 requireText(rail, 'nextChainPosition', 'Functional chained playback');
@@ -86,6 +88,8 @@ requireText(faceplate, "export type RailCFaceplateId = 'synth' | 'chaos' | 'pres
 requireText(faceplate, 'setRailCFaceplateControl(', 'Persistent Rail C control movement');
 requireText(faceplate, 'linkedModules: boolean', 'Linked/independent editor state');
 requireText(layoutEditor, "'MODULES LINKED' : 'INDEPENDENT'", 'Independent layout editor toggle');
+requireText(rail, "useRailCRandomController('synth', enabled, randomizeSynth)", 'Synth MUSICAL RANDOM registration');
+requireText(rail, 'const presets = SYNTH_PRESETS[nextMachine.id]', 'Machine-scoped random hardware preset');
 
 const SAMPLE_RATE = 48_000;
 const BLOCK_SIZE = 128;

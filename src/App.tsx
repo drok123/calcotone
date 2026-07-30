@@ -56,6 +56,12 @@ import {
   type RandomUiCompleteDetail,
   type RandomUiModuleDetail,
 } from './features/random/randomUiFlow';
+import {
+  getActiveRailCRandomModuleIds,
+  randomizeRailCModule,
+  setRailCRandomOrder,
+  type RailCRandomModuleId,
+} from './features/random/railCRandomRegistry';
 
 const APP_NAME = 'CALCOTONE';
 const DESIGN_WIDTH = 2560;
@@ -67,6 +73,11 @@ const REVERB_ALGORITHMS: ReverbAlgorithm[] = [...REVERB_ALGORITHM_ORDER];
 const DEFAULT_RAIL_A_ORDER = ['saturation', 'chorus', 'delay'] as const;
 const DEFAULT_RAIL_B_ORDER = ['reverb', 'bitcrusher', 'media'] as const;
 const DEFAULT_RAIL_C_ORDER = ['synth', 'chaos', 'pressure'] as const;
+const RAIL_C_MODULE_NAMES: Record<RailCRandomModuleId, string> = {
+  synth: 'Synth',
+  chaos: 'Chaos',
+  pressure: 'Pressure',
+};
 type RoutingRail = 'A' | 'B' | 'C';
 
 
@@ -98,6 +109,8 @@ interface RandomUiPlan {
   finalMessage: string;
   revealed: Set<string>;
   targets: Map<string, ModuleState>;
+  railCTargets: Set<RailCRandomModuleId>;
+  totalTargets: number;
 }
 
 interface RandomFlowProgress {
@@ -520,6 +533,10 @@ export default function App() {
   const triggerSynthNote = useCallback((midi: number, durationSeconds: number) => {
     engineRef.current?.triggerSynthNote(midi, durationSeconds);
   }, []);
+
+  useEffect(() => {
+    setRailCRandomOrder(railCOrder);
+  }, [railCOrder]);
 
   function getEngine(): AudioEngine {
     if (!engineRef.current) {
@@ -1001,7 +1018,9 @@ export default function App() {
 
   function randomizeActiveModules(): void {
     const activeModules = modules.filter((module) => module.enabled && module.available);
-    if (activeModules.length === 0) {
+    const activeRailC = getActiveRailCRandomModuleIds();
+    const activeCount = activeModules.length + activeRailC.length;
+    if (activeCount === 0) {
       setMessage('Turn on at least one module before using MUSICAL RANDOM.');
       return;
     }
@@ -1054,12 +1073,13 @@ export default function App() {
     const sweetSpotSummary = sweetSpotsUsed.length
       ? ` · Sweet spots: ${sweetSpotsUsed.join(' · ')}`
       : '';
-    const finalMessage = `MUSICAL RANDOM reshaped ${activeModules.length} active module${activeModules.length === 1 ? '' : 's'}${sweetSpotSummary}.`;
+    const finalMessage = `MUSICAL RANDOM reshaped ${activeCount} active module${activeCount === 1 ? '' : 's'}${sweetSpotSummary}.`;
     const targets = new Map(
       nextModules
         .filter((module) => module.enabled && module.available)
         .map((module) => [module.id, module])
     );
+    const totalTargets = targets.size + activeRailC.length;
 
     for (const timer of offlineRandomTimersRef.current) window.clearTimeout(timer);
     offlineRandomTimersRef.current = [];
@@ -1068,10 +1088,12 @@ export default function App() {
       finalMessage,
       revealed: new Set(),
       targets,
+      railCTargets: new Set(activeRailC),
+      totalTargets,
     };
     randomFlowActiveRef.current = true;
-    setRandomFlowProgress({ current: 0, total: targets.size });
-    setMessage(`RANDOM FLOW queued · ${targets.size} module packet${targets.size === 1 ? '' : 's'}.`);
+    setRandomFlowProgress({ current: 0, total: totalTargets });
+    setMessage(`RANDOM FLOW queued · ${totalTargets} module packet${totalTargets === 1 ? '' : 's'}.`);
 
     if (engineState === 'running') {
       const engine = engineRef.current;
@@ -1109,7 +1131,10 @@ export default function App() {
     } else {
       // Without live DSP there is no transfer scheduler to drive the UI. Preserve
       // the same serial reveal locally so RANDOM never falls back to a visual burst.
-      const orderedTargets = RANDOM_UI_EFFECT_ORDER.filter((effectId) => targets.has(effectId));
+      const orderedTargets = [
+        ...RANDOM_UI_EFFECT_ORDER.filter((effectId) => targets.has(effectId)),
+        ...activeRailC,
+      ];
       for (const [index, effectId] of orderedTargets.entries()) {
         offlineRandomTimersRef.current.push(
           window.setTimeout(() => revealRandomUiModule(effectId), 48 + index * 96)
@@ -1216,16 +1241,24 @@ export default function App() {
       const plan = randomUiPlanRef.current;
       if (!effectId || !plan || plan.revealed.has(effectId)) return;
       const target = plan.targets.get(effectId);
-      if (!target) return;
+      const railCId = plan.railCTargets.has(effectId as RailCRandomModuleId)
+        ? effectId as RailCRandomModuleId
+        : null;
+      if (!target && !railCId) return;
+
+      const railCSummary = railCId ? randomizeRailCModule(railCId) : null;
+      const targetName = target?.name ?? (railCId ? RAIL_C_MODULE_NAMES[railCId] : effectId);
 
       plan.revealed.add(effectId);
       const current = plan.revealed.size;
-      const total = plan.targets.size;
-      setModules((currentModules) =>
-        currentModules.map((module) => module.id === effectId ? target : module)
-      );
+      const total = plan.totalTargets;
+      if (target) {
+        setModules((currentModules) =>
+          currentModules.map((module) => module.id === effectId ? target : module)
+        );
+      }
       setRandomFlowProgress({ current, total });
-      setMessage(`RANDOM FLOW ${current}/${total} · ${target.name}`);
+      setMessage(`RANDOM FLOW ${current}/${total} · ${targetName}${railCSummary ? ` · ${railCSummary}` : ''}`);
     };
 
     const finishFlow = (event: Event): void => {
@@ -1233,7 +1266,7 @@ export default function App() {
       const plan = randomUiPlanRef.current;
       if (!plan) return;
 
-      const revealedEverything = plan.revealed.size === plan.targets.size;
+      const revealedEverything = plan.revealed.size === plan.totalTargets;
       if (!revealedEverything && detail?.completed !== false) {
         setModules(plan.finalModules);
       }
@@ -1243,7 +1276,7 @@ export default function App() {
       setRandomFlowProgress(null);
 
       if (detail?.completed === false) {
-        setMessage(`RANDOM FLOW interrupted after ${plan.revealed.size}/${plan.targets.size} modules.`);
+        setMessage(`RANDOM FLOW interrupted after ${plan.revealed.size}/${plan.totalTargets} modules.`);
         return;
       }
 

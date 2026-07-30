@@ -1,6 +1,5 @@
 import { AudioEngine } from './audio/AudioEngine';
 import { beginViewportPerformanceHold } from './components/effects/viewportScheduler';
-import { randomizePressure } from './components/signal/pressureStore';
 import {
   beginRandomCapture,
   finishRandomCapture,
@@ -8,6 +7,7 @@ import {
   uninstallRandomCapture,
 } from './features/random/randomCapture';
 import { flushCapturedRandom } from './features/random/randomDspScheduler';
+import { getActiveRailCRandomModuleIds } from './features/random/railCRandomRegistry';
 import {
   completeRandomUiFlow,
   revealRandomUiModule,
@@ -96,13 +96,12 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
     replayButton = button;
     beginRandomCapture(engine);
     let parameters: Map<string, Map<string, number>>;
+    const railCModuleIds = getActiveRailCRandomModuleIds();
 
     try {
-      // Let React update the six-module visual destination immediately while the capture shim prevents
-      // those same UI writes from hammering DSP. Pressure owns its own hardware-aware sweet spots and
-      // is randomized independently only when its ON switch is active.
+      // Plan the six captured effects and the active Rail C controllers in one transaction.
+      // Rail C applies later, when its serialized reveal packet reaches the UI.
       button.click();
-      randomizePressure();
     } catch (error) {
       replayButton = null;
       console.error('CALCOTONE RANDOM planning failed.', error);
@@ -119,7 +118,8 @@ function handleMusicalRandom(button: HTMLButtonElement, event: MouseEvent): void
       engine,
       parameters,
       () => activeEngine === engine && engine.getState() === 'running',
-      revealRandomUiModule
+      revealRandomUiModule,
+      railCModuleIds
     )
       .then(() => sleep(RANDOM_SETTLE_MS))
       .catch((error) => {

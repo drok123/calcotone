@@ -7,6 +7,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type WheelEvent as ReactWheelEvent,
 } from 'react';
 import type { VisualAudioState } from '../../visual/VisualEngine';
 import type { ModuleState, XYAssignment } from '../../ui/types';
@@ -22,9 +23,14 @@ import {
 } from '../../audio/SignalLab';
 import type { SynthMachine } from '../../audio/SynthEngine';
 import {
+  randomizePressure,
   setPressureState,
   usePressureState,
 } from '../signal/pressureStore';
+import {
+  registerRailCRandomController,
+  type RailCRandomModuleId,
+} from '../../features/random/railCRandomRegistry';
 import {
   beginFaceplateGesture,
   endFaceplateGesture,
@@ -47,6 +53,30 @@ type RailInteractionProps = {
   onRoutingDragEnd: () => void;
   onRoutingNudge: (direction: -1 | 1) => void;
 };
+
+function useRailCRandomController(
+  moduleId: RailCRandomModuleId,
+  enabled: boolean,
+  randomize: () => string | null
+): void {
+  const enabledRef = useRef(enabled);
+  const randomizeRef = useRef(randomize);
+  enabledRef.current = enabled;
+  randomizeRef.current = randomize;
+
+  useEffect(
+    () => registerRailCRandomController(moduleId, {
+      isEnabled: () => enabledRef.current,
+      randomize: () => randomizeRef.current(),
+    }),
+    [moduleId]
+  );
+}
+
+function centeredRandom(minimum: number, maximum: number): number {
+  const centerBiased = (Math.random() + Math.random()) * 0.5;
+  return minimum + (maximum - minimum) * centerBiased;
+}
 
 type FrameProps = RailInteractionProps & {
   id: string;
@@ -516,6 +546,34 @@ function SynthModule({
     setValues([...nextPreset.values]);
   }
 
+  function randomizeSynth(): string | null {
+    const nextMachine = SYNTH_MACHINES[Math.floor(Math.random() * SYNTH_MACHINES.length)];
+    if (!nextMachine) return null;
+    const presets = SYNTH_PRESETS[nextMachine.id];
+    const nextPreset = presets[Math.floor(Math.random() * presets.length)];
+    if (!nextPreset) return null;
+    setMachine(nextMachine.id);
+    setPresetId(nextPreset.id);
+    setValues([...nextPreset.values]);
+    return `${nextMachine.label} · ${nextPreset.label}`;
+  }
+
+  function changeTempoFromWheel(event: ReactWheelEvent<HTMLSelectElement>): void {
+    event.preventDefault();
+    if (event.deltaY === 0) return;
+    setBpm((current) => {
+      const currentIndex = SYNTH_TEMPOS.findIndex((tempo) => tempo === current);
+      const direction = event.deltaY < 0 ? 1 : -1;
+      const nextIndex = Math.min(
+        SYNTH_TEMPOS.length - 1,
+        Math.max(0, (currentIndex < 0 ? 0 : currentIndex) + direction)
+      );
+      return SYNTH_TEMPOS[nextIndex];
+    });
+  }
+
+  useRailCRandomController('synth', enabled, randomizeSynth);
+
   return (
     <RailModuleFrame
       {...props}
@@ -556,7 +614,13 @@ function SynthModule({
           </span>
           <label className="synth-tempo-selector">
             <span>BPM</span>
-            <select aria-label="Sequencer tempo" value={bpm} onChange={(event) => setBpm(Number(event.target.value))}>
+            <select
+              aria-label="Sequencer tempo"
+              value={bpm}
+              onChange={(event) => setBpm(Number(event.target.value))}
+              onWheel={changeTempoFromWheel}
+              title="Scroll up to raise BPM · scroll down to lower BPM"
+            >
               {SYNTH_TEMPOS.map((tempo) => <option key={tempo} value={tempo}>{tempo}</option>)}
             </select>
           </label>
@@ -641,6 +705,23 @@ function SynthModule({
 
 type ChaosMode = 'chaos-pad' | 'performance-fx';
 
+const CHAOS_PROGRAMS: Record<ChaosMode, readonly { id: string; label: string }[]> = {
+  'chaos-pad': [
+    { id: 'grain-delay', label: 'Grain Delay' },
+    { id: 'dub-space', label: 'Dub Space' },
+    { id: 'spectral-freeze', label: 'Spectral Freeze' },
+    { id: 'pitch-vortex', label: 'Pitch Vortex' },
+    { id: 'filter-feedback', label: 'Filter Feedback' },
+  ],
+  'performance-fx': [
+    { id: 'djfx-looper', label: 'DJFX Looper' },
+    { id: 'vinyl-brake', label: 'Vinyl Brake' },
+    { id: 'scatter', label: 'Scatter' },
+    { id: 'isolator', label: 'Isolator' },
+    { id: 'stutter', label: 'Stutter' },
+  ],
+};
+
 function ChaosModule({
   motionPadProps,
   ...props
@@ -654,6 +735,26 @@ function ChaosModule({
   const labels = mode === 'chaos-pad'
     ? ['Depth', 'Feedback', 'Drift', 'Mix']
     : ['Scatter', 'Rate', 'Color', 'Mix'];
+
+  function randomizeChaos(): string | null {
+    const modes: readonly ChaosMode[] = ['chaos-pad', 'performance-fx'];
+    const nextMode = modes[Math.floor(Math.random() * modes.length)];
+    if (!nextMode) return null;
+    const programs = CHAOS_PROGRAMS[nextMode];
+    const nextProgram = programs[Math.floor(Math.random() * programs.length)];
+    if (!nextProgram) return null;
+    setMode(nextMode);
+    setEffect(nextProgram.id);
+    setValues([
+      centeredRandom(0.18, 0.78),
+      centeredRandom(0.16, 0.64),
+      centeredRandom(0.22, 0.82),
+      centeredRandom(0.28, 0.62),
+    ]);
+    return `${nextMode === 'chaos-pad' ? 'Chaos Pad' : 'Performance FX'} · ${nextProgram.label}`;
+  }
+
+  useRailCRandomController('chaos', enabled, randomizeChaos);
 
   return (
     <RailModuleFrame
@@ -682,23 +783,9 @@ function ChaosModule({
           <label className="algorithm-selector chaos-program-selector">
             <span className="sr-only">Chaos program</span>
             <select aria-label="Chaos program" value={effect} onChange={(event) => setEffect(event.target.value)}>
-              {mode === 'chaos-pad' ? (
-                <>
-                  <option value="grain-delay">Grain Delay</option>
-                  <option value="dub-space">Dub Space</option>
-                  <option value="spectral-freeze">Spectral Freeze</option>
-                  <option value="pitch-vortex">Pitch Vortex</option>
-                  <option value="filter-feedback">Filter Feedback</option>
-                </>
-              ) : (
-                <>
-                  <option value="djfx-looper">DJFX Looper</option>
-                  <option value="vinyl-brake">Vinyl Brake</option>
-                  <option value="scatter">Scatter</option>
-                  <option value="isolator">Isolator</option>
-                  <option value="stutter">Stutter</option>
-                </>
-              )}
+              {CHAOS_PROGRAMS[mode].map((program) => (
+                <option value={program.id} key={program.id}>{program.label}</option>
+              ))}
             </select>
           </label>
         </div>
@@ -744,6 +831,8 @@ function PressureModule({
   const state = usePressureState();
   const meter = Math.max(1, Math.round((state.enabled ? visualState.level : 0) * 18));
   const meterText = `${'█'.repeat(meter)}${'░'.repeat(18 - meter)}`;
+
+  useRailCRandomController('pressure', state.enabled, randomizePressure);
 
   return (
     <RailModuleFrame

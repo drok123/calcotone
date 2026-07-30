@@ -138,11 +138,23 @@ async function commitOneBatch(
   await sleep(RANDOM_WET_RECOVERY_MS);
 }
 
+async function commitDeferredModule(
+  moduleId: string,
+  engineIsUsable: () => boolean,
+  revealModule: (effectId: string) => void
+): Promise<void> {
+  if (!engineIsUsable()) return;
+  revealModule(moduleId);
+  await yieldForUiPaint();
+  if (engineIsUsable()) await sleep(RANDOM_DSP_STAGGER_MS);
+}
+
 export function flushCapturedRandom(
   engine: AudioEngine,
   batches: RandomParameterBatches,
   engineIsUsable: () => boolean,
-  revealModule: (effectId: string) => void
+  revealModule: (effectId: string) => void,
+  deferredModuleIds: readonly string[] = []
 ): Promise<void> {
   // RANDOM is planned atomically but committed as a sequence of click-safe effect transactions.
   // Discrete machine changes temporarily crossfade only that effect to dry, install the new DSP,
@@ -160,6 +172,13 @@ export function flushCapturedRandom(
   for (const [effectId, values] of batches) {
     if (committed.has(effectId)) continue;
     chain = chain.then(() => commitOneBatch(engine, effectId, values, engineIsUsable, revealModule));
+  }
+
+  // Rail C owns synth/performance state outside the six-effect capture shim. Reveal those
+  // controllers after the captured effect packets so their React effects, worklet messages,
+  // and Pressure event bridge also land one module at a time.
+  for (const moduleId of deferredModuleIds) {
+    chain = chain.then(() => commitDeferredModule(moduleId, engineIsUsable, revealModule));
   }
 
   // The bridge holds RANDOM busy until this promise resolves, so repeated button mashing can no
