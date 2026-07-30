@@ -1,16 +1,21 @@
 /*
  * CALCOTONE topology-derived synth core.
  *
- * This is intentionally a realtime circuit model, not a SPICE netlist. The
- * oscillator, filter, converter and operator structures follow the signal
- * topology of the named instrument families while bounded nonlinearities,
+ * The Model D path includes a compact SPICE-style BJT/capacitor solver. The
+ * remaining oscillator, filter, converter and operator structures follow the
+ * signal topology of the named instrument families while bounded nonlinearities,
  * oversampling and explicit state guards keep the audio thread deterministic.
  */
 
 const TAU = Math.PI * 2;
 const MAX_VOICES = 10;
+const BOLTZMANN_CONSTANT = 1.380649e-23;
+const ELECTRON_CHARGE = 1.602176634e-19;
+const ROOM_TEMPERATURE_K = 300.15;
+const MODEL_D_CAPACITANCE_F = 68e-9;
+const MODEL_D_SIGNAL_VOLTAGE = .12;
 const PROFILES = {
-  'model-d':  { topology: 'TRANSISTOR LADDER', family: 'ladder', attack: .008, decay: .18, sustain: .58, release: .14, cutoff: 5400, resonance: .67, drive: 2.1, level: .17 },
+  'model-d':  { topology: '4× BJT-C SPICE LADDER', family: 'ladder', solver: 'BJT-C NEWTON', attack: .008, decay: .18, sustain: .58, release: .14, cutoff: 5400, resonance: .67, drive: 2.1, level: .17 },
   'juno-106': { topology: 'IR3109 OTA CASCADE', family: 'ota', attack: .015, decay: .26, sustain: .68, release: .24, cutoff: 7200, resonance: .40, drive: 1.25, level: .15 },
   'sh-101':   { topology: 'OTA MONO + SUB', family: 'ota', attack: .004, decay: .12, sustain: .48, release: .08, cutoff: 4600, resonance: .58, drive: 1.5, level: .16 },
   'prophet-5':{ topology: 'SSM/CEM POLY CASCADE', family: 'ota', attack: .018, decay: .32, sustain: .62, release: .32, cutoff: 6500, resonance: .44, drive: 1.4, level: .145 },
@@ -27,6 +32,53 @@ const PROFILES = {
 const clamp = (value, low = 0, high = 1) => Math.min(high, Math.max(low, Number.isFinite(value) ? value : low));
 const midiToFrequency = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
 const wrap = (phase) => phase - Math.floor(phase);
+const thermalVoltage = (temperatureK) => BOLTZMANN_CONSTANT * temperatureK / ELECTRON_CHARGE;
+
+/**
+ * Tail-normalized Shockley junction pair. The saturation-current term cancels
+ * when the two matched junction currents are normalized by their sum, leaving
+ * a bounded differential-pair current suitable for a realtime Newton solve.
+ */
+function bjtDifferentialPair(normalizedVoltage) {
+  const exponent = clamp(normalizedVoltage, -12, 12);
+  const forwardJunction = Math.exp(exponent);
+  const reverseJunction = Math.exp(-exponent);
+  return (forwardJunction - reverseJunction) / (forwardJunction + reverseJunction);
+}
+
+/**
+ * Solve one BJT-driven capacitor with an implicit trapezoidal companion model.
+ * Fixed iteration counts and rail bounds make this small MNA-style solve safe
+ * for the audio thread while retaining capacitor and junction state.
+ */
+function solveBjtCapacitorStage(
+  previousVoltage,
+  previousCurrent,
+  driveVoltage,
+  capacitance,
+  tailCurrent,
+  junctionVoltage,
+  mismatch,
+  railVoltage,
+  dt,
+  iterations,
+  result,
+) {
+  let voltage = previousVoltage;
+  const companionScale = dt / (2 * capacitance);
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    const normalized = (driveVoltage - voltage) / (2 * junctionVoltage) + mismatch;
+    const pairTransfer = bjtDifferentialPair(normalized);
+    const current = tailCurrent * pairTransfer;
+    const conductance = tailCurrent * (1 - pairTransfer * pairTransfer) / (2 * junctionVoltage);
+    const residual = voltage - previousVoltage - companionScale * (current + previousCurrent);
+    voltage -= residual / Math.max(1e-9, 1 + companionScale * conductance);
+    voltage = clamp(voltage, -railVoltage, railVoltage);
+  }
+  const normalized = (driveVoltage - voltage) / (2 * junctionVoltage) + mismatch;
+  result[0] = voltage;
+  result[1] = tailCurrent * bjtDifferentialPair(normalized);
+}
 
 function polyBlep(phase, increment) {
   if (phase < increment) {
@@ -63,6 +115,7 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     this.telemetryCountdown = sampleRate >> 2;
     this.peak = 0;
     this.clippedSamples = 0;
+    this.renderQuantumFrames = 0;
     this.dcL = { input: 0, output: 0 };
     this.dcR = { input: 0, output: 0 };
     this.port.onmessage = (event) => this.handleMessage(event.data);
@@ -94,6 +147,14 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     const midi = clamp(data.midi, 0, 127);
     const profile = PROFILES[this.machine];
     const seed = ((midi * 1103515245 + this.frameCounter + this.voices.length * 7919) >>> 0) || 1;
+    const componentDrift = (offset) => ((((seed >>> offset) & 255) / 255) * 2 - 1);
+    const temperatureK = ROOM_TEMPERATURE_K + componentDrift(4) * 4;
+    const ladderCapacitances = new Float64Array(4);
+    const ladderMismatch = new Float64Array(4);
+    for (let pole = 0; pole < 4; pole += 1) {
+      ladderCapacitances[pole] = MODEL_D_CAPACITANCE_F * (1 + componentDrift(pole * 4) * .018);
+      ladderMismatch[pole] = componentDrift(12 + pole * 3) * .009;
+    }
     this.voices.push({
       machine: this.machine,
       profile,
@@ -111,6 +172,13 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       opPhases: new Float64Array(6),
       opMemory: new Float64Array(6),
       poles: new Float64Array(6),
+      ladderCurrents: new Float64Array(4),
+      ladderSolve: new Float64Array(2),
+      ladderCapacitances,
+      ladderMismatch,
+      temperatureK,
+      thermalVoltage: thermalVoltage(temperatureK),
+      supplySag: 0,
       previous: 0,
       hold: 0,
       holdCounter: 0,
@@ -180,6 +248,59 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       stage = voice.poles[pole];
     }
     return Math.tanh(voice.poles[3] * 1.25);
+  }
+
+  spiceLadder(voice, input, dt) {
+    const [, color, resonance, contour, character] = voice.parameters;
+    const profile = voice.profile;
+    const cutoff = clamp(
+      profile.cutoff * (.055 + color * color * 1.22) * (.7 + contour * .35),
+      45,
+      sampleRate * .34,
+    );
+    const feedback = clamp(profile.resonance * (.20 + resonance * 1.32), 0, .95) * 3.82;
+    const signalVoltage = MODEL_D_SIGNAL_VOLTAGE * (.82 + character * .36);
+    const drivenInput = Math.tanh(input * profile.drive * (.68 + character * 1.82)) * signalVoltage;
+
+    // The current source that biases each differential pair sets gm and therefore
+    // cutoff: gm/C = 2πfc, with gm ≈ Itail/(2 n Vt).
+    const ideality = 1.08;
+    const junctionVoltage = voice.thermalVoltage * ideality;
+    const nominalTailCurrent = 2 * junctionVoltage * MODEL_D_CAPACITANCE_F * TAU * cutoff;
+    const railVoltage = Math.max(.24, .42 - voice.supplySag);
+    const iterations = this.quality >= 4 ? 2 : 1;
+    let stageVoltage = drivenInput - voice.poles[3] * feedback;
+
+    for (let pole = 0; pole < 4; pole += 1) {
+      const capacitance = voice.ladderCapacitances[pole];
+      solveBjtCapacitorStage(
+        voice.poles[pole],
+        voice.ladderCurrents[pole],
+        stageVoltage,
+        capacitance,
+        nominalTailCurrent,
+        junctionVoltage,
+        voice.ladderMismatch[pole],
+        railVoltage,
+        dt,
+        iterations,
+        voice.ladderSolve,
+      );
+      voice.poles[pole] = voice.ladderSolve[0];
+      voice.ladderCurrents[pole] = voice.ladderSolve[1];
+      stageVoltage = voice.ladderSolve[0];
+    }
+
+    // A resistor/capacitor supply companion adds small, slow rail movement under
+    // load without requiring a full power-supply netlist in the render callback.
+    const supplyLoad = clamp(
+      (Math.abs(drivenInput) + Math.abs(voice.poles[3])) * (.07 + character * .05),
+      0,
+      .075,
+    );
+    const supplyTimeConstant = 120 * 47e-6;
+    voice.supplySag += (1 - Math.exp(-dt / supplyTimeConstant)) * (supplyLoad - voice.supplySag);
+    return Math.tanh(voice.poles[3] / signalVoltage * 1.18);
   }
 
   ota(voice, input, dt) {
@@ -276,7 +397,7 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       return family === 'wavetable' ? this.ota(voice, source, dt) : source;
     }
     const source = this.analogSource(voice, dt);
-    if (family === 'ladder') return this.ladder(voice, source, dt);
+    if (family === 'ladder') return this.spiceLadder(voice, source, dt);
     if (family === 'korg35') return this.korg35(voice, source, dt);
     if (family === 'hybrid') {
       const digital = this.digitalSource(voice, dt);
@@ -297,6 +418,7 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     const left = output[0];
     const right = output[1] || output[0];
     if (!left) return true;
+    this.renderQuantumFrames = left.length;
     const quality = this.quality;
     const dt = 1 / (sampleRate * quality);
     for (let i = 0; i < left.length; i += 1) {
@@ -340,6 +462,12 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
           oversample: this.quality,
           machine: this.machine,
           topology: profile.topology,
+          solver: profile.solver || 'TOPOLOGY DSP',
+          solverIterations: profile.family === 'ladder' ? (this.quality >= 4 ? 2 : 1) : 0,
+          temperatureC: profile.family === 'ladder' && this.voices[0]
+            ? this.voices[0].temperatureK - 273.15
+            : 27,
+          renderQuantumFrames: this.renderQuantumFrames,
           clippedSamples: this.clippedSamples,
         });
         this.telemetryCountdown = sampleRate >> 2;

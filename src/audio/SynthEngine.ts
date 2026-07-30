@@ -21,6 +21,10 @@ export interface SynthTelemetryStats {
   oversample: number;
   machine: SynthMachine;
   topology: string;
+  solver: string;
+  solverIterations: number;
+  temperatureC: number;
+  renderQuantumFrames: number;
   clippedSamples: number;
 }
 
@@ -30,7 +34,11 @@ const EMPTY_TELEMETRY: SynthTelemetryStats = {
   peak: 0,
   oversample: 2,
   machine: 'model-d',
-  topology: 'TRANSISTOR LADDER',
+  topology: '4× BJT-C SPICE LADDER',
+  solver: 'BJT-C NEWTON',
+  solverIterations: 1,
+  temperatureC: 27,
+  renderQuantumFrames: 0,
   clippedSamples: 0,
 };
 
@@ -67,6 +75,10 @@ export class SynthEngine {
         oversample: data.oversample,
         machine: data.machine,
         topology: data.topology,
+        solver: data.solver,
+        solverIterations: data.solverIterations,
+        temperatureC: data.temperatureC,
+        renderQuantumFrames: data.renderQuantumFrames,
         clippedSamples: data.clippedSamples,
       };
     };
@@ -130,6 +142,10 @@ function isSynthTelemetry(value: unknown): value is SynthTelemetryStats & { type
     && typeof data.oversample === 'number'
     && typeof data.machine === 'string'
     && typeof data.topology === 'string'
+    && typeof data.solver === 'string'
+    && typeof data.solverIterations === 'number'
+    && typeof data.temperatureC === 'number'
+    && typeof data.renderQuantumFrames === 'number'
     && typeof data.clippedSamples === 'number';
 }
 

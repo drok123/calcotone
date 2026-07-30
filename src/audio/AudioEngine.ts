@@ -17,8 +17,17 @@ export type AudioEngineState =
   | 'error';
 
 export type PerformanceMode = 'live' | 'balanced' | 'studio';
+export type CalcotoneRenderSizeHint = 'default' | 'hardware' | number;
 
-const WORKLET_BUILD_VERSION = '8.6.0-synth-circuit-a';
+type ExtendedAudioContextOptions = AudioContextOptions & {
+  renderSizeHint?: CalcotoneRenderSizeHint;
+};
+
+type ExtendedAudioContext = AudioContext & {
+  readonly renderQuantumSize?: number;
+};
+
+const WORKLET_BUILD_VERSION = '8.7.0-synth-spice-a';
 export type EngineHealth = 'offline' | 'healthy' | 'warm' | 'critical';
 
 export interface DspProfilerSnapshot {
@@ -26,6 +35,9 @@ export interface DspProfilerSnapshot {
   sampleRate: number;
   baseLatencyMs: number;
   outputLatencyMs: number;
+  requestedRenderSize: CalcotoneRenderSizeHint;
+  renderQuantumFrames: number;
+  renderSizeHintSupported: boolean;
   grain: GrainProfilerStats;
   health: EngineHealth;
   spectralCentroidHz: number;
@@ -68,6 +80,8 @@ export class AudioEngine {
   private effects = new Map<string, Effect>();
   private state: AudioEngineState = 'idle';
   private performanceMode: PerformanceMode = 'live';
+  private requestedRenderSize: CalcotoneRenderSizeHint = 'default';
+  private renderSizeHintSupported = false;
   private inputMode: InputMode = 'mono-to-stereo';
   private inputWidth = 1;
   private invertLeft = false;
@@ -109,11 +123,28 @@ export class AudioEngine {
       : grainStats.cpuLoad >= 0.58
       ? 'warm'
       : 'healthy';
+    const synth = this.synth?.getTelemetry() ?? {
+      activeVoices: 0,
+      maxVoices: 10,
+      peak: 0,
+      oversample: this.performanceMode === 'studio' ? 4 : this.performanceMode === 'balanced' ? 2 : 1,
+      machine: 'model-d' as const,
+      topology: '4× BJT-C SPICE LADDER',
+      solver: 'BJT-C NEWTON',
+      solverIterations: this.performanceMode === 'studio' ? 2 : 1,
+      temperatureC: 27,
+      renderQuantumFrames: 0,
+      clippedSamples: 0,
+    };
+    const contextQuantum = readRenderQuantumSize(this.context);
     return {
       contextState: this.context?.state ?? 'offline',
       sampleRate: this.context?.sampleRate ?? 0,
       baseLatencyMs: (this.context?.baseLatency ?? 0) * 1000,
       outputLatencyMs: (this.context?.outputLatency ?? 0) * 1000,
+      requestedRenderSize: this.requestedRenderSize,
+      renderQuantumFrames: contextQuantum || synth.renderQuantumFrames,
+      renderSizeHintSupported: this.renderSizeHintSupported,
       grain: grainStats,
       health,
       spectralCentroidHz: spectral.centroidHz,
@@ -121,15 +152,7 @@ export class AudioEngine {
       adaptiveMode: this.adaptiveMode,
       adaptiveAction: this.adaptiveAction,
       dreamBuffer: this.dreamBuffer?.getStats() ?? { fillRatio: 0, historySeconds: 8, inputPeak: 0, captures: 0, activeRoutes: 0 },
-      synth: this.synth?.getTelemetry() ?? {
-        activeVoices: 0,
-        maxVoices: 10,
-        peak: 0,
-        oversample: this.performanceMode === 'studio' ? 4 : this.performanceMode === 'balanced' ? 2 : 1,
-        machine: 'model-d',
-        topology: 'TRANSISTOR LADDER',
-        clippedSamples: 0,
-      },
+      synth,
     };
   }
 
@@ -222,9 +245,19 @@ export class AudioEngine {
     try {
       this.assertBrowserSupport();
       this.performanceMode = options.performanceMode ?? this.performanceMode;
-      this.context = new AudioContext({
+      this.requestedRenderSize = renderSizeHintForMode(this.performanceMode);
+      const contextOptions: ExtendedAudioContextOptions = {
         latencyHint: this.performanceMode === 'studio' ? 'playback' : 'interactive',
-      });
+        renderSizeHint: this.requestedRenderSize,
+      };
+      try {
+        this.context = new AudioContext(contextOptions);
+      } catch {
+        // Older implementations can reject an unfamiliar dictionary member.
+        // Retrying without it preserves the existing Web Audio startup path.
+        this.context = new AudioContext({ latencyHint: contextOptions.latencyHint });
+      }
+      this.renderSizeHintSupported = readRenderQuantumSize(this.context) > 0;
       await this.loadAudioWorklets(this.context);
 
       this.graph = new AudioGraph(this.context);
@@ -758,6 +791,18 @@ function getDreamSendAmount(effectId: string): number {
     case 'media': return 0.08;
     default: return 0;
   }
+}
+
+function renderSizeHintForMode(mode: PerformanceMode): CalcotoneRenderSizeHint {
+  if (mode === 'studio') return 512;
+  if (mode === 'balanced') return 'hardware';
+  return 'default';
+}
+
+function readRenderQuantumSize(context: AudioContext | null): number {
+  if (!context) return 0;
+  const value = (context as ExtendedAudioContext).renderQuantumSize;
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
 }
 
 function sleepMilliseconds(milliseconds: number): Promise<void> {

@@ -15,6 +15,8 @@ export type EngineStabilityInternals = {
   recoveryWindows: number;
   lastOverrunCount: number;
   routeTransition: Promise<void>;
+  requestedRenderSize: DspProfilerSnapshot['requestedRenderSize'];
+  renderSizeHintSupported: boolean;
   dreamBuffer: { getStats(): DspProfilerSnapshot['dreamBuffer'] } | null;
   synth: { getTelemetry(): DspProfilerSnapshot['synth'] } | null;
 };
@@ -109,12 +111,32 @@ export function buildHiddenProfilerSnapshot(engine: AudioEngine): DspProfilerSna
       : stats.cpuLoad >= 0.58
         ? 'warm'
         : 'healthy';
+  const synth = internal.synth?.getTelemetry() ?? {
+    activeVoices: 0,
+    maxVoices: 10,
+    peak: 0,
+    oversample: engine.getPerformanceMode() === 'studio' ? 4 : engine.getPerformanceMode() === 'balanced' ? 2 : 1,
+    machine: 'model-d' as const,
+    topology: '4× BJT-C SPICE LADDER',
+    solver: 'BJT-C NEWTON',
+    solverIterations: engine.getPerformanceMode() === 'studio' ? 2 : 1,
+    temperatureC: 27,
+    renderQuantumFrames: 0,
+    clippedSamples: 0,
+  };
+  const contextQuantum = (context as (AudioContext & { readonly renderQuantumSize?: number }) | null)
+    ?.renderQuantumSize;
 
   return {
     contextState: context?.state ?? 'offline',
     sampleRate: context?.sampleRate ?? 0,
     baseLatencyMs: (context?.baseLatency ?? 0) * 1000,
     outputLatencyMs: (context?.outputLatency ?? 0) * 1000,
+    requestedRenderSize: internal.requestedRenderSize,
+    renderQuantumFrames: typeof contextQuantum === 'number' && contextQuantum > 0
+      ? Math.round(contextQuantum)
+      : synth.renderQuantumFrames,
+    renderSizeHintSupported: internal.renderSizeHintSupported,
     grain: stats,
     health,
     spectralCentroidHz: 0,
@@ -128,14 +150,6 @@ export function buildHiddenProfilerSnapshot(engine: AudioEngine): DspProfilerSna
       captures: 0,
       activeRoutes: 0,
     },
-    synth: internal.synth?.getTelemetry() ?? {
-      activeVoices: 0,
-      maxVoices: 10,
-      peak: 0,
-      oversample: engine.getPerformanceMode() === 'studio' ? 4 : engine.getPerformanceMode() === 'balanced' ? 2 : 1,
-      machine: 'model-d',
-      topology: 'TRANSISTOR LADDER',
-      clippedSamples: 0,
-    },
+    synth,
   };
 }
