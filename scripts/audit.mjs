@@ -99,6 +99,10 @@ requireText(audioEngine, 'this.analyser.connect(this.outputGain)', 'Raw master a
 requireText(audioEngine, 'this.graph.output.connect(this.dcBlock)', 'Processed master safety route');
 requireText(audioEngine, 'this.dreamBuffer.connectReturn(this.dcBlock)', 'Dream return stays on processed path');
 requireText(audioEngine, 'this.connectMasterChain();', 'Master topology refresh hook');
+requireText(audioEngine, 'diagnosticSignal?: boolean', 'Development DSP diagnostic input');
+requireText(audioEngine, 'import.meta.env.DEV && options.diagnosticSignal === true', 'Development-only DSP diagnostic guard');
+requireText(audioEngine, 'this.disposeDiagnosticInput()', 'DSP diagnostic input cleanup');
+requireText(app, "has('diagnostic-audio')", 'DSP diagnostic query switch');
 
 requireText(factory, 'attachPhysicalBehavior(effect)', 'EffectFactory physical registry attachment');
 requireText(registry, 'effect.getNormalizedParameterValue(id)', 'Physical registry allocation-free reads');

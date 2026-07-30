@@ -41,12 +41,15 @@ export interface StartAudioOptions {
   autoGainControl?: boolean;
   performanceMode?: PerformanceMode;
   inputMode?: InputMode;
+  diagnosticSignal?: boolean;
 }
 
 export class AudioEngine {
   private context: AudioContext | null = null;
   private stream: MediaStream | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
+  private diagnosticOscillators: OscillatorNode[] = [];
+  private diagnosticNodes: AudioNode[] = [];
 
   private graph: AudioGraph | null = null;
   private inputMatrix: InputMatrix | null = null;
@@ -232,16 +235,19 @@ export class AudioEngine {
       this.analyser.minDecibels = -90;
       this.analyser.maxDecibels = -12;
 
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        video: false,
-        audio: {
-          deviceId: options.deviceId ? { exact: options.deviceId } : undefined,
-          echoCancellation: options.echoCancellation ?? false,
-          noiseSuppression: options.noiseSuppression ?? false,
-          autoGainControl: options.autoGainControl ?? false,
-          channelCount: { ideal: 2 },
-        },
-      });
+      const useDiagnosticSignal = import.meta.env.DEV && options.diagnosticSignal === true;
+      this.stream = useDiagnosticSignal
+        ? this.createDiagnosticInputStream(this.context)
+        : await navigator.mediaDevices.getUserMedia({
+            video: false,
+            audio: {
+              deviceId: options.deviceId ? { exact: options.deviceId } : undefined,
+              echoCancellation: options.echoCancellation ?? false,
+              noiseSuppression: options.noiseSuppression ?? false,
+              autoGainControl: options.autoGainControl ?? false,
+              channelCount: { ideal: 2 },
+            },
+          });
 
       this.source = this.context.createMediaStreamSource(this.stream);
       this.inputMode = options.inputMode ?? this.inputMode;
@@ -508,6 +514,7 @@ export class AudioEngine {
     this.inputMatrix?.dispose();
     this.source = null;
     this.inputMatrix = null;
+    this.disposeDiagnosticInput();
     for (const track of this.stream?.getTracks() ?? []) track.stop();
     this.stream = null;
 
@@ -531,6 +538,39 @@ export class AudioEngine {
     if (this.context && this.context.state !== 'closed') await this.context.close();
     this.context = null;
     if (this.state !== 'error') this.state = 'stopped';
+  }
+
+  private createDiagnosticInputStream(context: AudioContext): MediaStream {
+    const destination = context.createMediaStreamDestination();
+    const merger = context.createChannelMerger(2);
+    const frequencies = [173, 181];
+    const types: OscillatorType[] = ['sine', 'triangle'];
+
+    for (let channel = 0; channel < 2; channel += 1) {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = types[channel];
+      oscillator.frequency.value = frequencies[channel];
+      gain.gain.value = channel === 0 ? 0.12 : 0.09;
+      oscillator.connect(gain);
+      gain.connect(merger, 0, channel);
+      oscillator.start();
+      this.diagnosticOscillators.push(oscillator);
+      this.diagnosticNodes.push(oscillator, gain);
+    }
+
+    merger.connect(destination);
+    this.diagnosticNodes.push(merger, destination);
+    return destination.stream;
+  }
+
+  private disposeDiagnosticInput(): void {
+    for (const oscillator of this.diagnosticOscillators) {
+      try { oscillator.stop(); } catch { /* already stopped */ }
+    }
+    for (const node of this.diagnosticNodes) node.disconnect();
+    this.diagnosticOscillators = [];
+    this.diagnosticNodes = [];
   }
 
   private hasActiveProcessing(): boolean {

@@ -435,6 +435,8 @@ const MUSICAL_GRAIN_MODES: readonly GrainMode[] = [...GRAIN_MODE_ORDER];
 const MUSICAL_MEDIA_MODES: readonly MediaMode[] = [...MEDIA_MODE_ORDER];
 
 export default function App() {
+  const diagnosticAudio = import.meta.env.DEV
+    && new URLSearchParams(window.location.search).has('diagnostic-audio');
   const engineRef = useRef<AudioEngine | null>(null);
   const [engineState, setEngineState] = useState<AudioEngineState>('idle');
   const [canvasScale, setCanvasScale] = useState(1);
@@ -621,9 +623,11 @@ export default function App() {
 
     try {
       setEngineState('starting');
-      setMessage('Requesting access to the audio input...');
+      setMessage(diagnosticAudio
+        ? 'Starting the built-in DSP diagnostic signal...'
+        : 'Requesting access to the audio input...');
 
-      await engine.start({ performanceMode, inputMode });
+      await engine.start({ performanceMode, inputMode, diagnosticSignal: diagnosticAudio });
       engine.loadPreset(DEFAULT_PRESET);
       engine.reorderEffects([...railAOrder, ...railBOrder]);
       engine.setInputGain(inputGain);
@@ -642,7 +646,7 @@ export default function App() {
       const track = engine.getInputStream()?.getAudioTracks()[0];
       const context = engine.getContext();
 
-      setInputDevice(track?.label || 'Default audio input');
+      setInputDevice(diagnosticAudio ? 'Built-in DSP diagnostic signal' : track?.label || 'Default audio input');
       setLatency(
         totalLatency > 0
           ? `${(totalLatency * 1000).toFixed(1)} ms`
