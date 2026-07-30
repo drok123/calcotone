@@ -42,22 +42,22 @@ export interface FaceplateEditorSnapshot {
 const STORAGE_KEY = 'calcotone.faceplate-layout.v2';
 const LEGACY_STORAGE_KEY = 'calcotone.faceplate-layout.v1';
 const FACTORY_LAYOUT_REVISION_KEY = 'calcotone.faceplate-layout.factory-revision';
-const FACTORY_LAYOUT_REVISION = '2026-07-28-compact-single-row';
+const FACTORY_LAYOUT_REVISION = '2026-07-30-three-rail-faceplate';
 const KNOB_COUNT = 6;
 const listeners = new Set<() => void>();
 
 export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
   version: 2,
   custom: true,
-  viewportHeight: 312,
-  stageHeight: 457.81022074542363,
+  viewportHeight: 176,
+  stageHeight: 292,
   knobs: [
-    { x: 0.2504604051565378, y: 411.81022074542363 },
-    { x: 0.4125230202578269, y: 411.81022074542363 },
-    { x: 0.08839779005524862, y: 411.81022074542363 },
-    { x: 0.574585635359116, y: 411.81022074542363 },
-    { x: 0.7366482504604052, y: 411.81022074542363 },
-    { x: 0.8987108655616943, y: 411.81022074542363 },
+    { x: 0.08333333333333333, y: 238 },
+    { x: 0.25, y: 238 },
+    { x: 0.4166666666666667, y: 238 },
+    { x: 0.5833333333333334, y: 238 },
+    { x: 0.75, y: 238 },
+    { x: 0.9166666666666666, y: 238 },
   ],
   snap: 8,
 };

@@ -4,10 +4,62 @@
 
 .rail-c-module {
   min-width: 0;
+  padding: 12px;
 }
 
-.rail-c-module .dsp-viewport {
-  min-height: 164px;
+.rail-c-module .module-header {
+  min-height: 34px;
+  height: 34px;
+  flex-basis: 34px;
+  margin-bottom: 7px;
+}
+
+.rail-c-module .knob-row {
+  flex: 0 0 66px;
+  min-height: 66px;
+  grid-template-rows: 66px;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+}
+
+.rail-c-module .knob-control {
+  min-width: 0;
+  min-height: 64px;
+  height: 64px;
+  grid-template-rows: 48px 13px;
+  gap: 2px;
+}
+
+.rail-c-module .knob-shell {
+  width: 48px;
+  height: 48px;
+}
+
+.rail-c-module .knob-face {
+  width: 34px;
+  height: 34px;
+}
+
+.rail-c-module .knob-patch-jack {
+  top: 31px;
+  right: max(0px, calc(50% - 31px));
+  width: 15px;
+  height: 15px;
+}
+
+.rail-c-module .knob-label {
+  overflow: hidden;
+  font-size: .47rem;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-c-module .knob-value {
+  min-width: 48px;
+  padding: 4px 5px;
+  font-size: .46rem;
 }
 
 .synth-roll {
@@ -19,6 +71,11 @@
     radial-gradient(circle at 50% 20%, rgba(40,130,145,.13), transparent 48%),
     #061012;
   color: #a7e9ec;
+  height: 184px !important;
+  min-height: 184px !important;
+  max-height: 184px !important;
+  flex: 0 0 184px !important;
+  margin-bottom: 4px !important;
 }
 
 .synth-roll-toolbar,
@@ -34,7 +91,7 @@
 
 .synth-roll-toolbar {
   justify-content: space-between;
-  padding: 6px 8px;
+  padding: 7px 9px;
   border-bottom: 1px solid rgba(125,232,255,.13);
   background: rgba(0,0,0,.22);
 }
@@ -92,7 +149,7 @@
   border-bottom: 1px solid rgba(125,232,255,.07);
   color: #619299;
   background: #0c191b;
-  font: 700 .36rem/1 var(--mono);
+  font: 700 .44rem/1 var(--mono);
 }
 
 .piano-roll-keys span.sharp {
@@ -127,14 +184,14 @@
 
 .piano-roll-row button.has-note span {
   position: absolute;
-  inset: 1px;
+  inset: 1px 2px;
   border: 1px solid #b5fbff;
   background: linear-gradient(90deg, #4cb7c2, #8cecf1);
   box-shadow: 0 0 5px rgba(116,234,243,.52);
 }
 
 .synth-pattern-strip {
-  padding: 5px 7px;
+  padding: 6px 8px;
   border-top: 1px solid rgba(125,232,255,.14);
   overflow: hidden;
 }
@@ -157,7 +214,7 @@
 }
 
 .prototype-status {
-  margin-top: 7px;
+  margin-top: 2px;
   color: #49666a;
   font: 800 .45rem/1 var(--mono);
   letter-spacing: .12em;
@@ -165,7 +222,8 @@
 }
 
 .chaos-program-row {
-  margin: 0 0 7px;
+  min-height: 24px;
+  margin: 0 0 4px;
   color: #7a7180;
 }
 
@@ -181,6 +239,10 @@
 }
 
 .chaos-pad-shell {
+  position: relative;
+  flex: 0 0 158px;
+  height: 158px;
+  min-height: 158px;
   overflow: hidden;
   border: 1px solid rgba(215,149,255,.18);
   border-radius: 7px;
@@ -188,15 +250,25 @@
 }
 
 .chaos-pad-shell .xy-pad {
-  min-height: 174px;
+  min-height: 158px;
+  height: 158px;
   border: 0;
   border-radius: 0;
 }
 
 .chaos-pad-shell .xy-patch-bay {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  left: 6px;
+  z-index: 5;
+  height: 27px;
+  min-height: 27px;
   margin: 0;
-  border-width: 1px 0 0;
+  border-width: 1px;
   border-radius: 0;
+  background: rgba(4,10,7,.86);
+  backdrop-filter: blur(3px);
 }
 
 .chaos-pad-shell .motion-route-inspector {
@@ -206,6 +278,10 @@
 .chaos-knob-row,
 .pressure-rail-knobs {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.synth-knob-row {
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
 }
 
 .pressure-ascii {
@@ -219,12 +295,17 @@
     #100b07;
   color: #d9a567;
   text-shadow: 0 0 7px rgba(255,177,86,.24);
+  height: 150px !important;
+  min-height: 150px !important;
+  max-height: 150px !important;
+  flex: 0 0 150px !important;
+  margin-bottom: 3px !important;
 }
 
 .pressure-ascii pre {
   margin: 0;
-  font: 700 clamp(.38rem, .46vw, .60rem)/1.35 var(--mono);
-  letter-spacing: .04em;
+  font: 800 .72rem/1.38 var(--mono);
+  letter-spacing: .055em;
 }
 
 .pressure-scanline {
@@ -245,11 +326,11 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 5px;
-  margin-top: 8px;
+  margin-top: 3px;
 }
 
 .pressure-style-strip button {
-  min-height: 25px;
+  min-height: 22px;
   border-color: #493a2d;
   color: #8e7257;
   background: #100c08;
@@ -260,11 +341,5 @@
 }
 
 @media (max-width: 760px) {
-  .rail-c-module .dsp-viewport {
-    min-height: 210px;
-  }
-
-  .chaos-pad-shell .xy-pad {
-    min-height: 230px;
-  }
+  .synth-knob-row { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; }
 }
