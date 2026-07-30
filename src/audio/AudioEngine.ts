@@ -6,6 +6,7 @@ import { InputMatrix, type InputMode } from './InputMatrix';
 import { WavRecorder, type RecordedWav } from './WavRecorder';
 import type { GrainProfilerStats } from './effects/Bitcrusher';
 import { DreamBuffer, type DreamBufferStats } from './DreamBuffer';
+import { SynthEngine, type SynthMachine } from './SynthEngine';
 
 export type AudioEngineState =
   | 'idle'
@@ -61,6 +62,7 @@ export class AudioEngine {
   private analyser: AnalyserNode | null = null;
   private recorder: WavRecorder | null = null;
   private dreamBuffer: DreamBuffer | null = null;
+  private synth: SynthEngine | null = null;
 
   private effects = new Map<string, Effect>();
   private state: AudioEngineState = 'idle';
@@ -224,6 +226,7 @@ export class AudioEngine {
       this.limiter = this.context.createDynamicsCompressor();
       this.analyser = this.context.createAnalyser();
       this.dreamBuffer = new DreamBuffer(this.context);
+      this.synth = new SynthEngine(this.context, this.graph.input);
 
       this.dcBlock.type = 'highpass';
       this.dcBlock.frequency.value = 18;
@@ -348,6 +351,22 @@ export class AudioEngine {
     if (!this.context || !this.outputGain) return;
     const gain = Math.min(1.2, Math.max(0, value));
     this.outputGain.gain.setTargetAtTime(gain, this.context.currentTime, 0.01);
+  }
+
+  public setSynthEnabled(enabled: boolean): void {
+    this.synth?.setEnabled(enabled);
+  }
+
+  public setSynthMachine(machine: SynthMachine): void {
+    this.synth?.setMachine(machine);
+  }
+
+  public setSynthParameters(values: readonly number[]): void {
+    this.synth?.setParameters(values);
+  }
+
+  public triggerSynthNote(midi: number, durationSeconds: number, velocity = .78): void {
+    this.synth?.triggerNote(midi, durationSeconds, velocity);
   }
 
   public addEffect(effectId: EffectId): Effect | null {
@@ -510,6 +529,8 @@ export class AudioEngine {
     this.recorder = null;
     this.dreamBuffer?.dispose();
     this.dreamBuffer = null;
+    this.synth?.dispose();
+    this.synth = null;
     this.source?.disconnect();
     this.inputMatrix?.dispose();
     this.source = null;

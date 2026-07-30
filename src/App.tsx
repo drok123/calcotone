@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -30,6 +31,7 @@ import {
 import { useVisualEngine } from './visual/VisualEngine';
 import { EffectModule } from './components/effects/EffectModule';
 import { RailCModule } from './components/effects/RailCModules';
+import type { SynthMachine } from './audio/SynthEngine';
 import { LinearControl } from './components/controls/LinearControl';
 import { LevelMeter } from './components/meters/LevelMeter';
 import { SpectrumWaterfall } from './components/meters/SpectrumWaterfall';
@@ -502,6 +504,22 @@ export default function App() {
   const randomUiPlanRef = useRef<RandomUiPlan | null>(null);
   const randomFlowActiveRef = useRef(false);
   const offlineRandomTimersRef = useRef<number[]>([]);
+
+  const setSynthEnabled = useCallback((enabled: boolean) => {
+    engineRef.current?.setSynthEnabled(enabled);
+  }, []);
+
+  const setSynthMachine = useCallback((machine: SynthMachine) => {
+    engineRef.current?.setSynthMachine(machine);
+  }, []);
+
+  const setSynthParameters = useCallback((values: readonly number[]) => {
+    engineRef.current?.setSynthParameters(values);
+  }, []);
+
+  const triggerSynthNote = useCallback((midi: number, durationSeconds: number) => {
+    engineRef.current?.triggerSynthNote(midi, durationSeconds);
+  }, []);
 
   function getEngine(): AudioEngine {
     if (!engineRef.current) {
@@ -1785,6 +1803,10 @@ export default function App() {
                             assignments={xyAssignments}
                             visualState={visualState}
                             running={isRunning}
+                            onSynthEnabledChange={setSynthEnabled}
+                            onSynthMachineChange={setSynthMachine}
+                            onSynthParametersChange={setSynthParameters}
+                            onSynthTriggerNote={triggerSynthNote}
                             motionPadProps={{
                               padRef: xyPadRef,
                               modules,

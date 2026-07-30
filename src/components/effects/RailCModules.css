@@ -62,6 +62,29 @@
   font-size: .46rem;
 }
 
+.module-synth .module-header {
+  grid-template-columns: minmax(70px, 1fr) minmax(250px, 300px) 42px;
+}
+
+.module-synth .module-header-control {
+  width: 100%;
+  max-width: none;
+}
+
+.synth-selector-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.module-header-control .synth-selector-pair .algorithm-selector,
+.module-header-control .synth-selector-pair select {
+  width: 100%;
+  min-width: 0;
+}
+
 .synth-roll {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -89,6 +112,8 @@
 }
 
 .synth-roll-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   justify-content: space-between;
   padding: 7px 9px;
   border-bottom: 1px solid rgba(125,232,255,.13);
@@ -106,6 +131,22 @@
 
 .synth-roll-toolbar span {
   color: #4e858b;
+}
+
+.synth-engine-badge {
+  padding: 4px 6px;
+  border: 1px solid #29484b;
+  border-radius: 2px;
+  color: #66898c !important;
+  background: rgba(0,0,0,.22);
+  font-size: .42rem;
+  white-space: nowrap;
+}
+
+.synth-engine-badge.online {
+  border-color: rgba(125,232,255,.42);
+  color: #a7eef2 !important;
+  box-shadow: inset 0 0 7px rgba(125,232,255,.1);
 }
 
 .synth-roll button,
@@ -130,8 +171,49 @@
 
 .piano-roll-grid {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-rows: 14px minmax(0, 1fr);
   min-height: 0;
+}
+
+.piano-roll-corner {
+  display: grid;
+  place-items: center;
+  border-right: 1px solid #345257;
+  border-bottom: 1px solid #345257;
+  color: #79aeb4;
+  background: #0a1517;
+  font: 800 .38rem/1 var(--mono);
+  letter-spacing: .04em;
+}
+
+.piano-roll-step-numbers {
+  display: grid;
+  grid-template-columns: repeat(16, minmax(0, 1fr));
+  border-bottom: 1px solid #345257;
+  background: #081315;
+}
+
+.piano-roll-step-numbers span {
+  display: grid;
+  place-items: center;
+  border-right: 1px solid rgba(125,232,255,.12);
+  color: #67999e;
+  font: 800 .42rem/1 var(--mono);
+}
+
+.piano-roll-step-numbers span:nth-child(4n) {
+  border-right-color: rgba(167,240,247,.52);
+}
+
+.piano-roll-step-numbers span:nth-child(4n + 1) {
+  color: #c0f8fc;
+  background: rgba(125,232,255,.055);
+}
+
+.piano-roll-step-numbers span.playhead {
+  color: #061012;
+  background: #9aedf2;
 }
 
 .piano-roll-keys,
@@ -146,14 +228,14 @@
   place-items: center;
   border-right: 1px solid #294145;
   border-bottom: 1px solid rgba(125,232,255,.07);
-  color: #619299;
-  background: #0c191b;
-  font: 700 .44rem/1 var(--mono);
+  color: #8cc2c7;
+  background: #102124;
+  font: 800 .48rem/1 var(--mono);
 }
 
 .piano-roll-keys span.sharp {
-  color: #abc8c9;
-  background: #030809;
+  color: #d2e6e7;
+  background: #020708;
 }
 
 .piano-roll-row {
@@ -167,26 +249,36 @@
   min-height: 0;
   padding: 0;
   border: 0;
-  border-right: 1px solid rgba(114,186,194,.09);
-  border-bottom: 1px solid rgba(114,186,194,.07);
+  border-right: 1px solid rgba(136,211,219,.14);
+  border-bottom: 1px solid rgba(136,211,219,.1);
   border-radius: 0;
-  background: transparent;
+  background: rgba(12,31,34,.13);
+}
+
+.piano-roll-row:nth-child(even) button {
+  background: rgba(0,0,0,.16);
+}
+
+.piano-roll-row button:nth-child(4n + 1) {
+  box-shadow: inset 1px 0 rgba(163,238,245,.19);
 }
 
 .piano-roll-row button:nth-child(4n) {
-  border-right-color: rgba(136,221,230,.25);
+  border-right-color: rgba(172,239,246,.48);
 }
 
 .piano-roll-row button.playhead {
-  background: rgba(125,232,255,.08);
+  background: rgba(125,232,255,.16);
+  box-shadow: inset 0 0 5px rgba(125,232,255,.12);
 }
 
 .piano-roll-row button.has-note span {
   position: absolute;
-  inset: 1px 2px;
+  inset: 1px;
   border: 1px solid #b5fbff;
-  background: linear-gradient(90deg, #4cb7c2, #8cecf1);
-  box-shadow: 0 0 5px rgba(116,234,243,.52);
+  border-radius: 1px;
+  background: linear-gradient(180deg, #a5f7fb, #42aeba);
+  box-shadow: 0 0 6px rgba(116,234,243,.68);
 }
 
 .synth-pattern-strip {
