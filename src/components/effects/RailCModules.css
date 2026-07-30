@@ -15,51 +15,21 @@
 }
 
 .rail-c-module .knob-row {
-  flex: 0 0 66px;
-  min-height: 66px;
-  grid-template-rows: 66px;
+  flex: 0 0 96px;
+  min-height: 96px;
+  grid-template-rows: 96px;
   align-items: center;
-  gap: 3px;
+  gap: 10px 12px;
   padding: 0;
 }
 
 .rail-c-module .knob-control {
   min-width: 0;
-  min-height: 64px;
-  height: 64px;
-  grid-template-rows: 48px 13px;
+  min-height: 0;
+  height: 100%;
+  grid-template-rows: 18px 58px 16px;
   gap: 2px;
-}
-
-.rail-c-module .knob-shell {
-  width: 48px;
-  height: 48px;
-}
-
-.rail-c-module .knob-face {
-  width: 34px;
-  height: 34px;
-}
-
-.rail-c-module .knob-patch-jack {
-  top: 31px;
-  right: max(0px, calc(50% - 31px));
-  width: 15px;
-  height: 15px;
-}
-
-.rail-c-module .knob-label {
-  overflow: hidden;
-  font-size: .47rem;
-  line-height: 1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rail-c-module .knob-value {
-  min-width: 48px;
-  padding: 4px 5px;
-  font-size: .46rem;
+  align-content: center;
 }
 
 .module-synth .module-header {
@@ -83,6 +53,70 @@
 .module-header-control .synth-selector-pair select {
   width: 100%;
   min-width: 0;
+}
+
+.rail-c-faceplate-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.rail-c-module.faceplate-layout-custom .faceplate-viewport-shell > .synth-roll,
+.rail-c-module.faceplate-layout-custom .faceplate-viewport-shell > .chaos-pad-shell,
+.rail-c-module.faceplate-layout-custom .faceplate-viewport-shell > .pressure-ascii {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  flex-basis: auto !important;
+  margin: 0 !important;
+}
+
+.rail-c-control-surface .faceplate-knob-slot {
+  width: 92px;
+}
+
+.rail-c-button-surface {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  pointer-events: none;
+}
+
+.faceplate-pressure-slot {
+  position: absolute;
+  left: var(--faceplate-x);
+  top: var(--faceplate-y);
+  width: 21%;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.faceplate-pressure-slot > button {
+  width: 100%;
+}
+
+.faceplate-layout-editing .faceplate-pressure-slot {
+  z-index: 24;
+  cursor: move;
+}
+
+.faceplate-layout-editing .faceplate-pressure-slot::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -4px;
+  border: 1px dashed rgba(91,222,231,.36);
+  border-radius: 5px;
+  background: rgba(8,24,27,.12);
+}
+
+.faceplate-layout-editing .faceplate-pressure-slot > button {
+  pointer-events: none;
 }
 
 .synth-roll {
@@ -324,14 +358,6 @@
   margin-left: 3px;
 }
 
-.prototype-status {
-  margin-top: 2px;
-  color: #49666a;
-  font: 800 .45rem/1 var(--mono);
-  letter-spacing: .12em;
-  text-align: center;
-}
-
 .module-chaos .module-header {
   grid-template-columns: minmax(72px, 1fr) minmax(210px, 248px) 42px;
 }
@@ -399,7 +425,7 @@
 .rail-c-module .chaos-knob-row,
 .rail-c-module .pressure-rail-knobs {
   grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-  grid-template-rows: 66px !important;
+  grid-template-rows: 96px !important;
 }
 
 .synth-knob-row {

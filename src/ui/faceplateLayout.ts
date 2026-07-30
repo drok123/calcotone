@@ -5,12 +5,25 @@ export interface FaceplatePoint {
   y: number;
 }
 
+export type RailCFaceplateId = 'synth' | 'chaos' | 'pressure';
+export type CoreFaceplateId = 'saturation' | 'chorus' | 'delay' | 'reverb' | 'bitcrusher' | 'media';
+export type FaceplateModuleId = CoreFaceplateId | RailCFaceplateId;
+
+export interface RailCFaceplateModuleLayout {
+  viewportHeight: number;
+  stageHeight: number;
+  knobs: FaceplatePoint[];
+  buttons: FaceplatePoint[];
+}
+
 export interface FaceplateLayout {
   version: 2;
   custom: boolean;
   viewportHeight: number;
   stageHeight: number;
   knobs: FaceplatePoint[];
+  core: Record<CoreFaceplateId, RailCFaceplateModuleLayout>;
+  railC: Record<RailCFaceplateId, RailCFaceplateModuleLayout>;
   snap: number;
 }
 
@@ -24,6 +37,7 @@ interface FaceplateEditorState {
   layout: FaceplateLayout;
   editing: boolean;
   snapEnabled: boolean;
+  linkedModules: boolean;
   guides: FaceplateGuides;
   undo: FaceplateLayout[];
   redo: FaceplateLayout[];
@@ -34,6 +48,7 @@ export interface FaceplateEditorSnapshot {
   layout: FaceplateLayout;
   editing: boolean;
   snapEnabled: boolean;
+  linkedModules: boolean;
   guides: FaceplateGuides;
   canUndo: boolean;
   canRedo: boolean;
@@ -45,20 +60,76 @@ const FACTORY_LAYOUT_REVISION_KEY = 'calcotone.faceplate-layout.factory-revision
 const FACTORY_LAYOUT_REVISION = '2026-07-30-banked-knob-faceplate';
 const KNOB_COUNT = 6;
 const listeners = new Set<() => void>();
+const CORE_FACEPLATE_IDS: readonly CoreFaceplateId[] = ['saturation', 'chorus', 'delay', 'reverb', 'bitcrusher', 'media'];
+const RAIL_C_FACEPLATE_IDS: readonly RailCFaceplateId[] = ['synth', 'chaos', 'pressure'];
+
+const MASTER_KNOBS: FaceplatePoint[] = [
+  { x: 0.07, y: 246 },
+  { x: 0.2099125364431487, y: 246 },
+  { x: 0.3498542274052478, y: 246 },
+  { x: 0.6530612244897959, y: 246 },
+  { x: 0.793002915451895, y: 246 },
+  { x: 0.93, y: 246 },
+];
+
+function createCoreFactoryLayouts(): Record<CoreFaceplateId, RailCFaceplateModuleLayout> {
+  return Object.fromEntries(CORE_FACEPLATE_IDS.map((id) => [id, {
+    viewportHeight: 168,
+    stageHeight: 292,
+    knobs: MASTER_KNOBS.map((point) => ({ ...point })),
+    buttons: [],
+  }])) as unknown as Record<CoreFaceplateId, RailCFaceplateModuleLayout>;
+}
 
 export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
   version: 2,
   custom: true,
   viewportHeight: 168,
   stageHeight: 292,
-  knobs: [
-    { x: 0.07, y: 246 },
-    { x: 0.2099125364431487, y: 246 },
-    { x: 0.3498542274052478, y: 246 },
-    { x: 0.6530612244897959, y: 246 },
-    { x: 0.793002915451895, y: 246 },
-    { x: 0.93, y: 246 },
-  ],
+  knobs: MASTER_KNOBS.map((point) => ({ ...point })),
+  core: createCoreFactoryLayouts(),
+  railC: {
+    synth: {
+      viewportHeight: 168,
+      stageHeight: 292,
+      knobs: [
+        { x: 0.07, y: 246 },
+        { x: 0.2099125364431487, y: 246 },
+        { x: 0.3498542274052478, y: 246 },
+        { x: 0.6530612244897959, y: 246 },
+        { x: 0.793002915451895, y: 246 },
+        { x: 0.93, y: 246 },
+      ],
+      buttons: [],
+    },
+    chaos: {
+      viewportHeight: 168,
+      stageHeight: 292,
+      knobs: [
+        { x: 0.14, y: 246 },
+        { x: 0.38, y: 246 },
+        { x: 0.62, y: 246 },
+        { x: 0.86, y: 246 },
+      ],
+      buttons: [],
+    },
+    pressure: {
+      viewportHeight: 150,
+      stageHeight: 292,
+      knobs: [
+        { x: 0.14, y: 210 },
+        { x: 0.38, y: 210 },
+        { x: 0.62, y: 210 },
+        { x: 0.86, y: 210 },
+      ],
+      buttons: [
+        { x: 0.14, y: 278 },
+        { x: 0.38, y: 278 },
+        { x: 0.62, y: 278 },
+        { x: 0.86, y: 278 },
+      ],
+    },
+  },
   snap: 8,
 };
 
@@ -67,6 +138,7 @@ let state: FaceplateEditorState = {
   layout: cloneLayout(FACTORY_FACEPLATE_LAYOUT),
   editing: false,
   snapEnabled: true,
+  linkedModules: true,
   guides: { x: null, y: null },
   undo: [],
   redo: [],
@@ -176,6 +248,11 @@ export function toggleFaceplateSnap(): void {
   emit();
 }
 
+export function toggleFaceplateModuleLink(): void {
+  state = { ...state, linkedModules: !state.linkedModules };
+  emit();
+}
+
 export function beginFaceplateGesture(): void {
   if (!state.editing || state.gestureStart) return;
   state = { ...state, gestureStart: cloneLayout(state.layout) };
@@ -196,25 +273,134 @@ export function endFaceplateGesture(): void {
   emit();
 }
 
-export function setFaceplateKnob(index: number, point: FaceplatePoint): void {
+export function setFaceplateKnob(
+  moduleId: CoreFaceplateId,
+  index: number,
+  point: FaceplatePoint
+): void {
   if (!state.editing || index < 0 || index >= KNOB_COUNT) return;
-  const knobs = state.layout.knobs.map((candidate, candidateIndex) =>
-    candidateIndex === index ? { x: clamp(point.x, 0.07, 0.93), y: clamp(point.y, 46, state.layout.stageHeight - 46) } : candidate
+  const source = state.layout.core[moduleId];
+  const knobs = source.knobs.map((candidate, candidateIndex) =>
+    candidateIndex === index ? { x: clamp(point.x, 0.07, 0.93), y: clamp(point.y, 46, source.stageHeight - 46) } : candidate
   );
-  state = { ...state, layout: { ...state.layout, custom: true, knobs } };
-  emit();
-}
-
-export function setFaceplateViewportHeight(height: number): void {
-  if (!state.editing) return;
-  const firstRowY = Math.min(...state.layout.knobs.map((point) => point.y));
-  const collisionSafeMaximum = Math.max(160, firstRowY - 52);
+  const nextCore = state.linkedModules
+    ? Object.fromEntries(CORE_FACEPLATE_IDS.map((id) => [id, { ...state.layout.core[id], knobs: knobs.map((candidate) => ({ ...candidate })) }])) as Record<CoreFaceplateId, RailCFaceplateModuleLayout>
+    : { ...state.layout.core, [moduleId]: { ...source, knobs } };
   state = {
     ...state,
     layout: {
       ...state.layout,
       custom: true,
-      viewportHeight: clamp(height, 120, Math.min(520, collisionSafeMaximum)),
+      knobs: state.linkedModules ? knobs.map((candidate) => ({ ...candidate })) : state.layout.knobs,
+      core: nextCore,
+    },
+  };
+  emit();
+}
+
+export function setFaceplateViewportHeight(
+  moduleId: CoreFaceplateId,
+  height: number
+): void {
+  if (!state.editing) return;
+  const source = state.layout.core[moduleId];
+  const firstRowY = Math.min(...source.knobs.map((point) => point.y));
+  const collisionSafeMaximum = Math.max(160, firstRowY - 52);
+  const viewportHeight = clamp(height, 120, Math.min(520, collisionSafeMaximum));
+  const nextCore = state.linkedModules
+    ? Object.fromEntries(CORE_FACEPLATE_IDS.map((id) => [id, { ...state.layout.core[id], viewportHeight }])) as Record<CoreFaceplateId, RailCFaceplateModuleLayout>
+    : { ...state.layout.core, [moduleId]: { ...source, viewportHeight } };
+  state = {
+    ...state,
+    layout: {
+      ...state.layout,
+      custom: true,
+      viewportHeight: state.linkedModules ? viewportHeight : state.layout.viewportHeight,
+      core: nextCore,
+    },
+  };
+  emit();
+}
+
+export function setRailCFaceplateViewportHeight(
+  moduleId: RailCFaceplateId,
+  height: number
+): void {
+  if (!state.editing) return;
+  const moduleLayout = state.layout.railC[moduleId];
+  const firstControlY = Math.min(
+    ...moduleLayout.knobs.map((point) => point.y),
+    ...moduleLayout.buttons.map((point) => point.y),
+  );
+  const collisionSafeMaximum = Math.max(110, firstControlY - 48);
+  const nextRailC = state.linkedModules
+    ? Object.fromEntries(RAIL_C_FACEPLATE_IDS.map((id) => {
+        const candidate = state.layout.railC[id];
+        const firstY = Math.min(...candidate.knobs.map((point) => point.y), ...candidate.buttons.map((point) => point.y));
+        return [id, { ...candidate, viewportHeight: clamp(height, 96, Math.min(260, Math.max(110, firstY - 48))) }];
+      })) as Record<RailCFaceplateId, RailCFaceplateModuleLayout>
+    : {
+        ...state.layout.railC,
+        [moduleId]: {
+          ...moduleLayout,
+          viewportHeight: clamp(height, 96, Math.min(260, collisionSafeMaximum)),
+        },
+      };
+  state = {
+    ...state,
+    layout: {
+      ...state.layout,
+      custom: true,
+      railC: nextRailC,
+    },
+  };
+  emit();
+}
+
+export function setRailCFaceplateControl(
+  moduleId: RailCFaceplateId,
+  kind: 'knob' | 'button',
+  index: number,
+  point: FaceplatePoint
+): void {
+  if (!state.editing) return;
+  const moduleLayout = state.layout.railC[moduleId];
+  const key = kind === 'knob' ? 'knobs' : 'buttons';
+  if (index < 0 || index >= moduleLayout[key].length) return;
+  const points = moduleLayout[key].map((candidate, candidateIndex) =>
+    candidateIndex === index
+      ? {
+          x: clamp(point.x, kind === 'knob' ? 0.07 : 0.06, kind === 'knob' ? 0.93 : 0.94),
+          y: clamp(point.y, kind === 'knob' ? 46 : 14, moduleLayout.stageHeight - (kind === 'knob' ? 46 : 14)),
+        }
+      : candidate
+  );
+  const nextRailC = state.linkedModules && kind === 'knob'
+    ? Object.fromEntries(RAIL_C_FACEPLATE_IDS.map((id) => {
+        const candidate = state.layout.railC[id];
+        if (index >= candidate.knobs.length) return [id, candidate];
+        return [id, {
+          ...candidate,
+          knobs: candidate.knobs.map((candidatePoint, candidateIndex) =>
+            candidateIndex === index
+              ? {
+                  x: clamp(point.x, 0.07, 0.93),
+                  y: clamp(point.y, 46, candidate.stageHeight - 46),
+                }
+              : candidatePoint
+          ),
+        }];
+      })) as Record<RailCFaceplateId, RailCFaceplateModuleLayout>
+    : {
+        ...state.layout.railC,
+        [moduleId]: { ...moduleLayout, [key]: points },
+      };
+  state = {
+    ...state,
+    layout: {
+      ...state.layout,
+      custom: true,
+      railC: nextRailC,
     },
   };
   emit();
@@ -236,6 +422,7 @@ export async function copyFaceplateLayoutJson(): Promise<boolean> {
 }
 
 export function snapFaceplatePoint(
+  moduleId: CoreFaceplateId,
   index: number,
   point: FaceplatePoint,
   surfaceWidth: number,
@@ -259,8 +446,65 @@ export function snapFaceplatePoint(
 
   const xTargets = [surfaceWidth / 2];
   const yTargets: number[] = [];
-  state.layout.knobs.forEach((candidate, candidateIndex) => {
+  state.layout.core[moduleId].knobs.forEach((candidate, candidateIndex) => {
     if (candidateIndex === index) return;
+    xTargets.push(candidate.x * surfaceWidth);
+    yTargets.push(candidate.y);
+  });
+
+  const nearestX = nearestWithin(xPx, xTargets, tolerance);
+  if (nearestX !== null) {
+    xPx = nearestX;
+    guideX = nearestX / surfaceWidth;
+  }
+  const nearestY = nearestWithin(yPx, yTargets, tolerance);
+  if (nearestY !== null) {
+    yPx = nearestY;
+    guideY = nearestY;
+  }
+
+  return {
+    point: { x: xPx / surfaceWidth, y: yPx },
+    guides: { x: guideX, y: guideY },
+  };
+}
+
+export function snapRailCFaceplatePoint(
+  moduleId: RailCFaceplateId,
+  kind: 'knob' | 'button',
+  index: number,
+  point: FaceplatePoint,
+  surfaceWidth: number,
+  altKey: boolean,
+): { point: FaceplatePoint; guides: FaceplateGuides } {
+  if (!state.snapEnabled || altKey || surfaceWidth <= 0) {
+    return { point, guides: { x: null, y: null } };
+  }
+
+  const moduleLayout = state.layout.railC[moduleId];
+  const points = kind === 'knob' ? moduleLayout.knobs : moduleLayout.buttons;
+  const grid = Math.max(2, state.layout.snap);
+  const tolerance = 7;
+  let xPx = point.x * surfaceWidth;
+  let yPx = point.y;
+  let guideX: number | null = null;
+  let guideY: number | null = null;
+
+  const gridX = Math.round(xPx / grid) * grid;
+  const gridY = Math.round(yPx / grid) * grid;
+  if (Math.abs(gridX - xPx) <= tolerance) xPx = gridX;
+  if (Math.abs(gridY - yPx) <= tolerance) yPx = gridY;
+
+  const xTargets = [surfaceWidth / 2];
+  const yTargets: number[] = [];
+  points.forEach((candidate, candidateIndex) => {
+    if (candidateIndex === index) return;
+    xTargets.push(candidate.x * surfaceWidth);
+    yTargets.push(candidate.y);
+  });
+
+  const otherPoints = kind === 'knob' ? moduleLayout.buttons : moduleLayout.knobs;
+  otherPoints.forEach((candidate) => {
     xTargets.push(candidate.x * surfaceWidth);
     yTargets.push(candidate.y);
   });
@@ -305,18 +549,32 @@ function captureCurrentFaceplateLayout(): FaceplateLayout | null {
     };
   });
 
+  const capturedKnobs = knobs.map((point) => ({
+    ...point,
+    y: (viewport.offsetHeight || FACTORY_FACEPLATE_LAYOUT.viewportHeight) + 12 + point.y,
+  }));
+  const capturedViewportHeight = viewport.offsetHeight || FACTORY_FACEPLATE_LAYOUT.viewportHeight;
+  const capturedStageHeight = Math.max(
+    capturedViewportHeight + 12,
+    capturedViewportHeight + 12 + Math.max(...knobs.map((point) => point.y)) + 54,
+  );
+  const capturedModule: RailCFaceplateModuleLayout = {
+    viewportHeight: capturedViewportHeight,
+    stageHeight: capturedStageHeight,
+    knobs: capturedKnobs,
+    buttons: [],
+  };
   return {
     version: 2,
     custom: true,
-    viewportHeight: viewport.offsetHeight || FACTORY_FACEPLATE_LAYOUT.viewportHeight,
-    stageHeight: Math.max(
-      (viewport.offsetHeight || FACTORY_FACEPLATE_LAYOUT.viewportHeight) + 12,
-      (viewport.offsetHeight || FACTORY_FACEPLATE_LAYOUT.viewportHeight) + 12 + Math.max(...knobs.map((point) => point.y)) + 54,
-    ),
-    knobs: knobs.map((point) => ({
-      ...point,
-      y: (viewport.offsetHeight || FACTORY_FACEPLATE_LAYOUT.viewportHeight) + 12 + point.y,
-    })),
+    viewportHeight: capturedViewportHeight,
+    stageHeight: capturedStageHeight,
+    knobs: capturedKnobs,
+    core: Object.fromEntries(CORE_FACEPLATE_IDS.map((id) => [id, {
+      ...capturedModule,
+      knobs: capturedKnobs.map((point) => ({ ...point })),
+    }])) as Record<CoreFaceplateId, RailCFaceplateModuleLayout>,
+    railC: cloneLayout(FACTORY_FACEPLATE_LAYOUT).railC,
     snap: 8,
   };
 }
@@ -373,8 +631,16 @@ function loadSavedLayout(): FaceplateLayout {
           x: clamp(Number(point.x) || 0.5, 0.07, 0.93),
           y: controlTop + clamp(Number(point.y) || 54, 46, 314),
         })),
+        core: createCoreFactoryLayouts(),
+        railC: cloneLayout(FACTORY_FACEPLATE_LAYOUT).railC,
         snap: clamp(Number(legacy.snap) || 8, 2, 24),
       };
+      migrated.core = Object.fromEntries(CORE_FACEPLATE_IDS.map((id) => [id, {
+        viewportHeight: migrated.viewportHeight,
+        stageHeight: migrated.stageHeight,
+        knobs: migrated.knobs.map((point) => ({ ...point })),
+        buttons: [],
+      }])) as unknown as Record<CoreFaceplateId, RailCFaceplateModuleLayout>;
       try {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
         window.localStorage.setItem(FACTORY_LAYOUT_REVISION_KEY, FACTORY_LAYOUT_REVISION);
@@ -402,6 +668,60 @@ function sanitizeV2Layout(layout: Partial<FaceplateLayout>): FaceplateLayout {
     220,
     680,
   );
+  const masterLayout: RailCFaceplateModuleLayout = {
+    viewportHeight: clamp(
+      Number(layout.viewportHeight) || FACTORY_FACEPLATE_LAYOUT.viewportHeight,
+      120,
+      Math.max(120, Math.min(520, Math.min(...knobs.map((point) => point.y)) - 52))
+    ),
+    stageHeight,
+    knobs: knobs.map((point) => ({ ...point, y: clamp(point.y, 46, stageHeight - 46) })),
+    buttons: [],
+  };
+  const sanitizeModule = (
+    candidate: Partial<RailCFaceplateModuleLayout> | undefined,
+    fallback: RailCFaceplateModuleLayout,
+    knobCount: number,
+    buttonCount: number
+  ): RailCFaceplateModuleLayout => {
+    const candidateStage = clamp(Number(candidate?.stageHeight) || fallback.stageHeight, 220, 680);
+    const sanitizePoints = (
+      source: FaceplatePoint[] | undefined,
+      fallbackPoints: FaceplatePoint[],
+      count: number,
+      kind: 'knob' | 'button'
+    ) => Array.from({ length: count }, (_, index) => {
+      const point = source?.[index] ?? fallbackPoints[index] ?? { x: .5, y: kind === 'knob' ? 210 : 278 };
+      return {
+        x: clamp(Number(point.x) || .5, kind === 'knob' ? .07 : .06, kind === 'knob' ? .93 : .94),
+        y: clamp(Number(point.y) || fallbackPoints[index]?.y || 210, kind === 'knob' ? 46 : 14, candidateStage - (kind === 'knob' ? 46 : 14)),
+      };
+    });
+    const candidateKnobs = sanitizePoints(candidate?.knobs, fallback.knobs, knobCount, 'knob');
+    const candidateButtons = sanitizePoints(candidate?.buttons, fallback.buttons, buttonCount, 'button');
+    const firstControlY = Math.min(
+      ...candidateKnobs.map((point) => point.y),
+      ...candidateButtons.map((point) => point.y),
+      candidateStage
+    );
+    return {
+      viewportHeight: clamp(Number(candidate?.viewportHeight) || fallback.viewportHeight, 96, Math.min(520, Math.max(96, firstControlY - 48))),
+      stageHeight: candidateStage,
+      knobs: candidateKnobs,
+      buttons: candidateButtons,
+    };
+  };
+  const savedCore = layout.core as Partial<Record<CoreFaceplateId, RailCFaceplateModuleLayout>> | undefined;
+  const savedRailC = layout.railC as Partial<Record<RailCFaceplateId, RailCFaceplateModuleLayout>> | undefined;
+  const core = Object.fromEntries(CORE_FACEPLATE_IDS.map((id) => [
+    id,
+    sanitizeModule(savedCore?.[id], masterLayout, KNOB_COUNT, 0),
+  ])) as Record<CoreFaceplateId, RailCFaceplateModuleLayout>;
+  const railC = {
+    synth: sanitizeModule(savedRailC?.synth, FACTORY_FACEPLATE_LAYOUT.railC.synth, 6, 0),
+    chaos: sanitizeModule(savedRailC?.chaos, FACTORY_FACEPLATE_LAYOUT.railC.chaos, 4, 0),
+    pressure: sanitizeModule(savedRailC?.pressure, FACTORY_FACEPLATE_LAYOUT.railC.pressure, 4, 4),
+  };
   return {
     version: 2,
     custom: true,
@@ -412,6 +732,8 @@ function sanitizeV2Layout(layout: Partial<FaceplateLayout>): FaceplateLayout {
     ),
     stageHeight,
     knobs: knobs.map((point) => ({ ...point, y: clamp(point.y, 46, stageHeight - 46) })),
+    core,
+    railC,
     snap: clamp(Number(layout.snap) || FACTORY_FACEPLATE_LAYOUT.snap, 2, 24),
   };
 }
@@ -430,9 +752,16 @@ function nearestWithin(value: number, targets: number[], tolerance: number): num
 }
 
 function cloneLayout(layout: FaceplateLayout): FaceplateLayout {
+  const cloneModule = (moduleLayout: RailCFaceplateModuleLayout): RailCFaceplateModuleLayout => ({
+    ...moduleLayout,
+    knobs: moduleLayout.knobs.map((point) => ({ ...point })),
+    buttons: moduleLayout.buttons.map((point) => ({ ...point })),
+  });
   return {
     ...layout,
     knobs: layout.knobs.map((point) => ({ ...point })),
+    core: Object.fromEntries(CORE_FACEPLATE_IDS.map((id) => [id, cloneModule(layout.core[id])])) as Record<CoreFaceplateId, RailCFaceplateModuleLayout>,
+    railC: Object.fromEntries(RAIL_C_FACEPLATE_IDS.map((id) => [id, cloneModule(layout.railC[id])])) as Record<RailCFaceplateId, RailCFaceplateModuleLayout>,
   };
 }
 
@@ -454,6 +783,7 @@ function makeSnapshot(source: FaceplateEditorState): FaceplateEditorSnapshot {
     layout: source.layout,
     editing: source.editing,
     snapEnabled: source.snapEnabled,
+    linkedModules: source.linkedModules,
     guides: source.guides,
     canUndo: source.undo.length > 0,
     canRedo: source.redo.length > 0,

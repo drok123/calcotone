@@ -5,6 +5,7 @@ import {
   type CSSProperties,
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
 import type { VisualAudioState } from '../../visual/VisualEngine';
@@ -24,6 +25,16 @@ import {
   setPressureState,
   usePressureState,
 } from '../signal/pressureStore';
+import {
+  beginFaceplateGesture,
+  endFaceplateGesture,
+  setFaceplateGuides,
+  setRailCFaceplateControl,
+  setRailCFaceplateViewportHeight,
+  snapRailCFaceplatePoint,
+  useFaceplateLayoutEditor,
+  type RailCFaceplateId,
+} from '../../ui/faceplateLayout';
 import './RailCModules.css';
 
 type RailInteractionProps = {
@@ -62,9 +73,10 @@ function RailModuleFrame({
   onRoutingDragEnd,
   onRoutingNudge,
 }: FrameProps) {
+  const faceplateEditor = useFaceplateLayoutEditor();
   return (
     <article
-      className={`effect-module rail-c-module module-${id} ${enabled ? 'enabled' : ''} ${routingDragging ? 'routing-dragging' : ''} ${routingDropTarget ? 'routing-drop-target' : ''}`}
+      className={`effect-module rail-c-module module-${id} ${enabled ? 'enabled' : ''} ${routingDragging ? 'routing-dragging' : ''} ${routingDropTarget ? 'routing-drop-target' : ''} ${faceplateEditor.layout.custom ? 'faceplate-layout-custom' : ''} ${faceplateEditor.editing ? 'faceplate-layout-editing' : ''}`}
       style={{ '--module-activity': enabled ? 1 : 0 } as CSSProperties}
       onDragOver={onRoutingDragOver}
       onDrop={onRoutingDrop}
@@ -72,9 +84,9 @@ function RailModuleFrame({
       <header className="module-header">
         <div
           className="module-title module-drag-handle"
-          draggable
+          draggable={!faceplateEditor.editing}
           role="button"
-          tabIndex={0}
+          tabIndex={faceplateEditor.editing ? -1 : 0}
           aria-label={`${name}, signal slot ${slotLabel}. Drag or use left and right arrow keys to reorder.`}
           onDragStart={onRoutingDragStart}
           onDragEnd={onRoutingDragEnd}
@@ -106,6 +118,172 @@ function RailModuleFrame({
       </header>
       {children}
     </article>
+  );
+}
+
+function RailCFaceplateSurface({
+  moduleId,
+  viewport,
+  knobs,
+  buttons = [],
+  knobRowClass,
+}: {
+  moduleId: RailCFaceplateId;
+  viewport: ReactNode;
+  knobs: ReactNode[];
+  buttons?: ReactNode[];
+  knobRowClass: string;
+}) {
+  const editor = useFaceplateLayoutEditor();
+  const layout = editor.layout.railC[moduleId];
+
+  function beginControlDrag(
+    kind: 'knob' | 'button',
+    index: number,
+    event: ReactPointerEvent<HTMLDivElement>
+  ): void {
+    if (!editor.editing || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const surface = event.currentTarget.closest<HTMLElement>('.rail-c-faceplate-stage');
+    if (!surface) return;
+    const pointerId = event.pointerId;
+    const bounds = surface.getBoundingClientRect();
+    const scale = bounds.width / Math.max(1, surface.offsetWidth);
+    beginFaceplateGesture();
+    document.body.classList.add('faceplate-layout-dragging');
+
+    const move = (pointerEvent: PointerEvent): void => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      pointerEvent.preventDefault();
+      const raw = {
+        x: (pointerEvent.clientX - bounds.left) / Math.max(1, bounds.width),
+        y: (pointerEvent.clientY - bounds.top) / Math.max(.01, scale),
+      };
+      const snapped = snapRailCFaceplatePoint(
+        moduleId,
+        kind,
+        index,
+        raw,
+        surface.offsetWidth,
+        pointerEvent.altKey
+      );
+      setRailCFaceplateControl(moduleId, kind, index, snapped.point);
+      setFaceplateGuides(snapped.guides);
+    };
+
+    const finish = (pointerEvent: PointerEvent): void => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      pointerEvent.preventDefault();
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      document.body.classList.remove('faceplate-layout-dragging');
+      setFaceplateGuides({ x: null, y: null });
+      endFaceplateGesture();
+    };
+
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', finish, { passive: false });
+    window.addEventListener('pointercancel', finish, { passive: false });
+  }
+
+  function beginViewportResize(event: ReactPointerEvent<HTMLButtonElement>): void {
+    if (!editor.editing || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const shell = event.currentTarget.parentElement;
+    if (!shell) return;
+    const pointerId = event.pointerId;
+    const startY = event.clientY;
+    const startHeight = layout.viewportHeight;
+    const bounds = shell.getBoundingClientRect();
+    const scale = bounds.height / Math.max(1, shell.offsetHeight);
+    beginFaceplateGesture();
+    document.body.classList.add('faceplate-layout-resizing');
+
+    const move = (pointerEvent: PointerEvent): void => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      pointerEvent.preventDefault();
+      let height = startHeight + (pointerEvent.clientY - startY) / Math.max(.01, scale);
+      if (editor.snapEnabled && !pointerEvent.altKey) {
+        height = Math.round(height / editor.layout.snap) * editor.layout.snap;
+      }
+      setRailCFaceplateViewportHeight(moduleId, height);
+    };
+
+    const finish = (pointerEvent: PointerEvent): void => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      pointerEvent.preventDefault();
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      document.body.classList.remove('faceplate-layout-resizing');
+      endFaceplateGesture();
+    };
+
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', finish, { passive: false });
+    window.addEventListener('pointercancel', finish, { passive: false });
+  }
+
+  return (
+    <div className="faceplate-layout-stage rail-c-faceplate-stage" style={{ height: `${layout.stageHeight}px` }}>
+      <div className={`faceplate-viewport-shell ${editor.editing ? 'is-editing' : ''}`} style={{ height: `${layout.viewportHeight}px` }}>
+        {viewport}
+        {editor.editing && (
+          <button
+            type="button"
+            className="faceplate-viewport-resize"
+            onPointerDown={beginViewportResize}
+            aria-label={`Resize ${moduleId} window`}
+            title="Drag the screen edge · hold Alt to bypass snapping"
+          >
+            <span aria-hidden="true" />
+          </button>
+        )}
+      </div>
+      <div className={`knob-row faceplate-control-surface rail-c-control-surface ${knobRowClass} ${editor.editing ? 'is-editing' : ''}`} style={{ top: 0, height: `${layout.stageHeight}px` }}>
+        {editor.editing && editor.guides.x !== null && (
+          <span className="faceplate-guide faceplate-guide-x" style={{ left: `${editor.guides.x * 100}%` }} aria-hidden="true" />
+        )}
+        {editor.editing && editor.guides.y !== null && (
+          <span className="faceplate-guide faceplate-guide-y" style={{ top: `${editor.guides.y}px` }} aria-hidden="true" />
+        )}
+        {knobs.map((knob, index) => {
+          const point = layout.knobs[index];
+          return (
+            <div
+              key={`knob-${index}`}
+              className="faceplate-knob-slot"
+              style={{ '--faceplate-x': `${point.x * 100}%`, '--faceplate-y': `${point.y}px` } as CSSProperties}
+              onPointerDownCapture={editor.editing ? (event) => beginControlDrag('knob', index, event) : undefined}
+              title={editor.editing ? `Move ${moduleId} control independently` : undefined}
+            >
+              {knob}
+            </div>
+          );
+        })}
+      </div>
+      {buttons.length > 0 && (
+        <div className="pressure-style-strip rail-c-button-surface" role="group" aria-label="Pressure operating style">
+          {buttons.map((button, index) => {
+            const point = layout.buttons[index];
+            return (
+              <div
+                key={`button-${index}`}
+                className="faceplate-pressure-slot"
+                style={{ '--faceplate-x': `${point.x * 100}%`, '--faceplate-y': `${point.y}px` } as CSSProperties}
+                onPointerDownCapture={editor.editing ? (event) => beginControlDrag('button', index, event) : undefined}
+                title={editor.editing ? 'Move Pressure style button independently' : undefined}
+              >
+                {button}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -363,7 +541,11 @@ function SynthModule({
         </div>
       )}
     >
-      <div className={`synth-roll dsp-viewport ${enabled ? 'active' : 'is-off'}`}>
+      <RailCFaceplateSurface
+        moduleId="synth"
+        knobRowClass="synth-knob-row"
+        viewport={(
+          <div className={`synth-roll dsp-viewport ${enabled ? 'active' : 'is-off'}`}>
         <div className="synth-roll-toolbar">
           <div>
             <strong>16-STEP PIANO ROLL</strong>
@@ -428,9 +610,9 @@ function SynthModule({
             {chain.map((index, position) => `${position === chainPosition && chainArmed ? '[' : ''}${index + 1}${position === chainPosition && chainArmed ? ']' : ''}`).join(' › ')}
           </strong>
         </div>
-      </div>
-      <div className="knob-row synth-knob-row">
-        {definition.controls.map((label, index) => (
+          </div>
+        )}
+        knobs={definition.controls.map((label, index) => (
           <Knob
             key={`${machine}-${label}`}
             label={label}
@@ -452,8 +634,7 @@ function SynthModule({
             onPatchDisconnect={() => undefined}
           />
         ))}
-      </div>
-      <div className="prototype-status">INTERNAL INSTRUMENT · ROUTED THROUGH CORE EFFECTS</div>
+      />
     </RailModuleFrame>
   );
 }
@@ -523,11 +704,15 @@ function ChaosModule({
         </div>
       )}
     >
-      <div className={`chaos-pad-shell ${enabled ? 'active' : 'is-off'}`}>
-        <MotionPad {...motionPadProps} />
-      </div>
-      <div className="knob-row chaos-knob-row">
-        {labels.map((label, index) => (
+      <RailCFaceplateSurface
+        moduleId="chaos"
+        knobRowClass="chaos-knob-row"
+        viewport={(
+          <div className={`chaos-pad-shell dsp-viewport ${enabled ? 'active' : 'is-off'}`}>
+            <MotionPad {...motionPadProps} />
+          </div>
+        )}
+        knobs={labels.map((label, index) => (
           <Knob
             key={label}
             label={label}
@@ -543,7 +728,7 @@ function ChaosModule({
             onPatchDisconnect={() => undefined}
           />
         ))}
-      </div>
+      />
     </RailModuleFrame>
   );
 }
@@ -576,18 +761,22 @@ function PressureModule({
         </label>
       )}
     >
-      <div className={`pressure-ascii dsp-viewport ${state.enabled ? 'active' : 'is-off'}`} aria-label="Pressure compressor display">
-        <pre aria-hidden="true">{`╔══════════════════════════╗
+      <RailCFaceplateSurface
+        moduleId="pressure"
+        knobRowClass="pressure-rail-knobs"
+        viewport={(
+          <div className={`pressure-ascii dsp-viewport ${state.enabled ? 'active' : 'is-off'}`} aria-label="Pressure compressor display">
+            <pre aria-hidden="true">{`╔══════════════════════════╗
 ║      P R E S S U R E     ║
 ║    HARDWARE DYNAMICS     ║
 ╠══════════════════════════╣
 ║ IN  ${meterText} ║
 ║ GR  ${state.enabled && running ? '▾▾▾▾' : '····'}  ${state.style.toUpperCase().padEnd(9, ' ')} ║
 ╚══════════════════════════╝`}</pre>
-        <div className="pressure-scanline" aria-hidden="true" />
-      </div>
-      <div className="knob-row pressure-rail-knobs">
-        {([
+            <div className="pressure-scanline" aria-hidden="true" />
+          </div>
+        )}
+        knobs={([
           ['Drive', 'drive'],
           ['Time', 'time'],
           ['Character', 'character'],
@@ -608,14 +797,12 @@ function PressureModule({
             onPatchDisconnect={() => undefined}
           />
         ))}
-      </div>
-      <div className="pressure-style-strip" role="group" aria-label="Pressure operating style">
-        {SIGNAL_LAB_STYLES.map((style) => (
+        buttons={SIGNAL_LAB_STYLES.map((style) => (
           <button type="button" key={style} className={state.style === style ? 'active' : ''} aria-pressed={state.style === style} onClick={() => setPressureState({ style: style as SignalLabStyle })}>
             {style.toUpperCase()}
           </button>
         ))}
-      </div>
+      />
     </RailModuleFrame>
   );
 }

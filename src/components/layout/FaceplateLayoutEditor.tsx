@@ -6,6 +6,7 @@ import {
   resetFaceplateDraft,
   saveFaceplateLayout,
   startFaceplateEditing,
+  toggleFaceplateModuleLink,
   toggleFaceplateSnap,
   undoFaceplateLayout,
   useFaceplateLayoutEditor,
@@ -38,7 +39,7 @@ export function FaceplateLayoutEditor() {
           <header>
             <div>
               <strong>FACEPLATE EDITOR</strong>
-              <span>MASTER MODULE · DRAG KNOBS · DRAG SCREEN EDGE</span>
+              <span>ALL MODULES · DRAG KNOBS, SCREENS + PRESSURE BUTTONS</span>
             </div>
             <span className="faceplate-editor-readout">
               VIEW {Math.round(editor.layout.viewportHeight)} · GRID {editor.layout.snap}px
@@ -55,6 +56,15 @@ export function FaceplateLayoutEditor() {
             >
               SNAP {editor.snapEnabled ? 'ON' : 'OFF'}
             </button>
+            <button
+              type="button"
+              className={!editor.linkedModules ? 'active' : ''}
+              aria-pressed={!editor.linkedModules}
+              onClick={toggleFaceplateModuleLink}
+              title="Linked moves matching controls across modules. Independent edits only the module you drag."
+            >
+              {editor.linkedModules ? 'MODULES LINKED' : 'INDEPENDENT'}
+            </button>
             <button type="button" disabled={!editor.canUndo} onClick={undoFaceplateLayout}>UNDO</button>
             <button type="button" disabled={!editor.canRedo} onClick={redoFaceplateLayout}>REDO</button>
             <button type="button" onClick={resetFaceplateDraft}>RESET</button>
@@ -65,7 +75,7 @@ export function FaceplateLayoutEditor() {
             <button type="button" className="save" onClick={saveFaceplateLayout}>SAVE LAYOUT</button>
           </div>
 
-          <p>Hold <b>ALT</b> for free movement. Saving stores the layout in this browser and applies it to every module.</p>
+          <p>Hold <b>ALT</b> for free movement. Use <b>INDEPENDENT</b> to give each module its own screen and control positions.</p>
         </aside>
       )}
     </>

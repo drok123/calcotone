@@ -17,6 +17,7 @@ import {
   setFaceplateViewportHeight,
   snapFaceplatePoint,
   useFaceplateLayoutEditor,
+  type CoreFaceplateId,
 } from '../../ui/faceplateLayout';
 import { Knob } from '../controls/Knob';
 import { ModuleViewport } from './ModuleViewport';
@@ -92,6 +93,8 @@ export function EffectModule({
 }) {
   const faceplateEditor = useFaceplateLayoutEditor();
   const customFaceplate = faceplateEditor.layout.custom;
+  const faceplateModuleId = module.id as CoreFaceplateId;
+  const faceplateLayout = faceplateEditor.layout.core[faceplateModuleId];
   const moduleStyle = {
     '--module-activity': module.enabled ? 1 : 0,
     '--module-low': visualState.low,
@@ -120,8 +123,8 @@ export function EffectModule({
         x: (pointerEvent.clientX - bounds.left) / Math.max(1, bounds.width),
         y: (pointerEvent.clientY - bounds.top) / Math.max(0.01, scale),
       };
-      const snapped = snapFaceplatePoint(index, raw, surface.offsetWidth, pointerEvent.altKey);
-      setFaceplateKnob(index, snapped.point);
+      const snapped = snapFaceplatePoint(faceplateModuleId, index, raw, surface.offsetWidth, pointerEvent.altKey);
+      setFaceplateKnob(faceplateModuleId, index, snapped.point);
       setFaceplateGuides(snapped.guides);
     };
 
@@ -150,7 +153,7 @@ export function EffectModule({
 
     const pointerId = event.pointerId;
     const startY = event.clientY;
-    const startHeight = faceplateEditor.layout.viewportHeight;
+    const startHeight = faceplateLayout.viewportHeight;
     const bounds = shell.getBoundingClientRect();
     const scale = bounds.height / Math.max(1, shell.offsetHeight);
     beginFaceplateGesture();
@@ -163,7 +166,7 @@ export function EffectModule({
       if (faceplateEditor.snapEnabled && !pointerEvent.altKey) {
         height = Math.round(height / faceplateEditor.layout.snap) * faceplateEditor.layout.snap;
       }
-      setFaceplateViewportHeight(height);
+      setFaceplateViewportHeight(faceplateModuleId, height);
     };
 
     const finish = (pointerEvent: PointerEvent): void => {
@@ -321,11 +324,11 @@ export function EffectModule({
       {customFaceplate ? (
         <div
           className="faceplate-layout-stage"
-          style={{ height: `${faceplateEditor.layout.stageHeight}px` }}
+          style={{ height: `${faceplateLayout.stageHeight}px` }}
         >
           <div
             className={`faceplate-viewport-shell ${faceplateEditor.editing ? 'is-editing' : ''}`}
-            style={{ height: `${faceplateEditor.layout.viewportHeight}px` }}
+            style={{ height: `${faceplateLayout.viewportHeight}px` }}
           >
             <ModuleViewport module={module} visualState={visualState} />
             {faceplateEditor.editing && (
@@ -343,7 +346,7 @@ export function EffectModule({
 
           <div
             className={`knob-row faceplate-control-surface ${faceplateEditor.editing ? 'is-editing' : ''}`}
-            style={{ top: 0, height: `${faceplateEditor.layout.stageHeight}px` }}
+            style={{ top: 0, height: `${faceplateLayout.stageHeight}px` }}
           >
             {faceplateEditor.editing && faceplateEditor.guides.x !== null && (
               <span className="faceplate-guide faceplate-guide-x" style={{ left: `${faceplateEditor.guides.x * 100}%` }} aria-hidden="true" />
@@ -352,7 +355,7 @@ export function EffectModule({
               <span className="faceplate-guide faceplate-guide-y" style={{ top: `${faceplateEditor.guides.y}px` }} aria-hidden="true" />
             )}
             {module.parameters.map((parameter, index) => {
-              const point = faceplateEditor.layout.knobs[index] ?? { x: ((index % 3) + 0.5) / 3, y: index < 3 ? 364 : 468 };
+              const point = faceplateLayout.knobs[index] ?? { x: ((index % 3) + 0.5) / 3, y: index < 3 ? 364 : 468 };
               return (
                 <div
                   key={parameter.id}

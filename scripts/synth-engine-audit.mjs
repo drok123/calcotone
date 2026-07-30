@@ -19,6 +19,8 @@ const synth = read('src/audio/SynthEngine.ts');
 const audioEngine = read('src/audio/AudioEngine.ts');
 const rail = read('src/components/effects/RailCModules.tsx');
 const css = read('src/components/effects/RailCModules.css');
+const faceplate = read('src/ui/faceplateLayout.ts');
+const layoutEditor = read('src/components/layout/FaceplateLayoutEditor.tsx');
 
 const machines = [
   'model-d',
@@ -62,6 +64,15 @@ requireText(rail, 'nextChainPosition', 'Functional chained playback');
 requireText(rail, 'onTriggerNote(71 - pitch, stepSeconds * .72)', 'Tempo-scaled piano-roll note trigger');
 requireText(css, '.piano-roll-step-numbers span:nth-child(4n + 1)', 'Quarter-note beat emphasis');
 requireText(css, '.piano-roll-row button.playhead', 'Readable playhead');
+requireText(css, 'grid-template-rows: 18px 58px 16px', 'Full-size Rail C knob typography');
+requireText(rail, 'moduleId="synth"', 'Synth layout surface');
+requireText(rail, 'moduleId="chaos"', 'Chaos layout surface');
+requireText(rail, 'moduleId="pressure"', 'Pressure layout surface');
+requireText(rail, 'faceplate-pressure-slot', 'Editable Pressure buttons');
+requireText(faceplate, "export type RailCFaceplateId = 'synth' | 'chaos' | 'pressure'", 'Rail C layout ownership');
+requireText(faceplate, 'setRailCFaceplateControl(', 'Persistent Rail C control movement');
+requireText(faceplate, 'linkedModules: boolean', 'Linked/independent editor state');
+requireText(layoutEditor, "'MODULES LINKED' : 'INDEPENDENT'", 'Independent layout editor toggle');
 
 if (failures.length) {
   console.error('\nCALCOTONE synth engine audit failed:\n');
