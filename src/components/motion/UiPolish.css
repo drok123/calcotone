@@ -3,13 +3,32 @@
 .control-strip {
   display: flex !important;
   align-items: center;
-  justify-content: flex-end !important;
+  justify-content: space-between !important;
   gap: 8px;
   height: 54px;
   padding: 0 18px;
   background:
     linear-gradient(180deg, rgba(255,255,255,.025), transparent 42%),
     #0b0e10;
+}
+
+.control-strip-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.control-strip .top-quality-controls {
+  width: 356px;
+  flex: 0 0 356px;
+  gap: 8px;
+}
+
+.control-strip .top-quality-controls button {
+  min-height: 36px !important;
+  height: 36px;
+  border-radius: 6px;
 }
 
 .control-strip .profiler-toggle {

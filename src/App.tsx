@@ -1552,18 +1552,35 @@ export default function App() {
         </header>
 
         <section className="status-strip control-strip">
-          <button type="button" className="profiler-toggle randomizer-toggle" onClick={randomizeActiveModules} title="Randomize only active modules within musically guarded ranges">
-            RANDOM
-            {randomFlowProgress && (
-              <span className="randomizer-flow-count" aria-hidden="true">
-                {randomFlowProgress.current}/{randomFlowProgress.total}
-              </span>
-            )}
-          </button>
-          <button type="button" className="profiler-toggle signal-randomizer-toggle" onClick={randomizeSignalOrder} title="Randomize the order of both three-module signal rails">SIGNAL RANDOM</button>
-          <button type="button" className={`profiler-toggle ${explainMode ? 'active' : ''}`} aria-pressed={explainMode} onClick={() => setExplainMode((value) => !value)}>EXPLAIN</button>
-          <FaceplateLayoutEditor />
-          <button type="button" className={`profiler-toggle ${profilerOpen ? 'active' : ''}`} aria-pressed={profilerOpen} onClick={() => setProfilerOpen((open) => !open)}>DSP</button>
+          <div className="performance-mode top-quality-controls" role="group" aria-label="Processing quality">
+            {(['live', 'balanced', 'studio'] as PerformanceMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={performanceMode === mode ? 'active' : ''}
+                aria-pressed={performanceMode === mode}
+                onClick={() => changePerformanceMode(mode)}
+              >
+                <span className="mode-led" aria-hidden="true" />
+                {mode}
+              </button>
+            ))}
+          </div>
+
+          <div className="control-strip-actions">
+            <button type="button" className="profiler-toggle randomizer-toggle" onClick={randomizeActiveModules} title="Randomize only active modules within musically guarded ranges">
+              RANDOM
+              {randomFlowProgress && (
+                <span className="randomizer-flow-count" aria-hidden="true">
+                  {randomFlowProgress.current}/{randomFlowProgress.total}
+                </span>
+              )}
+            </button>
+            <button type="button" className="profiler-toggle signal-randomizer-toggle" onClick={randomizeSignalOrder} title="Randomize the order of both three-module signal rails">SIGNAL RANDOM</button>
+            <button type="button" className={`profiler-toggle ${explainMode ? 'active' : ''}`} aria-pressed={explainMode} onClick={() => setExplainMode((value) => !value)}>EXPLAIN</button>
+            <FaceplateLayoutEditor />
+            <button type="button" className={`profiler-toggle ${profilerOpen ? 'active' : ''}`} aria-pressed={profilerOpen} onClick={() => setProfilerOpen((open) => !open)}>DSP</button>
+          </div>
         </section>
 
         {profilerOpen && (
@@ -1680,15 +1697,7 @@ export default function App() {
               <div className="io-spectrum-section">
                 <SpectrumWaterfall analyser={analyser} running={isRunning} />
 
-                <div className="engine-info-grid" aria-label="Engine information">
-                  <div>
-                    <span>Engine</span>
-                    <strong className={isRunning ? 'active' : ''}>{engineState}</strong>
-                  </div>
-                  <div>
-                    <span>Input</span>
-                    <strong>{inputDevice}</strong>
-                  </div>
+                <div className="engine-info-grid" aria-label="Audio connection information">
                   <div>
                     <span>Latency</span>
                     <strong>{latency}</strong>
@@ -1706,21 +1715,6 @@ export default function App() {
             </div>
 
             <div className="io-utility-dock">
-              <div className="performance-mode" role="group" aria-label="Processing quality">
-                {(['live', 'balanced', 'studio'] as PerformanceMode[]).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    className={performanceMode === mode ? 'active' : ''}
-                    aria-pressed={performanceMode === mode}
-                    onClick={() => changePerformanceMode(mode)}
-                  >
-                    <span className="mode-led" aria-hidden="true" />
-                    {mode}
-                  </button>
-                ))}
-              </div>
-
               <RecorderPanel
                 state={recordingState}
                 name={recordingName}
@@ -1864,6 +1858,16 @@ export default function App() {
 
         <footer className="footer-bar">
           <p role="status" aria-live="polite">{message}</p>
+          <div className="footer-engine-status" aria-label="Engine information">
+            <div>
+              <span>ENGINE</span>
+              <strong className={isRunning ? 'active' : ''}>{engineState}</strong>
+            </div>
+            <div>
+              <span>INPUT</span>
+              <strong>{inputDevice}</strong>
+            </div>
+          </div>
           <div className="footer-actions">
             <span><i className={isRunning ? 'active' : ''} />{isRunning ? 'LIVE' : 'STANDBY'}</span>
             <span><i className={xyAssignments.length ? 'active' : ''} />{xyAssignments.length} PATCHES</span>
