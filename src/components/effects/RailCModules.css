@@ -275,9 +275,10 @@
   display: none;
 }
 
-.chaos-knob-row,
-.pressure-rail-knobs {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.rail-c-module .chaos-knob-row,
+.rail-c-module .pressure-rail-knobs {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  grid-template-rows: 66px !important;
 }
 
 .synth-knob-row {
