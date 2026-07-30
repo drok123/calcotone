@@ -33,7 +33,8 @@
 }
 
 .module-synth .module-header {
-  grid-template-columns: minmax(70px, 1fr) minmax(250px, 300px) 42px;
+  grid-template-columns: minmax(62px, .72fr) minmax(0, 3.28fr) 34px;
+  gap: 6px;
 }
 
 .module-synth .module-header-control {
@@ -41,10 +42,45 @@
   max-width: none;
 }
 
+.synth-header-controls {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.synth-transport-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.synth-play-button {
+  min-width: 40px;
+  height: 24px;
+  padding: 0 5px;
+  border: 1px solid #315358;
+  border-radius: 3px;
+  color: #7eaaad;
+  background: #071315;
+  font: 800 .44rem/1 var(--mono);
+  letter-spacing: .05em;
+}
+
+.synth-play-button.active {
+  border-color: var(--module-accent);
+  color: #e5ffff;
+  background: rgba(58,166,181,.24);
+  box-shadow: 0 0 7px rgba(125,232,255,.25);
+}
+
 .synth-selector-pair {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 4px;
   width: 100%;
   min-width: 0;
 }
@@ -53,6 +89,10 @@
 .module-header-control .synth-selector-pair select {
   width: 100%;
   min-width: 0;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 18px 0 5px;
+  font-size: .46rem;
 }
 
 .rail-c-faceplate-stage {
@@ -121,7 +161,7 @@
 
 .synth-roll {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   overflow: hidden;
   border-color: rgba(125,232,255,.25);
   background:
@@ -135,7 +175,6 @@
   margin-bottom: 4px !important;
 }
 
-.synth-roll-toolbar,
 .synth-pattern-strip {
   display: flex;
   align-items: center;
@@ -145,57 +184,21 @@
   letter-spacing: .08em;
 }
 
-.synth-roll-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
-  justify-content: space-between;
-  padding: 7px 9px;
-  border-bottom: 1px solid rgba(125,232,255,.13);
-  background: rgba(0,0,0,.22);
-}
-
-.synth-roll-toolbar div {
-  display: grid;
-  gap: 3px;
-}
-
-.synth-roll-toolbar strong {
-  color: #c2fbff;
-}
-
-.synth-roll-toolbar span {
-  color: #4e858b;
-}
-
-.synth-engine-badge {
-  padding: 4px 6px;
-  border: 1px solid #29484b;
-  border-radius: 2px;
-  color: #66898c !important;
-  background: rgba(0,0,0,.22);
-  font-size: .42rem;
-  white-space: nowrap;
-}
-
-.synth-engine-badge.online {
-  border-color: rgba(125,232,255,.42);
-  color: #a7eef2 !important;
-  box-shadow: inset 0 0 7px rgba(125,232,255,.1);
-}
-
 .synth-tempo-selector {
   display: grid;
-  grid-template-columns: auto 42px;
+  grid-template-columns: auto 36px;
   align-items: center;
-  gap: 4px;
-  color: #5f9297;
+  gap: 3px;
+  color: #6f9ea2;
+  font: 800 .42rem/1 var(--mono);
+  letter-spacing: .04em;
 }
 
 .synth-tempo-selector select {
-  width: 42px;
-  min-width: 42px;
-  height: 20px;
-  padding: 0 3px;
+  width: 36px;
+  min-width: 36px;
+  height: 24px;
+  padding: 0 2px;
   border: 1px solid #315358;
   border-radius: 2px;
   color: #bceff2;
@@ -225,8 +228,8 @@
 
 .piano-roll-grid {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  grid-template-rows: 14px minmax(0, 1fr);
+  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-rows: 18px minmax(0, 1fr);
   min-height: 0;
 }
 
@@ -235,9 +238,9 @@
   place-items: center;
   border-right: 1px solid #345257;
   border-bottom: 1px solid #345257;
-  color: #79aeb4;
+  color: #9ed6dc;
   background: #0a1517;
-  font: 800 .38rem/1 var(--mono);
+  font: 800 .42rem/1 var(--mono);
   letter-spacing: .04em;
 }
 
@@ -252,8 +255,8 @@
   display: grid;
   place-items: center;
   border-right: 1px solid rgba(125,232,255,.12);
-  color: #67999e;
-  font: 800 .42rem/1 var(--mono);
+  color: #86b8bd;
+  font: 800 .48rem/1 var(--mono);
 }
 
 .piano-roll-step-numbers span:nth-child(4n) {
@@ -282,61 +285,113 @@
   place-items: center;
   border-right: 1px solid #294145;
   border-bottom: 1px solid rgba(125,232,255,.07);
-  color: #8cc2c7;
-  background: #102124;
-  font: 800 .48rem/1 var(--mono);
+  color: #a8dce0;
+  background: #102529;
+  font: 800 .52rem/1 var(--mono);
 }
 
 .piano-roll-keys span.sharp {
-  color: #d2e6e7;
-  background: #020708;
+  color: #e4f4f5;
+  background: #03090a;
 }
 
 .piano-roll-row {
   display: grid;
   grid-template-columns: repeat(16, minmax(0, 1fr));
+  min-height: 0;
 }
 
-.piano-roll-row button {
+.piano-roll-cell {
   position: relative;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid rgba(136,211,219,.14);
+  border-bottom: 1px solid rgba(136,211,219,.1);
+  background: rgba(12,31,34,.13);
+}
+
+.piano-roll-row:nth-child(even) .piano-roll-cell {
+  background: rgba(0,0,0,.16);
+}
+
+.piano-roll-cell:nth-child(4n + 1) {
+  box-shadow: inset 1px 0 rgba(163,238,245,.19);
+}
+
+.piano-roll-cell:nth-child(4n) {
+  border-right-color: rgba(172,239,246,.48);
+}
+
+.piano-roll-cell.playhead {
+  background: rgba(125,232,255,.19);
+  box-shadow: inset 0 0 6px rgba(125,232,255,.17);
+}
+
+.piano-roll-cell.has-note {
+  z-index: 2;
+}
+
+.synth-roll .piano-roll-cell-hit {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
   min-width: 0;
   min-height: 0;
   padding: 0;
   border: 0;
-  border-right: 1px solid rgba(136,211,219,.14);
-  border-bottom: 1px solid rgba(136,211,219,.1);
   border-radius: 0;
-  background: rgba(12,31,34,.13);
+  background: transparent;
+  box-shadow: none;
 }
 
-.piano-roll-row:nth-child(even) button {
-  background: rgba(0,0,0,.16);
+.synth-roll .piano-roll-cell-hit:hover,
+.synth-roll .piano-roll-cell-hit:focus-visible {
+  background: rgba(125,232,255,.10);
+  outline: 1px solid rgba(181,251,255,.72);
+  outline-offset: -1px;
 }
 
-.piano-roll-row button:nth-child(4n + 1) {
-  box-shadow: inset 1px 0 rgba(163,238,245,.19);
-}
-
-.piano-roll-row button:nth-child(4n) {
-  border-right-color: rgba(172,239,246,.48);
-}
-
-.piano-roll-row button.playhead {
-  background: rgba(125,232,255,.16);
-  box-shadow: inset 0 0 5px rgba(125,232,255,.12);
-}
-
-.piano-roll-row button.has-note span {
+.piano-roll-note {
   position: absolute;
-  inset: 1px;
+  z-index: 3;
+  top: 1px;
+  bottom: 1px;
+  left: 1px;
+  max-width: calc(1600% + 15px);
   border: 1px solid #b5fbff;
-  border-radius: 1px;
+  border-radius: 2px;
   background: linear-gradient(180deg, #a5f7fb, #42aeba);
-  box-shadow: 0 0 6px rgba(116,234,243,.68);
+  box-shadow:
+    0 0 6px rgba(116,234,243,.68),
+    inset 0 1px rgba(255,255,255,.45);
+  pointer-events: none;
+}
+
+.piano-roll-note-handle {
+  position: absolute;
+  top: -1px;
+  right: -2px;
+  bottom: -1px;
+  width: 7px;
+  border-left: 1px solid rgba(5,47,53,.58);
+  border-radius: 0 2px 2px 0;
+  background:
+    linear-gradient(90deg, transparent 2px, rgba(5,47,53,.72) 2px 3px, transparent 3px);
+  cursor: ew-resize;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.piano-roll-note-handle:hover,
+.piano-roll-note-handle:focus-visible {
+  background-color: #d7fdff;
+  outline: 1px solid #fff;
+  outline-offset: 1px;
 }
 
 .synth-pattern-strip {
-  padding: 6px 8px;
+  padding: 5px 7px;
   border-top: 1px solid rgba(125,232,255,.14);
   overflow: hidden;
 }

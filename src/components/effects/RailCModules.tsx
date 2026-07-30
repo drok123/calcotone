@@ -23,6 +23,7 @@ import {
 } from '../../audio/SignalLab';
 import type {
   SynthMachine,
+  SynthSequencerNote,
   SynthSequencerState,
   SynthSequencerStep,
 } from '../../audio/SynthEngine';
@@ -423,13 +424,24 @@ const SYNTH_PRESETS: Record<SynthMachine, readonly SynthPreset[]> = {
 };
 
 const PITCHES = ['B4', 'A#4', 'A4', 'G#4', 'G4', 'F#4', 'F4', 'E4', 'D#4', 'D4', 'C#4', 'C4'] as const;
-const SYNTH_TEMPOS = [60, 70, 80, 90, 100, 110, 120, 128, 130, 140, 150, 160, 174, 180] as const;
-const INITIAL_PATTERNS: number[][] = [
+const SYNTH_TEMPOS = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 128, 130, 140, 150, 160, 174, 180] as const;
+const INITIAL_PATTERN_PITCHES: number[][] = [
   [9, -1, 9, -1, 7, -1, 9, -1, 4, -1, 7, -1, 9, 7, 4, -1],
   [9, 9, -1, 7, 4, -1, 7, -1, 2, -1, 4, -1, 7, 4, 2, -1],
   [9, -1, 4, -1, 7, -1, 2, -1, 9, -1, 7, 4, 2, -1, 4, -1],
   [4, -1, 7, -1, 9, -1, 7, -1, 2, 4, -1, 7, 9, -1, 4, -1],
 ];
+const INITIAL_PATTERNS: SynthSequencerNote[][][] = INITIAL_PATTERN_PITCHES.map((pattern) =>
+  pattern.map((pitch) => pitch < 0 ? [] : [{ pitch, length: 1 }])
+);
+
+function cloneSynthPatterns(
+  patterns: readonly (readonly (readonly SynthSequencerNote[])[])[]
+): SynthSequencerNote[][][] {
+  return patterns.map((pattern) =>
+    pattern.map((notes) => notes.map((note) => ({ ...note })))
+  );
+}
 
 // Rack exchanges move a module between separate rail containers, which remounts
 // its React subtree. Keep performance state outside that subtree so moving the
@@ -439,7 +451,7 @@ const SYNTH_RACK_STATE = {
   machine: 'model-d' as SynthMachine,
   values: [0.58, 0.46, 0.26, 0.54, 0.22, 0.08],
   presetId: 'panel-init',
-  patterns: INITIAL_PATTERNS.map((pattern) => [...pattern]),
+  patterns: cloneSynthPatterns(INITIAL_PATTERNS),
   patternIndex: 0,
   chain: [0, 1, 2, 3],
   chainArmed: false,
@@ -475,7 +487,7 @@ function SynthModule({
   const [machine, setMachine] = useState<SynthMachine>(SYNTH_RACK_STATE.machine);
   const [values, setValues] = useState(() => [...SYNTH_RACK_STATE.values]);
   const [presetId, setPresetId] = useState(SYNTH_RACK_STATE.presetId);
-  const [patterns, setPatterns] = useState<number[][]>(() => SYNTH_RACK_STATE.patterns.map((pattern) => [...pattern]));
+  const [patterns, setPatterns] = useState<SynthSequencerNote[][][]>(() => cloneSynthPatterns(SYNTH_RACK_STATE.patterns));
   const [patternIndex, setPatternIndex] = useState(SYNTH_RACK_STATE.patternIndex);
   const [chain, setChain] = useState(() => [...SYNTH_RACK_STATE.chain]);
   const [chainArmed, setChainArmed] = useState(SYNTH_RACK_STATE.chainArmed);
@@ -489,6 +501,7 @@ function SynthModule({
   const chainArmedRef = useRef(chainArmed);
   const chainPositionRef = useRef(chainPosition);
   const playheadRef = useRef(playhead);
+  const noteLengthDragCleanupRef = useRef<(() => void) | null>(null);
 
   SYNTH_RACK_STATE.enabled = enabled;
   SYNTH_RACK_STATE.machine = machine;
@@ -513,6 +526,7 @@ function SynthModule({
   useEffect(() => { chainArmedRef.current = chainArmed; }, [chainArmed]);
   useEffect(() => { chainPositionRef.current = chainPosition; }, [chainPosition]);
   useEffect(() => { playheadRef.current = playhead; }, [playhead]);
+  useEffect(() => () => noteLengthDragCleanupRef.current?.(), []);
 
   useEffect(() => {
     onEnabledChange(enabled);
@@ -569,13 +583,74 @@ function SynthModule({
   }, [engineRunning, onSequencerStepListenerChange]);
 
   function toggleCell(step: number, pitch: number): void {
+    const adding = !(notes[step] ?? []).some((note) => note.pitch === pitch);
     setPatterns((current) => current.map((pattern, index) => {
       if (index !== patternIndex) return pattern;
       const next = [...pattern];
-      next[step] = next[step] === pitch ? -1 : pitch;
+      const stepNotes = [...(next[step] ?? [])];
+      const noteIndex = stepNotes.findIndex((note) => note.pitch === pitch);
+      if (noteIndex >= 0) {
+        stepNotes.splice(noteIndex, 1);
+      } else {
+        stepNotes.push({ pitch, length: 1 });
+        stepNotes.sort((left, right) => left.pitch - right.pitch);
+      }
+      next[step] = stepNotes;
       return next;
     }));
-    if (enabled) onTriggerNote(71 - pitch, 60 / bpm / 4 * .72);
+    if (adding && enabled) onTriggerNote(71 - pitch, 60 / bpm / 4 * .92);
+  }
+
+  function setNoteLength(pattern: number, step: number, pitch: number, length: number): void {
+    const nextLength = Math.min(16 - step, Math.max(1, Math.round(length)));
+    setPatterns((current) => current.map((steps, index) => {
+      if (index !== pattern) return steps;
+      return steps.map((stepNotes, stepIndex) => {
+        if (stepIndex !== step) return stepNotes;
+        return stepNotes.map((note) =>
+          note.pitch === pitch ? { ...note, length: nextLength } : note
+        );
+      });
+    }));
+  }
+
+  function beginNoteLengthDrag(
+    event: ReactPointerEvent<HTMLSpanElement>,
+    step: number,
+    pitch: number,
+    length: number
+  ): void {
+    if (event.button !== 0) return;
+    const row = event.currentTarget.closest<HTMLElement>('.piano-roll-row');
+    if (!row) return;
+    event.preventDefault();
+    event.stopPropagation();
+    noteLengthDragCleanupRef.current?.();
+
+    const pointerId = event.pointerId;
+    const startX = event.clientX;
+    const stepWidth = row.getBoundingClientRect().width / 16;
+    const activePattern = patternIndex;
+    const move = (pointerEvent: PointerEvent): void => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      pointerEvent.preventDefault();
+      const delta = Math.round((pointerEvent.clientX - startX) / Math.max(1, stepWidth));
+      setNoteLength(activePattern, step, pitch, length + delta);
+    };
+    const finish = (pointerEvent: PointerEvent): void => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      cleanup();
+    };
+    const cleanup = (): void => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      noteLengthDragCleanupRef.current = null;
+    };
+    noteLengthDragCleanupRef.current = cleanup;
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
   }
 
   function selectPattern(index: number): void {
@@ -641,20 +716,44 @@ function SynthModule({
       enabled={enabled}
       onToggle={() => setEnabled((current) => !current)}
       headerControl={(
-        <div className="synth-selector-pair">
-          <label className="algorithm-selector synth-machine-selector">
-            <span className="sr-only">Synth machine</span>
-            <select aria-label="Synth machine" value={machine} onChange={(event) => selectMachine(event.target.value as SynthMachine)}>
-              {SYNTH_MACHINES.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}
-            </select>
-          </label>
-          <label className="algorithm-selector synth-preset-selector">
-            <span className="sr-only">Synth hardware preset</span>
-            <select aria-label="Synth hardware preset" value={presetId} onChange={(event) => selectPreset(event.target.value)}>
-              {presetId === 'custom' && <option value="custom">CUSTOM PANEL</option>}
-              {machinePresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
-            </select>
-          </label>
+        <div className="synth-header-controls">
+          <div className="synth-transport-controls">
+            <button
+              type="button"
+              className={`synth-play-button ${playing ? 'active' : ''}`}
+              aria-pressed={playing}
+              onClick={() => setPlaying((current) => !current)}
+            >
+              {playing ? 'STOP' : 'PLAY'}
+            </button>
+            <label className="synth-tempo-selector">
+              <span>BPM</span>
+              <select
+                aria-label="Sequencer tempo"
+                value={bpm}
+                onChange={(event) => setBpm(Number(event.target.value))}
+                onWheel={changeTempoFromWheel}
+                title="Scroll up to raise BPM · scroll down to lower BPM"
+              >
+                {SYNTH_TEMPOS.map((tempo) => <option key={tempo} value={tempo}>{tempo}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="synth-selector-pair">
+            <label className="algorithm-selector synth-machine-selector">
+              <span className="sr-only">Synth machine</span>
+              <select aria-label="Synth machine" value={machine} onChange={(event) => selectMachine(event.target.value as SynthMachine)}>
+                {SYNTH_MACHINES.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}
+              </select>
+            </label>
+            <label className="algorithm-selector synth-preset-selector">
+              <span className="sr-only">Synth hardware preset</span>
+              <select aria-label="Synth hardware preset" value={presetId} onChange={(event) => selectPreset(event.target.value)}>
+                {presetId === 'custom' && <option value="custom">CUSTOM PANEL</option>}
+                {machinePresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
+              </select>
+            </label>
+          </div>
         </div>
       )}
     >
@@ -663,30 +762,6 @@ function SynthModule({
         knobRowClass="synth-knob-row"
         viewport={(
           <div className={`synth-roll dsp-viewport ${enabled ? 'active' : 'is-off'}`}>
-        <div className="synth-roll-toolbar">
-          <div>
-            <strong>16-STEP PIANO ROLL</strong>
-            <span>P{String(patternIndex + 1).padStart(2, '0')} · 1/16 NOTES</span>
-          </div>
-          <span className={`synth-engine-badge ${engineRunning ? 'online' : ''}`}>
-            {engineRunning ? 'DSP ONLINE' : 'START ENGINE'}
-          </span>
-          <label className="synth-tempo-selector">
-            <span>BPM</span>
-            <select
-              aria-label="Sequencer tempo"
-              value={bpm}
-              onChange={(event) => setBpm(Number(event.target.value))}
-              onWheel={changeTempoFromWheel}
-              title="Scroll up to raise BPM · scroll down to lower BPM"
-            >
-              {SYNTH_TEMPOS.map((tempo) => <option key={tempo} value={tempo}>{tempo}</option>)}
-            </select>
-          </label>
-          <button type="button" className={playing ? 'active' : ''} aria-pressed={playing} onClick={() => setPlaying((current) => !current)}>
-            {playing ? 'STOP' : 'PLAY'}
-          </button>
-        </div>
         <div className="piano-roll-grid" role="grid" aria-label="16-step piano roll">
           <div className="piano-roll-corner" aria-hidden="true">NOTE</div>
           <div className="piano-roll-step-numbers" aria-hidden="true">
@@ -701,19 +776,53 @@ function SynthModule({
             {PITCHES.map((pitch, pitchIndex) => (
               <div className="piano-roll-row" role="row" key={pitch}>
                 {Array.from({ length: 16 }, (_, step) => {
-                  const active = notes[step] === pitchIndex;
+                  const activeNote = (notes[step] ?? []).find((note) => note.pitch === pitchIndex);
+                  const active = Boolean(activeNote);
+                  const noteLength = activeNote?.length ?? 1;
                   return (
-                    <button
-                      type="button"
+                    <div
                       role="gridcell"
                       key={`${pitch}-${step}`}
-                      className={`${active ? 'has-note' : ''} ${playhead === step && playing ? 'playhead' : ''}`}
-                      aria-label={`Step ${step + 1}, ${pitch}${active ? ', note active' : ''}`}
-                      aria-pressed={active}
-                      onClick={() => toggleCell(step, pitchIndex)}
+                      className={`piano-roll-cell ${active ? 'has-note' : ''} ${playhead === step && playing ? 'playhead' : ''}`}
                     >
-                      {active && <span />}
-                    </button>
+                      <button
+                        type="button"
+                        className="piano-roll-cell-hit"
+                        aria-label={`Step ${step + 1}, ${pitch}${active ? `, note active, ${noteLength} step${noteLength === 1 ? '' : 's'} long` : ''}`}
+                        aria-pressed={active}
+                        onClick={() => toggleCell(step, pitchIndex)}
+                      />
+                      {activeNote && (
+                        <span
+                          className="piano-roll-note"
+                          style={{ width: `calc(${noteLength * 100}% + ${noteLength - 1}px)` }}
+                        >
+                          <span
+                            className="piano-roll-note-handle"
+                            role="slider"
+                            tabIndex={0}
+                            aria-label={`${pitch} note length at step ${step + 1}`}
+                            aria-valuemin={1}
+                            aria-valuemax={16 - step}
+                            aria-valuenow={noteLength}
+                            aria-valuetext={`${noteLength} sixteenth-note step${noteLength === 1 ? '' : 's'}`}
+                            onPointerDown={(event) => beginNoteLengthDrag(event, step, pitchIndex, noteLength)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                setNoteLength(
+                                  patternIndex,
+                                  step,
+                                  pitchIndex,
+                                  noteLength + (event.key === 'ArrowRight' ? 1 : -1)
+                                );
+                              }
+                            }}
+                          />
+                        </span>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -728,7 +837,7 @@ function SynthModule({
             </button>
           ))}
           <button type="button" className={chainArmed ? 'active chain-button' : 'chain-button'} aria-pressed={chainArmed} onClick={() => setChainArmed((current) => !current)}>CHAIN</button>
-          <button type="button" onClick={() => setPatterns((current) => current.map((pattern, index) => index === patternIndex ? Array(16).fill(-1) : pattern))}>CLEAR</button>
+          <button type="button" onClick={() => setPatterns((current) => current.map((pattern, index) => index === patternIndex ? Array.from({ length: 16 }, () => []) : pattern))}>CLEAR</button>
           <strong>
             {chain.map((index, position) => `${position === chainPosition && chainArmed ? '[' : ''}${index + 1}${position === chainPosition && chainArmed ? ']' : ''}`).join(' › ')}
           </strong>

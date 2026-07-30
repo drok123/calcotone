@@ -14,8 +14,13 @@ export type SynthMachine =
 
 export type SynthQualityMode = 'live' | 'balanced' | 'studio';
 
+export interface SynthSequencerNote {
+  pitch: number;
+  length: number;
+}
+
 export interface SynthSequencerState {
-  patterns: readonly (readonly number[])[];
+  patterns: readonly (readonly (readonly SynthSequencerNote[])[])[];
   patternIndex: number;
   chain: readonly number[];
   chainArmed: boolean;
@@ -140,7 +145,7 @@ export class SynthEngine {
     this.processor.port.postMessage({
       type: 'note-on',
       midi: Math.min(127, Math.max(0, midi)),
-      durationSeconds: Math.max(.035, Math.min(4, durationSeconds)),
+      durationSeconds: Math.max(.035, Math.min(12, durationSeconds)),
       velocity: clamp01(velocity),
     });
   }
@@ -149,15 +154,26 @@ export class SynthEngine {
     this.processor.port.postMessage({
       type: 'sequencer-state',
       patterns: state.patterns.slice(0, 4).map((pattern) =>
-        pattern.slice(0, 16).map((pitch) =>
-          Number.isInteger(pitch) && pitch >= 0 && pitch < 12 ? pitch : -1
-        )
+        pattern.slice(0, 16).map((notes, step) => {
+          const pitches = new Set<number>();
+          return notes.slice(0, 12).flatMap((note) => {
+            const pitch = clampInteger(note.pitch, 0, 11);
+            if (!Number.isInteger(note.pitch) || note.pitch < 0 || note.pitch > 11 || pitches.has(pitch)) {
+              return [];
+            }
+            pitches.add(pitch);
+            return [{
+              pitch,
+              length: clampInteger(note.length, 1, 16 - step),
+            }];
+          });
+        })
       ),
       patternIndex: clampInteger(state.patternIndex, 0, 3),
       chain: state.chain.slice(0, 8).map((index) => clampInteger(index, 0, 3)),
       chainArmed: state.chainArmed,
       chainPosition: clampInteger(state.chainPosition, 0, Math.max(0, state.chain.length - 1)),
-      bpm: Math.min(180, Math.max(60, Number.isFinite(state.bpm) ? state.bpm : 100)),
+      bpm: Math.min(180, Math.max(30, Number.isFinite(state.bpm) ? state.bpm : 100)),
       playing: state.playing,
       startStep: clampInteger(state.startStep, 0, 15),
     });

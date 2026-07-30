@@ -65,6 +65,9 @@ requireText(processorSource, 'this.dcBlock(', 'Synth DC protection');
 requireText(processorSource, 'OUTPUT_SATURATION_NORMALIZATION', 'Synth output safety saturation');
 requireText(processorSource, 'while (this.frameCounter >= this.sequencer.nextStepFrame', 'Sample-clock sequencer');
 requireText(processorSource, 'sequence.stepFrames = sampleRate * 15 / sequence.bpm', 'Fractional-frame tempo clock');
+requireText(processorSource, 'sequence.bpm = clamp(data.bpm, 30, 180)', '30 BPM sequencer floor');
+requireText(processorSource, 'for (let noteIndex = 0; noteIndex < notes.length; noteIndex += 1)', 'Polyphonic chord triggering');
+requireText(processorSource, 'note.length * .92', 'Per-note sequencer duration');
 requireText(processorSource, 'voice.panL', 'Cached constant-power voice pan');
 requireText(processorSource, 'compactVoices()', 'Allocation-free voice retirement');
 if (processorSource.includes('this.voices = this.voices.filter(')) {
@@ -78,21 +81,29 @@ requireText(audioEngine, 'synth: SynthTelemetryStats', 'Synth telemetry in DSP p
 requireText(audioEngine, 'renderSizeHint: this.requestedRenderSize', 'Render-size negotiation');
 requireText(audioEngine, 'renderQuantumSize?: number', 'Actual render-quantum telemetry');
 
-requireText(rail, '16-STEP PIANO ROLL', 'Readable sequencer heading');
 requireText(rail, 'const SYNTH_PRESETS: Record<SynthMachine', 'Machine-aware hardware presets');
+requireText(rail, 'const SYNTH_TEMPOS = [30,', '30 BPM selector floor');
 requireText(rail, 'aria-label="Synth hardware preset"', 'Hardware preset selector');
 requireText(rail, "setPresetId('custom')", 'Manual panel edit state');
 requireText(rail, 'aria-label="Sequencer tempo"', 'Sequencer BPM selector');
 requireText(rail, 'onWheel={changeTempoFromWheel}', 'Sequencer BPM wheel control');
 requireText(rail, 'event.deltaY < 0 ? 1 : -1', 'BPM wheel direction');
 requireText(rail, 'onSequencerChange({', 'Audio-thread sequencer state handoff');
+requireText(rail, 'stepNotes.push({ pitch, length: 1 })', 'Polyphonic chord editing');
+requireText(rail, 'beginNoteLengthDrag(', 'Draggable per-note length');
+requireText(rail, 'role="slider"', 'Keyboard-accessible note length handle');
+requireText(rail, 'synth-header-controls', 'Header transport placement');
 requireText(rail, 'piano-roll-step-numbers', 'Visible step numbering');
 requireText(rail, 'onSequencerStepListenerChange((position)', 'Worklet-driven visual playhead');
+for (const removedLabel of ['16-STEP PIANO ROLL', 'START ENGINE', '1/16 NOTES']) {
+  if (rail.includes(removedLabel)) failures.push(`Removed sequencer label is still visible: ${removedLabel}`);
+}
 if (rail.includes('window.setInterval(')) {
   failures.push('Synth sequencer timing must not depend on a main-thread interval');
 }
 requireText(css, '.piano-roll-step-numbers span:nth-child(4n + 1)', 'Quarter-note beat emphasis');
-requireText(css, '.piano-roll-row button.playhead', 'Readable playhead');
+requireText(css, '.piano-roll-cell.playhead', 'Readable playhead');
+requireText(css, '.piano-roll-note-handle', 'Visible note-length handle');
 requireText(css, 'grid-template-rows: 18px 58px 16px', 'Full-size Rail C knob typography');
 requireText(rail, 'moduleId="synth"', 'Synth layout surface');
 requireText(rail, 'moduleId="chaos"', 'Chaos layout surface');
@@ -201,7 +212,7 @@ function renderMachine(
 
 function auditSequencerClock(blockSize, bpm) {
   const processor = new Processor();
-  const silentPattern = Array(16).fill(-1);
+  const silentPattern = Array.from({ length: 16 }, () => []);
   processor.port.onmessage({ data: { type: 'enabled', value: true } });
   processor.port.onmessage({
     data: {
@@ -249,6 +260,47 @@ function auditSequencerClock(blockSize, bpm) {
   }
 }
 
+function auditChordDurations() {
+  const processor = new Processor();
+  const chordPattern = Array.from({ length: 16 }, () => []);
+  chordPattern[0] = [
+    { pitch: 9, length: 4 },
+    { pitch: 5, length: 2 },
+    { pitch: 2, length: 1 },
+  ];
+  processor.port.onmessage({ data: { type: 'enabled', value: true } });
+  processor.port.onmessage({
+    data: {
+      type: 'sequencer-state',
+      patterns: Array.from({ length: 4 }, (_, index) =>
+        index === 0
+          ? chordPattern.map((notes) => notes.map((note) => ({ ...note })))
+          : Array.from({ length: 16 }, () => [])
+      ),
+      patternIndex: 0,
+      chain: [0],
+      chainArmed: false,
+      chainPosition: 0,
+      bpm: 30,
+      playing: true,
+      startStep: 0,
+    },
+  });
+  processor.process([], [[new Float32Array(1), new Float32Array(1)]]);
+  if (processor.voices.length !== 3) {
+    failures.push(`Sequencer chord produced ${processor.voices.length}/3 voices`);
+    return;
+  }
+  const expectedDurations = [1.84, .92, .46];
+  for (let index = 0; index < expectedDurations.length; index += 1) {
+    if (Math.abs(processor.voices[index].duration - expectedDurations[index]) > 1e-9) {
+      failures.push(
+        `Sequencer chord voice ${index} duration was ${processor.voices[index].duration}, expected ${expectedDurations[index]}`,
+      );
+    }
+  }
+}
+
 if (Processor) {
   const signatures = new Set();
   for (const machine of machines) {
@@ -271,7 +323,9 @@ if (Processor) {
   renderMachine('model-d', 4, 256, [.61, .82, 1, .52, .92, .31]);
   for (const blockSize of [64, 128, 256, 512]) {
     auditSequencerClock(blockSize, 174);
+    auditSequencerClock(blockSize, 30);
   }
+  auditChordDurations();
 }
 
 if (failures.length) {
@@ -281,4 +335,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`CALCOTONE synth engine audit passed (${machines.length} circuit topologies × 3 quality modes, 64–512-frame render quanta, sample-clock 16-step chain, allocation-free voice retirement, component-level Model D stress test).`);
+console.log(`CALCOTONE synth engine audit passed (${machines.length} circuit topologies × 3 quality modes, 30–174 BPM sample-clock chain, polyphonic per-note lengths, 64–512-frame render quanta, allocation-free voice retirement, component-level Model D stress test).`);

@@ -123,7 +123,7 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     this.dcL = { input: 0, output: 0 };
     this.dcR = { input: 0, output: 0 };
     this.sequencer = {
-      patterns: Array.from({ length: 4 }, () => Array(16).fill(-1)),
+      patterns: Array.from({ length: 4 }, () => Array.from({ length: 16 }, () => [])),
       patternIndex: 0,
       chain: [0, 1, 2, 3],
       chainArmed: false,
@@ -174,8 +174,17 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       sequence.patterns = Array.from({ length: 4 }, (_, patternIndex) => {
         const source = Array.isArray(data.patterns[patternIndex]) ? data.patterns[patternIndex] : [];
         return Array.from({ length: 16 }, (_, step) => {
-          const pitch = source[step];
-          return Number.isInteger(pitch) && pitch >= 0 && pitch < 12 ? pitch : -1;
+          const notes = Array.isArray(source[step]) ? source[step] : [];
+          const pitches = new Set();
+          return notes.slice(0, 12).flatMap((note) => {
+            if (!note || !Number.isInteger(note.pitch) || note.pitch < 0 || note.pitch >= 12) return [];
+            if (pitches.has(note.pitch)) return [];
+            pitches.add(note.pitch);
+            return [{
+              pitch: note.pitch,
+              length: Math.trunc(clamp(note.length, 1, 16 - step)),
+            }];
+          });
         });
       });
     }
@@ -191,7 +200,7 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       0,
       Math.max(0, sequence.chain.length - 1),
     ));
-    sequence.bpm = clamp(data.bpm, 60, 180);
+    sequence.bpm = clamp(data.bpm, 30, 180);
     sequence.stepFrames = sampleRate * 15 / sequence.bpm;
     sequence.playing = Boolean(data.playing);
     if (sequence.playing && !wasPlaying) {
@@ -208,13 +217,16 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
   triggerSequencerStep() {
     const sequence = this.sequencer;
     const pattern = sequence.patterns[sequence.patternIndex] || sequence.patterns[0];
-    const pitch = pattern?.[sequence.step] ?? -1;
-    if (this.enabled && pitch >= 0) {
-      this.noteOn({
-        midi: 71 - pitch,
-        durationSeconds: sequence.stepFrames / sampleRate * .72,
-        velocity: .78,
-      });
+    const notes = pattern?.[sequence.step] || [];
+    if (this.enabled) {
+      for (let noteIndex = 0; noteIndex < notes.length; noteIndex += 1) {
+        const note = notes[noteIndex];
+        this.noteOn({
+          midi: 71 - note.pitch,
+          durationSeconds: sequence.stepFrames / sampleRate * note.length * .92,
+          velocity: .78,
+        });
+      }
     }
     this.port.postMessage({
       type: 'sequencer-step',
@@ -261,7 +273,7 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       parameters: [...this.parameters],
       frequency: midiToFrequency(midi),
       velocity: clamp(data.velocity ?? .78),
-      duration: Math.max(.035, Math.min(4, data.durationSeconds ?? .2)),
+      duration: Math.max(.035, Math.min(12, data.durationSeconds ?? .2)),
       age: 0,
       releaseAge: 0,
       releasing: false,
