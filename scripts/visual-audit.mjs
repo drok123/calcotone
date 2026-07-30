@@ -73,14 +73,14 @@ requireText(asciiCss, '@media (prefers-reduced-motion: reduce)', 'Reduced motion
 const approvedFaceplateGeometry = [
   'version: 2',
   'custom: true',
-  'viewportHeight: 176',
+  'viewportHeight: 168',
   'stageHeight: 292',
-  '{ x: 0.08333333333333333, y: 238 }',
-  '{ x: 0.25, y: 238 }',
-  '{ x: 0.4166666666666667, y: 238 }',
-  '{ x: 0.5833333333333334, y: 238 }',
-  '{ x: 0.75, y: 238 }',
-  '{ x: 0.9166666666666666, y: 238 }',
+  '{ x: 0.07, y: 246 }',
+  '{ x: 0.2099125364431487, y: 246 }',
+  '{ x: 0.3498542274052478, y: 246 }',
+  '{ x: 0.6530612244897959, y: 246 }',
+  '{ x: 0.793002915451895, y: 246 }',
+  '{ x: 0.93, y: 246 }',
   'snap: 8',
 ];
 let faceplateGeometryCursor = faceplate.indexOf('export const FACTORY_FACEPLATE_LAYOUT');
@@ -92,7 +92,7 @@ for (const field of approvedFaceplateGeometry) {
   }
   faceplateGeometryCursor = fieldPosition;
 }
-requireText(faceplate, "const FACTORY_LAYOUT_REVISION = '2026-07-30-three-rail-faceplate'", 'Approved layout revision');
+requireText(faceplate, "const FACTORY_LAYOUT_REVISION = '2026-07-30-banked-knob-faceplate'", 'Approved layout revision');
 requireText(faceplate, 'window.localStorage.getItem(FACTORY_LAYOUT_REVISION_KEY) !== FACTORY_LAYOUT_REVISION', 'Stale saved-layout replacement');
 requireText(faceplate, 'return cloneLayout(FACTORY_FACEPLATE_LAYOUT)', 'Factory layout fallback');
 forbidText(faceplate, 'AUTO_FACEPLATE_LAYOUT', 'Automatic layout can override approved geometry');
