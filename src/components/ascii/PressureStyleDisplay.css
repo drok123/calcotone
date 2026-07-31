@@ -1,0 +1,42 @@
+.pressure-style-display {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #050706;
+  opacity: 0.96;
+  transition: opacity 240ms ease, filter 240ms ease;
+  image-rendering: auto;
+}
+
+.pressure-style-display.is-active {
+  filter: saturate(0.96) contrast(1.1);
+}
+
+.pressure-style-display.is-standby {
+  opacity: 0.42;
+  filter: saturate(0.42) brightness(0.7);
+}
+
+.dsp-viewport.ascii-viewport .pressure-style-display {
+  isolation: isolate;
+}
+
+.dsp-viewport.ascii-viewport.is-reconfiguring .pressure-style-display {
+  animation: pressure-display-reconfigure 360ms steps(4, end);
+}
+
+@keyframes pressure-display-reconfigure {
+  0% { opacity: 0.18; transform: translateY(-1px); }
+  42% { opacity: 0.88; transform: translateY(1px); }
+  100% { opacity: 0.96; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pressure-style-display,
+  .dsp-viewport.ascii-viewport.is-reconfiguring .pressure-style-display {
+    transition: none;
+    animation: none;
+  }
+}
