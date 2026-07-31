@@ -53,7 +53,7 @@ const DRIFT = ['chorus','ensemble','dimension','vibrato','rotary','doppler','liq
 const HALO = ['clean','tape','bbd','pingpong','diffuse','scatter','constellation','re201','EP-3 Echoplex','Binson Echorec','Deluxe Memory Man','AMS DMX 15-80 S'];
 const ATMOS = ['room','plate','hall','cinema','cloud','freeze','celestial','aurora','nebula','abyss','emt140','lexicon224'];
 const GRAIN = ['mosaic','scatter','smear','prism','slice','freeze','clouds','beads','morphagene','arbhar','particle2','microcosm'];
-const ARTIFACT = ['cassette','reel','vinyl','vhs','radio','wax','broken','archive','tascam424','Neve 1073','SSL 4000E','API 1608','Ampex ATR-102'];
+const ARTIFACT = ['cassette','reel','vinyl','vhs','radio','wax','broken','archive','tascam424','Neve 1073','SSL 4000E','API 1608','Ampex ATR-102','Neve BCM10'];
 
 requireOrder(ember, 'EMBER_MODE_ORDER', EMBER, 'Ember dropdown');
 requireOrder(drift, 'DRIFT_MODE_ORDER', DRIFT, 'Drift dropdown');
@@ -117,9 +117,11 @@ forbidText(grainProcessor, 'quantizeNonlinear12', 'Grain must not contain conver
 // Artifact: media, tape, transmission, and console paths retain mechanism-specific paths.
 requireText(artifact, "this.mode === 'Ampex ATR-102'", 'Artifact ATR-102 implementation');
 requireText(artifact, "this.mode === 'tascam424'", 'Artifact TASCAM 424 path');
-for (const mode of ['Neve 1073','SSL 4000E','API 1608']) requireText(artifact, `this.mode === '${mode}'`, `Artifact ${mode} console path`);
+for (const mode of ['Neve 1073','SSL 4000E','API 1608','Neve BCM10']) requireText(artifact, `this.mode === '${mode}'`, `Artifact ${mode} console path`);
 requireText(artifact, 'summingBusOperatingPoint(this.mode', 'Artifact calibrated summing-bus routing');
 requireText(artifact, 'getOpAmpCurve(', 'Artifact op-amp path');
+requireText(artifact, 'getBcm10CaptureCurve(', 'Artifact BCM10 captured 1073N/Marinair stage');
+requireText(artifact, 'getSummingCurve(point.busCompression, point.busAsymmetry)', 'Artifact BCM10 live 1272 summing stage');
 forbidText(artifact, 'AudioWorkletNode', 'Artifact digital-capture ownership');
 requireText(artifact, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve caches');
 
