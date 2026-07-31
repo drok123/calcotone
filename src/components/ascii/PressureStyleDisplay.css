@@ -27,15 +27,78 @@
   animation: pressure-display-reconfigure 360ms steps(4, end);
 }
 
+/*
+ * Chaos no longer exposes an XY surface or patch bay. The existing host shell
+ * becomes a compact modulation processor display while its four hardware
+ * controls remain available below it.
+ */
+.module-chaos .chaos-pad-shell {
+  position: relative;
+  overflow: hidden;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+  background:
+    linear-gradient(rgba(121, 215, 231, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(121, 215, 231, 0.035) 1px, transparent 1px),
+    radial-gradient(circle at 50% 55%, rgba(121, 215, 231, 0.09), transparent 48%),
+    #050706;
+  background-size: 12px 12px, 12px 12px, auto, auto;
+  border: 1px solid rgba(121, 215, 231, 0.24);
+  box-shadow: inset 0 0 28px rgba(0, 0, 0, 0.86);
+}
+
+.module-chaos .chaos-pad-shell > * {
+  display: none !important;
+}
+
+.module-chaos .chaos-pad-shell::before {
+  content: "C H A O S\A MODULATION PROCESSOR\A ─────────────────────\A CLOCK  ▮▮▮▮▯▯▯▯\A DRIFT  ━━━━━━━╾────\A EVENT  · · ◆ · · · ◆ ·\A ─────────────────────\A CONTROLLED VARIATION";
+  white-space: pre;
+  font: 700 clamp(7px, 0.52vw, 10px)/1.48 "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 0.08em;
+  color: #9de8f2;
+  text-align: left;
+  text-shadow: 0 0 7px rgba(121, 215, 231, 0.52);
+  opacity: 0.92;
+}
+
+.module-chaos .chaos-pad-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(transparent 0 48%, rgba(157, 232, 242, 0.08) 49% 51%, transparent 52% 100%);
+  background-size: 100% 8px;
+  opacity: 0.4;
+  animation: chaos-processor-scan 4.8s linear infinite;
+}
+
+/* Belt-and-suspenders cleanup for legacy patch UI while declarations migrate. */
+.knob-patch-jack,
+.patch-cable-overlay,
+.patch-cable-layer,
+.xy-jack-panel,
+.motion-jack-panel,
+[data-patch-target] {
+  display: none !important;
+}
+
 @keyframes pressure-display-reconfigure {
   0% { opacity: 0.18; transform: translateY(-1px); }
   42% { opacity: 0.88; transform: translateY(1px); }
   100% { opacity: 0.96; transform: translateY(0); }
 }
 
+@keyframes chaos-processor-scan {
+  from { transform: translateY(-6%); }
+  to { transform: translateY(6%); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pressure-style-display,
-  .dsp-viewport.ascii-viewport.is-reconfiguring .pressure-style-display {
+  .dsp-viewport.ascii-viewport.is-reconfiguring .pressure-style-display,
+  .module-chaos .chaos-pad-shell::after {
     transition: none;
     animation: none;
   }

@@ -26,7 +26,7 @@ const PROFILES: Record<string, DisplayProfile> = {
     primary: '#ffbf69',
     secondary: '#fff1cf',
     meterLabel: 'HEAT',
-    glyphs: ' ░▒▓█',
+    glyphs: ' ·─═█',
   },
   chorus: {
     title: 'D R I F T',
@@ -34,7 +34,7 @@ const PROFILES: Record<string, DisplayProfile> = {
     primary: '#79d7e7',
     secondary: '#e4fbff',
     meterLabel: 'WIDTH',
-    glyphs: ' ·≈≋▓█',
+    glyphs: ' ·─≈█',
   },
   delay: {
     title: 'H A L O',
@@ -42,7 +42,7 @@ const PROFILES: Record<string, DisplayProfile> = {
     primary: '#d6d9ff',
     secondary: '#fff0bd',
     meterLabel: 'ECHO',
-    glyphs: ' ·○◉▓█',
+    glyphs: ' ·─○█',
   },
   reverb: {
     title: 'A T M O S',
@@ -50,7 +50,7 @@ const PROFILES: Record<string, DisplayProfile> = {
     primary: '#c5b6ff',
     secondary: '#e7fbff',
     meterLabel: 'SPACE',
-    glyphs: ' ·░▒▓█',
+    glyphs: ' ·─┄█',
   },
   bitcrusher: {
     title: 'G R A I N',
@@ -58,7 +58,7 @@ const PROFILES: Record<string, DisplayProfile> = {
     primary: '#9ee38d',
     secondary: '#ffe28a',
     meterLabel: 'DENS',
-    glyphs: ' ·▪▫▓█',
+    glyphs: ' ·▪▫█',
   },
   media: {
     title: 'A R T I F A C T',
@@ -66,7 +66,7 @@ const PROFILES: Record<string, DisplayProfile> = {
     primary: '#e7d4ad',
     secondary: '#e59abb',
     meterLabel: 'AGE',
-    glyphs: ' ·─╪▓█',
+    glyphs: ' ·─╪█',
   },
 };
 
@@ -91,6 +91,43 @@ function noise(x: number, y: number, seed: number): number {
   return value - Math.floor(value);
 }
 
+function traceForModule(
+  moduleId: string,
+  x: number,
+  phase: number,
+  seed: number,
+  audio: VisualAudioState,
+): number {
+  const offset = (seed % 17) * 0.021;
+  switch (moduleId) {
+    case 'saturation':
+      return Math.sin(x * 7.2 + phase + offset) * (0.28 + audio.low * 0.2)
+        + Math.sin(x * 14.4 - phase * 0.5) * 0.08;
+    case 'chorus':
+      return Math.sin(x * 5.6 + phase) * 0.23
+        + Math.sin(x * 5.6 - phase * 0.72 + offset) * 0.17
+        + audio.mid * 0.05;
+    case 'delay': {
+      const repeat = Math.sin(x * 8.4 - phase) * 0.18;
+      const echo = Math.sin(x * 8.4 - phase - 1.1) * 0.1;
+      return repeat + echo + audio.transient * 0.08;
+    }
+    case 'reverb':
+      return Math.sin(x * 4.2 + phase * 0.34) * 0.13
+        + Math.sin(x * 9.2 - phase * 0.22) * 0.07
+        + audio.level * 0.06;
+    case 'bitcrusher': {
+      const steps = 7 + seed % 5;
+      return Math.round(Math.sin(x * 6.6 + phase) * steps) / steps * 0.34;
+    }
+    case 'media':
+      return Math.sin(x * 6.2 + phase * 0.45) * 0.16
+        + Math.sin(x * 1.8 - phase * 0.18) * 0.08;
+    default:
+      return Math.sin(x * 7 + phase) * 0.2;
+  }
+}
+
 function fieldForModule(
   moduleId: string,
   x: number,
@@ -99,48 +136,48 @@ function fieldForModule(
   seed: number,
   audio: VisualAudioState,
 ): number {
-  const detail = 3 + seed % 9;
-  const sway = Math.sin(phase + (seed % 31) * 0.08);
-  const counter = Math.cos(phase * 2 - (seed % 23) * 0.07);
-  const radius = Math.hypot(x, y);
-  const angle = Math.atan2(y, x);
+  const trace = traceForModule(moduleId, x, phase, seed, audio);
+  const distance = Math.abs(y - trace);
+  const activity = clamp01(audio.level * 0.72 + audio.transient * 0.28);
+  const gridX = Math.abs((x * 8) % 1 - 0.5);
+  const gridY = Math.abs((y * 6) % 1 - 0.5);
+  const grid = Math.min(gridX, gridY) < 0.035 ? 0.2 : 0;
 
   switch (moduleId) {
     case 'saturation': {
-      const flame = Math.sin((y + 1.05) * (5.4 + detail * 0.18) - Math.abs(x) * 4.2 + sway * 0.7);
-      const core = Math.max(0, 1 - Math.hypot(x * 1.65, y - 0.32));
-      return flame * (0.42 + core * 0.36) + core * 0.72 + audio.low * 0.18;
+      const threshold = 0.18 + audio.low * 0.08;
+      const clipped = Math.abs(trace) > threshold ? 0.14 : 0;
+      return 0.92 - distance * 8.8 + grid + clipped;
     }
     case 'chorus': {
-      const left = Math.sin(y * (7 + detail * 0.28) + x * 2.4 + sway * 0.7);
-      const right = Math.sin(y * (8.5 + detail * 0.22) - x * 2.8 - sway * 0.6);
-      return (left + right) * 0.44 + Math.cos(x * 4 + counter * 0.4) * 0.22 + audio.mid * 0.2;
+      const secondTrace = traceForModule(moduleId, x, phase + 0.75, seed + 11, audio) + 0.16;
+      return Math.max(0.9 - distance * 9.4, 0.82 - Math.abs(y - secondTrace) * 10.2) + grid * 0.5;
     }
     case 'delay': {
-      const ringA = Math.cos((radius - 0.18) * (11 + detail * 0.5) - sway * 0.65);
-      const ringB = Math.cos((Math.hypot(x * 0.72, y) - 0.5) * (8 + detail * 0.28) + counter * 0.4);
-      return ringA * 0.55 + ringB * 0.32 + (1 - radius) * 0.2 + audio.transient * 0.18;
+      const echoA = trace - 0.2;
+      const echoB = trace - 0.38;
+      return Math.max(
+        0.94 - distance * 9.8,
+        0.66 - Math.abs(y - echoA) * 11,
+        0.42 - Math.abs(y - echoB) * 12,
+      ) + grid * 0.45;
     }
     case 'reverb': {
-      const vault = Math.cos(Math.hypot(x * 0.76, y + 0.42) * (10 + detail * 0.34) - sway * 0.38);
-      const cloud = Math.sin(x * 3.4 + sway * 0.4) * Math.cos(y * 4.2 - counter * 0.3);
-      return vault * 0.48 + cloud * 0.38 + (1 - Math.abs(y)) * 0.18 + audio.level * 0.2;
+      const envelope = Math.max(0, 0.42 - Math.abs(y) * 0.24);
+      return 0.82 - distance * 8.2 + envelope * activity + grid * 0.75;
     }
     case 'bitcrusher': {
-      const gridX = Math.floor((x + 1) * (5 + detail % 5));
-      const gridY = Math.floor((y + 1) * (4 + detail % 4));
-      const block = Math.cos(gridX + gridY + sway * 0.45);
-      const fracture = noise(gridX, gridY, seed) > 0.68 - audio.transient * 0.08 ? 0.9 : -0.2;
-      return block * 0.38 + fracture + Math.cos(x * y * 18 + counter * 0.4) * 0.2;
+      const block = 0.94 - distance * 10.5;
+      const sampleTick = Math.abs((x * 14 + phase * 0.35) % 1 - 0.5) < 0.055 ? 0.24 : 0;
+      return block + sampleTick + grid * 0.45;
     }
     case 'media': {
-      const scan = Math.cos(y * (18 + detail) + sway * 0.5);
-      const chassis = Math.cos(x * (5 + detail % 6)) * Math.cos(y * (4 + detail % 5));
-      const dropout = noise(Math.floor(x * 21), Math.floor(y * 17), seed) > 0.91 ? -1.1 : 0.08;
-      return scan * 0.3 + chassis * 0.55 + dropout + Math.cos(angle * 2 + counter * 0.3) * 0.12;
+      const dropout = noise(Math.floor((x + 1) * 24), Math.floor((y + 1) * 12), seed) > 0.95 ? -0.7 : 0;
+      const scan = Math.abs((y * 10 + phase * 0.12) % 1 - 0.5) < 0.035 ? 0.2 : 0;
+      return 0.78 - distance * 9.2 + scan + grid * 0.55 + dropout;
     }
     default:
-      return Math.cos(x * 8 + sway * 0.4) * Math.sin(y * 9 - counter * 0.3);
+      return 0.85 - distance * 9 + grid;
   }
 }
 
@@ -228,10 +265,10 @@ function drawDisplay(
       for (let column = 0; column < innerWidth; column += 1) {
         const x = (column / Math.max(1, innerWidth - 1)) * 2 - 1;
         let value = fieldForModule(module.id, x, y, phase, seed, audio);
-        value += (noise(column, row, seed) - 0.5) * (0.1 + audio.high * 0.12);
-        const normalized = clamp01(0.42 + value * 0.38 + activity * 0.1);
-        if (!enabled && normalized < 0.68) continue;
-        if (normalized < 0.31) continue;
+        value += (noise(column, row, seed) - 0.5) * (0.035 + audio.high * 0.04);
+        const normalized = clamp01(value);
+        if (!enabled && normalized < 0.72) continue;
+        if (normalized < 0.22) continue;
         const index = Math.min(profile.glyphs.length - 1, Math.floor(normalized * profile.glyphs.length));
         chars[column] = profile.glyphs[index] ?? ' ';
         intensity = Math.max(intensity, normalized);
