@@ -1,0 +1,660 @@
+{
+  "version": 1,
+  "machine": "model-d",
+  "preset": "panel-init",
+  "format": "float32-le",
+  "sampleRate": 48000,
+  "quality": 4,
+  "frameLength": 8192,
+  "crossfadeFrames": 256,
+  "variants": 2,
+  "parameters": [
+    0.58,
+    0.46,
+    0.26,
+    0.54,
+    0.22,
+    0.08
+  ],
+  "sourceCorners": [
+    "source-00",
+    "source-10",
+    "source-01",
+    "source-11"
+  ],
+  "profileLevel": 0.17,
+  "sha256": "1868fd9b1260652cfe9fd4d77cac2395c614c20af65170499081b39a2810ff34",
+  "byteLength": 2949120,
+  "entries": [
+    {
+      "tap": "tone",
+      "rootMidi": 36,
+      "variant": 0,
+      "offsetFrames": 0,
+      "frameLength": 8192
+    },
+    {
+      "tap": "tone",
+      "rootMidi": 36,
+      "variant": 1,
+      "offsetFrames": 8192,
+      "frameLength": 8192
+    },
+    {
+      "tap": "tone",
+      "rootMidi": 42,
+      "variant": 0,
+      "offsetFrames": 16384,
+      "frameLength": 8192
+    },
+    {
+      "tap": "tone",
+      "rootMidi": 42,
+      "variant": 1,
+      "offsetFrames": 24576,
+      "frameLength": 8192
+    },
+    {
+      "tap": "tone",
+      "rootMidi": 48,
+      "variant": 0,
+      "offsetFrames": 32768,
+      "frameLength": 8192
+    },
+    {
+      "tap": "tone",
+      "rootMidi": 48,
+      "variant": 1,
+      "offsetFrames": 40960,
+      "frameLength": 8192
+    },
+    {
+      "tap": "tone",
+      "rootMidi": 54,
+      "variant": 0,
+      "offsetFrames": 49152,
+      "frameLength": 8192
+    },
+    {
+      "tap": "tone",
+      "rootMidi": 54,
+      "variant": 1,
+      "offsetFrames": 57344,
+      "frameLength": 8192
+    },
+    {
+      "tap": "tone",
+      "rootMidi": 60,
+      "variant": 0,
+      "offsetFrames": 65536,
+      "frameLength": 8192
+    },
+    {
+      "tap": "tone",
+      "rootMidi": 60,
+      "variant": 1,
+      "offsetFrames": 73728,
+      "frameLength": 8192
+    },
+    {
+      "tap": "tone",
+      "rootMidi": 66,
+      "variant": 0,
+      "offsetFrames": 81920,
+      "frameLength": 8192
+    },
+    {
+      "tap": "tone",
+      "rootMidi": 66,
+      "variant": 1,
+      "offsetFrames": 90112,
+      "frameLength": 8192
+    },
+    {
+      "tap": "tone",
+      "rootMidi": 72,
+      "variant": 0,
+      "offsetFrames": 98304,
+      "frameLength": 8192
+    },
+    {
+      "tap": "tone",
+      "rootMidi": 72,
+      "variant": 1,
+      "offsetFrames": 106496,
+      "frameLength": 8192
+    },
+    {
+      "tap": "tone",
+      "rootMidi": 78,
+      "variant": 0,
+      "offsetFrames": 114688,
+      "frameLength": 8192
+    },
+    {
+      "tap": "tone",
+      "rootMidi": 78,
+      "variant": 1,
+      "offsetFrames": 122880,
+      "frameLength": 8192
+    },
+    {
+      "tap": "tone",
+      "rootMidi": 84,
+      "variant": 0,
+      "offsetFrames": 131072,
+      "frameLength": 8192
+    },
+    {
+      "tap": "tone",
+      "rootMidi": 84,
+      "variant": 1,
+      "offsetFrames": 139264,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 36,
+      "variant": 0,
+      "offsetFrames": 147456,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 36,
+      "variant": 1,
+      "offsetFrames": 155648,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 42,
+      "variant": 0,
+      "offsetFrames": 163840,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 42,
+      "variant": 1,
+      "offsetFrames": 172032,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 48,
+      "variant": 0,
+      "offsetFrames": 180224,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 48,
+      "variant": 1,
+      "offsetFrames": 188416,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 54,
+      "variant": 0,
+      "offsetFrames": 196608,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 54,
+      "variant": 1,
+      "offsetFrames": 204800,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 60,
+      "variant": 0,
+      "offsetFrames": 212992,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 60,
+      "variant": 1,
+      "offsetFrames": 221184,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 66,
+      "variant": 0,
+      "offsetFrames": 229376,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 66,
+      "variant": 1,
+      "offsetFrames": 237568,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 72,
+      "variant": 0,
+      "offsetFrames": 245760,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 72,
+      "variant": 1,
+      "offsetFrames": 253952,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 78,
+      "variant": 0,
+      "offsetFrames": 262144,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 78,
+      "variant": 1,
+      "offsetFrames": 270336,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 84,
+      "variant": 0,
+      "offsetFrames": 278528,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-00",
+      "rootMidi": 84,
+      "variant": 1,
+      "offsetFrames": 286720,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 36,
+      "variant": 0,
+      "offsetFrames": 294912,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 36,
+      "variant": 1,
+      "offsetFrames": 303104,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 42,
+      "variant": 0,
+      "offsetFrames": 311296,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 42,
+      "variant": 1,
+      "offsetFrames": 319488,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 48,
+      "variant": 0,
+      "offsetFrames": 327680,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 48,
+      "variant": 1,
+      "offsetFrames": 335872,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 54,
+      "variant": 0,
+      "offsetFrames": 344064,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 54,
+      "variant": 1,
+      "offsetFrames": 352256,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 60,
+      "variant": 0,
+      "offsetFrames": 360448,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 60,
+      "variant": 1,
+      "offsetFrames": 368640,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 66,
+      "variant": 0,
+      "offsetFrames": 376832,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 66,
+      "variant": 1,
+      "offsetFrames": 385024,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 72,
+      "variant": 0,
+      "offsetFrames": 393216,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 72,
+      "variant": 1,
+      "offsetFrames": 401408,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 78,
+      "variant": 0,
+      "offsetFrames": 409600,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 78,
+      "variant": 1,
+      "offsetFrames": 417792,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 84,
+      "variant": 0,
+      "offsetFrames": 425984,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-10",
+      "rootMidi": 84,
+      "variant": 1,
+      "offsetFrames": 434176,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 36,
+      "variant": 0,
+      "offsetFrames": 442368,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 36,
+      "variant": 1,
+      "offsetFrames": 450560,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 42,
+      "variant": 0,
+      "offsetFrames": 458752,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 42,
+      "variant": 1,
+      "offsetFrames": 466944,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 48,
+      "variant": 0,
+      "offsetFrames": 475136,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 48,
+      "variant": 1,
+      "offsetFrames": 483328,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 54,
+      "variant": 0,
+      "offsetFrames": 491520,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 54,
+      "variant": 1,
+      "offsetFrames": 499712,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 60,
+      "variant": 0,
+      "offsetFrames": 507904,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 60,
+      "variant": 1,
+      "offsetFrames": 516096,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 66,
+      "variant": 0,
+      "offsetFrames": 524288,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 66,
+      "variant": 1,
+      "offsetFrames": 532480,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 72,
+      "variant": 0,
+      "offsetFrames": 540672,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 72,
+      "variant": 1,
+      "offsetFrames": 548864,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 78,
+      "variant": 0,
+      "offsetFrames": 557056,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 78,
+      "variant": 1,
+      "offsetFrames": 565248,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 84,
+      "variant": 0,
+      "offsetFrames": 573440,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-01",
+      "rootMidi": 84,
+      "variant": 1,
+      "offsetFrames": 581632,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 36,
+      "variant": 0,
+      "offsetFrames": 589824,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 36,
+      "variant": 1,
+      "offsetFrames": 598016,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 42,
+      "variant": 0,
+      "offsetFrames": 606208,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 42,
+      "variant": 1,
+      "offsetFrames": 614400,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 48,
+      "variant": 0,
+      "offsetFrames": 622592,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 48,
+      "variant": 1,
+      "offsetFrames": 630784,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 54,
+      "variant": 0,
+      "offsetFrames": 638976,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 54,
+      "variant": 1,
+      "offsetFrames": 647168,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 60,
+      "variant": 0,
+      "offsetFrames": 655360,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 60,
+      "variant": 1,
+      "offsetFrames": 663552,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 66,
+      "variant": 0,
+      "offsetFrames": 671744,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 66,
+      "variant": 1,
+      "offsetFrames": 679936,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 72,
+      "variant": 0,
+      "offsetFrames": 688128,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 72,
+      "variant": 1,
+      "offsetFrames": 696320,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 78,
+      "variant": 0,
+      "offsetFrames": 704512,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 78,
+      "variant": 1,
+      "offsetFrames": 712704,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 84,
+      "variant": 0,
+      "offsetFrames": 720896,
+      "frameLength": 8192
+    },
+    {
+      "tap": "source-11",
+      "rootMidi": 84,
+      "variant": 1,
+      "offsetFrames": 729088,
+      "frameLength": 8192
+    }
+  ]
+}

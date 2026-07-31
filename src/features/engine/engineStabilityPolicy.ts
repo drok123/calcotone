@@ -123,6 +123,8 @@ export function buildHiddenProfilerSnapshot(engine: AudioEngine): DspProfilerSna
     temperatureC: 27,
     renderQuantumFrames: 0,
     clippedSamples: 0,
+    renderMode: 'circuit' as const,
+    captureReady: false,
   };
   const contextQuantum = (context as (AudioContext & { readonly renderQuantumSize?: number }) | null)
     ?.renderQuantumSize;

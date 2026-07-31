@@ -13,6 +13,7 @@ export type SynthMachine =
   | 'calcotone';
 
 export type SynthQualityMode = 'live' | 'balanced' | 'studio';
+export type SynthRenderMode = 'auto' | 'circuit' | 'capture' | 'hybrid';
 
 export interface SynthSequencerNote {
   pitch: number;
@@ -48,6 +49,8 @@ export interface SynthTelemetryStats {
   temperatureC: number;
   renderQuantumFrames: number;
   clippedSamples: number;
+  renderMode: Exclude<SynthRenderMode, 'auto'>;
+  captureReady: boolean;
 }
 
 const EMPTY_TELEMETRY: SynthTelemetryStats = {
@@ -62,18 +65,23 @@ const EMPTY_TELEMETRY: SynthTelemetryStats = {
   temperatureC: 27,
   renderQuantumFrames: 0,
   clippedSamples: 0,
+  renderMode: 'circuit',
+  captureReady: false,
 };
 
 /**
- * Main-thread controller for the topology-derived synth AudioWorklet. Keeping
- * synthesis inside one processor gives every machine sample-aligned envelopes,
- * deterministic voice stealing, shared oversampling and click-free teardown.
+ * Main-thread controller for the circuit/capture hybrid synth AudioWorklet.
+ * Keeping synthesis inside one processor gives every machine sample-aligned
+ * envelopes, deterministic voice stealing, shared oversampling and click-free
+ * teardown.
  */
 export class SynthEngine {
   private readonly context: AudioContext;
   private readonly output: GainNode;
   private readonly processor: AudioWorkletNode;
+  private readonly captureAbortController = new AbortController();
   private enabled = false;
+  private disposed = false;
   private telemetry: SynthTelemetryStats = { ...EMPTY_TELEMETRY };
   private sequencerStepListener: ((position: SynthSequencerStep) => void) | null = null;
 
@@ -103,6 +111,8 @@ export class SynthEngine {
           temperatureC: data.temperatureC,
           renderQuantumFrames: data.renderQuantumFrames,
           clippedSamples: data.clippedSamples,
+          renderMode: data.renderMode,
+          captureReady: data.captureReady,
         };
       } else if (isSynthSequencerStep(data)) {
         this.sequencerStepListener?.({
@@ -114,6 +124,7 @@ export class SynthEngine {
     };
     this.processor.connect(this.output);
     this.output.connect(destination);
+    void this.loadCaptureBank();
   }
 
   public setEnabled(enabled: boolean): void {
@@ -138,6 +149,10 @@ export class SynthEngine {
   public setQualityMode(mode: SynthQualityMode): void {
     const factor = mode === 'studio' ? 4 : mode === 'balanced' ? 2 : 1;
     this.processor.port.postMessage({ type: 'quality', factor });
+  }
+
+  public setRenderMode(mode: SynthRenderMode): void {
+    this.processor.port.postMessage({ type: 'render-mode', value: mode });
   }
 
   public triggerNote(midi: number, durationSeconds: number, velocity = .78): void {
@@ -188,11 +203,43 @@ export class SynthEngine {
   }
 
   public dispose(): void {
+    this.disposed = true;
+    this.captureAbortController.abort();
     this.sequencerStepListener = null;
     this.processor.port.postMessage({ type: 'dispose' });
     this.processor.port.close();
     this.processor.disconnect();
     this.output.disconnect();
+  }
+
+  private async loadCaptureBank(): Promise<void> {
+    const baseUrl = import.meta.env.BASE_URL;
+    const manifestUrl = new URL(`${baseUrl}synth-captures/model-d-panel-init.json`, window.location.origin);
+    const samplesUrl = new URL(`${baseUrl}synth-captures/model-d-panel-init.f32`, window.location.origin);
+    try {
+      const [manifestResponse, samplesResponse] = await Promise.all([
+        fetch(manifestUrl, { signal: this.captureAbortController.signal }),
+        fetch(samplesUrl, { signal: this.captureAbortController.signal }),
+      ]);
+      if (!manifestResponse.ok || !samplesResponse.ok) return;
+      const [manifest, samples] = await Promise.all([
+        manifestResponse.json() as Promise<unknown>,
+        samplesResponse.arrayBuffer(),
+      ]);
+      if (
+        this.disposed
+        || !isCaptureManifest(manifest)
+        || manifest.byteLength !== samples.byteLength
+        || !await captureDigestMatches(samples, manifest.sha256)
+      ) return;
+      this.processor.port.postMessage({
+        type: 'capture-bank',
+        manifest,
+        samples,
+      }, [samples]);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+    }
   }
 }
 
@@ -219,7 +266,38 @@ function isSynthTelemetry(value: unknown): value is SynthTelemetryStats & { type
     && typeof data.solverIterations === 'number'
     && typeof data.temperatureC === 'number'
     && typeof data.renderQuantumFrames === 'number'
-    && typeof data.clippedSamples === 'number';
+    && typeof data.clippedSamples === 'number'
+    && (data.renderMode === 'circuit' || data.renderMode === 'capture' || data.renderMode === 'hybrid')
+    && typeof data.captureReady === 'boolean';
+}
+
+function isCaptureManifest(value: unknown): value is {
+  machine: 'model-d';
+  format: 'float32-le';
+  byteLength: number;
+  sha256: string;
+  entries: readonly unknown[];
+} {
+  if (!value || typeof value !== 'object') return false;
+  const manifest = value as {
+    machine?: unknown;
+    format?: unknown;
+    byteLength?: unknown;
+    sha256?: unknown;
+    entries?: unknown;
+  };
+  return manifest.machine === 'model-d'
+    && manifest.format === 'float32-le'
+    && typeof manifest.byteLength === 'number'
+    && typeof manifest.sha256 === 'string'
+    && Array.isArray(manifest.entries);
+}
+
+async function captureDigestMatches(samples: ArrayBuffer, expected: string): Promise<boolean> {
+  if (!/^[a-f0-9]{64}$/.test(expected)) return false;
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', samples);
+  const actual = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('');
+  return actual === expected;
 }
 
 function clamp01(value: number): number {

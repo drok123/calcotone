@@ -33,7 +33,7 @@ type ExtendedAudioContext = AudioContext & {
   readonly renderQuantumSize?: number;
 };
 
-const WORKLET_BUILD_VERSION = '8.7.1-synth-realtime-clock';
+const WORKLET_BUILD_VERSION = '8.8.0-synth-hybrid-capture';
 export type EngineHealth = 'offline' | 'healthy' | 'warm' | 'critical';
 
 export interface DspProfilerSnapshot {
@@ -142,6 +142,8 @@ export class AudioEngine {
       temperatureC: 27,
       renderQuantumFrames: 0,
       clippedSamples: 0,
+      renderMode: 'circuit' as const,
+      captureReady: false,
     };
     const contextQuantum = readRenderQuantumSize(this.context);
     return {
