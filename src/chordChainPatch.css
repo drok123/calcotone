@@ -1,0 +1,156 @@
+/* Compact Synth workflow: progression cards instead of a miniature piano roll. */
+
+.synth-roll.chord-chain-mode .piano-roll-grid,
+.synth-roll.chord-chain-mode .sequencer-expand-button,
+.synth-roll.chord-chain-mode .synth-pattern-strip > span,
+.synth-roll.chord-chain-mode .synth-pattern-strip > button:not(.chain-button),
+.synth-roll.chord-chain-mode .synth-pattern-strip > strong {
+  display: none !important;
+}
+
+.synth-roll.chord-chain-mode {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-height: 100%;
+  padding: 8px;
+  overflow: hidden;
+}
+
+.chord-chain-panel {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 7px;
+  min-height: 0;
+  padding: 8px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(20,24,22,.96), rgba(8,11,10,.98));
+  box-shadow: inset 0 1px rgba(255,255,255,.05), inset 0 -8px 20px rgba(0,0,0,.32);
+}
+
+.chord-chain-panel header,
+.chord-chain-panel footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chord-chain-panel header strong,
+.chord-chain-panel footer span {
+  color: #fff;
+  font: 900 .66rem/1 var(--mono);
+  letter-spacing: .08em;
+}
+
+.chord-chain-panel header > span {
+  margin-right: auto;
+  color: rgba(255,255,255,.68);
+  font: 800 .58rem/1 var(--mono);
+}
+
+.chord-chain-generate {
+  min-height: 24px;
+  padding: 0 10px;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 5px;
+  color: #fff;
+  background: linear-gradient(#3b413e, #191d1b);
+  font: 900 .62rem/1 var(--mono);
+  cursor: pointer;
+}
+
+.chord-chain-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  min-height: 0;
+}
+
+.chord-chain-card {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  align-items: center;
+  justify-items: center;
+  min-width: 0;
+  padding: 6px 4px;
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 7px;
+  color: #fff;
+  background: linear-gradient(180deg, #2f3532, #151917);
+  box-shadow: inset 0 1px rgba(255,255,255,.07), 0 2px 5px rgba(0,0,0,.28);
+}
+
+.chord-chain-card > span {
+  justify-self: start;
+  padding-left: 3px;
+  color: rgba(255,255,255,.55);
+  font: 900 .55rem/1 var(--mono);
+}
+
+.chord-chain-card select {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 2px;
+  border: 0;
+  color: #fff;
+  background: transparent;
+  font: 900 clamp(.86rem, 1.2vw, 1.08rem)/1 var(--mono);
+  text-align: center;
+  text-align-last: center;
+  cursor: pointer;
+}
+
+.chord-chain-card select option {
+  color: #fff;
+  background: #171a19;
+}
+
+.chord-chain-card small {
+  color: rgba(255,255,255,.62);
+  font: 800 .52rem/1 var(--mono);
+  letter-spacing: .06em;
+}
+
+.chord-chain-panel footer {
+  min-height: 18px;
+  overflow: hidden;
+}
+
+.chord-chain-panel footer strong {
+  overflow: hidden;
+  color: #fff;
+  font: 900 .65rem/1 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.synth-roll.chord-chain-mode .synth-pattern-strip {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 24px;
+  padding: 3px 0 0;
+  border: 0;
+  background: transparent;
+}
+
+.synth-roll.chord-chain-mode .synth-pattern-strip .chain-button {
+  display: inline-flex !important;
+  min-width: 68px;
+  min-height: 22px;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.synth-roll.chord-chain-writing .chord-chain-panel {
+  opacity: .7;
+  pointer-events: none;
+}
+
+@media (max-width: 720px) {
+  .chord-chain-panel { gap: 5px; padding: 6px; }
+  .chord-chain-cards { gap: 4px; }
+  .chord-chain-card { padding-inline: 2px; }
+  .chord-chain-card select { font-size: .8rem; }
+}
