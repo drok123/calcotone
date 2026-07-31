@@ -27,7 +27,6 @@ const PROGRESSIONS: readonly Progression[] = [
 ];
 
 const SLOT_COUNT = 4;
-const STEP_COUNT = 16;
 const CHORD_STEPS = [0, 4, 8, 12] as const;
 const selectedChords = ['C', 'G', 'Am', 'F'];
 let applying = false;
@@ -38,7 +37,9 @@ function click(element: Element | null): void {
 }
 
 function waitForPaint(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
 }
 
 function synthRoot(): HTMLElement | null {
