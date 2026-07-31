@@ -17,6 +17,7 @@
     "audit:synth": "node scripts/synth-engine-audit.mjs",
     "audit:synth:hybrid": "node scripts/synth-hybrid-audit.mjs",
     "audit:synth:performance": "node scripts/synth-performance-audit.mjs",
+    "audit:synth:phase4": "npm run audit:synth:hybrid && npm run audit:synth:performance",
     "build:synth-captures": "node scripts/build-synth-captures.mjs",
     "audit:spice": "node scripts/model-d-spice-calibration.mjs",
     "audit:spice:strict": "node scripts/model-d-spice-calibration.mjs --require-ngspice",
@@ -26,7 +27,7 @@
     "audit:ascii-world": "node scripts/ascii-landscape-audit.mjs",
     "build": "tsc -b && vite build",
     "lint": "oxlint src scripts public vite.config.ts",
-    "check": "npm run audit && npm run audit:visual && npm run audit:runtime && npm run audit:dropdowns && npm run audit:presets && npm run audit:grain-hardware && npm run audit:dsp-worklets && npm run audit:routing && npm run audit:signal && npm run audit:synth && npm run audit:synth:hybrid && npm run audit:spice && npm run audit:hardware-spice && npm run audit:dream && npm run audit:ascii-world && npm run lint && npm run build",
+    "check": "npm run audit && npm run audit:visual && npm run audit:runtime && npm run audit:dropdowns && npm run audit:presets && npm run audit:grain-hardware && npm run audit:dsp-worklets && npm run audit:routing && npm run audit:signal && npm run audit:synth && npm run audit:synth:phase4 && npm run audit:spice && npm run audit:hardware-spice && npm run audit:dream && npm run audit:ascii-world && npm run lint && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {
