@@ -1,0 +1,98 @@
+/* Readability pass: keep the hardware aesthetic while making small UI text crisp. */
+
+:root {
+  text-rendering: auto;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+
+body,
+button,
+select,
+input {
+  font-synthesis: weight style;
+}
+
+#root :where(button, select, input, label, small, strong, p, h1, h2, h3, .knob-label, .knob-value) {
+  text-shadow: none;
+}
+
+/* Small all-caps legends were the hardest text to read on Windows/Firefox. */
+.brand small,
+.status-item span:not(.status-dot),
+.status-item strong,
+.power-button,
+.panel-heading h2,
+.section-header h2,
+.knob-label,
+.knob-value,
+select,
+button,
+input {
+  -webkit-font-smoothing: auto;
+  font-kerning: normal;
+}
+
+.brand small {
+  color: #c4ccc6;
+  font-size: 0.74rem;
+  letter-spacing: 0.11em;
+}
+
+.status-item span:not(.status-dot) {
+  color: #9ca79f;
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+}
+
+.status-item strong {
+  color: #d4dbd6;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.power-button {
+  font-size: 0.8rem;
+  letter-spacing: 0.09em;
+}
+
+.panel-heading h2,
+.section-header h2 {
+  font-size: 0.98rem;
+  letter-spacing: 0.13em;
+}
+
+.knob-label {
+  font-size: max(0.72rem, 1em);
+  font-weight: 800;
+  letter-spacing: 0.045em;
+}
+
+.knob-value {
+  font-size: max(0.72rem, 1em);
+  font-weight: 800;
+}
+
+select,
+button,
+input {
+  font-weight: 700;
+}
+
+/* Preserve sharp text when panels are promoted to compositor layers. */
+.workstation,
+.module-card,
+.module-faceplate,
+.io-panel,
+.performance-panel,
+.modules-section {
+  backface-visibility: hidden;
+  transform-style: flat;
+}
+
+@media (max-width: 900px) {
+  .status-item span:not(.status-dot) { font-size: 0.7rem; }
+  .status-item strong { font-size: 0.82rem; }
+  .knob-label,
+  .knob-value { font-size: 0.76rem; }
+}
