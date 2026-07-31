@@ -99,41 +99,49 @@ export function Knob({
       if (dragFrameRef.current === null) dragFrameRef.current = requestAnimationFrame(applyPending);
     };
 
-    const finish = (pointerEvent: PointerEvent): void => {
+    const finish = (pointerEvent: PointerEvent, cancelled = false): void => {
       if (pointerEvent.pointerId !== dragRef.current.pointerId) return;
       pointerEvent.preventDefault();
-      pendingDragRef.current = {
-        x: pointerEvent.clientX,
-        y: pointerEvent.clientY,
-        fine: pointerEvent.shiftKey,
-      };
-      if (dragFrameRef.current !== null) {
-        cancelAnimationFrame(dragFrameRef.current);
-        dragFrameRef.current = null;
-      }
-      applyPending();
 
-      if (!dragRef.current.moved) {
-        const now = performance.now();
-        if (now - lastClickAtRef.current <= 360) {
-          onReset();
-          lastClickAtRef.current = 0;
+      if (!cancelled) {
+        pendingDragRef.current = {
+          x: pointerEvent.clientX,
+          y: pointerEvent.clientY,
+          fine: pointerEvent.shiftKey,
+        };
+        if (dragFrameRef.current !== null) {
+          cancelAnimationFrame(dragFrameRef.current);
+          dragFrameRef.current = null;
+        }
+        applyPending();
+
+        if (!dragRef.current.moved) {
+          const now = performance.now();
+          if (now - lastClickAtRef.current <= 360) {
+            onReset();
+            lastClickAtRef.current = 0;
+          } else {
+            lastClickAtRef.current = now;
+          }
         } else {
-          lastClickAtRef.current = now;
+          lastClickAtRef.current = 0;
         }
       } else {
         lastClickAtRef.current = 0;
       }
+
       cleanupDragRef.current?.();
     };
 
+    const release = (pointerEvent: PointerEvent): void => finish(pointerEvent, false);
+    const cancel = (pointerEvent: PointerEvent): void => finish(pointerEvent, true);
     window.addEventListener('pointermove', move, { passive: false });
-    window.addEventListener('pointerup', finish, { passive: false });
-    window.addEventListener('pointercancel', finish, { passive: false });
+    window.addEventListener('pointerup', release, { passive: false });
+    window.addEventListener('pointercancel', cancel, { passive: false });
     cleanupDragRef.current = () => {
       window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', finish);
-      window.removeEventListener('pointercancel', finish);
+      window.removeEventListener('pointerup', release);
+      window.removeEventListener('pointercancel', cancel);
       if (dragFrameRef.current !== null) cancelAnimationFrame(dragFrameRef.current);
       dragFrameRef.current = null;
       pendingDragRef.current = null;
