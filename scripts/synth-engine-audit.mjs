@@ -93,6 +93,9 @@ requireText(rail, 'stepNotes.push({ pitch, length: 1 })', 'Polyphonic chord edit
 requireText(rail, 'beginNoteLengthDrag(', 'Draggable per-note length');
 requireText(rail, 'role="slider"', 'Keyboard-accessible note length handle');
 requireText(rail, 'synth-header-controls', 'Header transport placement');
+requireText(rail, 'overlayActive={sequencerExpanded}', 'In-module sequencer overlay state');
+requireText(rail, "sequencerExpanded ? 'BACK' : 'FULL'", 'Reversible sequencer fullscreen control');
+requireText(rail, "event.key !== 'Escape'", 'Sequencer overlay Escape shortcut');
 requireText(rail, 'piano-roll-step-numbers', 'Visible step numbering');
 requireText(rail, 'onSequencerStepListenerChange((position)', 'Worklet-driven visual playhead');
 for (const removedLabel of ['16-STEP PIANO ROLL', 'START ENGINE', '1/16 NOTES']) {
@@ -104,6 +107,8 @@ if (rail.includes('window.setInterval(')) {
 requireText(css, '.piano-roll-step-numbers span:nth-child(4n + 1)', 'Quarter-note beat emphasis');
 requireText(css, '.piano-roll-cell.playhead', 'Readable playhead');
 requireText(css, '.piano-roll-note-handle', 'Visible note-length handle');
+requireText(css, '.module-synth.module-overlay-active .faceplate-viewport-shell', 'Full-module sequencer overlay');
+requireText(css, '.synth-pattern-strip .sequencer-expand-button', 'Sequencer fullscreen button styling');
 requireText(css, 'grid-template-rows: 18px 58px 16px', 'Full-size Rail C knob typography');
 requireText(rail, 'moduleId="synth"', 'Synth layout surface');
 requireText(rail, 'moduleId="chaos"', 'Chaos layout surface');

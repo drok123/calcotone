@@ -413,6 +413,68 @@
   margin-left: 3px;
 }
 
+.synth-pattern-strip .sequencer-expand-button {
+  min-width: 32px;
+  padding-inline: 5px;
+}
+
+.module-synth.module-overlay-active > .module-header {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.module-synth.module-overlay-active > .rail-c-faceplate-stage {
+  position: static;
+  z-index: auto;
+}
+
+.module-synth.module-overlay-active .faceplate-viewport-shell {
+  position: absolute !important;
+  z-index: 80;
+  inset: 4px !important;
+  width: auto !important;
+  height: auto !important;
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 2px rgba(125,232,255,.28),
+    0 12px 30px rgba(0,0,0,.58);
+}
+
+.module-synth.module-overlay-active .faceplate-viewport-resize,
+.module-synth.module-overlay-active .rail-c-control-surface {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.module-synth.module-overlay-active .synth-roll {
+  border-radius: 7px;
+}
+
+.module-synth.module-overlay-active .piano-roll-grid {
+  grid-template-columns: 52px minmax(0, 1fr);
+  grid-template-rows: 26px minmax(0, 1fr);
+}
+
+.module-synth.module-overlay-active .piano-roll-corner,
+.module-synth.module-overlay-active .piano-roll-step-numbers span {
+  font-size: .56rem;
+}
+
+.module-synth.module-overlay-active .piano-roll-keys span {
+  font-size: .62rem;
+}
+
+.module-synth.module-overlay-active .piano-roll-note-handle {
+  width: 10px;
+}
+
+.module-synth.module-overlay-active .synth-pattern-strip {
+  min-height: 31px;
+  padding: 6px 9px;
+  font-size: .53rem;
+}
+
 .module-chaos .module-header {
   grid-template-columns: minmax(72px, 1fr) minmax(210px, 248px) 42px;
 }

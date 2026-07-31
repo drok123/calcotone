@@ -89,6 +89,7 @@ type FrameProps = RailInteractionProps & {
   enabled: boolean;
   onToggle: () => void;
   headerControl: ReactNode;
+  overlayActive?: boolean;
   children: ReactNode;
 };
 
@@ -98,6 +99,7 @@ function RailModuleFrame({
   enabled,
   onToggle,
   headerControl,
+  overlayActive = false,
   children,
   slotLabel,
   routingDragging,
@@ -111,7 +113,7 @@ function RailModuleFrame({
   const faceplateEditor = useFaceplateLayoutEditor();
   return (
     <article
-      className={`effect-module rail-c-module module-${id} ${enabled ? 'enabled' : ''} ${routingDragging ? 'routing-dragging' : ''} ${routingDropTarget ? 'routing-drop-target' : ''} ${faceplateEditor.layout.custom ? 'faceplate-layout-custom' : ''} ${faceplateEditor.editing ? 'faceplate-layout-editing' : ''}`}
+      className={`effect-module rail-c-module module-${id} ${enabled ? 'enabled' : ''} ${overlayActive ? 'module-overlay-active' : ''} ${routingDragging ? 'routing-dragging' : ''} ${routingDropTarget ? 'routing-drop-target' : ''} ${faceplateEditor.layout.custom ? 'faceplate-layout-custom' : ''} ${faceplateEditor.editing ? 'faceplate-layout-editing' : ''}`}
       style={{ '--module-activity': enabled ? 1 : 0 } as CSSProperties}
       onDragOver={onRoutingDragOver}
       onDrop={onRoutingDrop}
@@ -495,6 +497,7 @@ function SynthModule({
   const [bpm, setBpm] = useState(SYNTH_RACK_STATE.bpm);
   const [playing, setPlaying] = useState(SYNTH_RACK_STATE.playing);
   const [playhead, setPlayhead] = useState(SYNTH_RACK_STATE.playhead);
+  const [sequencerExpanded, setSequencerExpanded] = useState(false);
   const patternsRef = useRef(patterns);
   const patternIndexRef = useRef(patternIndex);
   const chainRef = useRef(chain);
@@ -527,6 +530,16 @@ function SynthModule({
   useEffect(() => { chainPositionRef.current = chainPosition; }, [chainPosition]);
   useEffect(() => { playheadRef.current = playhead; }, [playhead]);
   useEffect(() => () => noteLengthDragCleanupRef.current?.(), []);
+  useEffect(() => {
+    if (!sequencerExpanded) return;
+    const collapseOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setSequencerExpanded(false);
+    };
+    window.addEventListener('keydown', collapseOnEscape);
+    return () => window.removeEventListener('keydown', collapseOnEscape);
+  }, [sequencerExpanded]);
 
   useEffect(() => {
     onEnabledChange(enabled);
@@ -715,6 +728,7 @@ function SynthModule({
       name="Synth"
       enabled={enabled}
       onToggle={() => setEnabled((current) => !current)}
+      overlayActive={sequencerExpanded}
       headerControl={(
         <div className="synth-header-controls">
           <div className="synth-transport-controls">
@@ -837,6 +851,17 @@ function SynthModule({
             </button>
           ))}
           <button type="button" className={chainArmed ? 'active chain-button' : 'chain-button'} aria-pressed={chainArmed} onClick={() => setChainArmed((current) => !current)}>CHAIN</button>
+          <button
+            type="button"
+            className={`sequencer-expand-button ${sequencerExpanded ? 'active' : ''}`}
+            aria-label={sequencerExpanded ? 'Restore compact sequencer' : 'Expand sequencer to fill Synth module'}
+            aria-pressed={sequencerExpanded}
+            aria-expanded={sequencerExpanded}
+            title={sequencerExpanded ? 'Restore module view · Esc' : 'Expand sequencer over the Synth module'}
+            onClick={() => setSequencerExpanded((current) => !current)}
+          >
+            {sequencerExpanded ? 'BACK' : 'FULL'}
+          </button>
           <button type="button" onClick={() => setPatterns((current) => current.map((pattern, index) => index === patternIndex ? Array.from({ length: 16 }, () => []) : pattern))}>CLEAR</button>
           <strong>
             {chain.map((index, position) => `${position === chainPosition && chainArmed ? '[' : ''}${index + 1}${position === chainPosition && chainArmed ? ']' : ''}`).join(' › ')}
