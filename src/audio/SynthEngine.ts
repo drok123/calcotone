@@ -53,6 +53,8 @@ export interface SynthTelemetryStats {
   captureReady: boolean;
 }
 
+export const MAX_SYNTH_CHORD_NOTES = 8;
+
 const EMPTY_TELEMETRY: SynthTelemetryStats = {
   activeVoices: 0,
   maxVoices: 10,
@@ -70,11 +72,28 @@ const EMPTY_TELEMETRY: SynthTelemetryStats = {
 };
 
 /**
- * Main-thread controller for the circuit/capture hybrid synth AudioWorklet.
- * Keeping synthesis inside one processor gives every machine sample-aligned
- * envelopes, deterministic voice stealing, shared oversampling and click-free
- * teardown.
+ * Produces a stable chord payload for both the UI sequencer and worklet.
+ * Notes are deduplicated, ordered low-to-high, capped to the practical voice
+ * budget and retain independent lengths rather than collapsing to one gate.
  */
+export function normalizeSynthChord(
+  notes: readonly SynthSequencerNote[],
+  step: number,
+): SynthSequencerNote[] {
+  const byPitch = new Map<number, SynthSequencerNote>();
+  for (const note of notes) {
+    if (!Number.isInteger(note.pitch) || note.pitch < 0 || note.pitch > 11) continue;
+    const pitch = clampInteger(note.pitch, 0, 11);
+    const length = clampInteger(note.length, 1, 16 - clampInteger(step, 0, 15));
+    const previous = byPitch.get(pitch);
+    if (!previous || length > previous.length) byPitch.set(pitch, { pitch, length });
+  }
+  return [...byPitch.values()]
+    .sort((left, right) => left.pitch - right.pitch)
+    .slice(0, MAX_SYNTH_CHORD_NOTES);
+}
+
+/** Main-thread controller for the circuit/capture hybrid synth AudioWorklet. */
 export class SynthEngine {
   private readonly context: AudioContext;
   private readonly output: GainNode;
@@ -165,24 +184,31 @@ export class SynthEngine {
     });
   }
 
+  public triggerChord(
+    midiNotes: readonly number[],
+    durationSeconds: number,
+    velocity = .74,
+  ): void {
+    if (!this.enabled || this.context.state !== 'running') return;
+    const notes = [...new Set(midiNotes
+      .filter(Number.isFinite)
+      .map((midi) => clampInteger(midi, 0, 127)))]
+      .sort((left, right) => left - right)
+      .slice(0, MAX_SYNTH_CHORD_NOTES);
+    if (notes.length === 0) return;
+    this.processor.port.postMessage({
+      type: 'chord-on',
+      notes,
+      durationSeconds: Math.max(.035, Math.min(12, durationSeconds)),
+      velocity: clamp01(velocity),
+    });
+  }
+
   public setSequencerState(state: SynthSequencerState): void {
     this.processor.port.postMessage({
       type: 'sequencer-state',
       patterns: state.patterns.slice(0, 4).map((pattern) =>
-        pattern.slice(0, 16).map((notes, step) => {
-          const pitches = new Set<number>();
-          return notes.slice(0, 12).flatMap((note) => {
-            const pitch = clampInteger(note.pitch, 0, 11);
-            if (!Number.isInteger(note.pitch) || note.pitch < 0 || note.pitch > 11 || pitches.has(pitch)) {
-              return [];
-            }
-            pitches.add(pitch);
-            return [{
-              pitch,
-              length: clampInteger(note.length, 1, 16 - step),
-            }];
-          });
-        })
+        pattern.slice(0, 16).map((notes, step) => normalizeSynthChord(notes, step))
       ),
       patternIndex: clampInteger(state.patternIndex, 0, 3),
       chain: state.chain.slice(0, 8).map((index) => clampInteger(index, 0, 3)),
