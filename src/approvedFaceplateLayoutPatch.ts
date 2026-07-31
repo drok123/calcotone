@@ -33,12 +33,12 @@ pressure.buttons = [
 if (typeof window !== 'undefined') {
   startFaceplateEditing();
   toggleFaceplateModuleLink();
-  setRailCFaceplateViewportHeight('pressure', 168);
   pressure.knobs.forEach((point, index) => {
     setRailCFaceplateControl('pressure', 'knob', index, point);
   });
   pressure.buttons.forEach((point, index) => {
     setRailCFaceplateControl('pressure', 'button', index, point);
   });
+  setRailCFaceplateViewportHeight('pressure', 168);
   saveFaceplateLayout();
 }
