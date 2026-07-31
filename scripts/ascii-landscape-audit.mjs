@@ -16,6 +16,7 @@ const forbidText = (source, needle, label) => {
 };
 
 const engine = read('src/components/ascii/AsciiArtEngine.tsx');
+const pressureDisplay = read('src/components/ascii/PressureStyleDisplay.tsx');
 const viewport = read('src/components/effects/ModuleViewport.tsx');
 const field = read('src/components/motion/XYSignalField.tsx');
 const scheduler = read('src/components/effects/viewportScheduler.ts');
@@ -77,19 +78,30 @@ requireText(engine, 'loopAngleForTime(time)', 'Modulo ASCII loop phase');
 requireText(engine, 'sampleModeAccent(layer, x, y, loopAngle)', 'Semantic dropdown motif layer');
 for (const moduleId of ['saturation', 'chorus', 'delay', 'reverb', 'bitcrusher', 'media']) {
   requireText(engine, `case '${moduleId}'`, `${moduleId} ASCII composition`);
+  requireText(pressureDisplay, `case '${moduleId}'`, `${moduleId} Pressure-style field`);
+  requireText(pressureDisplay, `${moduleId}: {`, `${moduleId} Pressure-style display profile`);
 }
 for (const pressureMode of ['fet', 'opto', 'varimu', 'vca']) {
   requireText(engine, `case '${pressureMode}'`, `Pressure ${pressureMode} ASCII composition`);
 }
-requireText(engine, 'subscribeViewportAnimation(render)', 'Shared ASCII scheduler');
-requireText(engine, 'IntersectionObserver', 'Offscreen ASCII suspension');
-requireText(engine, 'Math.min(1.35, window.devicePixelRatio', 'Portable canvas pixel cap');
-requireText(engine, '1000 / 18', 'Low-cost idle ASCII cadence');
-forbidText(engine, 'requestAnimationFrame(', 'Per-surface animation loop');
-forbidText(engine, 'Math.random()', 'Nondeterministic ASCII art');
-forbidText(engine, 'audio.driftPhase', 'Unbounded non-looping ASCII phase');
+requireText(engine, 'subscribeViewportAnimation(render)', 'Shared landscape scheduler');
+requireText(engine, 'IntersectionObserver', 'Offscreen landscape suspension');
+requireText(engine, 'Math.min(1.35, window.devicePixelRatio', 'Portable landscape canvas pixel cap');
+requireText(engine, '1000 / 18', 'Low-cost idle landscape cadence');
+forbidText(engine, 'requestAnimationFrame(', 'Per-surface landscape animation loop');
+forbidText(engine, 'Math.random()', 'Nondeterministic landscape art');
+forbidText(engine, 'audio.driftPhase', 'Unbounded non-looping landscape phase');
+requireText(pressureDisplay, '╔', 'Pressure-style framed display');
+requireText(pressureDisplay, "'█'.repeat(active)", 'Pressure-style block meter');
+requireText(pressureDisplay, 'moduleModeLabel(module)', 'Readable mode display');
+requireText(pressureDisplay, 'subscribeViewportAnimation(render)', 'Shared module display scheduler');
+requireText(pressureDisplay, 'IntersectionObserver', 'Offscreen module display suspension');
+requireText(pressureDisplay, 'Math.min(1.35, window.devicePixelRatio', 'Portable module display pixel cap');
+requireText(pressureDisplay, '1000 / 18', 'Low-cost active module cadence');
+forbidText(pressureDisplay, 'requestAnimationFrame(', 'Per-surface module animation loop');
+forbidText(pressureDisplay, 'Math.random()', 'Nondeterministic module display');
 forbidText(viewport, 'viewport-caption', 'Duplicate module artwork label');
-requireText(viewport, '<AsciiArtEngine kind="module"', 'Module ASCII renderer');
+requireText(viewport, '<PressureStyleDisplay module={module}', 'Pressure-style module renderer');
 requireText(field, 'kind="landscape"', 'XY ASCII landscape renderer');
 requireText(scheduler, 'const FRAME_BUDGET_MS = 7.5', 'Shared visual frame budget');
 
@@ -133,4 +145,4 @@ if (failures.length) {
   console.error('');
   process.exit(1);
 }
-console.log(`CALCOTONE ASCII landscape audit passed (${dropdownModeCount} deterministic dropdown identities; zero decoders).`);
+console.log(`CALCOTONE ASCII landscape audit passed (${dropdownModeCount} deterministic dropdown identities; Pressure-style module displays; zero decoders).`);
