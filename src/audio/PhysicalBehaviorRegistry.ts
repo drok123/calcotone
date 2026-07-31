@@ -107,7 +107,6 @@ export function syncPhysicalBehavior(effect: Effect): void {
       case 'electricmistress': behavior = spec('charge', 0.04 + shape * 0.045, mix(rate, motion, 0.28), 0.68 + depth * 0.16, 0.42); break;
       case 'adaflanger': behavior = spec('charge', 0.055 + shape * 0.065, mix(rate, motion, 0.42), 0.78 + depth * 0.18, 0.58); break;
       case 'bf2': behavior = spec('charge', 0.045 + shape * 0.05, mix(rate, motion, 0.32), 0.72 + depth * 0.16, 0.46); break;
-      // These four own their full physical mechanisms in DriftClassicStage.
       case 'biphase': case 'smallstone': case 'univibe': case 'leslie': behavior = BYPASS; break;
     }
   } else if (effect.id === 'delay') {
@@ -146,8 +145,6 @@ export function syncPhysicalBehavior(effect: Effect): void {
       case 'hall': behavior = spec('acoustic', 0.045 + diffusion * 0.045, size, 0.74 + storedEnergy * 0.22, color); break;
       case 'cinema': behavior = spec('acoustic', 0.05 + size * 0.05, mix(motion, size, 0.16), 0.8 + storedEnergy * 0.16, color); break;
       case 'cloud': {
-        // Cloud now owns a dedicated mechanical spring tank. Do not layer the old
-        // generic fluid residual over it; the spring dispersion/transducers are the identity.
         behavior = BYPASS;
         springHardware = {
           decay,
@@ -168,8 +165,6 @@ export function syncPhysicalBehavior(effect: Effect): void {
   } else if (effect.id === 'bitcrusher') {
     const mode = GRAIN_MODE_ORDER[index(effect, 'mode', 2)] ?? 'smear';
     switch (mode) {
-      // Grain owns its complete buffer mechanisms. A second residual memory,
-      // BBD, or fracture stage would blur the distinction between algorithms.
       case 'mosaic': case 'scatter': case 'smear': case 'prism': case 'slice': case 'freeze':
       case 'clouds': case 'beads': case 'morphagene': case 'arbhar': case 'particle2': case 'microcosm':
         behavior = BYPASS;
@@ -192,7 +187,7 @@ export function syncPhysicalBehavior(effect: Effect): void {
       case 'broken': behavior = spec('fracture', 0.085 + wear * 0.095 + noise * 0.02, wow, 0.84 + ageMemory * 0.14, tone); break;
       case 'archive': behavior = spec('transport', 0.05 + wear * 0.06 + noise * 0.015, wow, 0.84 + ageMemory * 0.12, tone); break;
       case 'Ampex ATR-102': behavior = spec('magnetic', 0.06 + wear * 0.07, wow, 0.84 + ageMemory * 0.12, tone); break;
-      case 'tascam424': case 'Neve 1073': case 'SSL 4000E': case 'API 1608':
+      case 'tascam424': case 'Neve 1073': case 'SSL 4000E': case 'API 1608': case 'Neve BCM10':
         behavior = BYPASS;
         break;
     }
