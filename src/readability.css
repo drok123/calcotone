@@ -79,6 +79,38 @@ input {
   font-weight: 700;
 }
 
+/* Every legend physically printed on a cream chassis is true white. A restrained
+   dark edge keeps white readable against the warm midtone without returning to
+   the fuzzy glow that caused the original complaint. Dark inset screens keep
+   their own palette. */
+.effect-module :where(
+  .module-header h3,
+  .module-number,
+  .module-route-cue,
+  .module-header-control,
+  .knob-label,
+  .knob-value,
+  .coming-soon,
+  .pressure-style-strip button,
+  .synth-header-controls,
+  .synth-header-controls label,
+  .synth-header-controls span
+),
+.io-panel :where(.panel-heading, .panel-heading h2, label, button),
+.performance-panel :where(.panel-heading, .panel-heading h2, label, button),
+.footer-bar :where(p, span, button),
+.rail-track :where(.rail-id, strong, button) {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff;
+  text-shadow: 0 1px 1px rgba(0,0,0,.72) !important;
+}
+
+.effect-module select,
+.effect-module select option {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff;
+}
+
 /* Preserve sharp text when panels are promoted to compositor layers. */
 .workstation,
 .module-card,
