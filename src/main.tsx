@@ -23,6 +23,7 @@ import './realtimeStabilityPatch'
 import './pressureBridge'
 import './randomVisualGovernor'
 import './randomTransferBridge'
+import './approvedFaceplateLayoutPatch'
 import App from './App.tsx'
 
 createRoot(document.getElementById('root')!).render(
