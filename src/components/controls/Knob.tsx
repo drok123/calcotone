@@ -2,20 +2,19 @@ import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as 
 import type { XYAssignment } from '../../ui/types';
 import { clamp } from '../../ui/math';
 
+/**
+ * Shared hardware knob. Legacy patch props remain temporarily accepted so
+ * existing module declarations can migrate independently, but no jack,
+ * assignment badge, cable gesture, or patch interaction is rendered.
+ */
 export function Knob({
   label,
   value,
   effectiveValue,
   display,
   disabled = false,
-  assignment,
-  patchTarget,
   onChange,
   onReset,
-  onPatchStart,
-  onPatchMove,
-  onPatchEnd,
-  onPatchDisconnect,
 }: {
   label: string;
   value: number;
@@ -23,13 +22,13 @@ export function Knob({
   display: string;
   disabled?: boolean;
   assignment?: XYAssignment;
-  patchTarget: string;
+  patchTarget?: string;
   onChange: (value: number) => void;
   onReset: () => void;
-  onPatchStart: (startX: number, startY: number, pointerX: number, pointerY: number) => void;
-  onPatchMove: (pointerX: number, pointerY: number) => void;
-  onPatchEnd: (pointerX: number, pointerY: number) => void;
-  onPatchDisconnect: () => void;
+  onPatchStart?: (startX: number, startY: number, pointerX: number, pointerY: number) => void;
+  onPatchMove?: (pointerX: number, pointerY: number) => void;
+  onPatchEnd?: (pointerX: number, pointerY: number) => void;
+  onPatchDisconnect?: () => void;
 }) {
   const rotation = -135 + value * 270;
   const effectiveRotation = -135 + effectiveValue * 270;
@@ -37,10 +36,8 @@ export function Knob({
   const dragRef = useRef({ pointerId: -1, startX: 0, startY: 0, startValue: 0, moved: false });
   const dragFrameRef = useRef<number | null>(null);
   const pendingDragRef = useRef<{ x: number; y: number; fine: boolean } | null>(null);
-  const patchRef = useRef({ pointerId: -1, x: 0, y: 0, moved: false });
   const lastClickAtRef = useRef(0);
   const cleanupDragRef = useRef<(() => void) | null>(null);
-  const cleanupPatchRef = useRef<(() => void) | null>(null);
   const [isAdjusting, setIsAdjusting] = useState(false);
 
   useEffect(() => {
@@ -49,7 +46,6 @@ export function Knob({
 
   useEffect(() => () => {
     cleanupDragRef.current?.();
-    cleanupPatchRef.current?.();
   }, []);
 
   function handlePointerDown(event: ReactPointerEvent<HTMLSpanElement>): void {
@@ -151,50 +147,6 @@ export function Knob({
     };
   }
 
-  function handlePatchPointerDown(event: ReactPointerEvent<HTMLButtonElement>): void {
-    if (disabled || event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    cleanupPatchRef.current?.();
-    const bounds = event.currentTarget.getBoundingClientRect();
-    patchRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
-    document.body.classList.add('patch-is-dragging');
-    onPatchStart(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2, event.clientX, event.clientY);
-
-    const move = (pointerEvent: PointerEvent): void => {
-      if (pointerEvent.pointerId !== patchRef.current.pointerId) return;
-      pointerEvent.preventDefault();
-      const distance = Math.hypot(pointerEvent.clientX - patchRef.current.x, pointerEvent.clientY - patchRef.current.y);
-      patchRef.current.moved = patchRef.current.moved || distance > 3;
-      onPatchMove(pointerEvent.clientX, pointerEvent.clientY);
-    };
-
-    const finish = (pointerEvent: PointerEvent, cancelled = false): void => {
-      if (pointerEvent.pointerId !== patchRef.current.pointerId) return;
-      pointerEvent.preventDefault();
-      if (!cancelled && patchRef.current.moved) {
-        onPatchEnd(pointerEvent.clientX, pointerEvent.clientY);
-      } else {
-        onPatchEnd(-1, -1);
-        if (!cancelled && assignment) onPatchDisconnect();
-      }
-      cleanupPatchRef.current?.();
-    };
-
-    const up = (pointerEvent: PointerEvent): void => finish(pointerEvent, false);
-    const cancelPatch = (pointerEvent: PointerEvent): void => finish(pointerEvent, true);
-    window.addEventListener('pointermove', move, { passive: false });
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', cancelPatch);
-    cleanupPatchRef.current = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', cancelPatch);
-      cleanupPatchRef.current = null;
-      document.body.classList.remove('patch-is-dragging');
-    };
-  }
-
   function handleKeyDown(event: ReactKeyboardEvent<HTMLSpanElement>): void {
     if (disabled) return;
     const step = event.shiftKey ? 0.005 : 0.025;
@@ -223,7 +175,7 @@ export function Knob({
   } as CSSProperties;
 
   return (
-    <div className={`knob-control ${assignment ? 'xy-assigned' : ''} ${isAdjusting ? 'is-adjusting' : ''}`}>
+    <div className={`knob-control ${isAdjusting ? 'is-adjusting' : ''}`}>
       <span className="knob-value" aria-hidden={!isAdjusting}>{display}</span>
       <span
         className="knob-shell"
@@ -240,24 +192,11 @@ export function Knob({
         title="Drag vertically · Shift for fine control · Double-click to reset"
         style={{ '--effective-rotation': `${effectiveRotation}deg`, '--base-rotation': `${rotation}deg` } as CSSProperties}
       >
-        <span className="knob-modulation-ring" aria-hidden="true" />
         <span className="knob-effective-marker" aria-hidden="true" />
         <span className="knob-face" style={faceStyle} aria-hidden="true">
           <span className="knob-indicator" />
         </span>
       </span>
-      <button
-        type="button"
-        className={`knob-patch-jack ${assignment ? `assigned axis-${assignment.axis}` : ''}`}
-        data-patch-target={patchTarget}
-        onPointerDown={handlePatchPointerDown}
-        disabled={disabled}
-        aria-label={assignment ? `${label} patched to ${assignment.axis.toUpperCase()}. Click to disconnect or drag to repatch.` : `Patch ${label} to motion`}
-        title={assignment ? `Patched to ${assignment.axis.toUpperCase()} · click to disconnect · drag to repatch` : 'Drag this jack to the motion pad'}
-      >
-        <span aria-hidden="true" />
-        {assignment && <b>{assignment.axis.toUpperCase()}</b>}
-      </button>
       <span className="knob-label">{label}</span>
     </div>
   );
