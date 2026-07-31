@@ -9,6 +9,10 @@ import {
   tascam424OperatingPoint,
   transformerTransfer,
 } from '../models/HardwareCalibration';
+import {
+  bcm10CaptureTransfer,
+  bcm10OperatingPoint,
+} from '../models/Bcm10Calibration';
 import { BaseEffect } from './Effect';
 
 export type MediaMode =
@@ -24,16 +28,17 @@ export type MediaMode =
   | 'Neve 1073'
   | 'SSL 4000E'
   | 'API 1608'
-  | 'Ampex ATR-102';
+  | 'Ampex ATR-102'
+  | 'Neve BCM10';
 
 export const ARTIFACT_CONSOLE_MODES = [
-  'tascam424','Neve 1073','SSL 4000E','API 1608',
+  'tascam424','Neve 1073','SSL 4000E','API 1608','Neve BCM10',
 ] as const satisfies readonly MediaMode[];
 
 // Existing indices stay fixed so v1 Artifact presets retain their machine.
 export const MEDIA_MODE_ORDER: MediaMode[] = [
   'cassette','reel','vinyl','vhs','radio','wax','broken','archive',
-  'tascam424','Neve 1073','SSL 4000E','API 1608','Ampex ATR-102',
+  'tascam424','Neve 1073','SSL 4000E','API 1608','Ampex ATR-102','Neve BCM10',
 ];
 
 export const MEDIA_MODE_GROUPS = [
@@ -55,6 +60,7 @@ const IDENTITY_CURVE = createIdentityCurve();
 const summingCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
 const opAmpCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
 const transformerCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
+const bcm10CurveCache = new Map<string, Float32Array<ArrayBuffer>>();
 const tapeCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
 const saturationCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
 
@@ -175,8 +181,6 @@ export class MediaEffect extends BaseEffect {
     this.vinylNoise.start();
 
     this.initializeParameters([MODE, WEAR, WOW, NOISE, TONE, MIX]);
-    // Internal fields already contain the same defaults. Build the initial machine once
-    // instead of running the entire character graph once per default control.
     this.applyMixRouting();
     this.applyCharacter();
   }
@@ -271,8 +275,6 @@ export class MediaEffect extends BaseEffect {
       return;
     }
     const now = this.context.currentTime;
-    // Insert/summing modes are strongly correlated with dry, so complementary gains avoid
-    // a parallel +3 dB bump while keeping Mix continuous and useful.
     this.dryGain.gain.setTargetAtTime(1 - this.artifactMix, now, 0.025);
     this.wetGain.gain.setTargetAtTime(this.artifactMix, now, 0.025);
   }
@@ -295,6 +297,23 @@ export class MediaEffect extends BaseEffect {
       this.setSaturatorCurve(getOpAmpCurve(point.postDrive, point.postAsymmetry));
       this.disableTransport(now);
       this.setCrossfeed(0, now);
+      return;
+    }
+
+    if (this.mode === 'Neve BCM10') {
+      const point = bcm10OperatingPoint(this.wear, this.wow, this.noise, this.tone);
+      this.modelInputGain.gain.setTargetAtTime(point.inputGain, now, 0.025);
+      this.setPreampCurve(getBcm10CaptureCurve(point.captureDrive, point.captureColor));
+      this.lowShelf.frequency.setTargetAtTime(point.lowHz, now, 0.04);
+      this.lowShelf.gain.setTargetAtTime(point.lowDb, now, 0.04);
+      this.highShelf.frequency.setTargetAtTime(point.highHz, now, 0.04);
+      this.highShelf.gain.setTargetAtTime(point.highDb, now, 0.04);
+      this.modelOutputGain.gain.setTargetAtTime(point.outputGain / (1 + point.crossfeed), now, 0.035);
+      this.highpass.frequency.setTargetAtTime(point.highpassHz, now, 0.04);
+      this.lowpass.frequency.setTargetAtTime(point.lowpassHz, now, 0.04);
+      this.setSaturatorCurve(getSummingCurve(point.busCompression, point.busAsymmetry));
+      this.disableTransport(now);
+      this.setCrossfeed(point.crossfeed, now);
       return;
     }
 
@@ -483,6 +502,19 @@ function getTransformerCurve(drive: number, asymmetry: number): Float32Array<Arr
     for (let index = 0; index < curve.length; index += 1) {
       const x = (index / (curve.length - 1)) * 2 - 1;
       curve[index] = transformerTransfer(x, safeDrive, asym);
+    }
+    return curve;
+  });
+}
+
+function getBcm10CaptureCurve(drive: number, color: number): Float32Array<ArrayBuffer> {
+  const d = Math.max(0, Math.min(1, quantize(drive, 128)));
+  const c = Math.max(0, Math.min(1, quantize(color, 128)));
+  return cacheCurve(bcm10CurveCache, `${d}:${c}`, () => {
+    const curve = new Float32Array(4096);
+    for (let index = 0; index < curve.length; index += 1) {
+      const x = (index / (curve.length - 1)) * 2 - 1;
+      curve[index] = bcm10CaptureTransfer(x, d, c);
     }
     return curve;
   });
