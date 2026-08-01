@@ -13,10 +13,10 @@ class CalcotoneAnalogSignalChainProcessor extends AudioWorkletProcessor {
 
   constructor() {
     super();
-    this.states = [];
+    this.states = [this.makeState(), this.makeState()];
     this.lut = this.makeLut(1024);
     this.port.onmessage = (event) => {
-      if (event.data?.type === 'reset') this.states = [];
+      if (event.data?.type === 'reset') this.resetStates();
       if (event.data?.type === 'lut' && event.data.values instanceof Float32Array && event.data.values.length >= 16) {
         this.lut = event.data.values;
       }
@@ -27,11 +27,22 @@ class CalcotoneAnalogSignalChainProcessor extends AudioWorkletProcessor {
     return { previousAdaInput: 0, previousDcInput: 0, previousDcOutput: 0, tptState: 0 };
   }
 
+  resetStates() {
+    for (let i = 0; i < this.states.length; i += 1) {
+      const state = this.states[i];
+      state.previousAdaInput = 0;
+      state.previousDcInput = 0;
+      state.previousDcOutput = 0;
+      state.tptState = 0;
+    }
+  }
+
   makeLut(length) {
     const table = new Float32Array(length);
+    const normalization = Math.tanh(3.2);
     for (let i = 0; i < length; i += 1) {
       const x = i / (length - 1) * 2 - 1;
-      table[i] = Math.tanh(x * 3.2) / Math.tanh(3.2);
+      table[i] = Math.tanh(x * 3.2) / normalization;
     }
     return table;
   }
@@ -65,11 +76,15 @@ class CalcotoneAnalogSignalChainProcessor extends AudioWorkletProcessor {
 
   readLut(x) {
     const table = this.lut;
-    const position = Math.max(0, Math.min(1, x * 0.5 + 0.5)) * (table.length - 1);
+    const last = table.length - 1;
+    const position = Math.max(0, Math.min(1, x * 0.5 + 0.5)) * last;
     const index = Math.floor(position);
     const mu = position - index;
-    const sample = (offset) => table[Math.max(0, Math.min(table.length - 1, index + offset))];
-    return this.hermite(sample(-1), sample(0), sample(1), sample(2), mu);
+    const i0 = index > 0 ? index - 1 : 0;
+    const i1 = index;
+    const i2 = index < last ? index + 1 : last;
+    const i3 = index + 2 < last ? index + 2 : last;
+    return this.hermite(table[i0], table[i1], table[i2], table[i3], mu);
   }
 
   process(inputs, outputs, parameters) {
@@ -82,10 +97,11 @@ class CalcotoneAnalogSignalChainProcessor extends AudioWorkletProcessor {
     for (let channelIndex = 0; channelIndex < output.length; channelIndex += 1) {
       const outputChannel = output[channelIndex];
       const inputChannel = input?.[Math.min(channelIndex, Math.max(0, input.length - 1))];
-      const state = this.states[channelIndex] || (this.states[channelIndex] = this.makeState());
+      const state = this.states[channelIndex] || this.states[0];
 
       for (let i = 0; i < outputChannel.length; i += 1) {
-        const raw = Number.isFinite(inputChannel?.[i]) ? inputChannel[i] : 0;
+        const sample = inputChannel ? inputChannel[i] : 0;
+        const raw = Number.isFinite(sample) ? sample : 0;
         const inputGain = this.value(parameters.inputGain, i);
         const drive = this.value(parameters.drive, i);
         const asymmetry = this.value(parameters.asymmetry, i);
