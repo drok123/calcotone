@@ -75,6 +75,12 @@ requireText(processorSource, 'compactVoices()', 'Allocation-free voice retiremen
 requireText(processorSource, 'advanceParameterMorph(left.length)', 'Block-rate synth parameter interpolation');
 requireText(processorSource, "voice.archetype === 'pad'", 'Pad envelope anchor');
 requireText(processorSource, 'Math.max(.018', 'Click-safe synth release floor');
+requireText(processorSource, 'const TANH_LUT = new Float32Array(1024)', 'Synth nonlinear transfer LUT');
+requireText(processorSource, 'function interpolateHermite(', 'Cubic Hermite LUT interpolation');
+requireText(processorSource, 'voice.ladderTptAlpha = ladderTptG / (1 + ladderTptG)', 'TPT ladder coefficient');
+requireText(processorSource, 'voice.otaTptAlpha = otaTptG / (1 + otaTptG)', 'TPT OTA coefficient');
+requireText(processorSource, 'voice.poles[pole] = lowpass + v', 'Trapezoidal integrator state update');
+requireText(processorSource, 'return Math.tanh(clamp(normalizedVoltage, -12, 12))', 'Exact SPICE junction transfer preserved');
 if (processorSource.includes('this.voices = this.voices.filter(')) {
   failures.push('Synth realtime loop still allocates a filtered voice array');
 }
@@ -142,13 +148,29 @@ class MockAudioWorkletProcessor {
 
 let Processor = null;
 if (processorSource) {
-  runInNewContext(processorSource, {
+  const workletContext = {
     sampleRate: SAMPLE_RATE,
     AudioWorkletProcessor: MockAudioWorkletProcessor,
     registerProcessor(name, candidate) {
       if (name === 'calcotone-synth-circuit-processor') Processor = candidate;
     },
-  });
+  };
+  runInNewContext(`${processorSource}\nglobalThis.__calcotoneFastTanh = fastTanh;`, workletContext);
+  const fastTanh = workletContext.__calcotoneFastTanh;
+  if (typeof fastTanh !== 'function') {
+    failures.push('Synth Hermite LUT reader was not exposed to the audit');
+  } else {
+    let maximumError = 0;
+    let previous = -1;
+    for (let index = 0; index <= 20_000; index += 1) {
+      const x = -10 + index / 1000;
+      const actual = fastTanh(x);
+      maximumError = Math.max(maximumError, Math.abs(actual - Math.tanh(x)));
+      if (actual + 1e-7 < previous) failures.push(`Synth tanh LUT lost monotonicity at ${x.toFixed(3)}`);
+      previous = actual;
+    }
+    if (maximumError > 2e-5) failures.push(`Synth tanh LUT error ${maximumError.toExponential(3)} exceeds Hermite tolerance`);
+  }
 }
 if (!Processor) failures.push('Synth circuit processor did not register');
 
@@ -176,6 +198,33 @@ if (Processor) {
   const padVoice = morphProcessor.voices[0];
   if (!padVoice || padVoice.attackSeconds < .5 || padVoice.releaseMultiplier <= 0 || padVoice.releaseMultiplier >= 1) {
     failures.push('Pad archetype envelope anchors were not applied to new voices');
+  }
+
+  for (const machine of ['juno-106', 'ob-xa', 'ms-20', 'calcotone']) {
+    const sweepProcessor = new Processor();
+    sweepProcessor.port.onmessage({ data: { type: 'enabled', value: true } });
+    sweepProcessor.port.onmessage({ data: { type: 'machine', value: machine } });
+    sweepProcessor.port.onmessage({ data: { type: 'quality', factor: 1 } });
+    sweepProcessor.port.onmessage({ data: { type: 'note-on', midi: 84, durationSeconds: 1.4, velocity: 1 } });
+    for (let block = 0; block < 620; block += 1) {
+      if (block % 4 === 0) {
+        const sweep = (Math.sin(block * .19) + 1) * .5;
+        sweepProcessor.port.onmessage({
+          data: { type: 'parameters', values: [.74, sweep, 1, .82, .92, .48], morphSeconds: .004 },
+        });
+      }
+      const channels = [new Float32Array(BLOCK_SIZE), new Float32Array(BLOCK_SIZE)];
+      sweepProcessor.process([], [channels]);
+      for (const channel of channels) {
+        for (const sample of channel) {
+          if (!Number.isFinite(sample) || Math.abs(sample) > 1.001) {
+            failures.push(`${machine} TPT audio-rate cutoff sweep became unstable`);
+            block = 620;
+            break;
+          }
+        }
+      }
+    }
   }
 }
 

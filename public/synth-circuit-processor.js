@@ -19,6 +19,14 @@ const MODEL_D_CAPACITANCE_F = 68e-9;
 const MODEL_D_SIGNAL_VOLTAGE = .12;
 const OUTPUT_SATURATION_GAIN = 1.08;
 const OUTPUT_SATURATION_NORMALIZATION = 1 / Math.tanh(OUTPUT_SATURATION_GAIN);
+const TANH_LUT_MIN = -8;
+const TANH_LUT_MAX = 8;
+const TANH_LUT = new Float32Array(1024);
+const TANH_LUT_SCALE = (TANH_LUT.length - 1) / (TANH_LUT_MAX - TANH_LUT_MIN);
+for (let index = 0; index < TANH_LUT.length; index += 1) {
+  const x = TANH_LUT_MIN + index / TANH_LUT_SCALE;
+  TANH_LUT[index] = Math.tanh(x);
+}
 const FM_RATIOS = [
   [1, 1, 2, 3, 4, 6],
   [1, 2, 3, 1, 5, 7],
@@ -27,23 +35,44 @@ const FM_RATIOS = [
 ];
 const PROFILES = {
   'model-d':  { topology: '4× BJT-C SPICE LADDER', family: 'ladder', solver: 'BJT-C NEWTON', attack: .008, decay: .18, sustain: .58, release: .14, cutoff: 5400, resonance: .67, drive: 2.1, level: .17 },
-  'juno-106': { topology: 'IR3109 OTA CASCADE', family: 'ota', attack: .015, decay: .26, sustain: .68, release: .24, cutoff: 7200, resonance: .40, drive: 1.25, level: .15 },
-  'sh-101':   { topology: 'OTA MONO + SUB', family: 'ota', attack: .004, decay: .12, sustain: .48, release: .08, cutoff: 4600, resonance: .58, drive: 1.5, level: .16 },
-  'prophet-5':{ topology: 'SSM/CEM POLY CASCADE', family: 'ota', attack: .018, decay: .32, sustain: .62, release: .32, cutoff: 6500, resonance: .44, drive: 1.4, level: .145 },
+  'juno-106': { topology: 'IR3109 OTA TPT CASCADE', family: 'ota', attack: .015, decay: .26, sustain: .68, release: .24, cutoff: 7200, resonance: .40, drive: 1.25, level: .15 },
+  'sh-101':   { topology: 'OTA TPT MONO + SUB', family: 'ota', attack: .004, decay: .12, sustain: .48, release: .08, cutoff: 4600, resonance: .58, drive: 1.5, level: .16 },
+  'prophet-5':{ topology: 'SSM/CEM TPT POLY CASCADE', family: 'ota', attack: .018, decay: .32, sustain: .62, release: .32, cutoff: 6500, resonance: .44, drive: 1.4, level: .145 },
   'dx7':      { topology: '6-OP PHASE MODULATION', family: 'fm', attack: .004, decay: .42, sustain: .34, release: .46, cutoff: 16000, resonance: .05, drive: 1, level: .15 },
   'ms-20':    { topology: 'KORG-35 HP/LP', family: 'korg35', attack: .006, decay: .16, sustain: .52, release: .13, cutoff: 3800, resonance: .76, drive: 2.5, level: .14 },
-  'polysix':  { topology: 'SSM2044 + ENSEMBLE', family: 'ota', attack: .025, decay: .30, sustain: .70, release: .38, cutoff: 6900, resonance: .38, drive: 1.28, level: .145 },
-  'ob-xa':    { topology: 'CEM3320 2/4-POLE', family: 'ota', attack: .018, decay: .28, sustain: .72, release: .34, cutoff: 7600, resonance: .32, drive: 1.42, level: .135 },
+  'polysix':  { topology: 'SSM2044 TPT + ENSEMBLE', family: 'ota', attack: .025, decay: .30, sustain: .70, release: .38, cutoff: 6900, resonance: .38, drive: 1.28, level: .145 },
+  'ob-xa':    { topology: 'CEM3320 TPT 2/4-POLE', family: 'ota', attack: .018, decay: .28, sustain: .72, release: .34, cutoff: 7600, resonance: .32, drive: 1.42, level: .135 },
   'fairlight':{ topology: '8-BIT CMI DAC', family: 'sample', attack: .003, decay: .34, sustain: .42, release: .20, cutoff: 8400, resonance: .14, drive: 1.25, level: .18 },
-  'ppg-wave': { topology: 'DIGITAL WAVETABLE + VCF', family: 'wavetable', attack: .012, decay: .30, sustain: .56, release: .34, cutoff: 9800, resonance: .38, drive: 1.35, level: .14 },
+  'ppg-wave': { topology: 'DIGITAL WAVETABLE + TPT VCF', family: 'wavetable', attack: .012, decay: .30, sustain: .56, release: .34, cutoff: 9800, resonance: .38, drive: 1.35, level: .14 },
   'cz-101':   { topology: 'PHASE DISTORTION + DCA', family: 'phase', attack: .006, decay: .24, sustain: .50, release: .22, cutoff: 11000, resonance: .20, drive: 1.5, level: .15 },
-  'calcotone':{ topology: 'MORPH CORE + LADDER', family: 'hybrid', attack: .008, decay: .22, sustain: .54, release: .40, cutoff: 8200, resonance: .52, drive: 2.15, level: .13 },
+  'calcotone':{ topology: 'MORPH CORE + TPT LADDER', family: 'hybrid', attack: .008, decay: .22, sustain: .54, release: .40, cutoff: 8200, resonance: .52, drive: 2.15, level: .13 },
 };
 
 const clamp = (value, low = 0, high = 1) => Math.min(high, Math.max(low, Number.isFinite(value) ? value : low));
 const midiToFrequency = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
 const wrap = (phase) => phase - Math.floor(phase);
 const thermalVoltage = (temperatureK) => BOLTZMANN_CONSTANT * temperatureK / ELECTRON_CHARGE;
+
+function interpolateHermite(y0, y1, y2, y3, mu) {
+  const mu2 = mu * mu;
+  const a0 = -0.5 * y0 + 1.5 * y1 - 1.5 * y2 + 0.5 * y3;
+  const a1 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+  const a2 = -0.5 * y0 + 0.5 * y2;
+  return a0 * mu * mu2 + a1 * mu2 + a2 * mu + y1;
+}
+
+function fastTanh(value) {
+  if (value <= TANH_LUT_MIN) return -1;
+  if (value >= TANH_LUT_MAX) return 1;
+  const position = (value - TANH_LUT_MIN) * TANH_LUT_SCALE;
+  const index = Math.floor(position);
+  const mu = position - index;
+  const last = TANH_LUT.length - 1;
+  const i0 = index > 0 ? index - 1 : 0;
+  const i2 = index < last ? index + 1 : last;
+  const i3 = index + 2 < last ? index + 2 : last;
+  return interpolateHermite(TANH_LUT[i0], TANH_LUT[index], TANH_LUT[i2], TANH_LUT[i3], mu);
+}
 
 /**
  * Tail-normalized Shockley junction pair. The saturation-current term cancels
@@ -339,6 +368,7 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       opPhases: new Float64Array(6),
       opMemory: new Float64Array(6),
       poles: new Float64Array(6),
+      filterOutputs: new Float64Array(4),
       ladderCurrents: new Float64Array(4),
       ladderSolve: new Float64Array(2),
       ladderCapacitances,
@@ -410,7 +440,8 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       45,
       sampleRate * .43,
     );
-    voice.ladderG = 1 - Math.exp(-TAU * ladderCutoff * dt);
+    const ladderTptG = Math.tan(Math.PI * ladderCutoff * dt);
+    voice.ladderTptAlpha = ladderTptG / (1 + ladderTptG);
     voice.ladderFeedback = clamp(profile.resonance * (.22 + resonance * 1.34), 0, .96) * 4.05;
     voice.ladderDrive = profile.drive * (.72 + character * 2.15);
 
@@ -429,7 +460,8 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     }
 
     const otaCutoff = clamp(profile.cutoff * (.06 + color * color * 1.18), 55, sampleRate * .43);
-    voice.otaG = 1 - Math.exp(-TAU * otaCutoff * dt);
+    const otaTptG = Math.tan(Math.PI * otaCutoff * dt);
+    voice.otaTptAlpha = otaTptG / (1 + otaTptG);
     voice.otaFeedback = clamp(profile.resonance * (.20 + resonance * 1.45), 0, .92) * 3.7;
     voice.otaDrive = profile.drive * (.75 + character * 1.45);
     voice.otaStageDrive = 1.02 + character * .18;
@@ -482,6 +514,7 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       parameters: [...this.parameters],
       frequency: 440,
       poles: new Float64Array(6),
+      filterOutputs: new Float64Array(4),
       ladderCurrents: new Float64Array(4),
       ladderSolve: new Float64Array(2),
       ladderCapacitances,
@@ -503,6 +536,7 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       bus.parameters = [...this.parameters];
       if (reset) {
         bus.poles.fill(0);
+        bus.filterOutputs.fill(0);
         bus.ladderCurrents.fill(0);
         bus.supplySag = 0;
       }
@@ -656,13 +690,18 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
   }
 
   ladder(voice, input, hybrid = false) {
-    let stage = Math.tanh(input * voice.ladderDrive - voice.poles[3] * voice.ladderFeedback);
+    const outputs = voice.filterOutputs;
+    const alpha = voice.ladderTptAlpha;
+    let stage = fastTanh(input * voice.ladderDrive - outputs[3] * voice.ladderFeedback);
     for (let pole = 0; pole < 4; pole += 1) {
-      const target = Math.tanh(stage - voice.poles[pole] * (hybrid ? .18 : .11));
-      voice.poles[pole] += voice.ladderG * (target - Math.tanh(voice.poles[pole]));
-      stage = voice.poles[pole];
+      const target = fastTanh(stage - outputs[pole] * (hybrid ? .18 : .11));
+      const v = (target - voice.poles[pole]) * alpha;
+      const lowpass = v + voice.poles[pole];
+      voice.poles[pole] = lowpass + v;
+      outputs[pole] = lowpass;
+      stage = lowpass;
     }
-    return Math.tanh(voice.poles[3] * 1.25);
+    return fastTanh(outputs[3] * 1.25);
   }
 
   spiceLadder(voice, input) {
@@ -704,25 +743,30 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
   }
 
   ota(voice, input) {
-    let stage = Math.tanh(input * voice.otaDrive - voice.poles[3] * voice.otaFeedback);
+    const outputs = voice.filterOutputs;
+    const alpha = voice.otaTptAlpha;
+    let stage = fastTanh(input * voice.otaDrive - outputs[3] * voice.otaFeedback);
     for (let pole = 0; pole < 4; pole += 1) {
-      voice.poles[pole] += voice.otaG * (stage - voice.poles[pole]);
-      stage = Math.tanh(voice.poles[pole] * voice.otaStageDrive);
+      const v = (stage - voice.poles[pole]) * alpha;
+      const lowpass = v + voice.poles[pole];
+      voice.poles[pole] = lowpass + v;
+      outputs[pole] = lowpass;
+      stage = fastTanh(lowpass * voice.otaStageDrive);
     }
-    if (voice.machine === 'ob-xa') return voice.parameters[5] < .5 ? voice.poles[1] * .75 : voice.poles[3] * 1.05;
-    return voice.poles[3];
+    if (voice.machine === 'ob-xa') return voice.parameters[5] < .5 ? outputs[1] * .75 : outputs[3] * 1.05;
+    return outputs[3];
   }
 
   korg35(voice, input) {
     const g = voice.korgG;
-    const x = Math.tanh(input * voice.korgDrive - voice.poles[1] * voice.korgFeedback);
+    const x = fastTanh(input * voice.korgDrive - voice.poles[1] * voice.korgFeedback);
     const high = (x - voice.poles[0] * voice.korgDamp - voice.poles[1])
       / (1 + g * (g + voice.korgDamp));
     const band = high * g + voice.poles[0];
     const low = band * g + voice.poles[1];
     voice.poles[0] = high * g + band;
     voice.poles[1] = band * g + low;
-    return Math.tanh((voice.korgHighpass ? high : low) * 1.45);
+    return fastTanh((voice.korgHighpass ? high : low) * 1.45);
   }
 
   fmSource(voice) {
@@ -759,7 +803,7 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       const distorted = phase < bend ? phase * .5 / bend : .5 + (phase - bend) * .5 / (1 - bend);
       const resonant = Math.sin(TAU * distorted)
         + Math.sin(TAU * distorted * voice.phaseDistortionHarmonic) * character * .38;
-      return Math.tanh(resonant * (1 + loop));
+      return fastTanh(resonant * (1 + loop));
     }
     if (voice.profile.family === 'sample') {
       if (voice.holdCounter-- <= 0) {
@@ -935,8 +979,8 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       let outL = this.dcBlock(sumL / normalization, this.dcL);
       let outR = this.dcBlock(sumR / normalization, this.dcR);
       if (Math.abs(outL) > .98 || Math.abs(outR) > .98) this.clippedSamples += 1;
-      outL = Math.tanh(outL * OUTPUT_SATURATION_GAIN) * OUTPUT_SATURATION_NORMALIZATION;
-      outR = Math.tanh(outR * OUTPUT_SATURATION_GAIN) * OUTPUT_SATURATION_NORMALIZATION;
+      outL = fastTanh(outL * OUTPUT_SATURATION_GAIN) * OUTPUT_SATURATION_NORMALIZATION;
+      outR = fastTanh(outR * OUTPUT_SATURATION_GAIN) * OUTPUT_SATURATION_NORMALIZATION;
       left[i] = Number.isFinite(outL) ? outL : 0;
       right[i] = Number.isFinite(outR) ? outR : 0;
       this.peak = Math.max(this.peak * .9997, Math.abs(left[i]), Math.abs(right[i]));

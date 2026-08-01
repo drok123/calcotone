@@ -207,8 +207,18 @@ function validateOperatingPoints() {
 
   const mediaSource = readRequired(resolve(ROOT, 'src/audio/effects/Media.ts'));
   const analogStageSource = readRequired(resolve(ROOT, 'src/audio/models/AnalogSignalChainStage.ts'));
+  const analogProcessorSource = readRequired(resolve(ROOT, 'public/analog-signal-chain-processor.js'));
   for (const contract of ['this.connectProcessor()', 'this.suspendProcessor()', 'if (!this.enabled && !this.disposed)']) {
     assert(analogStageSource.includes(contract), `analog signal-chain lifecycle lost ${contract}`);
+  }
+  for (const contract of [
+    'const g = Math.tan(Math.PI * cutoff / sampleRate)',
+    'const v = (state.previousDcOutput - state.tptState) * g / (1 + g)',
+    'state.tptState = lowpass + v',
+    'hermite(y0, y1, y2, y3, mu)',
+    'return this.hermite(table[i0], table[i1], table[i2], table[i3], mu)',
+  ]) {
+    assert(analogProcessorSource.includes(contract), `analog TPT/Hermite primitive lost ${contract}`);
   }
   const tascamBranch = mediaSource.slice(
     mediaSource.indexOf("if (this.mode === 'tascam424')"),

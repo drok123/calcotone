@@ -38,7 +38,7 @@ type ExtendedAudioContext = AudioContext & {
   readonly renderQuantumSize?: number;
 };
 
-const WORKLET_BUILD_VERSION = '8.8.0-synth-hybrid-capture';
+const WORKLET_BUILD_VERSION = '8.9.0-tpt-hermite-visual-ring';
 export type EngineHealth = 'offline' | 'healthy' | 'warm' | 'critical';
 
 export interface DspProfilerSnapshot {

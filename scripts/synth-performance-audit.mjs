@@ -11,28 +11,32 @@ const MEASURED_SECONDS = .1;
 const processorPath = resolve(process.cwd(), 'public/synth-circuit-processor.js');
 const baselineArgument = process.argv.find((argument) => argument.startsWith('--baseline-ref='));
 const baselineRef = baselineArgument?.slice('--baseline-ref='.length);
+const machineArgument = process.argv.find((argument) => argument.startsWith('--machine='));
+const machine = machineArgument?.slice('--machine='.length) || 'model-d';
 
-const current = benchmark(readFileSync(processorPath, 'utf8'));
+const current = benchmark(readFileSync(processorPath, 'utf8'), machine);
 
 let comparison = '';
 if (baselineRef) {
   const baselineSource = readBaseline(baselineRef);
-  const baseline = benchmark(baselineSource);
+  const baseline = benchmark(baselineSource, machine);
   const speedup = baseline.elapsedMilliseconds / current.elapsedMilliseconds;
-  comparison = `; ${speedup.toFixed(2)}× faster than ${baselineRef}`;
+  comparison = speedup >= 1
+    ? `; ${speedup.toFixed(2)}× baseline throughput versus ${baselineRef}`
+    : `; ${(1 / speedup).toFixed(2)}× slower than ${baselineRef}`;
 }
 
 console.log(
-  `CALCOTONE synth VM stress probe completed (Model D 10 voices, 4× oversampling: `
+  `CALCOTONE synth VM stress probe completed (${machine} 10 voices, 4× oversampling: `
   + `${current.elapsedMilliseconds.toFixed(1)} ms for ${Math.round(MEASURED_SECONDS * 1_000)} ms of audio`
   + `${comparison}).`,
 );
 
-function benchmark(source) {
+function benchmark(source, targetMachine) {
   const Processor = loadProcessor(source);
   const processor = new Processor();
   processor.port.onmessage({ data: { type: 'enabled', value: true } });
-  processor.port.onmessage({ data: { type: 'machine', value: 'model-d' } });
+  processor.port.onmessage({ data: { type: 'machine', value: targetMachine } });
   processor.port.onmessage({ data: { type: 'parameters', values: [.61, .82, 1, .52, .92, .31] } });
   processor.port.onmessage({ data: { type: 'quality', factor: 4 } });
   for (let voice = 0; voice < 10; voice += 1) {
