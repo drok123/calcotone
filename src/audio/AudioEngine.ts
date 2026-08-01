@@ -14,6 +14,10 @@ import {
   type SynthSequencerStep,
   type SynthTelemetryStats,
 } from './SynthEngine';
+import {
+  SharedVisualSpectrum,
+  type VisualSpectrumSource,
+} from '../visual/SharedVisualSpectrum';
 
 export type AudioEngineState =
   | 'idle'
@@ -80,6 +84,7 @@ export class AudioEngine {
   private safetyClipper: WaveShaperNode | null = null;
   private limiter: DynamicsCompressorNode | null = null;
   private analyser: AnalyserNode | null = null;
+  private sharedVisualSpectrum: SharedVisualSpectrum | null = null;
   private recorder: WavRecorder | null = null;
   private dreamBuffer: DreamBuffer | null = null;
   private synth: SynthEngine | null = null;
@@ -116,6 +121,10 @@ export class AudioEngine {
 
   public getAnalyser(): AnalyserNode | null {
     return this.analyser;
+  }
+
+  public getVisualSpectrumSource(): VisualSpectrumSource | null {
+    return this.sharedVisualSpectrum ?? this.analyser;
   }
 
   public getProfilerSnapshot(): DspProfilerSnapshot {
@@ -278,6 +287,7 @@ export class AudioEngine {
       this.safetyClipper = this.context.createWaveShaper();
       this.limiter = this.context.createDynamicsCompressor();
       this.analyser = this.context.createAnalyser();
+      this.sharedVisualSpectrum = SharedVisualSpectrum.create(this.context);
       this.dreamBuffer = new DreamBuffer(this.context);
       this.synth = new SynthEngine(this.context, this.graph.input);
       this.synth.setSequencerStepListener(this.synthSequencerStepListener);
@@ -618,12 +628,14 @@ export class AudioEngine {
     this.safetyClipper?.disconnect();
     this.limiter?.disconnect();
     this.analyser?.disconnect();
+    this.sharedVisualSpectrum?.dispose();
     this.inputGain = null;
     this.outputGain = null;
     this.dcBlock = null;
     this.safetyClipper = null;
     this.limiter = null;
     this.analyser = null;
+    this.sharedVisualSpectrum = null;
 
     if (this.context && this.context.state !== 'closed') await this.context.close();
     this.context = null;
@@ -685,6 +697,7 @@ export class AudioEngine {
       // AnalyserNode is observational only; outputGain remains the explicit user level control.
       this.graph.output.connect(this.analyser);
       this.analyser.connect(this.outputGain);
+      this.sharedVisualSpectrum?.connect(this.analyser);
       return;
     }
 
@@ -693,6 +706,7 @@ export class AudioEngine {
     this.safetyClipper.connect(this.limiter);
     this.limiter.connect(this.analyser);
     this.analyser.connect(this.outputGain);
+    this.sharedVisualSpectrum?.connect(this.analyser);
   }
 
   private configureQualityMode(): void {
@@ -740,6 +754,7 @@ export class AudioEngine {
       ['Dream Buffer', `dream-buffer-processor.js?v=${WORKLET_BUILD_VERSION}`],
       ['Recorder', `recorder-processor.js?v=${WORKLET_BUILD_VERSION}`],
       ['Synth circuit', `synth-circuit-processor.js?v=${WORKLET_BUILD_VERSION}`],
+      ['Visualizer ring', `visualizer-ring-processor.js?v=${WORKLET_BUILD_VERSION}`],
     ] as const;
     for (const [label, file] of modules) {
       const moduleUrl = new URL(`${import.meta.env.BASE_URL}${file}`, window.location.origin).toString();

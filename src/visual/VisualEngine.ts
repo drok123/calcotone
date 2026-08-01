@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { VisualSpectrumSource } from './SharedVisualSpectrum';
 
 export interface VisualAudioState {
   level: number;
@@ -21,6 +22,7 @@ const IDLE_STATE: VisualAudioState = {
 };
 
 let latestVisualAudioState: VisualAudioState = IDLE_STATE;
+let latestVisualSpectrum = new Uint8Array(0);
 
 /**
  * The canvas Dream Field renders on the shared viewport scheduler instead of
@@ -32,8 +34,13 @@ export function getLatestVisualAudioState(): VisualAudioState {
   return latestVisualAudioState;
 }
 
+/** Shared by every visual surface so the audio source is sampled only once per frame. */
+export function getLatestVisualSpectrum(): Uint8Array {
+  return latestVisualSpectrum;
+}
+
 export function useVisualEngine(
-  analyser: AnalyserNode | null,
+  analyser: VisualSpectrumSource | null,
   running: boolean,
   frameRate = 30
 ): VisualAudioState {
@@ -46,6 +53,7 @@ export function useVisualEngine(
       previousLevel.current = 0;
       smoothedBands.current = { low: 0, mid: 0, high: 0 };
       latestVisualAudioState = IDLE_STATE;
+      latestVisualSpectrum = new Uint8Array(0);
       setState((current) => current === IDLE_STATE ? current : IDLE_STATE);
       return;
     }
@@ -59,6 +67,7 @@ export function useVisualEngine(
     // 20 Hz substantially reduces full-workstation reconciliation with no DSP impact.
     const reactInterval = 1000 / 15;
     const data = new Uint8Array(analyser.frequencyBinCount);
+    latestVisualSpectrum = data;
     const lowEnd = Math.floor(data.length * 0.12);
     const midEnd = Math.floor(data.length * 0.48);
 
@@ -116,6 +125,7 @@ export function useVisualEngine(
     return () => {
       cancelAnimationFrame(frame);
       latestVisualAudioState = IDLE_STATE;
+      latestVisualSpectrum = new Uint8Array(0);
     };
   }, [analyser, running, frameRate]);
 

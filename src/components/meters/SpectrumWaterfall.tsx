@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react';
+import { getLatestVisualSpectrum } from '../../visual/VisualEngine';
+import type { VisualSpectrumSource } from '../../visual/SharedVisualSpectrum';
 
 export function SpectrumWaterfall({
   analyser,
   running,
 }: {
-  analyser: AnalyserNode | null;
+  analyser: VisualSpectrumSource | null;
   running: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -28,16 +30,16 @@ export function SpectrumWaterfall({
     const pointCount = 36;
     const history: Float32Array[] = Array.from({ length: historyLength }, () => new Float32Array(pointCount));
     let historyCursor = 0;
-    const frequencyData = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
+    const frequencyBinCount = analyser?.frequencyBinCount ?? 0;
     const binStarts = new Uint16Array(pointCount);
     const binEnds = new Uint16Array(pointCount);
 
-    if (frequencyData) {
+    if (frequencyBinCount > 0) {
       for (let point = 0; point < pointCount; point += 1) {
         const normalized = point / Math.max(1, pointCount - 1);
-        const startIndex = Math.floor(normalized ** 2 * (frequencyData.length - 1));
+        const startIndex = Math.floor(normalized ** 2 * (frequencyBinCount - 1));
         const nextNormalized = (point + 1) / pointCount;
-        const endIndex = Math.max(startIndex + 1, Math.floor(nextNormalized ** 2 * frequencyData.length));
+        const endIndex = Math.max(startIndex + 1, Math.floor(nextNormalized ** 2 * frequencyBinCount));
         binStarts[point] = Math.min(65535, startIndex);
         binEnds[point] = Math.min(65535, endIndex);
       }
@@ -58,12 +60,12 @@ export function SpectrumWaterfall({
     function collectSpectrum(): void {
       const row = history[historyCursor];
       row.fill(0);
-      if (!analyser || !frequencyData || !running) {
+      const frequencyData = getLatestVisualSpectrum();
+      if (!analyser || frequencyData.length === 0 || !running) {
         historyCursor = (historyCursor + 1) % historyLength;
         return;
       }
 
-      analyser.getByteFrequencyData(frequencyData);
       for (let point = 0; point < pointCount; point += 1) {
         const startIndex = binStarts[point];
         const endIndex = Math.min(binEnds[point], frequencyData.length);

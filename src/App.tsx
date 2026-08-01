@@ -29,6 +29,7 @@ import {
   type DelayAlgorithm,
 } from './audio/effects/Delay';
 import { useVisualEngine } from './visual/VisualEngine';
+import type { VisualSpectrumSource } from './visual/SharedVisualSpectrum';
 import { EffectModule } from './components/effects/EffectModule';
 import { RailCModule } from './components/effects/RailCModules';
 import type {
@@ -585,7 +586,7 @@ export default function App() {
   const [sampleRate, setSampleRate] = useState('—');
   const [xyPosition, setXyPosition] = useState({ x: 50, y: 50 });
   const [xyDragging, setXyDragging] = useState(false);
-  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
+  const [analyser, setAnalyser] = useState<VisualSpectrumSource | null>(null);
   const [performanceMode, setPerformanceMode] =
     useState<PerformanceMode>('live');
   const [profiler, setProfiler] = useState<DspProfilerSnapshot | null>(null);
@@ -789,7 +790,7 @@ export default function App() {
           ? `${diagnostics.destinationChannels} ch`
           : 'Unknown',
       });
-      setAnalyser(engine.getAnalyser());
+      setAnalyser(engine.getVisualSpectrumSource());
       setEngineState('running');
       setMessage(
         'Audio is active. The effect rails, internal instruments, and spectrum display are live.'
