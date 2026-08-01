@@ -22,11 +22,17 @@ import {
   type SignalLabStyle,
 } from '../../audio/SignalLab';
 import type {
+  SynthArchetype,
   SynthMachine,
   SynthSequencerNote,
   SynthSequencerState,
   SynthSequencerStep,
 } from '../../audio/SynthEngine';
+import {
+  RANDOM_MORPH_SECONDS,
+  RANDOM_MUTATION_AMOUNT,
+  type RandomizationProfile,
+} from '../../features/random/randomProfiles';
 import {
   randomizePressure,
   setPressureState,
@@ -62,7 +68,7 @@ type RailInteractionProps = {
 function useRailCRandomController(
   moduleId: RailCRandomModuleId,
   enabled: boolean,
-  randomize: () => string | null
+  randomize: (profile: RandomizationProfile) => string | null
 ): void {
   const enabledRef = useRef(enabled);
   const randomizeRef = useRef(randomize);
@@ -72,7 +78,7 @@ function useRailCRandomController(
   useEffect(
     () => registerRailCRandomController(moduleId, {
       isEnabled: () => enabledRef.current,
-      randomize: () => randomizeRef.current(),
+      randomize: (profile) => randomizeRef.current(profile),
     }),
     [moduleId]
   );
@@ -82,6 +88,12 @@ function centeredRandom(minimum: number, maximum: number): number {
   const centerBiased = (Math.random() + Math.random()) * 0.5;
   return minimum + (maximum - minimum) * centerBiased;
 }
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0.5));
+}
+
+type MusicalRange = readonly [number, number];
 
 type FrameProps = RailInteractionProps & {
   id: string;
@@ -453,6 +465,7 @@ const SYNTH_RACK_STATE = {
   machine: 'model-d' as SynthMachine,
   values: [0.58, 0.46, 0.26, 0.54, 0.22, 0.08],
   presetId: 'panel-init',
+  archetype: 'panel' as SynthArchetype,
   patterns: cloneSynthPatterns(INITIAL_PATTERNS),
   patternIndex: 0,
   chain: [0, 1, 2, 3],
@@ -467,7 +480,8 @@ type SynthModuleProps = RailInteractionProps & {
   engineRunning: boolean;
   onEnabledChange: (enabled: boolean) => void;
   onMachineChange: (machine: SynthMachine) => void;
-  onParametersChange: (values: readonly number[]) => void;
+  onArchetypeChange: (archetype: SynthArchetype) => void;
+  onParametersChange: (values: readonly number[], morphSeconds?: number) => void;
   onTriggerNote: (midi: number, durationSeconds: number) => void;
   onSequencerChange: (state: SynthSequencerState) => void;
   onSequencerStepListenerChange: (
@@ -479,6 +493,7 @@ function SynthModule({
   engineRunning,
   onEnabledChange,
   onMachineChange,
+  onArchetypeChange,
   onParametersChange,
   onTriggerNote,
   onSequencerChange,
@@ -489,6 +504,7 @@ function SynthModule({
   const [machine, setMachine] = useState<SynthMachine>(SYNTH_RACK_STATE.machine);
   const [values, setValues] = useState(() => [...SYNTH_RACK_STATE.values]);
   const [presetId, setPresetId] = useState(SYNTH_RACK_STATE.presetId);
+  const [archetype, setArchetype] = useState<SynthArchetype>(SYNTH_RACK_STATE.archetype);
   const [patterns, setPatterns] = useState<SynthSequencerNote[][][]>(() => cloneSynthPatterns(SYNTH_RACK_STATE.patterns));
   const [patternIndex, setPatternIndex] = useState(SYNTH_RACK_STATE.patternIndex);
   const [chain, setChain] = useState(() => [...SYNTH_RACK_STATE.chain]);
@@ -505,11 +521,13 @@ function SynthModule({
   const chainPositionRef = useRef(chainPosition);
   const playheadRef = useRef(playhead);
   const noteLengthDragCleanupRef = useRef<(() => void) | null>(null);
+  const parameterMorphSecondsRef = useRef(0.04);
 
   SYNTH_RACK_STATE.enabled = enabled;
   SYNTH_RACK_STATE.machine = machine;
   SYNTH_RACK_STATE.values = values;
   SYNTH_RACK_STATE.presetId = presetId;
+  SYNTH_RACK_STATE.archetype = archetype;
   SYNTH_RACK_STATE.patterns = patterns;
   SYNTH_RACK_STATE.patternIndex = patternIndex;
   SYNTH_RACK_STATE.chain = chain;
@@ -550,7 +568,12 @@ function SynthModule({
   }, [machine, engineRunning, onMachineChange]);
 
   useEffect(() => {
-    onParametersChange(values);
+    onArchetypeChange(archetype);
+  }, [archetype, engineRunning, onArchetypeChange]);
+
+  useEffect(() => {
+    onParametersChange(values, parameterMorphSecondsRef.current);
+    parameterMorphSecondsRef.current = 0.04;
   }, [values, engineRunning, onParametersChange]);
 
   useEffect(() => {
@@ -683,6 +706,8 @@ function SynthModule({
     const nextPreset = SYNTH_PRESETS[nextMachine][0];
     setMachine(nextMachine);
     setPresetId(nextPreset.id);
+    setArchetype('panel');
+    parameterMorphSecondsRef.current = RANDOM_MORPH_SECONDS;
     setValues([...nextPreset.values]);
   }
 
@@ -690,19 +715,71 @@ function SynthModule({
     const nextPreset = machinePresets.find((preset) => preset.id === nextPresetId);
     if (!nextPreset) return;
     setPresetId(nextPreset.id);
+    setArchetype('panel');
+    parameterMorphSecondsRef.current = RANDOM_MORPH_SECONDS;
     setValues([...nextPreset.values]);
   }
 
-  function randomizeSynth(): string | null {
-    const nextMachine = SYNTH_MACHINES[Math.floor(Math.random() * SYNTH_MACHINES.length)];
+  function randomizeSynth(profile: RandomizationProfile): string | null {
+    if (profile === 'mutate') {
+      parameterMorphSecondsRef.current = RANDOM_MORPH_SECONDS;
+      setPresetId('custom');
+      setValues((current) => current.map((value) => clamp01(
+        value + (Math.random() * 2 - 1) * RANDOM_MUTATION_AMOUNT
+      )));
+      return 'Mutate 10% · anchored panel';
+    }
+
+    const requestedArchetype: SynthArchetype = profile === 'bass'
+      ? 'bass'
+      : profile === 'pad' || profile === 'retro-ambient'
+        ? 'pad'
+        : profile === 'lead' || profile === 'gritty-drive'
+          ? 'lead'
+          : 'panel';
+    const pools: Record<Exclude<SynthArchetype, 'panel'>, readonly SynthMachine[]> = {
+      bass: ['model-d', 'sh-101', 'dx7', 'ms-20', 'fairlight'],
+      pad: ['juno-106', 'prophet-5', 'polysix', 'ob-xa', 'ppg-wave', 'calcotone'],
+      lead: ['model-d', 'sh-101', 'prophet-5', 'dx7', 'ms-20', 'cz-101'],
+    };
+
+    if (requestedArchetype === 'panel' && profile === 'smart') {
+      const nextMachine = SYNTH_MACHINES[Math.floor(Math.random() * SYNTH_MACHINES.length)];
+      if (!nextMachine) return null;
+      const presets = SYNTH_PRESETS[nextMachine.id];
+      const nextPreset = presets[Math.floor(Math.random() * presets.length)];
+      if (!nextPreset) return null;
+      parameterMorphSecondsRef.current = RANDOM_MORPH_SECONDS;
+      setMachine(nextMachine.id);
+      setPresetId(nextPreset.id);
+      setArchetype('panel');
+      setValues([...nextPreset.values]);
+      return `${nextMachine.label} · ${nextPreset.label} · 350 ms morph`;
+    }
+
+    const effectiveArchetype = requestedArchetype === 'panel'
+      ? profile === 'lofi-tape' ? 'lead' : 'pad'
+      : requestedArchetype;
+    const machinePool = profile === 'lofi-tape'
+      ? ['fairlight', 'juno-106', 'cz-101'] as const
+      : pools[effectiveArchetype];
+    const nextMachine = machinePool[Math.floor(Math.random() * machinePool.length)];
     if (!nextMachine) return null;
-    const presets = SYNTH_PRESETS[nextMachine.id];
-    const nextPreset = presets[Math.floor(Math.random() * presets.length)];
-    if (!nextPreset) return null;
-    setMachine(nextMachine.id);
-    setPresetId(nextPreset.id);
-    setValues([...nextPreset.values]);
-    return `${nextMachine.label} · ${nextPreset.label}`;
+    const ranges: Record<Exclude<SynthArchetype, 'panel'>, readonly MusicalRange[]> = {
+      bass: [[.24,.56],[.12,.38],[.10,.42],[.04,.28],[.28,.66],[.46,.54]],
+      pad: [[.34,.76],[.46,.82],[.08,.36],[.78,1],[.18,.56],[.08,.30]],
+      lead: [[.38,.82],[.34,.74],[.18,.52],[.34,.68],[.30,.72],[.42,.58]],
+    };
+    const nextValues = ranges[effectiveArchetype].map(([minimum, maximum]) =>
+      centeredRandom(minimum, maximum)
+    );
+    parameterMorphSecondsRef.current = RANDOM_MORPH_SECONDS;
+    setMachine(nextMachine);
+    setPresetId('custom');
+    setArchetype(effectiveArchetype);
+    setValues(nextValues);
+    const machineLabel = SYNTH_MACHINES.find((candidate) => candidate.id === nextMachine)?.label ?? nextMachine;
+    return `${machineLabel} · ${effectiveArchetype.toUpperCase()} · 350 ms morph`;
   }
 
   function changeTempoFromWheel(event: ReactWheelEvent<HTMLSelectElement>): void {
@@ -879,10 +956,14 @@ function SynthModule({
             patchTarget={`synth.${index}`}
             onChange={(value) => {
               setPresetId('custom');
+              setArchetype('panel');
+              parameterMorphSecondsRef.current = 0.04;
               setValues((current) => current.map((item, valueIndex) => valueIndex === index ? value : item));
             }}
             onReset={() => {
               setPresetId('custom');
+              setArchetype('panel');
+              parameterMorphSecondsRef.current = RANDOM_MORPH_SECONDS;
               setValues((current) => current.map((item, valueIndex) => valueIndex === index ? 0.5 : item));
             }}
             onPatchStart={() => undefined}
@@ -940,7 +1021,13 @@ function ChaosModule({
     ? ['Depth', 'Feedback', 'Drift', 'Mix']
     : ['Scatter', 'Rate', 'Color', 'Mix'];
 
-  function randomizeChaos(): string | null {
+  function randomizeChaos(profile: RandomizationProfile): string | null {
+    if (profile === 'mutate') {
+      setValues((current) => current.map((value) => clamp01(
+        value + (Math.random() * 2 - 1) * RANDOM_MUTATION_AMOUNT
+      )));
+      return 'Mutate 10% · current performance program';
+    }
     const modes: readonly ChaosMode[] = ['chaos-pad', 'performance-fx'];
     const nextMode = modes[Math.floor(Math.random() * modes.length)];
     if (!nextMode) return null;
@@ -1036,7 +1123,18 @@ function PressureModule({
   const meter = Math.max(1, Math.round((state.enabled ? visualState.level : 0) * 18));
   const meterText = `${'█'.repeat(meter)}${'░'.repeat(18 - meter)}`;
 
-  useRailCRandomController('pressure', state.enabled, randomizePressure);
+  function randomizePressureProfile(profile: RandomizationProfile): string | null {
+    if (profile !== 'mutate') return randomizePressure();
+    setPressureState({
+      drive: clamp01(state.drive + (Math.random() * 2 - 1) * RANDOM_MUTATION_AMOUNT),
+      time: clamp01(state.time + (Math.random() * 2 - 1) * RANDOM_MUTATION_AMOUNT),
+      character: clamp01(state.character + (Math.random() * 2 - 1) * RANDOM_MUTATION_AMOUNT),
+      mix: Math.min(.85, clamp01(state.mix + (Math.random() * 2 - 1) * RANDOM_MUTATION_AMOUNT)),
+    });
+    return 'Mutate 10% · current dynamics profile';
+  }
+
+  useRailCRandomController('pressure', state.enabled, randomizePressureProfile);
 
   return (
     <RailModuleFrame
@@ -1109,6 +1207,7 @@ export function RailCModule({
   running,
   onSynthEnabledChange,
   onSynthMachineChange,
+  onSynthArchetypeChange,
   onSynthParametersChange,
   onSynthTriggerNote,
   onSynthSequencerChange,
@@ -1123,7 +1222,8 @@ export function RailCModule({
   running: boolean;
   onSynthEnabledChange: (enabled: boolean) => void;
   onSynthMachineChange: (machine: SynthMachine) => void;
-  onSynthParametersChange: (values: readonly number[]) => void;
+  onSynthArchetypeChange: (archetype: SynthArchetype) => void;
+  onSynthParametersChange: (values: readonly number[], morphSeconds?: number) => void;
   onSynthTriggerNote: (midi: number, durationSeconds: number) => void;
   onSynthSequencerChange: (state: SynthSequencerState) => void;
   onSynthSequencerStepListenerChange: (
@@ -1139,6 +1239,7 @@ export function RailCModule({
         engineRunning={running}
         onEnabledChange={onSynthEnabledChange}
         onMachineChange={onSynthMachineChange}
+        onArchetypeChange={onSynthArchetypeChange}
         onParametersChange={onSynthParametersChange}
         onTriggerNote={onSynthTriggerNote}
         onSequencerChange={onSynthSequencerChange}

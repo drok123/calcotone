@@ -49,6 +49,8 @@ requireText(synth, 'this.output.connect(destination)', 'Synth effect-chain routi
 requireText(synth, "'calcotone-synth-circuit-processor'", 'Synth AudioWorklet controller');
 requireText(synth, 'public setQualityMode(', 'Synth quality scaling');
 requireText(synth, 'public setSequencerState(', 'Audio-thread sequencer controller');
+requireText(synth, 'public setArchetype(', 'Synth archetype controller');
+requireText(synth, 'morphSeconds: Math.min(0.5', 'Synth parameter morph ceiling');
 requireText(processorSource, "topology: '4× BJT-C SPICE LADDER'", 'Component-level transistor ladder topology');
 requireText(processorSource, 'function bjtDifferentialPair(', 'Shockley-derived BJT differential pair');
 requireText(processorSource, 'function solveBjtCapacitorStage(', 'Implicit capacitor/Newton solver');
@@ -70,6 +72,9 @@ requireText(processorSource, 'for (let noteIndex = 0; noteIndex < notes.length; 
 requireText(processorSource, 'note.length * .92', 'Per-note sequencer duration');
 requireText(processorSource, 'voice.panL', 'Cached constant-power voice pan');
 requireText(processorSource, 'compactVoices()', 'Allocation-free voice retirement');
+requireText(processorSource, 'advanceParameterMorph(left.length)', 'Block-rate synth parameter interpolation');
+requireText(processorSource, "voice.archetype === 'pad'", 'Pad envelope anchor');
+requireText(processorSource, 'Math.max(.018', 'Click-safe synth release floor');
 if (processorSource.includes('this.voices = this.voices.filter(')) {
   failures.push('Synth realtime loop still allocates a filtered voice array');
 }
@@ -146,6 +151,33 @@ if (processorSource) {
   });
 }
 if (!Processor) failures.push('Synth circuit processor did not register');
+
+if (Processor) {
+  const morphProcessor = new Processor();
+  const initial = morphProcessor.parameters[0];
+  morphProcessor.port.onmessage({
+    data: { type: 'parameters', values: [.9, .8, .7, .6, .5, .4], morphSeconds: .35 },
+  });
+  morphProcessor.process([], [[new Float32Array(BLOCK_SIZE), new Float32Array(BLOCK_SIZE)]]);
+  if (!(morphProcessor.parameters[0] > initial && morphProcessor.parameters[0] < .9)) {
+    failures.push('Synth 350 ms morph did not advance gradually on the audio thread');
+  }
+  const morphBlocks = Math.ceil(SAMPLE_RATE * .35 / BLOCK_SIZE) + 1;
+  for (let block = 1; block < morphBlocks; block += 1) {
+    morphProcessor.process([], [[new Float32Array(BLOCK_SIZE), new Float32Array(BLOCK_SIZE)]]);
+  }
+  if (Math.abs(morphProcessor.parameters[0] - .9) > 1e-9) {
+    failures.push('Synth parameter morph did not land exactly on its target');
+  }
+
+  morphProcessor.port.onmessage({ data: { type: 'enabled', value: true } });
+  morphProcessor.port.onmessage({ data: { type: 'archetype', value: 'pad' } });
+  morphProcessor.port.onmessage({ data: { type: 'note-on', midi: 60, durationSeconds: .2, velocity: .7 } });
+  const padVoice = morphProcessor.voices[0];
+  if (!padVoice || padVoice.attackSeconds < .5 || padVoice.releaseMultiplier <= 0 || padVoice.releaseMultiplier >= 1) {
+    failures.push('Pad archetype envelope anchors were not applied to new voices');
+  }
+}
 
 function renderMachine(
   machine,

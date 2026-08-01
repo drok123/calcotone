@@ -14,6 +14,7 @@ export type SynthMachine =
 
 export type SynthQualityMode = 'live' | 'balanced' | 'studio';
 export type SynthRenderMode = 'auto' | 'circuit' | 'capture' | 'hybrid';
+export type SynthArchetype = 'panel' | 'bass' | 'pad' | 'lead';
 
 export interface SynthSequencerNote {
   pitch: number;
@@ -158,10 +159,15 @@ export class SynthEngine {
     this.processor.port.postMessage({ type: 'machine', value: machine });
   }
 
-  public setParameters(values: readonly number[]): void {
+  public setArchetype(archetype: SynthArchetype): void {
+    this.processor.port.postMessage({ type: 'archetype', value: archetype });
+  }
+
+  public setParameters(values: readonly number[], morphSeconds = 0.04): void {
     this.processor.port.postMessage({
       type: 'parameters',
       values: Array.from({ length: 6 }, (_, index) => clamp01(values[index] ?? .5)),
+      morphSeconds: Math.min(0.5, Math.max(0, Number.isFinite(morphSeconds) ? morphSeconds : 0.04)),
     });
   }
 

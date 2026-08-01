@@ -1,10 +1,12 @@
+import type { RandomizationProfile } from './randomProfiles';
+
 export const RAIL_C_RANDOM_ORDER = ['synth', 'chaos', 'pressure'] as const;
 
 export type RailCRandomModuleId = (typeof RAIL_C_RANDOM_ORDER)[number];
 
 type RailCRandomController = {
   isEnabled: () => boolean;
-  randomize: () => string | null;
+  randomize: (profile: RandomizationProfile) => string | null;
 };
 
 const controllers = new Map<RailCRandomModuleId, RailCRandomController>();
@@ -36,8 +38,11 @@ export function getActiveRailCRandomModuleIds(): RailCRandomModuleId[] {
   return serialOrder.filter((moduleId) => controllers.get(moduleId)?.isEnabled());
 }
 
-export function randomizeRailCModule(moduleId: RailCRandomModuleId): string | null {
+export function randomizeRailCModule(
+  moduleId: RailCRandomModuleId,
+  profile: RandomizationProfile = 'smart'
+): string | null {
   const controller = controllers.get(moduleId);
   if (!controller?.isEnabled()) return null;
-  return controller.randomize();
+  return controller.randomize(profile);
 }

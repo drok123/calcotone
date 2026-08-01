@@ -68,7 +68,7 @@ const CONFIGS: Record<ReverbAlgorithm, AlgorithmConfig> = {
   freeze: { id:'freeze', lineTimes:[0.0431,0.0523,0.0629,0.0749,0.0883,0.1031,0.1193,0.1373], predelay:[0.012,0.017], sizeRange:[0.9,2.15], decayBias:4.5, dampingBias:0.52, diffusionBias:1.35, modulationDepth:0.0009, modulationRates:[0.05,0.07,0.09,0.11,0.13,0.17,0.19,0.23], crossAmount:0.13, outputTrim:0.22, inputTrim:0.18, highpass:210 },
   celestial: { id:'celestial', lineTimes:[0.0239,0.0311,0.0401,0.0503,0.0629,0.0779,0.0953,0.1151,0.1373,0.1613,0.1871,0.2141], predelay:[0.028,0.041], sizeRange:[0.82,2.62], decayBias:1.72, dampingBias:1.42, diffusionBias:1.48, modulationDepth:0.0026, modulationRates:[0.047,0.061,0.079,0.101,0.127,0.157,0.193,0.233,0.277,0.331,0.389,0.457], crossAmount:0.14, outputTrim:0.17, inputTrim:0.48, highpass:240 },
   aurora: { id:'aurora', lineTimes:[0.0197,0.0277,0.0367,0.0479,0.0613,0.0773,0.0961,0.1177,0.1423,0.1699], predelay:[0.016,0.029], sizeRange:[0.7,2.45], decayBias:1.46, dampingBias:1.12, diffusionBias:1.34, modulationDepth:0.0038, modulationRates:[0.071,0.097,0.131,0.173,0.223,0.281,0.347,0.421,0.503,0.593], crossAmount:0.16, outputTrim:0.18, inputTrim:0.5, highpass:185 },
-  nebula: { id:'nebula', lineTimes:[0.0353,0.0449,0.0563,0.0697,0.0851,0.1027,0.1223,0.1441,0.1681,0.1943,0.2227,0.2531], predelay:[0.036,0.052], sizeRange:[0.95,2.85], decayBias:2.15, dampingBias:0.76, diffusionBias:1.58, modulationDepth:0.0044, modulationRates:[0.031,0.043,0.059,0.077,0.101,0.131,0.167,0.211,0.263,0.323,0.391,0.467], crossAmount:0.18, outputTrim:0.145, inputTrim:0.42, highpass:155 },
+  nebula: { id:'nebula', lineTimes:[0.0353,0.0449,0.0563,0.0697,0.0851,0.1027,0.1223,0.1441,0.1681,0.1943,0.2227,0.2531], predelay:[0.036,0.050], sizeRange:[0.95,2.85], decayBias:2.15, dampingBias:0.76, diffusionBias:1.58, modulationDepth:0.0044, modulationRates:[0.031,0.043,0.059,0.077,0.101,0.131,0.167,0.211,0.263,0.323,0.391,0.467], crossAmount:0.18, outputTrim:0.145, inputTrim:0.42, highpass:155 },
   abyss: { id:'abyss', lineTimes:[0.0481,0.0593,0.0727,0.0883,0.1061,0.1261,0.1483,0.1727,0.1993,0.2281], predelay:[0.019,0.031], sizeRange:[1,3], decayBias:1.9, dampingBias:0.38, diffusionBias:1.18, modulationDepth:0.0015, modulationRates:[0.029,0.037,0.047,0.061,0.079,0.101,0.127,0.157,0.193,0.233], crossAmount:0.17, outputTrim:0.15, inputTrim:0.44, highpass:58 },
 
   // EMT 140 study: dense, nearly static dispersive plate with mono excitation and stereo pickup-like decorrelation.
@@ -317,8 +317,8 @@ class ReverbNetwork {
       node.Q.setTargetAtTime((this.config.plateDispersion ? 0.5 : 0.25) + amount * (1.02 + index * 0.03), now, 0.06);
       node.frequency.setTargetAtTime((this.config.plateDispersion ? 720 : 460) + amount * (this.config.plateDispersion ? 2200 : 1550) + index * (this.config.plateDispersion ? 113 : 91), now, 0.06);
     });
-    this.predelays[0].delayTime.setTargetAtTime(this.config.predelay[0] * (1 + size * 0.72), now, 0.07);
-    this.predelays[1].delayTime.setTargetAtTime(this.config.predelay[1] * (1 + size * 0.72), now, 0.07);
+    this.predelays[0].delayTime.setTargetAtTime(Math.min(0.05, this.config.predelay[0] * (1 + size * 0.72)), now, 0.07);
+    this.predelays[1].delayTime.setTargetAtTime(Math.min(0.05, this.config.predelay[1] * (1 + size * 0.72)), now, 0.07);
   }
 
   public dispose(): void {

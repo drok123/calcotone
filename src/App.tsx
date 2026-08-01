@@ -32,10 +32,16 @@ import { useVisualEngine } from './visual/VisualEngine';
 import { EffectModule } from './components/effects/EffectModule';
 import { RailCModule } from './components/effects/RailCModules';
 import type {
+  SynthArchetype,
   SynthMachine,
   SynthSequencerState,
   SynthSequencerStep,
 } from './audio/SynthEngine';
+import {
+  RANDOMIZATION_PROFILE_OPTIONS,
+  RANDOM_MUTATION_AMOUNT,
+  type RandomizationProfile,
+} from './features/random/randomProfiles';
 import { LinearControl } from './components/controls/LinearControl';
 import { LevelMeter } from './components/meters/LevelMeter';
 import { SpectrumWaterfall } from './components/meters/SpectrumWaterfall';
@@ -122,6 +128,7 @@ interface RandomUiPlan {
   targets: Map<string, ModuleState>;
   railCTargets: Set<RailCRandomModuleId>;
   totalTargets: number;
+  profile: RandomizationProfile;
 }
 
 interface RandomFlowProgress {
@@ -287,6 +294,102 @@ const MUSICAL_RANDOM_RANGES: Record<string, Record<string, MusicalRange>> = {
     mix: [0.08, 0.46],
   },
 };
+
+type ProfileModuleRecipe = {
+  mode?: string;
+  parameters: Record<string, MusicalRange>;
+};
+
+function normalizedDelayTime(seconds: number): number {
+  return clamp(Math.pow((clamp(seconds, 0.05, 0.6) - 0.03) / 3.97, 1 / 1.4), 0, 1);
+}
+
+function normalizedReverbDecay(seconds: number): number {
+  return clamp(Math.log(clamp(seconds, 0.5, 6) / 0.35) / Math.log(16 / 0.35), 0, 1);
+}
+
+const DELAY_SYNC_SECONDS = [0.0625, 0.0833, 0.125, 0.1875, 0.25, 0.375, 0.5] as const;
+const DELAY_SYNC_VALUES = DELAY_SYNC_SECONDS.map(normalizedDelayTime);
+
+const RANDOM_PROFILE_RECIPES: Partial<Record<RandomizationProfile, Record<string, ProfileModuleRecipe>>> = {
+  bass: {
+    saturation: { mode: 'console', parameters: { drive:[.18,.34], tone:[.34,.58], heat:[.12,.30], character:[.28,.52], dynamics:[.42,.68], mix:[.14,.26] } },
+    chorus: { mode: 'dimensiond', parameters: { rate:[.06,.10], depth:[.12,.24], shape:[.18,.30], spread:[.72,.92], motion:[.10,.22], mix:[.08,.18] } },
+    delay: { mode: 'EP-3 Echoplex', parameters: { time:[normalizedDelayTime(.08),normalizedDelayTime(.125)], feedback:[.10,.22], color:[.32,.52], character:[.12,.28], width:[.34,.56], mix:[.10,.22] } },
+    reverb: { mode: 'room', parameters: { decay:[normalizedReverbDecay(.6),normalizedReverbDecay(1.3)], size:[.24,.48], color:[.28,.52], diffusion:[.42,.68], motion:[.02,.14], mix:[.08,.20] } },
+    bitcrusher: { mode: 'smear', parameters: { bits:[.55,.82], density:[.28,.48], pitch:[0,.10], chaos:[.02,.14], bloom:[.12,.28], mix:[.05,.16] } },
+    media: { mode: 'tascam424', parameters: { wear:[.16,.34], wow:[.10,.18], noise:[.02,.10], tone:[.28,.48], mix:[.14,.28] } },
+  },
+  pad: {
+    saturation: { mode: 'velvet', parameters: { drive:[.10,.24], tone:[.46,.72], heat:[.12,.28], character:[.18,.42], dynamics:[.48,.74], mix:[.12,.26] } },
+    chorus: { mode: 'ensemble', parameters: { rate:[.04,.13], depth:[.38,.68], shape:[.34,.68], spread:[.82,.98], motion:[.12,.32], mix:[.24,.44] } },
+    delay: { mode: 'tape', parameters: { time:[normalizedDelayTime(.1875),normalizedDelayTime(.5)], feedback:[.38,.58], color:[.26,.52], character:[.18,.38], width:[.68,.94], mix:[.28,.50] } },
+    reverb: { mode: 'cloud', parameters: { decay:[normalizedReverbDecay(3),normalizedReverbDecay(6)], size:[.70,.96], color:[.34,.68], diffusion:[.78,.98], motion:[.08,.28], mix:[.34,.50] } },
+    bitcrusher: { mode: 'clouds', parameters: { bits:[.46,.72], density:[.56,.78], pitch:[0,.16], chaos:[.18,.38], bloom:[.52,.78], mix:[.18,.34] } },
+    media: { mode: 'reel', parameters: { wear:[.12,.30], wow:[.08,.22], noise:[0,.10], tone:[.44,.68], mix:[.12,.28] } },
+  },
+  lead: {
+    saturation: { mode: 'tube', parameters: { drive:[.20,.42], tone:[.52,.78], heat:[.18,.38], character:[.34,.58], dynamics:[.32,.56], mix:[.18,.34] } },
+    chorus: { mode: 'ce1', parameters: { rate:[.08,.14], depth:[.20,.38], shape:[.40,.66], spread:[.68,.88], motion:[.14,.30], mix:[.12,.28] } },
+    delay: { mode: 'EP-3 Echoplex', parameters: { time:[normalizedDelayTime(.125),normalizedDelayTime(.25)], feedback:[.20,.42], color:[.42,.68], character:[.14,.32], width:[.48,.76], mix:[.16,.34] } },
+    reverb: { mode: 'plate', parameters: { decay:[normalizedReverbDecay(1.2),normalizedReverbDecay(3)], size:[.40,.68], color:[.46,.74], diffusion:[.62,.86], motion:[.04,.18], mix:[.14,.32] } },
+    bitcrusher: { mode: 'smear', parameters: { bits:[.58,.86], density:[.28,.52], pitch:[0,.12], chaos:[.04,.18], bloom:[.14,.34], mix:[.04,.16] } },
+    media: { mode: 'Neve 1073', parameters: { wear:[.18,.34], wow:[.14,.22], noise:[.02,.10], tone:[.30,.48], mix:[.14,.28] } },
+  },
+  'retro-ambient': {
+    saturation: { mode: 'mullard', parameters: { drive:[.12,.18], tone:[.40,.60], heat:[.18,.30], character:[.42,.58], dynamics:[.48,.64], mix:[.12,.20] } },
+    chorus: { mode: 'ce1', parameters: { rate:[.07,.12], depth:[.24,.38], shape:[.40,.62], spread:[.76,.92], motion:[.12,.26], mix:[.18,.30] } },
+    delay: { mode: 're201', parameters: { time:[normalizedDelayTime(.1875),normalizedDelayTime(.375)], feedback:[.48,.56], color:[.30,.50], character:[.22,.38], width:[.62,.84], mix:[.32,.46] } },
+    reverb: { mode: 'lexicon224', parameters: { decay:[normalizedReverbDecay(3.2),normalizedReverbDecay(5.5)], size:[.62,.86], color:[.34,.56], diffusion:[.72,.90], motion:[.10,.24], mix:[.36,.44] } },
+    bitcrusher: { mode: 'clouds', parameters: { bits:[.52,.72], density:[.48,.68], pitch:[0,.12], chaos:[.14,.30], bloom:[.48,.68], mix:[.12,.26] } },
+    media: { mode: 'Ampex ATR-102', parameters: { wear:[.18,.34], wow:[.20,.52], noise:[0,.08], tone:[.42,.58], mix:[.16,.30] } },
+  },
+  'lofi-tape': {
+    saturation: { mode: 'sp1200', parameters: { drive:[.20,.38], tone:[.12,.32], heat:[.14,.30], character:[.42,.62], dynamics:[.34,.54], mix:[.18,.32] } },
+    chorus: { mode: 'vibrato', parameters: { rate:[.05,.12], depth:[.12,.28], shape:[.28,.48], spread:[.42,.68], motion:[.18,.34], mix:[.08,.20] } },
+    delay: { mode: 'tape', parameters: { time:[normalizedDelayTime(.125),normalizedDelayTime(.25)], feedback:[.24,.44], color:[.18,.38], character:[.24,.44], width:[.38,.64], mix:[.16,.30] } },
+    reverb: { mode: 'room', parameters: { decay:[normalizedReverbDecay(.8),normalizedReverbDecay(2.2)], size:[.32,.58], color:[.18,.42], diffusion:[.48,.72], motion:[.04,.16], mix:[.12,.26] } },
+    bitcrusher: { mode: 'beads', parameters: { bits:[.62,.70], density:[.34,.56], pitch:[.02,.16], chaos:[.12,.30], bloom:[.18,.38], mix:[.12,.28] } },
+    media: { mode: 'cassette', parameters: { wear:[.38,.62], wow:[.24,.46], noise:[.10,.22], tone:[.22,.42], mix:[.28,.46] } },
+  },
+  'gritty-drive': {
+    saturation: { mode: 'furnace', parameters: { drive:[.40,.70], tone:[.28,.54], heat:[.36,.66], character:[.46,.72], dynamics:[.40,.68], mix:[.34,.50] } },
+    chorus: { mode: 'smallstone', parameters: { rate:[.08,.18], depth:[.12,.30], shape:[.44,.70], spread:[.48,.74], motion:[.16,.34], mix:[.08,.18] } },
+    delay: { mode: 'EP-3 Echoplex', parameters: { time:[normalizedDelayTime(.075),normalizedDelayTime(.095)], feedback:[.08,.18], color:[.28,.48], character:[.26,.46], width:[.28,.48], mix:[.12,.24] } },
+    reverb: { mode: 'room', parameters: { decay:[normalizedReverbDecay(.5),normalizedReverbDecay(1.5)], size:[.24,.50], color:[.30,.54], diffusion:[.40,.66], motion:[.02,.12], mix:[.08,.20] } },
+    bitcrusher: { mode: 'scatter', parameters: { bits:[.44,.68], density:[.32,.54], pitch:[.04,.22], chaos:[.18,.42], bloom:[.12,.30], mix:[.10,.24] } },
+    media: { mode: 'API 1608', parameters: { wear:[.24,.42], wow:[.16,.24], noise:[.04,.12], tone:[.38,.58], mix:[.16,.30] } },
+  },
+};
+
+function applyProfileMode(module: ModuleState, mode: string | undefined): ModuleState {
+  if (!mode) return module;
+  if (module.id === 'saturation') return { ...module, emberMode: mode as EmberMode };
+  if (module.id === 'chorus') return { ...module, driftMode: mode as DriftMode };
+  if (module.id === 'delay') return { ...module, delayAlgorithm: mode as DelayAlgorithm };
+  if (module.id === 'reverb') return { ...module, algorithm: mode as ReverbAlgorithm };
+  if (module.id === 'bitcrusher') return { ...module, grainMode: mode as GrainMode };
+  if (module.id === 'media') return { ...module, mediaMode: mode as MediaMode };
+  return module;
+}
+
+function guardRandomParameter(moduleId: string, parameterId: string, value: number): number {
+  let safe = clamp(value, 0, 1);
+  if (moduleId === 'delay' && parameterId === 'time') {
+    safe = DELAY_SYNC_VALUES.reduce((nearest, candidate) =>
+      Math.abs(candidate - safe) < Math.abs(nearest - safe) ? candidate : nearest
+    );
+  }
+  if (moduleId === 'delay' && parameterId === 'feedback') safe = Math.min(safe, .82);
+  if (moduleId === 'reverb' && parameterId === 'decay') {
+    safe = clamp(safe, normalizedReverbDecay(.5), normalizedReverbDecay(6));
+  }
+  if (moduleId === 'bitcrusher' && parameterId === 'bits') safe = Math.max(safe, 1 / 6);
+  if (parameterId === 'mix') {
+    safe = Math.min(safe, moduleId === 'delay' || moduleId === 'reverb' ? .72 : .50);
+  }
+  return safe;
+}
 
 interface SweetSpotRecipe {
   name: string;
@@ -476,6 +579,7 @@ export default function App() {
   );
   const [randomFlowProgress, setRandomFlowProgress] =
     useState<RandomFlowProgress | null>(null);
+  const [randomProfile, setRandomProfile] = useState<Exclude<RandomizationProfile, 'mutate'>>('smart');
   const [inputDevice, setInputDevice] = useState('No input connected');
   const [latency, setLatency] = useState('—');
   const [sampleRate, setSampleRate] = useState('—');
@@ -519,8 +623,12 @@ export default function App() {
     engineRef.current?.setSynthMachine(machine);
   }, []);
 
-  const setSynthParameters = useCallback((values: readonly number[]) => {
-    engineRef.current?.setSynthParameters(values);
+  const setSynthArchetype = useCallback((archetype: SynthArchetype) => {
+    engineRef.current?.setSynthArchetype(archetype);
+  }, []);
+
+  const setSynthParameters = useCallback((values: readonly number[], morphSeconds = 0.04) => {
+    engineRef.current?.setSynthParameters(values, morphSeconds);
   }, []);
 
   const triggerSynthNote = useCallback((midi: number, durationSeconds: number) => {
@@ -990,7 +1098,7 @@ export default function App() {
   }
 
 
-  function randomizeActiveModules(): void {
+  function randomizeActiveModules(profile: RandomizationProfile = randomProfile): void {
     const activeModules = modules.filter((module) => module.enabled && module.available);
     const activeRailC = getActiveRailCRandomModuleIds();
     const activeCount = activeModules.length + activeRailC.length;
@@ -1005,18 +1113,27 @@ export default function App() {
 
       // Pick the module mode first. Hardware recipes depend on the selected machine,
       // so its operating point must be chosen before the knobs are randomized.
-      const modeModule = withMusicalRandomMode(module);
-      const sweetSpot = chooseHardwareSweetSpot(modeModule);
+      const profileRecipe = RANDOM_PROFILE_RECIPES[profile]?.[module.id];
+      const modeModule = profile === 'mutate'
+        ? module
+        : profileRecipe
+          ? applyProfileMode(module, profileRecipe.mode)
+          : withMusicalRandomMode(module);
+      const sweetSpot = profile === 'smart' ? chooseHardwareSweetSpot(modeModule) : null;
       if (sweetSpot) sweetSpotsUsed.push(`${modeModule.name}: ${sweetSpot.name}`);
 
       const genericRanges = MUSICAL_RANDOM_RANGES[modeModule.id] ?? {};
       const nextParameters = modeModule.parameters.map((parameter) => {
-        const range = sweetSpot?.parameters[parameter.id] ?? genericRanges[parameter.id];
+        const range = profileRecipe?.parameters[parameter.id]
+          ?? sweetSpot?.parameters[parameter.id]
+          ?? genericRanges[parameter.id];
         if (!range) return parameter;
 
         // Hardware recipes are intentionally tighter and more center-biased than the
         // creative modes: variation around a known good setting, not a lottery ticket.
-        let next = randomMusicalValue(range, sweetSpot ? 0.60 : 0.35);
+        let next = profile === 'mutate'
+          ? parameter.value + (Math.random() * 2 - 1) * RANDOM_MUTATION_AMOUNT
+          : randomMusicalValue(range, sweetSpot || profileRecipe ? 0.60 : 0.35);
 
         // Extra guardrails for parameters where combinations can get unruly.
         if (modeModule.id === 'delay' && parameter.id === 'feedback') {
@@ -1033,7 +1150,7 @@ export default function App() {
           next = Math.min(next, 0.52);
         }
 
-        next = clamp(next, 0, 1);
+        next = guardRandomParameter(modeModule.id, parameter.id, next);
         return {
           ...parameter,
           value: next,
@@ -1047,7 +1164,10 @@ export default function App() {
     const sweetSpotSummary = sweetSpotsUsed.length
       ? ` · Sweet spots: ${sweetSpotsUsed.join(' · ')}`
       : '';
-    const finalMessage = `MUSICAL RANDOM reshaped ${activeCount} active module${activeCount === 1 ? '' : 's'}${sweetSpotSummary}.`;
+    const profileLabel = profile === 'mutate'
+      ? 'MUTATE 10%'
+      : RANDOMIZATION_PROFILE_OPTIONS.find((option) => option.id === profile)?.label ?? 'Smart Patch';
+    const finalMessage = `${profileLabel.toUpperCase()} reshaped ${activeCount} active module${activeCount === 1 ? '' : 's'} with guarded 350 ms morphing${sweetSpotSummary}.`;
     const targets = new Map(
       nextModules
         .filter((module) => module.enabled && module.available)
@@ -1064,6 +1184,7 @@ export default function App() {
       targets,
       railCTargets: new Set(activeRailC),
       totalTargets,
+      profile,
     };
     randomFlowActiveRef.current = true;
     setRandomFlowProgress({ current: 0, total: totalTargets });
@@ -1220,7 +1341,7 @@ export default function App() {
         : null;
       if (!target && !railCId) return;
 
-      const railCSummary = railCId ? randomizeRailCModule(railCId) : null;
+      const railCSummary = railCId ? randomizeRailCModule(railCId, plan.profile) : null;
       const targetName = target?.name ?? (railCId ? RAIL_C_MODULE_NAMES[railCId] : effectId);
 
       plan.revealed.add(effectId);
@@ -1593,7 +1714,20 @@ export default function App() {
           </div>
 
           <div className="control-strip-actions">
-            <button type="button" className="profiler-toggle randomizer-toggle" onClick={randomizeActiveModules} title="Randomize only active modules within musically guarded ranges">
+            <label className="random-profile-selector">
+              <span className="sr-only">Randomization profile</span>
+              <select
+                aria-label="Randomization profile"
+                value={randomProfile}
+                onChange={(event) => setRandomProfile(event.target.value as Exclude<RandomizationProfile, 'mutate'>)}
+                title="Choose a coordinated Synth / effects randomization archetype"
+              >
+                {RANDOMIZATION_PROFILE_OPTIONS.map((option) => (
+                  <option value={option.id} key={option.id}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <button type="button" className="profiler-toggle randomizer-toggle" onClick={() => randomizeActiveModules(randomProfile)} title="Morph active modules into the selected guarded profile">
               RANDOM
               {randomFlowProgress && (
                 <span className="randomizer-flow-count" aria-hidden="true">
@@ -1601,6 +1735,7 @@ export default function App() {
                 </span>
               )}
             </button>
+            <button type="button" className="profiler-toggle randomizer-toggle mutate-randomizer-toggle" onClick={() => randomizeActiveModules('mutate')} title="Drift every active control by at most 10% while preserving machines and patch identity">MUTATE 10%</button>
             <button type="button" className="profiler-toggle signal-randomizer-toggle" onClick={randomizeSignalOrder} title="Randomize the order of both three-module signal rails">SIGNAL RANDOM</button>
             <button type="button" className={`profiler-toggle ${explainMode ? 'active' : ''}`} aria-pressed={explainMode} onClick={() => setExplainMode((value) => !value)}>EXPLAIN</button>
             <FaceplateLayoutEditor />
@@ -1823,6 +1958,7 @@ export default function App() {
                             running={isRunning}
                             onSynthEnabledChange={setSynthEnabled}
                             onSynthMachineChange={setSynthMachine}
+                            onSynthArchetypeChange={setSynthArchetype}
                             onSynthParametersChange={setSynthParameters}
                             onSynthTriggerNote={triggerSynthNote}
                             onSynthSequencerChange={setSynthSequencerState}

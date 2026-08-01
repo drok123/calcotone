@@ -116,6 +116,9 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     this.enabled = false;
     this.machine = 'model-d';
     this.parameters = [.58, .46, .26, .54, .22, .08];
+    this.parameterTargets = [...this.parameters];
+    this.parameterMorphFrames = 0;
+    this.archetype = 'panel';
     this.quality = 2;
     this.renderMode = 'auto';
     this.captureBank = null;
@@ -155,9 +158,14 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     } else if (data.type === 'machine' && PROFILES[data.value]) {
       this.machine = data.value;
       if (this.machine === 'model-d') this.refreshHybridBuses(true);
+    } else if (data.type === 'archetype' && ['panel', 'bass', 'pad', 'lead'].includes(data.value)) {
+      this.archetype = data.value;
     } else if (data.type === 'parameters' && Array.isArray(data.values)) {
-      this.parameters = Array.from({ length: 6 }, (_, i) => clamp(data.values[i] ?? .5));
-      this.refreshHybridBuses();
+      for (let index = 0; index < 6; index += 1) {
+        this.parameterTargets[index] = clamp(data.values[index] ?? .5);
+      }
+      this.parameterMorphFrames = Math.max(0, Math.round(clamp(data.morphSeconds, 0, .5) * sampleRate));
+      if (this.parameterMorphFrames === 0) this.applyParameterTargets();
     } else if (data.type === 'quality') {
       const nextQuality = data.factor >= 4 ? 4 : data.factor >= 2 ? 2 : 1;
       if (nextQuality !== this.quality) {
@@ -179,6 +187,34 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     } else if (data.type === 'all-notes-off' || data.type === 'dispose') {
       this.releaseAll();
     }
+  }
+
+  applyParameterTargets() {
+    for (let index = 0; index < 6; index += 1) this.parameters[index] = this.parameterTargets[index];
+    this.refreshMorphedVoices();
+  }
+
+  advanceParameterMorph(frames) {
+    if (this.parameterMorphFrames <= 0) return;
+    const advanced = Math.min(frames, this.parameterMorphFrames);
+    const fraction = advanced / this.parameterMorphFrames;
+    for (let index = 0; index < 6; index += 1) {
+      this.parameters[index] += (this.parameterTargets[index] - this.parameters[index]) * fraction;
+    }
+    this.parameterMorphFrames -= advanced;
+    if (this.parameterMorphFrames === 0) {
+      for (let index = 0; index < 6; index += 1) this.parameters[index] = this.parameterTargets[index];
+    }
+    this.refreshMorphedVoices();
+  }
+
+  refreshMorphedVoices() {
+    for (let voiceIndex = 0; voiceIndex < this.voices.length; voiceIndex += 1) {
+      const voice = this.voices[voiceIndex];
+      for (let index = 0; index < 6; index += 1) voice.parameters[index] = this.parameters[index];
+      this.refreshVoiceCoefficients(voice);
+    }
+    this.refreshHybridBuses();
   }
 
   setSequencerState(data) {
@@ -287,6 +323,7 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     const pan = ((((seed >>> 8) & 255) / 255) * 2 - 1) * this.parameters[5] * .24;
     const voice = {
       machine: this.machine,
+      archetype: this.archetype,
       profile,
       parameters: [...this.parameters],
       frequency: midiToFrequency(midi),
@@ -336,9 +373,22 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     const character = parameters[4];
     const motion = parameters[5];
 
-    const attack = Math.max(.002, profile.attack * (.3 + contour * 1.4));
-    const decay = Math.max(.012, profile.decay * (.5 + contour));
-    const release = Math.max(.018, profile.release * (.45 + contour * 1.8));
+    let attack = Math.max(.002, profile.attack * (.3 + contour * 1.4));
+    let decay = Math.max(.012, profile.decay * (.5 + contour));
+    let release = Math.max(.018, profile.release * (.45 + contour * 1.8));
+    if (voice.archetype === 'bass') {
+      attack = Math.min(.012, Math.max(.002, attack * .42));
+      decay = Math.min(.24, Math.max(.045, decay * .62));
+      release = Math.min(.20, Math.max(.018, release * .52));
+    } else if (voice.archetype === 'pad') {
+      attack = Math.max(.5, .5 + contour * .9);
+      decay = Math.max(.8, .8 + contour * 1.8);
+      release = Math.max(1.2, 1.2 + contour * 2.8);
+    } else if (voice.archetype === 'lead') {
+      attack = Math.min(.09, Math.max(.008, attack * .85));
+      decay = Math.min(.62, Math.max(.12, decay));
+      release = Math.min(.72, Math.max(.10, release));
+    }
     voice.attackRate = Math.min(1, dt * 6 / attack);
     voice.attackSeconds = attack;
     voice.decayRate = Math.min(1, dt * 4 / decay);
@@ -824,6 +874,7 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     const right = output[1] || output[0];
     if (!left) return true;
     this.renderQuantumFrames = left.length;
+    this.advanceParameterMorph(left.length);
     const quality = this.quality;
     const dt = 1 / (sampleRate * quality);
     const renderMode = this.resolveRenderMode();

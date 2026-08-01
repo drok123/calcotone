@@ -25,9 +25,10 @@ const randomCapture = read('src/features/random/randomCapture.ts');
 const randomDspScheduler = read('src/features/random/randomDspScheduler.ts');
 const randomUiFlow = read('src/features/random/randomUiFlow.ts');
 const railCRandom = read('src/features/random/railCRandomRegistry.ts');
+const randomProfiles = read('src/features/random/randomProfiles.ts');
 const railCModules = read('src/components/effects/RailCModules.tsx');
 const app = read('src/App.tsx');
-const randomRuntime = randomBridge + randomCapture + randomDspScheduler + randomUiFlow + railCRandom;
+const randomRuntime = randomBridge + randomCapture + randomDspScheduler + randomUiFlow + railCRandom + randomProfiles;
 const enginePatch = read('src/engineStabilityPatch.ts');
 const enginePolicy = read('src/features/engine/engineStabilityPolicy.ts');
 const inputMatrix = read('src/audio/InputMatrix.ts');
@@ -82,14 +83,24 @@ requireText(randomBridge, 'const railCModuleIds = getActiveRailCRandomModuleIds(
 requireText(randomDspScheduler, 'for (const moduleId of deferredModuleIds)', 'Rail C serialized scheduler');
 requireText(randomDspScheduler, 'commitDeferredModule(moduleId, engineIsUsable, revealModule)', 'Rail C serialized commit');
 requireText(app, 'railCTargets: new Set(activeRailC)', 'Rail C UI transaction targets');
-requireText(app, 'randomizeRailCModule(railCId)', 'Rail C reveal-time randomization');
+requireText(app, 'randomizeRailCModule(railCId, plan.profile)', 'Rail C profile-aware reveal-time randomization');
 requireText(railCModules, "useRailCRandomController('synth', enabled, randomizeSynth)", 'Synth RANDOM controller');
 requireText(railCModules, "useRailCRandomController('chaos', enabled, randomizeChaos)", 'Chaos RANDOM controller');
-requireText(railCModules, "useRailCRandomController('pressure', state.enabled, randomizePressure)", 'Pressure RANDOM controller');
+requireText(railCModules, "useRailCRandomController('pressure', state.enabled, randomizePressureProfile)", 'Pressure profile-aware RANDOM controller');
 if (randomBridge.indexOf('releasePlanningHold();') > randomBridge.indexOf('void flushCapturedRandom(')) {
   failures.push('RANDOM planning hold must end before staged DSP begins');
 }
-requireText(knob, 'transform 165ms cubic-bezier(0.2, 0.82, 0.22, 1)', 'RANDOM-friendly knob travel');
+requireText(randomProfiles, 'RANDOM_MORPH_SECONDS = 0.35', 'RANDOM 350 ms morph window');
+requireText(randomProfiles, 'RANDOM_MUTATION_AMOUNT = 0.10', 'RANDOM 10 percent drift amount');
+for (const profile of ['bass', 'pad', 'lead', 'retro-ambient', 'lofi-tape', 'gritty-drive', 'mutate']) {
+  requireText(randomProfiles, `'${profile}'`, `${profile} RANDOM profile`);
+}
+requireText(app, 'DELAY_SYNC_SECONDS', 'Tempo-safe delay subdivisions');
+requireText(app, "parameterId === 'feedback') safe = Math.min(safe, .82)", 'Delay feedback safety cap');
+requireText(app, "normalizedReverbDecay(.5), normalizedReverbDecay(6)", 'Reverb decay safety range');
+requireText(app, "moduleId === 'delay' || moduleId === 'reverb' ? .72 : .50", 'Insert wet-mix safety cap');
+requireText(reverb, 'Math.min(0.05, this.config.predelay[0]', 'Reverb pre-delay ceiling');
+requireText(knob, 'transform 350ms cubic-bezier(0.2, 0.82, 0.22, 1)', 'RANDOM-friendly knob travel');
 forbidText(randomRuntime, 'RANDOM_MORPH_STEPS', 'Removed repeated RANDOM DSP morph');
 forbidText(randomRuntime, 'Promise.all(orderedJobs)', 'Removed simultaneous RANDOM module burst');
 forbidText(randomRuntime, 'RANDOM_TOPOLOGY_SAFE_MIX', 'Removed RANDOM signal-collapse guard');

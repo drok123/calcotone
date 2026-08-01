@@ -8,6 +8,7 @@ import type { GrainProfilerStats } from './effects/Bitcrusher';
 import { DreamBuffer, type DreamBufferStats } from './DreamBuffer';
 import {
   SynthEngine,
+  type SynthArchetype,
   type SynthMachine,
   type SynthSequencerState,
   type SynthSequencerStep,
@@ -414,8 +415,12 @@ export class AudioEngine {
     this.synth?.setMachine(machine);
   }
 
-  public setSynthParameters(values: readonly number[]): void {
-    this.synth?.setParameters(values);
+  public setSynthArchetype(archetype: SynthArchetype): void {
+    this.synth?.setArchetype(archetype);
+  }
+
+  public setSynthParameters(values: readonly number[], morphSeconds = 0.04): void {
+    this.synth?.setParameters(values, morphSeconds);
   }
 
   public triggerSynthNote(midi: number, durationSeconds: number, velocity = .78): void {
