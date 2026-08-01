@@ -9,6 +9,7 @@ interface EngineInternals {
   safetyClipper: WaveShaperNode | null;
   limiter: DynamicsCompressorNode | null;
   analyser: AnalyserNode | null;
+  sharedVisualSpectrum: { connect(source: AudioNode): void } | null;
   outputGain: GainNode | null;
 }
 
@@ -33,7 +34,7 @@ function applyPostRackPressure(engine: AudioEngine): void {
   if (!pressure) return;
 
   const internal = engine as unknown as EngineInternals;
-  const { graph, dcBlock, safetyClipper, limiter, analyser, outputGain } = internal;
+  const { graph, dcBlock, safetyClipper, limiter, analyser, sharedVisualSpectrum, outputGain } = internal;
   if (!graph || !dcBlock || !safetyClipper || !limiter || !analyser || !outputGain) return;
 
   try { graph.output.disconnect(); } catch { /* already disconnected */ }
@@ -49,6 +50,7 @@ function applyPostRackPressure(engine: AudioEngine): void {
   safetyClipper.connect(limiter);
   limiter.connect(analyser);
   analyser.connect(outputGain);
+  sharedVisualSpectrum?.connect(analyser);
 }
 
 function restoreMasterChain(engine: AudioEngine): void {

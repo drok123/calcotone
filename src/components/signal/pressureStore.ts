@@ -79,10 +79,10 @@ export function randomizePressure(): string | null {
   setPressureState({
     mode: recipe.mode,
     style: recipe.style,
-    drive: randomIn(recipe.drive),
+    drive: Math.min(0.72, randomIn(recipe.drive)),
     time: randomIn(recipe.time),
     character: randomIn(recipe.character),
-    mix: randomIn(recipe.mix),
+    mix: Math.min(0.82, randomIn(recipe.mix)),
   });
-  return `${recipe.mode.toUpperCase()} · ${recipe.style.toUpperCase()}`;
+  return `${recipe.mode.toUpperCase()} · ${recipe.style.toUpperCase()} · LEVEL MATCHED`;
 }

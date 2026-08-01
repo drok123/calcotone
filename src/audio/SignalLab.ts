@@ -63,16 +63,44 @@ function makeGainElementCurve(mode: SignalLabMode, character: number, drive: num
   const modeDrive = mode === 'fet' ? 4.8 : mode === 'varimu' ? 3.1 : mode === 'opto' ? 2.3 : 1.8;
   const gain = 1 + d * modeDrive;
   const asym = mode === 'varimu' ? 0.055 + c * 0.075 : mode === 'fet' ? 0.02 + c * 0.035 : 0.006 + c * 0.014;
-  const norm = Math.tanh(gain);
+  const nonlinearMix = mode === 'fet'
+    ? 0.16 + d * 0.24
+    : mode === 'varimu'
+      ? 0.12 + d * 0.18
+      : mode === 'opto'
+        ? 0.08 + d * 0.14
+        : 0.025 + c * 0.045;
   for (let i = 0; i < size; i += 1) {
     const x = (i / (size - 1)) * 2 - 1;
     const shifted = x + Math.max(0, x) * asym;
-    let y = Math.tanh(shifted * gain) / norm;
+    // Unit-slope parallel saturation keeps machine changes from multiplying quiet
+    // material while retaining topology-specific peak compression and asymmetry.
+    const soft = Math.tanh(shifted * gain) / gain;
+    let y = shifted + (soft - shifted) * nonlinearMix;
     if (mode === 'opto') y *= 0.996 - Math.abs(x) * c * 0.018;
     if (mode === 'vca') y = x * (1 - c * 0.018) + y * c * 0.018;
     curve[i] = Math.max(-1, Math.min(1, y));
   }
   return curve;
+}
+
+function pressureMakeupGain(
+  mode: SignalLabMode,
+  style: SignalLabStyle,
+  effectiveDrive: number,
+  thresholdDb: number,
+  ratio: number
+): number {
+  // Recover only part of the predicted gain reduction at a -18 dBFS reference.
+  // Per-machine trims keep topology changes within a narrow loudness window.
+  const referenceDb = -18;
+  const predictedReductionDb = Math.max(0, referenceDb - thresholdDb) * (1 - 1 / ratio);
+  const recovery = style === 'crush' ? 0.32 : style === 'soft' ? 0.42 : style === 'punch' ? 0.52 : 0.48;
+  const modeTrimDb = mode === 'fet' ? -0.5 : mode === 'varimu' ? 0.4 : mode === 'vca' ? -0.1 : 0;
+  const makeupDb = Math.max(-0.75, Math.min(2.5,
+    predictedReductionDb * recovery + effectiveDrive * 0.6 + modeTrimDb
+  ));
+  return Math.pow(10, makeupDb / 20);
 }
 
 /**
@@ -143,15 +171,18 @@ export class SignalLab {
 
   private applyState(immediate: boolean): void {
     const now = this.context.currentTime;
-    const tau = immediate ? 0.001 : 0.028;
+    const tau = immediate ? 0.001 : 0.06;
     const { mode, style } = this.state;
     const drive = this.state.drive;
     const time = this.state.time;
     const character = this.state.character;
     const activeMix = this.state.enabled ? this.state.mix : 0;
 
-    this.dry.gain.setTargetAtTime(Math.cos(activeMix * Math.PI * 0.5), now, tau);
-    this.wet.gain.setTargetAtTime(Math.sin(activeMix * Math.PI * 0.5), now, tau);
+    const dryMix = Math.cos(activeMix * Math.PI * 0.5);
+    const wetMix = Math.sin(activeMix * Math.PI * 0.5);
+    const correlatedNormalization = Math.max(1, dryMix + wetMix);
+    this.dry.gain.setTargetAtTime(dryMix / correlatedNormalization, now, tau);
+    this.wet.gain.setTargetAtTime(wetMix / correlatedNormalization, now, tau);
 
     const styleDrive = style === 'soft' ? 0.72 : style === 'punch' ? 0.95 : style === 'crush' ? 1.42 : 0.84;
     const effectiveDrive = clamp01(drive * styleDrive);
@@ -184,7 +215,11 @@ export class SignalLab {
 
     this.detectorFilter.frequency.setTargetAtTime(mode === 'vca' ? 78 + character * 75 : 38 + character * 48, now, tau);
     this.tone.frequency.setTargetAtTime(mode === 'fet' ? 13_500 - character * 2200 : mode === 'opto' ? 11_800 - character * 1500 : mode === 'varimu' ? 14_200 - character * 1800 : 16_000 - character * 900, now, tau);
-    this.makeup.gain.setTargetAtTime(1.0 + effectiveDrive * (mode === 'fet' ? 0.42 : mode === 'varimu' ? 0.34 : 0.24), now, tau);
+    this.makeup.gain.setTargetAtTime(
+      pressureMakeupGain(mode, style, effectiveDrive, threshold, ratio),
+      now,
+      tau
+    );
 
     const key = `${mode}:${Math.round(character * 48)}:${Math.round(effectiveDrive * 48)}`;
     if (key !== this.curveKey) {
