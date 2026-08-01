@@ -14,6 +14,7 @@ import {
 
 const failures = [];
 const mediaSource = readFileSync(resolve(process.cwd(), 'src/audio/effects/Media.ts'), 'utf8');
+const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
 
 for (const contract of [
   "| 'Neve BCM10'",
@@ -44,6 +45,16 @@ for (const [index, capture] of captures.entries()) {
   }
 }
 
+if (!appSource.includes("'media:Neve BCM10'")) {
+  failures.push('BCM10 is missing mode-specific musical randomization recipes');
+}
+if (!appSource.includes("modeModule.mediaMode === 'Neve BCM10'")) {
+  failures.push('BCM10 random mutation is missing mode-specific drive/mix guardrails');
+}
+if (!readFileSync(resolve(process.cwd(), 'src/audio/models/Bcm10Calibration.ts'), 'utf8').includes('const a0 = -0.5 * y0')) {
+  failures.push('BCM10 capture lookup is missing cubic Hermite interpolation');
+}
+
 const clean = bcm10OperatingPoint(0.05, 0.16, 0.1, 0.18);
 const driven = bcm10OperatingPoint(0.9, 0.75, 0.8, 0.92);
 if (!(driven.inputGain > clean.inputGain)) failures.push('BCM10 tone/loading controls do not raise channel drive');
@@ -62,6 +73,42 @@ const bcm10Composite = renderComposite(bcm10Default);
 const neveComposite = renderNeve(neveDefault);
 const modelDistance = normalizedDistance(bcm10Composite, neveComposite);
 if (modelDistance < 0.018) failures.push(`BCM10 collapsed into the existing Neve 1073 path (${modelDistance.toFixed(4)})`);
+
+let worstSmallSignalGainError = 0;
+let loudestProgramGain = 0;
+let worstDcOffset = 0;
+for (const wear of [0, 0.5, 1]) {
+  for (const tone of [0, 0.5, 1]) {
+    const point = bcm10OperatingPoint(wear, 0.16, 0.1, tone);
+    const smallSignalGain = centralSlope(point);
+    const quiet = sineMetrics(point, 0.01);
+    const program = sineMetrics(point, 0.5);
+    worstSmallSignalGainError = Math.max(
+      worstSmallSignalGainError,
+      Math.abs(smallSignalGain - 1),
+      Math.abs(quiet.rmsGain - 1),
+    );
+    loudestProgramGain = Math.max(loudestProgramGain, program.rmsGain);
+    worstDcOffset = Math.max(worstDcOffset, Math.abs(program.mean));
+    if (!isMonotonic(point)) failures.push(`BCM10 transfer is not monotonic at wear=${wear}, tone=${tone}`);
+  }
+}
+if (worstSmallSignalGainError > 0.025) {
+  failures.push(`BCM10 low-level auto-trim deviates by ${(worstSmallSignalGainError * 100).toFixed(2)}%`);
+}
+if (loudestProgramGain > 1.01) {
+  failures.push(`BCM10 program path still adds gain (${(20 * Math.log10(loudestProgramGain)).toFixed(2)} dB)`);
+}
+if (worstDcOffset > 0.004) {
+  failures.push(`BCM10 asymmetric stages produce excessive DC (${worstDcOffset.toFixed(5)})`);
+}
+
+for (const mix of [0, 0.25, 0.5, 0.75, 1]) {
+  const mixed = mixedSineMetrics(bcm10Default, 0.01, mix);
+  if (Math.abs(mixed.rmsGain - 1) > 0.025) {
+    failures.push(`BCM10 Mix=${mix} changes low-level gain to ${mixed.rmsGain.toFixed(3)}`);
+  }
+}
 
 const startedAt = performance.now();
 let checksum = 0;
@@ -86,6 +133,7 @@ if (failures.length) {
 console.log(
   `CALCOTONE BCM10 hybrid audit passed (${BCM10_CAPTURE_REVISION}; `
   + `capture distance=${captureDistance.toFixed(3)}, model distance=${modelDistance.toFixed(3)}, `
+  + `level error=${(worstSmallSignalGainError * 100).toFixed(2)}%, `
   + `lookup=${elapsedMilliseconds.toFixed(1)} ms).`,
 );
 
@@ -106,6 +154,57 @@ function renderComposite(point) {
     output[index] = summingBusTransfer(channel, point.busCompression, point.busAsymmetry) * point.outputGain;
   }
   return output;
+}
+
+function compositeSample(input, point) {
+  const channel = bcm10CaptureTransfer(input * point.inputGain, point.captureDrive, point.captureColor);
+  return summingBusTransfer(channel, point.busCompression, point.busAsymmetry) * point.outputGain;
+}
+
+function centralSlope(point) {
+  const epsilon = 1e-5;
+  return (compositeSample(epsilon, point) - compositeSample(-epsilon, point)) / (2 * epsilon);
+}
+
+function sineMetrics(point, amplitude) {
+  let inputEnergy = 0;
+  let outputEnergy = 0;
+  let outputSum = 0;
+  const length = 16_384;
+  for (let index = 0; index < length; index += 1) {
+    const input = Math.sin(index * Math.PI * 2 / 257) * amplitude;
+    const output = compositeSample(input, point);
+    inputEnergy += input * input;
+    outputEnergy += output * output;
+    outputSum += output;
+  }
+  return {
+    rmsGain: Math.sqrt(outputEnergy / Math.max(1e-12, inputEnergy)),
+    mean: outputSum / length,
+  };
+}
+
+function mixedSineMetrics(point, amplitude, mix) {
+  let inputEnergy = 0;
+  let outputEnergy = 0;
+  const length = 16_384;
+  for (let index = 0; index < length; index += 1) {
+    const input = Math.sin(index * Math.PI * 2 / 257) * amplitude;
+    const output = input * (1 - mix) + compositeSample(input, point) * mix;
+    inputEnergy += input * input;
+    outputEnergy += output * output;
+  }
+  return { rmsGain: Math.sqrt(outputEnergy / Math.max(1e-12, inputEnergy)) };
+}
+
+function isMonotonic(point) {
+  let previous = compositeSample(-1, point);
+  for (let index = 1; index <= 4096; index += 1) {
+    const current = compositeSample(index / 2048 - 1, point);
+    if (current + 1e-6 < previous) return false;
+    previous = current;
+  }
+  return true;
 }
 
 function renderNeve(point) {

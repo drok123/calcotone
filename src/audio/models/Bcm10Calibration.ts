@@ -1,4 +1,4 @@
-export const BCM10_CAPTURE_REVISION = '2026-07-bcm10-hybrid-a';
+export const BCM10_CAPTURE_REVISION = '2026-08-bcm10-level-matched-b';
 
 const CAPTURE_SIZE = 2049;
 const CAPTURE_CORNERS = [
@@ -51,9 +51,13 @@ export function bcm10OperatingPoint(
   const weight = bipolarAroundDefault(clamp01(wow), 0.16);
   const presence = bipolarAroundDefault(clamp01(noise), 0.1);
   const drive = clamp01(tone);
-  const inputGain = 0.9 + drive * 1.32 + loading * 0.22;
-  const captureDrive = clamp01(0.12 + drive * 0.72 + loading * 0.16);
-  const captureColor = clamp01(0.24 + loading * 0.48 + Math.max(0, weight) * 0.16);
+  // Tone pushes the captured channel into its knee, while the reciprocal trim
+  // keeps the low-level wet path at unity. The former model normalized every
+  // nonlinear stage at full scale, which accidentally added 14-23 dB around
+  // zero and made the Mix control behave like another drive control.
+  const inputGain = 0.96 + drive * 0.72 + loading * 0.12;
+  const captureDrive = clamp01(0.12 + drive * 0.58 + loading * 0.1);
+  const captureColor = clamp01(0.22 + loading * 0.44 + Math.max(0, weight) * 0.14);
   const busCompression = 0.012 + loading * 0.044 + drive * 0.018;
   const busAsymmetry = 0.009 + loading * 0.024 + drive * 0.008;
   return {
@@ -62,7 +66,7 @@ export function bcm10OperatingPoint(
     captureColor,
     busCompression,
     busAsymmetry,
-    outputGain: 1 / Math.max(1, inputGain * (1.035 + drive * 0.18)),
+    outputGain: 1 / Math.max(1e-6, inputGain),
     lowHz: 105,
     lowDb: 0.35 + weight * 1.85 + loading * 0.28,
     highHz: 11_500,
@@ -93,7 +97,15 @@ function sampleCapture(capture: Float32Array, input: number): number {
   const position = (input * 0.5 + 0.5) * (capture.length - 1);
   const index = Math.max(0, Math.min(capture.length - 2, Math.floor(position)));
   const fraction = position - index;
-  return capture[index] * (1 - fraction) + capture[index + 1] * fraction;
+  const y0 = capture[Math.max(0, index - 1)];
+  const y1 = capture[index];
+  const y2 = capture[index + 1];
+  const y3 = capture[Math.min(capture.length - 1, index + 2)];
+  const fraction2 = fraction * fraction;
+  const a0 = -0.5 * y0 + 1.5 * y1 - 1.5 * y2 + 0.5 * y3;
+  const a1 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+  const a2 = -0.5 * y0 + 0.5 * y2;
+  return a0 * fraction * fraction2 + a1 * fraction2 + a2 * fraction + y1;
 }
 
 function buildCaptureCorner(drive: number, color: number): Float32Array {
@@ -107,17 +119,20 @@ function buildCaptureCorner(drive: number, color: number): Float32Array {
 
 /** Offline reference used once to construct the capture lattice at module load. */
 function referenceChannelAndTransformer(input: number, drive: number, color: number): number {
-  const channelDrive = 1.18 + drive * 4.1;
-  const channelAsymmetry = 0.018 + color * 0.055;
+  const channelDrive = 1.1 + drive * 3;
+  const channelAsymmetry = 0.012 + color * 0.038;
   const positiveScale = 1 + channelAsymmetry;
   const negativeScale = 1 - channelAsymmetry * 0.58;
-  const channel = Math.tanh(input * channelDrive * (input >= 0 ? positiveScale : negativeScale))
-    / Math.max(1e-6, Math.tanh(channelDrive));
+  const sideScale = input >= 0 ? positiveScale : negativeScale;
+  const channelSoft = Math.tanh(input * channelDrive * sideScale)
+    / Math.max(1e-6, channelDrive * sideScale);
+  const channelBlend = 0.18 + drive * 0.38;
+  const channel = input + (channelSoft - input) * channelBlend;
 
-  const coreDrive = 1.08 + color * 3.25 + drive * 0.7;
-  const memorylessHysteresis = channel + (channel * channel * channel - channel) * (0.018 + color * 0.032);
-  const evenOrder = Math.max(0, memorylessHysteresis) ** 2 * (0.008 + color * 0.018);
-  const transformer = Math.tanh((memorylessHysteresis + evenOrder) * coreDrive)
-    / Math.max(1e-6, Math.tanh(coreDrive));
-  return Math.max(-1, Math.min(1, transformer * (0.985 - color * 0.018)));
+  const coreDrive = 1.05 + color * 2.4 + drive * 0.45;
+  const transformerSoft = Math.tanh(channel * coreDrive) / Math.max(1e-6, coreDrive);
+  const transformerBlend = 0.12 + color * 0.28 + drive * 0.06;
+  const transformer = channel + (transformerSoft - channel) * transformerBlend;
+  const evenOrder = Math.max(0, transformer) ** 2 * (0.004 + color * 0.008);
+  return Math.max(-1, Math.min(1, transformer + evenOrder));
 }

@@ -519,6 +519,10 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
     { name: '15 IPS GLUE', parameters: { wear:[0.22,0.38], wow:[0.24,0.56], noise:[0.02,0.10], tone:[0.46,0.58], mix:[0.24,0.42] } },
     { name: '30 IPS CLEAN', parameters: { wear:[0.16,0.30], wow:[0.68,0.84], noise:[0.00,0.06], tone:[0.48,0.56], mix:[0.20,0.36] } },
   ],
+  'media:Neve BCM10': [
+    { name: 'CLEAN CLASS-A', parameters: { wear:[0.14,0.28], wow:[0.14,0.21], noise:[0.07,0.14], tone:[0.24,0.40], mix:[0.18,0.30] } },
+    { name: 'IRON BUS', parameters: { wear:[0.28,0.46], wow:[0.16,0.25], noise:[0.08,0.16], tone:[0.40,0.58], mix:[0.20,0.34] } },
+  ],
 };
 
 function withMusicalRandomMode(module: ModuleState): ModuleState {
@@ -1145,6 +1149,11 @@ export default function App() {
         }
         if (modeModule.id === 'bitcrusher' && parameter.id === 'chaos') {
           next = Math.min(next, 0.52);
+        }
+        if (modeModule.id === 'media' && modeModule.mediaMode === 'Neve BCM10') {
+          if (parameter.id === 'tone') next = Math.min(next, 0.68);
+          if (parameter.id === 'wear') next = Math.min(next, 0.72);
+          if (parameter.id === 'mix') next = Math.min(next, 0.38);
         }
         if (parameter.id === 'mix') {
           // Wet/dry is deliberately conservative so a randomized patch stays playable.
