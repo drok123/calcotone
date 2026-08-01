@@ -1,5 +1,5 @@
 const workletLoads = new WeakMap<AudioContext, Promise<void>>();
-const WORKLET_VERSION = '1.0.0-tpt-ada-lut';
+const WORKLET_VERSION = '1.1.0-tascam-dual-stage';
 
 async function ensureWorklet(context: AudioContext): Promise<void> {
   const existing = workletLoads.get(context);
@@ -41,6 +41,8 @@ export class AnalogSignalChainStage {
   private readonly processedGain: GainNode;
   private processor: AudioWorkletNode | null = null;
   private initializePromise: Promise<void> | null = null;
+  private processorConnected = false;
+  private suspendTimer: ReturnType<typeof setTimeout> | null = null;
   private enabled = false;
   private disposed = false;
   private settings: AnalogSignalChainSettings = {
@@ -97,6 +99,7 @@ export class AnalogSignalChainStage {
 
   public dispose(): void {
     this.disposed = true;
+    if (this.suspendTimer !== null) clearTimeout(this.suspendTimer);
     this.processor?.disconnect();
     this.input.disconnect();
     this.bypassGain.disconnect();
@@ -122,8 +125,6 @@ export class AnalogSignalChainStage {
         });
         processor.onprocessorerror = () => console.error('CALCOTONE analog signal-chain AudioWorklet stopped unexpectedly.');
         this.processor = processor;
-        this.input.connect(processor);
-        processor.connect(this.processedGain);
         this.syncParameters();
         this.syncRouting();
       } catch (error) {
@@ -138,8 +139,34 @@ export class AnalogSignalChainStage {
   private syncRouting(): void {
     const now = this.context.currentTime;
     const active = this.enabled && this.processor !== null;
+    if (this.suspendTimer !== null) {
+      clearTimeout(this.suspendTimer);
+      this.suspendTimer = null;
+    }
+    if (active) this.connectProcessor();
     this.bypassGain.gain.setTargetAtTime(active ? 0 : 1, now, 0.015);
     this.processedGain.gain.setTargetAtTime(active ? 1 : 0, now, 0.015);
+    if (!active && this.processorConnected) {
+      this.suspendTimer = setTimeout(() => {
+        this.suspendTimer = null;
+        if (!this.enabled && !this.disposed) this.suspendProcessor();
+      }, 80);
+    }
+  }
+
+  private connectProcessor(): void {
+    if (!this.processor || this.processorConnected) return;
+    this.input.connect(this.processor);
+    this.processor.connect(this.processedGain);
+    this.processor.port.postMessage({ type: 'reset' });
+    this.processorConnected = true;
+  }
+
+  private suspendProcessor(): void {
+    if (!this.processor || !this.processorConnected) return;
+    try { this.input.disconnect(this.processor); } catch { /* already disconnected */ }
+    try { this.processor.disconnect(this.processedGain); } catch { /* already disconnected */ }
+    this.processorConnected = false;
   }
 
   private syncParameters(): void {

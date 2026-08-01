@@ -186,8 +186,19 @@ function validateOperatingPoints() {
   assert(neve.asymmetry > api.asymmetry && api.asymmetry > ssl.asymmetry, 'console paths must retain distinct nonlinear asymmetry');
 
   const tascam = tascam424OperatingPoint(0.7, 0.16, 0.1, 0.8);
+  const tascamClean = tascam424OperatingPoint(0, 0.16, 0.1, 0);
+  const tascamTrimmed = tascam424OperatingPoint(1, 0.16, 0.1, 0);
+  const tascamDriven = tascam424OperatingPoint(0, 0.16, 0.1, 1);
   assert(tascam.highpassHz === 28 && tascam.lowpassHz === 19_000, 'TASCAM 424 insert bandwidth drifted');
-  assert(tascam.outputGain > 0 && tascam.outputGain <= 1, 'TASCAM 424 auto-trim is outside a stable range');
+  assert(tascam.outputGain > 0 && tascam.outputGain <= 1, 'TASCAM 424 partial compensation is outside a stable range');
+  assert(
+    tascamSmallSignalGain(tascamTrimmed) > tascamSmallSignalGain(tascamClean) * 1.5,
+    'TASCAM 424 Trim is still being cancelled by exact auto-trim',
+  );
+  assert(
+    tascamSmallSignalGain(tascamDriven) > tascamSmallSignalGain(tascamClean) * 1.5,
+    'TASCAM 424 Drive is still being cancelled by exact auto-trim',
+  );
 
   const atrSlow = atr102OperatingPoint(0.6, 0.04, 0.3, 0.6);
   const atrFast = atr102OperatingPoint(0.6, 0.9, 0.3, 0.6);
@@ -195,14 +206,41 @@ function validateOperatingPoints() {
   assert(atrSlow.instabilitySeconds > atrFast.instabilitySeconds, 'ATR-102 slow speed must increase transport instability');
 
   const mediaSource = readRequired(resolve(ROOT, 'src/audio/effects/Media.ts'));
+  const analogStageSource = readRequired(resolve(ROOT, 'src/audio/models/AnalogSignalChainStage.ts'));
+  for (const contract of ['this.connectProcessor()', 'this.suspendProcessor()', 'if (!this.enabled && !this.disposed)']) {
+    assert(analogStageSource.includes(contract), `analog signal-chain lifecycle lost ${contract}`);
+  }
   const tascamBranch = mediaSource.slice(
     mediaSource.indexOf("if (this.mode === 'tascam424')"),
     mediaSource.indexOf("if (this.mode === 'Neve 1073'"),
   );
-  for (const contract of ['this.disableTransport(now)', 'this.setCrossfeed(0, now)']) {
+  for (const contract of [
+    'this.tascamPreamp.configure({',
+    'inputGain: point.inputGain',
+    'drive: point.preDrive',
+    'this.tascamChannel.configure({',
+    'drive: point.postDrive',
+    'outputGain: point.outputGain',
+    'this.disableTransport(now)',
+    'this.setCrossfeed(0, now)',
+  ]) {
     assert(tascamBranch.includes(contract), `TASCAM 424 contract lost ${contract}`);
   }
   reports.push('operating points=BBD/compander, tape, spring, converter, consoles, TASCAM 424, ATR-102');
+}
+
+function tascamSmallSignalGain(point) {
+  return point.inputGain
+    * opAmpSmallSignalSlope(point.preDrive, point.preAsymmetry)
+    * opAmpSmallSignalSlope(point.postDrive, point.postAsymmetry)
+    * point.outputGain;
+}
+
+function opAmpSmallSignalSlope(drive, asymmetry) {
+  const positive = drive * (1 + asymmetry) / Math.max(1e-6, Math.tanh(drive * (1 + asymmetry)));
+  const negativeDrive = drive * (1 - asymmetry * 0.62);
+  const negative = negativeDrive / Math.max(1e-6, Math.tanh(negativeDrive));
+  return (positive + negative) * 0.5;
 }
 
 function validateWorklets() {

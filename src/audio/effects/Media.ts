@@ -3,7 +3,6 @@ import {
   atr102OperatingPoint,
   atr102Speed as calibratedAtr102Speed,
   atrTapeTransfer,
-  opAmpTransfer,
   summingBusOperatingPoint,
   summingBusTransfer,
   tascam424OperatingPoint,
@@ -13,6 +12,7 @@ import {
   bcm10CaptureTransfer,
   bcm10OperatingPoint,
 } from '../models/Bcm10Calibration';
+import { AnalogSignalChainStage } from '../models/AnalogSignalChainStage';
 import { BaseEffect } from './Effect';
 
 export type MediaMode =
@@ -58,7 +58,6 @@ const MIX = { id: 'mix', label: 'Mix', min: 0, max: 1, defaultValue: 0.26, step:
 const MAX_CURVE_CACHE = 384;
 const IDENTITY_CURVE = createIdentityCurve();
 const summingCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
-const opAmpCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
 const transformerCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
 const bcm10CurveCache = new Map<string, Float32Array<ArrayBuffer>>();
 const tapeCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
@@ -70,12 +69,14 @@ export class MediaEffect extends BaseEffect {
   public readonly name = 'Media';
 
   private readonly modelInputGain: GainNode;
+  private readonly tascamPreamp: AnalogSignalChainStage;
   private readonly preampStage: WaveShaperNode;
   private readonly lowShelf: BiquadFilterNode;
   private readonly highShelf: BiquadFilterNode;
   private readonly modelOutputGain: GainNode;
   private readonly highpass: BiquadFilterNode;
   private readonly lowpass: BiquadFilterNode;
+  private readonly tascamChannel: AnalogSignalChainStage;
   private readonly saturator: WaveShaperNode;
   private readonly splitter: ChannelSplitterNode;
   private readonly leftDelay: DelayNode;
@@ -105,12 +106,14 @@ export class MediaEffect extends BaseEffect {
   public constructor(context: AudioContext) {
     super(context);
     this.modelInputGain = context.createGain();
+    this.tascamPreamp = new AnalogSignalChainStage(context);
     this.preampStage = context.createWaveShaper();
     this.lowShelf = context.createBiquadFilter();
     this.highShelf = context.createBiquadFilter();
     this.modelOutputGain = context.createGain();
     this.highpass = context.createBiquadFilter();
     this.lowpass = context.createBiquadFilter();
+    this.tascamChannel = new AnalogSignalChainStage(context);
     this.saturator = context.createWaveShaper();
     this.splitter = context.createChannelSplitter(2);
     this.leftDelay = context.createDelay(0.55);
@@ -147,13 +150,15 @@ export class MediaEffect extends BaseEffect {
     this.flutterLfo.type = 'triangle';
 
     this.input.connect(this.modelInputGain);
-    this.modelInputGain.connect(this.preampStage);
+    this.modelInputGain.connect(this.tascamPreamp.input);
+    this.tascamPreamp.connect(this.preampStage);
     this.preampStage.connect(this.lowShelf);
     this.lowShelf.connect(this.highShelf);
     this.highShelf.connect(this.modelOutputGain);
     this.modelOutputGain.connect(this.highpass);
     this.highpass.connect(this.lowpass);
-    this.lowpass.connect(this.saturator);
+    this.lowpass.connect(this.tascamChannel.input);
+    this.tascamChannel.connect(this.saturator);
     this.saturator.connect(this.splitter);
     this.splitter.connect(this.leftDelay, 0);
     this.splitter.connect(this.rightDelay, 1);
@@ -247,6 +252,8 @@ export class MediaEffect extends BaseEffect {
     try { this.flutterLfo.stop(); } catch { /* already stopped */ }
     try { this.cassetteNoise.stop(); } catch { /* already stopped */ }
     try { this.vinylNoise.stop(); } catch { /* already stopped */ }
+    this.tascamPreamp.dispose();
+    this.tascamChannel.dispose();
     [
       this.modelInputGain, this.preampStage, this.lowShelf, this.highShelf, this.modelOutputGain,
       this.highpass, this.lowpass, this.saturator, this.splitter, this.leftDelay, this.rightDelay,
@@ -285,20 +292,43 @@ export class MediaEffect extends BaseEffect {
 
     if (this.mode === 'tascam424') {
       const point = tascam424OperatingPoint(this.wear, this.wow, this.noise, this.tone);
-      this.modelInputGain.gain.setTargetAtTime(point.inputGain, now, 0.025);
-      this.setPreampCurve(getOpAmpCurve(point.preDrive, point.preAsymmetry));
+      this.modelInputGain.gain.setTargetAtTime(1, now, 0.025);
+      this.setPreampCurve(IDENTITY_CURVE);
+      this.tascamPreamp.configure({
+        inputGain: point.inputGain,
+        drive: point.preDrive,
+        asymmetry: point.preAsymmetry,
+        shapeMode: 'ada',
+        cutoffHz: 24_000,
+        dcCutoffHz: 8,
+        outputGain: 1,
+      });
+      this.tascamPreamp.setEnabled(true);
       this.lowShelf.frequency.setTargetAtTime(point.lowShelfHz, now, 0.04);
       this.lowShelf.gain.setTargetAtTime(point.lowShelfDb, now, 0.04);
       this.highShelf.frequency.setTargetAtTime(point.highShelfHz, now, 0.04);
       this.highShelf.gain.setTargetAtTime(point.highShelfDb, now, 0.04);
-      this.modelOutputGain.gain.setTargetAtTime(point.outputGain, now, 0.035);
+      this.modelOutputGain.gain.setTargetAtTime(1, now, 0.035);
       this.highpass.frequency.setTargetAtTime(point.highpassHz, now, 0.04);
       this.lowpass.frequency.setTargetAtTime(point.lowpassHz, now, 0.04);
-      this.setSaturatorCurve(getOpAmpCurve(point.postDrive, point.postAsymmetry));
+      this.setSaturatorCurve(IDENTITY_CURVE);
+      this.tascamChannel.configure({
+        inputGain: 1,
+        drive: point.postDrive,
+        asymmetry: point.postAsymmetry,
+        shapeMode: 'ada',
+        cutoffHz: 24_000,
+        dcCutoffHz: 8,
+        outputGain: point.outputGain,
+      });
+      this.tascamChannel.setEnabled(true);
       this.disableTransport(now);
       this.setCrossfeed(0, now);
       return;
     }
+
+    this.tascamPreamp.setEnabled(false);
+    this.tascamChannel.setEnabled(false);
 
     if (this.mode === 'Neve BCM10') {
       const point = bcm10OperatingPoint(this.wear, this.wow, this.noise, this.tone);
@@ -476,19 +506,6 @@ function getSummingCurve(compression: number, asymmetry: number): Float32Array<A
     for (let index = 0; index < curve.length; index += 1) {
       const x = (index / (curve.length - 1)) * 2 - 1;
       curve[index] = summingBusTransfer(x, comp, asym);
-    }
-    return curve;
-  });
-}
-
-function getOpAmpCurve(drive: number, asymmetry: number): Float32Array<ArrayBuffer> {
-  const safeDrive = Math.max(1, quantize(drive, 128));
-  const asym = quantize(asymmetry, 512);
-  return cacheCurve(opAmpCurveCache, `${safeDrive}:${asym}`, () => {
-    const curve = new Float32Array(4096);
-    for (let index = 0; index < curve.length; index += 1) {
-      const x = (index / (curve.length - 1)) * 2 - 1;
-      curve[index] = opAmpTransfer(x, safeDrive, asym);
     }
     return curve;
   });
