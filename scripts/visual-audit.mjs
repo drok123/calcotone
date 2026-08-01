@@ -60,6 +60,9 @@ requireText(pressureDisplay, 'subscribeViewportAnimation(render)', 'Shared modul
 requireText(pressureDisplay, '1000 / 18', 'Bounded module display cadence');
 requireText(pressureDisplay, 'IntersectionObserver', 'Offscreen module display sleep');
 requireText(pressureDisplay, 'if (canvas.width !== pixelWidth)', 'Module display resize allocation guard');
+requireText(pressureDisplay, "MODULE_ART_OFF_WHITE = '#f2ead8'", 'Unified off-white module artwork');
+requireText(pressureDisplay, 'context.fillStyle = textRow ? profile.primary : MODULE_ART_OFF_WHITE', 'Accent-only module text palette');
+requireText(pressureDisplay, '(column + row + seed) % 17 === 0', 'Sparse animated accent details');
 forbidText(ascii, 'requestAnimationFrame(', 'Independent ASCII animation loop');
 forbidText(ascii, 'Math.random()', 'Random per-frame artwork');
 forbidText(ascii, 'audio.driftPhase', 'Unbounded ASCII drift phase');

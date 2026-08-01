@@ -72,6 +72,7 @@ const PROFILES: Record<string, DisplayProfile> = {
 
 const TAU = Math.PI * 2;
 const LOOP_SECONDS = 18;
+const MODULE_ART_OFF_WHITE = '#f2ead8';
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
@@ -237,6 +238,7 @@ function drawDisplay(
 
   for (let row = 0; row < rows; row += 1) {
     let line = '';
+    let accentLine: string | null = null;
     let intensity = 0.5;
 
     if (row === 0) {
@@ -261,6 +263,7 @@ function drawDisplay(
       intensity = 0.7;
     } else if (row >= graphStart && row < graphEnd) {
       const chars = Array.from({ length: innerWidth }, () => ' ');
+      const accents = Array.from({ length: innerWidth }, () => ' ');
       const y = ((row - graphStart) / Math.max(1, graphRows - 1)) * 2 - 1;
       for (let column = 0; column < innerWidth; column += 1) {
         const x = (column / Math.max(1, innerWidth - 1)) * 2 - 1;
@@ -271,9 +274,13 @@ function drawDisplay(
         if (normalized < 0.22) continue;
         const index = Math.min(profile.glyphs.length - 1, Math.floor(normalized * profile.glyphs.length));
         chars[column] = profile.glyphs[index] ?? ' ';
+        if (normalized > 0.76 && (column + row + seed) % 17 === 0) {
+          accents[column] = chars[column];
+        }
         intensity = Math.max(intensity, normalized);
       }
       line = `║${chars.join('')}║`;
+      accentLine = ` ${accents.join('')} `;
     } else if (row === rows - 2) {
       const status = `${enabled ? 'ONLINE' : 'BYPASS'} // ${(seed >>> 0).toString(16).toUpperCase().padStart(8, '0')}`;
       line = `║${centerText(status, innerWidth)}║`;
@@ -287,8 +294,16 @@ function drawDisplay(
     }
 
     context.globalAlpha = enabled ? 0.62 + intensity * 0.34 : 0.28 + intensity * 0.18;
-    context.fillStyle = row % 5 === 0 ? profile.secondary : profile.primary;
+    const graphRow = row >= graphStart && row < graphEnd;
+    const textRow = row === 1 || row === 2 || row === 4 || row === 5 || row === rows - 2;
+    context.fillStyle = textRow ? profile.primary : MODULE_ART_OFF_WHITE;
+    context.shadowColor = textRow ? profile.primary : MODULE_ART_OFF_WHITE;
     context.fillText(line, 0, row * lineHeight);
+    if (graphRow && accentLine) {
+      context.fillStyle = profile.primary;
+      context.shadowColor = profile.primary;
+      context.fillText(accentLine, 0, row * lineHeight);
+    }
   }
 
   context.globalAlpha = 1;

@@ -85,6 +85,8 @@ forbidText(engine, 'audio.driftPhase', 'Unbounded non-looping landscape phase');
 requireText(pressureDisplay, '╔', 'Pressure-style framed display');
 requireText(pressureDisplay, "'█'.repeat(active)", 'Pressure-style block meter');
 requireText(pressureDisplay, 'moduleModeLabel(module)', 'Readable mode display');
+requireText(pressureDisplay, "MODULE_ART_OFF_WHITE = '#f2ead8'", 'Unified off-white module artwork');
+requireText(pressureDisplay, 'context.fillStyle = textRow ? profile.primary : MODULE_ART_OFF_WHITE', 'Module text-only accent palette');
 requireText(pressureDisplay, 'subscribeViewportAnimation(render)', 'Shared module display scheduler');
 requireText(pressureDisplay, 'IntersectionObserver', 'Offscreen module display suspension');
 requireText(pressureDisplay, 'Math.min(1.35, window.devicePixelRatio', 'Portable module display pixel cap');
