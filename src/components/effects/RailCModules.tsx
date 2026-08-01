@@ -1120,7 +1120,7 @@ function PressureModule({
   visualState: VisualAudioState;
 }) {
   const state = usePressureState();
-  const meter = Math.max(1, Math.round((state.enabled ? visualState.level : 0) * 18));
+  const meter = Math.max(0, Math.round((state.enabled ? visualState.level : 0) * 18));
   const meterText = `${'█'.repeat(meter)}${'░'.repeat(18 - meter)}`;
 
   function randomizePressureProfile(profile: RandomizationProfile): string | null {

@@ -319,8 +319,10 @@ export function PressureStyleDisplay({ module, visualState }: PressureStyleDispl
       width = Math.max(1, bounds.width);
       height = Math.max(1, bounds.height);
       dpr = Math.min(1.35, window.devicePixelRatio || 1);
-      canvas.width = Math.max(1, Math.round(width * dpr));
-      canvas.height = Math.max(1, Math.round(height * dpr));
+      const pixelWidth = Math.max(1, Math.round(width * dpr));
+      const pixelHeight = Math.max(1, Math.round(height * dpr));
+      if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+      if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
       lastDraw = Number.NEGATIVE_INFINITY;
     };
 

@@ -102,6 +102,7 @@ export class MediaEffect extends BaseEffect {
   private artifactMix = MIX.defaultValue;
   private currentPreampCurve: Float32Array<ArrayBuffer> | null = null;
   private currentSaturatorCurve: Float32Array<ArrayBuffer> | null = null;
+  private transportAttached = true;
 
   public constructor(context: AudioContext) {
     super(context);
@@ -289,6 +290,7 @@ export class MediaEffect extends BaseEffect {
   private applyCharacter(): void {
     const now = this.context.currentTime;
     this.mediaGain.gain.setTargetAtTime(1, now, 0.025);
+    this.setTransportAttached(!ARTIFACT_CONSOLE_MODES.some((mode) => mode === this.mode));
 
     if (this.mode === 'tascam424') {
       const point = tascam424OperatingPoint(this.wear, this.wow, this.noise, this.tone);
@@ -435,6 +437,22 @@ export class MediaEffect extends BaseEffect {
     this.rightDelay.delayTime.setTargetAtTime(0, now, 0.03);
     this.cassetteNoiseGain.gain.setTargetAtTime(0, now, 0.03);
     this.vinylNoiseGain.gain.setTargetAtTime(0, now, 0.03);
+  }
+
+  private setTransportAttached(attached: boolean): void {
+    if (attached === this.transportAttached) return;
+    if (attached) {
+      this.cassetteNoise.connect(this.cassetteNoiseGain);
+      this.vinylNoise.connect(this.vinylNoiseGain);
+      this.leftDepth.connect(this.leftDelay.delayTime);
+      this.rightDepth.connect(this.rightDelay.delayTime);
+    } else {
+      this.cassetteNoise.disconnect(this.cassetteNoiseGain);
+      this.vinylNoise.disconnect(this.vinylNoiseGain);
+      this.leftDepth.disconnect(this.leftDelay.delayTime);
+      this.rightDepth.disconnect(this.rightDelay.delayTime);
+    }
+    this.transportAttached = attached;
   }
 
   private setCrossfeed(amount: number, now: number): void {

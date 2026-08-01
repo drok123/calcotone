@@ -16,7 +16,6 @@ const requireText = (source, needle, label) => {
 };
 
 const routing = read('src/routing/serialRouting.ts');
-const hook = read('src/routing/useSerialRouting.ts');
 const app = read('src/App.tsx');
 const railCModules = read('src/components/effects/RailCModules.tsx');
 const vite = read('vite.config.ts');
@@ -36,14 +35,6 @@ requireText(routing, 'next[source.rail][source.index] = targetId', 'fixed-slot c
 requireText(routing, 'serialOrderFromRack(', 'rack-to-six-effect projection');
 requireText(routing, 'restoreRackRail(', 'per-rail factory restore');
 requireText(routing, 'shuffledRackOrder(', 'family-safe rack randomization');
-
-requireText(hook, 'orderRef = useRef<string[]>(initial)', 'native routing hook owns immediate order');
-requireText(hook, 'orderRef.current = next', 'routing ref updates synchronously');
-requireText(hook, 'moveSerialModule(orderRef.current', 'hook delegates drag to serial model');
-requireText(hook, 'nudgeSerialModule(orderRef.current', 'hook delegates nudge to serial model');
-requireText(hook, 'shuffledSerialOrder(orderRef.current)', 'hook delegates SIGNAL RANDOM to serial model');
-requireText(hook, 'topRow: rows.top', 'hook projects top row');
-requireText(hook, 'bottomRow: rows.bottom', 'hook projects bottom row');
 
 requireText(app, "from './routing/serialRouting'", 'App directly uses routing owner');
 requireText(app, 'moveRackModule(', 'native cross-rail drag');

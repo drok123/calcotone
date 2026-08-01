@@ -17,6 +17,7 @@ const forbidText = (source, needle, label) => {
 
 const ascii = read('src/components/ascii/AsciiArtEngine.tsx');
 const asciiCss = read('src/components/ascii/AsciiArtEngine.css');
+const pressureDisplay = read('src/components/ascii/PressureStyleDisplay.tsx');
 const viewport = read('src/components/effects/ModuleViewport.tsx');
 const field = read('src/components/motion/XYSignalField.tsx');
 const motionPad = read('src/components/motion/MotionPad.tsx');
@@ -29,7 +30,7 @@ const faceplate = read('src/ui/faceplateLayout.ts');
 const vite = read('vite.config.ts');
 const main = read('src/main.tsx');
 
-requireText(viewport, '<AsciiArtEngine kind="module" module={module}', 'Module ASCII surface');
+requireText(viewport, '<PressureStyleDisplay module={module}', 'Pressure-style module ASCII surface');
 requireText(viewport, 'moduleModeKey(module)', 'Dropdown-driven module scene');
 requireText(viewport, 'is-reconfiguring', 'Dropdown reconfiguration transition');
 forbidText(viewport, 'viewport-caption', 'Duplicate module artwork label');
@@ -55,14 +56,10 @@ requireText(ascii, '1000 / 18', 'Bounded ASCII cadence');
 requireText(ascii, 'const horizontalScale = width / gridWidth', 'Edge-to-edge ASCII width fit');
 requireText(ascii, 'const verticalScale = height / gridHeight', 'Edge-to-edge ASCII height fit');
 requireText(ascii, 'dpr * horizontalScale', 'Measured ASCII canvas transform');
-requireText(ascii, 'createEmberSampler', 'Ember centered flame emblem');
-requireText(ascii, 'createDriftSampler', 'Drift centered water emblem');
-requireText(ascii, 'createHaloSampler', 'Halo centered ring emblem');
-requireText(ascii, 'createAtmosSampler', 'Atmos centered globe emblem');
-requireText(ascii, 'createGrainSampler', 'Grain centered tesseract emblem');
-requireText(ascii, 'createArtifactSampler', 'Artifact centered circuit emblem');
-requireText(ascii, 'Math.max(54, Math.min(104, Math.floor(width / 4.15)))', 'High-density module glyph grid');
-requireText(ascii, 'if (!isModule && row === 0)', 'Module emblem has no duplicate ASCII header');
+requireText(pressureDisplay, 'subscribeViewportAnimation(render)', 'Shared module display scheduler');
+requireText(pressureDisplay, '1000 / 18', 'Bounded module display cadence');
+requireText(pressureDisplay, 'IntersectionObserver', 'Offscreen module display sleep');
+requireText(pressureDisplay, 'if (canvas.width !== pixelWidth)', 'Module display resize allocation guard');
 forbidText(ascii, 'requestAnimationFrame(', 'Independent ASCII animation loop');
 forbidText(ascii, 'Math.random()', 'Random per-frame artwork');
 forbidText(ascii, 'audio.driftPhase', 'Unbounded ASCII drift phase');
@@ -97,6 +94,9 @@ requireText(faceplate, 'window.localStorage.getItem(FACTORY_LAYOUT_REVISION_KEY)
 requireText(faceplate, 'return cloneLayout(FACTORY_FACEPLATE_LAYOUT)', 'Factory layout fallback');
 forbidText(faceplate, 'AUTO_FACEPLATE_LAYOUT', 'Automatic layout can override approved geometry');
 requireText(faceplate, 'Math.max(...knobs.map((point) => point.y)) + 46', 'Exact saved-layout floor preservation');
+requireText(faceplate, 'viewportHeight: 168', 'Pressure factory viewport integration');
+requireText(faceplate, '{ x: 0.14, y: 240 }', 'Pressure factory knob integration');
+forbidText(main, "import './approvedFaceplateLayoutPatch'", 'Retired startup layout mutation');
 
 requireText(hardwarePalette, '--calcotone-cream-ink: #101315', 'Patches-charcoal ink on cream');
 requireText(hardwarePalette, '.spectrum-header {', 'Cream Spectrum title/LIVE box');

@@ -1666,12 +1666,13 @@ export default function App() {
     }
     const refresh = () => {
       engineRef.current?.updateAdaptivePerformance();
-      setProfiler(engineRef.current?.getProfilerSnapshot() ?? null);
+      if (profilerOpen) setProfiler(engineRef.current?.getProfilerSnapshot() ?? null);
     };
+    if (!profilerOpen) setProfiler(null);
     refresh();
     const timer = window.setInterval(refresh, 500);
     return () => window.clearInterval(timer);
-  }, [isRunning]);
+  }, [isRunning, profilerOpen]);
 
   return (
     <div className="app-shell">
@@ -2328,10 +2329,13 @@ function createPatchPath(
 }
 
 function sanitizeFileName(value: string): string {
-  return value
-    .trim()
+  let printable = '';
+  for (const character of value.trim()) {
+    printable += character.charCodeAt(0) < 32 ? '-' : character;
+  }
+  return printable
     .replace(/\.wav$/i, '')
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-')
+    .replace(/[<>:"/\\|?*]/g, '-')
     .replace(/\s+/g, ' ')
     .replace(/[. ]+$/g, '')
     .slice(0, 64);

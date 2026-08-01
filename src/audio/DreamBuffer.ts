@@ -276,7 +276,7 @@ export class DreamBuffer {
   }
 
   public detachAllRoutes(): void {
-    for (const id of [...this.routes.keys()]) this.detachRoute(id);
+    for (const id of this.routes.keys()) this.detachRoute(id);
   }
 
   public connectReturn(destination: AudioNode): void {
@@ -296,7 +296,7 @@ export class DreamBuffer {
 
   public dispose(): void {
     this.detachAllRoutes();
-    for (const id of [...this.sendGains.keys()]) this.detachSource(id);
+    for (const id of this.sendGains.keys()) this.detachSource(id);
     for (const timer of this.sourceDisconnectTimers.values()) clearTimeout(timer);
     this.sourceDisconnectTimers.clear();
     this.node.onprocessorerror = null;

@@ -64,7 +64,7 @@ interface ModeArtVariant {
 }
 
 // Each dropdown is a named visual variation inside its parent module's art
-// language. The explicit table makes semantic coverage auditable for all 85
+// language. The explicit table makes semantic coverage auditable for all 86
 // modes instead of relying on a seed to make nominally different noise.
 export const MODE_ART_VARIANTS = {
   'saturation:velvet': { motif: 'bloom', scale: 3.2, amount: 0.34, bias: 0.08 },
@@ -157,6 +157,7 @@ export const MODE_ART_VARIANTS = {
   'media:neve 1073': { motif: 'channels', scale: 6.0, amount: 0.38, bias: 0.80 },
   'media:ssl 4000e': { motif: 'channels', scale: 8.0, amount: 0.39, bias: 0.88 },
   'media:api 1608': { motif: 'channels', scale: 10.0, amount: 0.38, bias: 0.96 },
+  'media:neve bcm10': { motif: 'channels', scale: 12.0, amount: 0.41, bias: 1.04 },
 } as const satisfies Record<string, ModeArtVariant>;
 
 const TAU = Math.PI * 2;

@@ -29,21 +29,21 @@ const randomProfiles = read('src/features/random/randomProfiles.ts');
 const railCModules = read('src/components/effects/RailCModules.tsx');
 const app = read('src/App.tsx');
 const randomRuntime = randomBridge + randomCapture + randomDspScheduler + randomUiFlow + railCRandom + randomProfiles;
-const enginePatch = read('src/engineStabilityPatch.ts');
-const enginePolicy = read('src/features/engine/engineStabilityPolicy.ts');
 const inputMatrix = read('src/audio/InputMatrix.ts');
 const haloPatch = read('src/haloStabilityPatch.ts');
-const artifactPatch = read('src/artifactStabilityPatch.ts');
 const reverb = read('src/audio/effects/Reverb.ts');
 const chorus = read('src/audio/effects/Chorus.ts');
 const grain = read('src/audio/effects/Bitcrusher.ts');
 const viewport = read('src/components/effects/ModuleViewport.tsx');
 const ascii = read('src/components/ascii/AsciiArtEngine.tsx');
+const pressureDisplay = read('src/components/ascii/PressureStyleDisplay.tsx');
 const media = read('src/audio/effects/Media.ts');
 const ember = read('src/audio/effects/Saturation.ts');
 const main = read('src/main.tsx');
 const scheduler = read('src/components/effects/viewportScheduler.ts');
 const engine = read('src/audio/AudioEngine.ts');
+const baseEffect = read('src/audio/effects/Effect.ts');
+const physicalRegistry = read('src/audio/PhysicalBehaviorRegistry.ts');
 const knob = read('src/components/controls/Knob.tsx');
 
 // Drift classic stays wet-only, allocation-conscious, and coefficient-throttled.
@@ -113,17 +113,13 @@ forbidText(randomRuntime, 'directSetEffectBypassed.call(engine, effectId, bypass
 // Global engine quality should become more transparent as quality increases, and hidden diagnostics
 // must not keep doing FFT work while the DSP panel is closed. Shutdown also waits for any pending
 // click-safe reorder so the route fade cannot dereference graph/context after teardown.
-requireText(main, "import './engineStabilityPatch'", 'Engine stability patch load');
-requireText(enginePatch, "from './features/engine/engineStabilityPolicy'", 'Engine stability policy wiring');
-requireText(enginePolicy, "mode === 'studio' ? -0.75", 'Studio transparent limiter threshold');
-requireText(enginePolicy, "mode === 'studio' ? 4", 'Studio transparent limiter ratio');
-requireText(enginePatch, "document.querySelector('.dsp-profiler')", 'Profiler visibility guard');
-requireText(enginePolicy, 'const stats = grainStats(engine)', 'Adaptive Grain-only health read');
-requireText(enginePolicy, 'spectralCentroidHz: 0', 'Hidden profiler avoids spectrum work');
-requireText(enginePatch, 'await internal.routeTransition.catch(() => undefined)', 'Route transition teardown serialization');
-requireText(enginePatch, 'prototype.stop = stableStop', 'Route-safe stop patch install');
-requireText(enginePatch, 'prototype.stop = originalStop', 'Route-safe stop HMR restore');
-requireText(enginePatch, 'import.meta.hot.dispose(uninstall)', 'Engine patch HMR teardown');
+forbidText(main, "import './engineStabilityPatch'", 'Retired engine prototype patch');
+requireText(engine, 'const stats = this.getGrainProfilerStats()', 'Adaptive Grain-only health read');
+requireText(engine, "this.performanceMode === 'studio' ? -0.75", 'Studio transparent limiter threshold');
+requireText(engine, "this.performanceMode === 'studio' ? 4", 'Studio transparent limiter ratio');
+requireText(engine, 'await this.routeTransition.catch(() => undefined)', 'Route transition teardown serialization');
+requireText(app, 'if (profilerOpen) setProfiler(', 'Hidden profiler publish guard');
+requireText(app, '}, [isRunning, profilerOpen]);', 'Profiler visibility lifecycle');
 
 // Input mode changes are natively click-smoothed and sum-mono must not add ~3 dB on correlated stereo.
 forbidText(main, "import './inputStabilityPatch'", 'Removed input monkey patch');
@@ -144,16 +140,22 @@ requireText(haloPatch, 'import.meta.hot.dispose(uninstall)', 'Halo patch HMR tea
 
 // Artifact keeps transport/noise branches out of console paths, but ATR-102 must retain
 // its mechanism-specific wow/flutter/hiss path. Curve caches remain explicitly bounded.
-requireText(main, "import './artifactStabilityPatch'", 'Artifact stability patch load');
-requireText(artifactPatch, 'function canSuspendTransport', 'Artifact transport ownership');
-requireText(artifactPatch, 'ARTIFACT_CONSOLE_MODES.some', 'Artifact console transport sleep');
-forbidText(artifactPatch, "|| mode === 'Ampex ATR-102'", 'Artifact ATR-102 transport must stay live');
-requireText(artifactPatch, 'cassetteNoise.disconnect', 'Artifact noise branch detach');
-requireText(artifactPatch, 'leftDepth.disconnect', 'Artifact modulation branch detach');
-requireText(artifactPatch, '__calcotoneArtifactBranchesAttached === undefined', 'Artifact initial branch-state guard');
-requireText(artifactPatch, 'import.meta.hot.dispose(uninstall)', 'Artifact patch HMR teardown');
+forbidText(main, "import './artifactStabilityPatch'", 'Retired Artifact monkey patch');
+requireText(media, 'private transportAttached = true', 'Artifact native transport ownership');
+requireText(media, 'this.setTransportAttached(!ARTIFACT_CONSOLE_MODES.some', 'Artifact console transport sleep');
+requireText(media, 'this.cassetteNoise.disconnect(this.cassetteNoiseGain)', 'Artifact native noise branch detach');
+requireText(media, 'this.leftDepth.disconnect(this.leftDelay.delayTime)', 'Artifact native modulation branch detach');
 requireText(media, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve cache');
 requireText(media, 'if (cache.size >= MAX_CURVE_CACHE)', 'Artifact curve cache eviction');
+
+// Bypass teardown and startup latency are native owners; no prototype patch may
+// silently rewrite AudioContext or hardware behavior at module import time.
+forbidText(main, "import './realtimeStabilityPatch'", 'Retired realtime prototype patch');
+requireText(engine, "latencyHint: this.performanceMode === 'studio' ? 'playback' : 0.02", 'Native audio scheduling headroom');
+requireText(baseEffect, "if (this.bypassed && profile !== 'bypass') return", 'Bypassed behavior-stage allocation guard');
+requireText(baseEffect, 'if (this.bypassed && enabled) return', 'Bypassed spring allocation guard');
+requireText(physicalRegistry, "effect.configureBehavior('bypass', 0, 0, 0, 0.5)", 'Native bypass hardware teardown');
+requireText(physicalRegistry, 'if (!bypassed) syncPhysicalBehavior(effect)', 'Native behavior restoration');
 
 // Ember, Drift and Grain own mechanism routing natively; the shared monkey patch must stay gone.
 forbidText(main, "import './moduleStabilityPatch'", 'Removed module branch monkey patch');
@@ -185,11 +187,13 @@ requireText(ember, 'if (curveCache.size >= MAX_CURVE_CACHE)', 'Ember curve cache
  // sleeps while offscreen, and never owns a decoder or animation loop.
 forbidText(main, "import './videoStabilityPatch'", 'Removed video repair monkey patch');
 forbidText(main, "import './components/effects/VideoColorStability.css'", 'Retired video stylesheet');
-requireText(viewport, '<AsciiArtEngine kind="module" module={module}', 'Module ASCII wiring');
+requireText(viewport, '<PressureStyleDisplay module={module}', 'Module ASCII wiring');
 requireText(ascii, 'subscribeViewportAnimation(render)', 'ASCII shared scheduler');
 requireText(ascii, 'IntersectionObserver', 'ASCII offscreen suspension');
 requireText(ascii, '1000 / 18', 'ASCII bounded active cadence');
 requireText(ascii, 'Math.min(1.35, window.devicePixelRatio', 'ASCII pixel-density cap');
+requireText(pressureDisplay, 'subscribeViewportAnimation(render)', 'Module display shared scheduler');
+requireText(pressureDisplay, 'if (canvas.width !== pixelWidth)', 'Module display resize allocation guard');
 forbidText(ascii, 'requestAnimationFrame(', 'Independent ASCII animation loop');
 forbidText(viewport, '<video', 'Module decoder');
 forbidText(viewport, '.mp4', 'Module video payload');

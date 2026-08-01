@@ -114,13 +114,13 @@ export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
       buttons: [],
     },
     pressure: {
-      viewportHeight: 150,
+      viewportHeight: 168,
       stageHeight: 292,
       knobs: [
-        { x: 0.14, y: 210 },
-        { x: 0.38, y: 210 },
-        { x: 0.62, y: 210 },
-        { x: 0.86, y: 210 },
+        { x: 0.14, y: 240 },
+        { x: 0.38, y: 240 },
+        { x: 0.62, y: 240 },
+        { x: 0.86, y: 240 },
       ],
       buttons: [
         { x: 0.14, y: 278 },

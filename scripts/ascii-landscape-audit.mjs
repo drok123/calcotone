@@ -30,10 +30,6 @@ const effectFiles = [
   ['media', 'src/audio/effects/Media.ts', 'MEDIA_MODE_ORDER'],
 ];
 
-const visualAliases = new Map([
-  ['media:neve bcm10', 'media:neve 1073'],
-]);
-
 function hashAsciiScene(value) {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
@@ -58,17 +54,12 @@ for (const [moduleId, relative, orderName] of effectFiles) {
     const collision = identities.get(seed);
     if (collision) failures.push(`ASCII identity collision: ${collision} and ${key}`);
     identities.set(seed, key);
-    const artKey = visualAliases.get(normalizedKey) ?? normalizedKey;
-    requireText(engine, `'${artKey}':`, `${key} named ASCII variant`);
+    requireText(engine, `'${normalizedKey}':`, `${key} named ASCII variant`);
   }
 }
 if (dropdownModeCount !== 86) {
   failures.push(`Expected 86 dropdown ASCII identities; found ${dropdownModeCount}`);
 }
-for (const [alias, target] of visualAliases) {
-  if (hashAsciiScene(alias) === hashAsciiScene(target)) failures.push(`ASCII alias seed collision: ${alias} and ${target}`);
-}
-
 requireText(engine, 'export function moduleModeKey', 'Exact module/mode identity');
 requireText(engine, 'return `${module.id}:${moduleMode(module)}`', 'Module-qualified dropdown key');
 requireText(engine, 'hashAsciiScene(key)', 'Deterministic per-mode seed');

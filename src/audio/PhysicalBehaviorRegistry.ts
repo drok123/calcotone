@@ -48,9 +48,18 @@ export function attachPhysicalBehavior(effect: Effect): Effect {
   if (attached.has(effect)) return effect;
   attached.add(effect);
   const originalSetParameter = effect.setParameter.bind(effect);
+  const originalSetBypassed = effect.setBypassed.bind(effect);
   effect.setParameter = (parameterId: string, parameterValue: number): void => {
     originalSetParameter(parameterId, parameterValue);
     if (parameterId !== 'mix') syncPhysicalBehavior(effect);
+  };
+  effect.setBypassed = (bypassed: boolean): void => {
+    if (bypassed) {
+      effect.configureSpringHardware(false, 0, 0, 0, 0);
+      effect.configureBehavior('bypass', 0, 0, 0, 0.5);
+    }
+    originalSetBypassed(bypassed);
+    if (!bypassed) syncPhysicalBehavior(effect);
   };
   syncPhysicalBehavior(effect);
   return effect;

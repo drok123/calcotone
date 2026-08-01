@@ -119,7 +119,8 @@ requireText(artifact, "this.mode === 'Ampex ATR-102'", 'Artifact ATR-102 impleme
 requireText(artifact, "this.mode === 'tascam424'", 'Artifact TASCAM 424 path');
 for (const mode of ['Neve 1073','SSL 4000E','API 1608','Neve BCM10']) requireText(artifact, `this.mode === '${mode}'`, `Artifact ${mode} console path`);
 requireText(artifact, 'summingBusOperatingPoint(this.mode', 'Artifact calibrated summing-bus routing');
-requireText(artifact, 'getOpAmpCurve(', 'Artifact op-amp path');
+requireText(artifact, 'this.tascamPreamp.configure({', 'Artifact worklet op-amp path');
+requireText(artifact, 'this.tascamChannel.configure({', 'Artifact worklet channel path');
 requireText(artifact, 'getBcm10CaptureCurve(', 'Artifact BCM10 captured 1073N/Marinair stage');
 requireText(artifact, 'getSummingCurve(point.busCompression, point.busAsymmetry)', 'Artifact BCM10 live 1272 summing stage');
 forbidText(artifact, 'AudioWorkletNode', 'Artifact digital-capture ownership');

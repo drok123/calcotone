@@ -263,6 +263,7 @@ export abstract class BaseEffect implements Effect {
     memory: number,
     color: number,
   ): void {
+    if (this.bypassed && profile !== 'bypass') return;
     const dedicated: DedicatedHardware = profile === 'charge'
       ? 'bbd'
       : profile === 'magnetic' || profile === 'transport'
@@ -287,6 +288,7 @@ export abstract class BaseEffect implements Effect {
   }
 
   public configureSpringHardware(enabled: boolean, decay: number, size: number, color: number, drive: number): void {
+    if (this.bypassed && enabled) return;
     if (enabled) {
       if (!this.springStage) {
         this.springStage = new SpringTankStage(this.context);

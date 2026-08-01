@@ -69,6 +69,19 @@ export interface StartAudioOptions {
   diagnosticSignal?: boolean;
 }
 
+const EMPTY_GRAIN_PROFILER_STATS: GrainProfilerStats = {
+  averageCallbackMs: 0,
+  worstCallbackMs: 0,
+  callbackBudgetMs: 0,
+  cpuLoad: 0,
+  callbackJitterMs: 0,
+  activeVoices: 0,
+  maxVoices: 0,
+  effectiveVoiceLimit: 0,
+  overruns: 0,
+  droppedSpawns: 0,
+};
+
 export class AudioEngine {
   private context: AudioContext | null = null;
   private stream: MediaStream | null = null;
@@ -128,10 +141,7 @@ export class AudioEngine {
   }
 
   public getProfilerSnapshot(): DspProfilerSnapshot {
-    const grain = this.effects.get('bitcrusher');
-    const grainStats = grain && 'getProfilerStats' in grain
-      ? (grain as Effect & { getProfilerStats(): GrainProfilerStats }).getProfilerStats()
-      : { averageCallbackMs: 0, worstCallbackMs: 0, callbackBudgetMs: 0, cpuLoad: 0, callbackJitterMs: 0, activeVoices: 0, maxVoices: 0, effectiveVoiceLimit: 0, overruns: 0, droppedSpawns: 0 };
+    const grainStats = this.getGrainProfilerStats();
     const spectral = this.measureSpectrum();
     const health: EngineHealth = !this.context || this.context.state !== 'running'
       ? 'offline'
@@ -189,7 +199,9 @@ export class AudioEngine {
   /** Called by the low-rate UI profiler. Never runs inside the audio callback. */
   public updateAdaptivePerformance(): void {
     if (!this.adaptiveMode || this.state !== 'running') return;
-    const stats = this.getProfilerSnapshot().grain;
+    // Adaptive quality only needs Grain callback health. Avoid waking the FFT
+    // and assembling a full profiler snapshot while the panel is closed.
+    const stats = this.getGrainProfilerStats();
     const newOverrun = stats.overruns > this.lastOverrunCount;
     this.lastOverrunCount = stats.overruns;
     const stressed = stats.cpuLoad > 0.76 || newOverrun;
@@ -245,6 +257,13 @@ export class AudioEngine {
     return { centroidHz: total > 1e-9 ? weighted / total : 0, energy: Math.min(1, total / Math.max(1, this.spectralData.length) * 12) };
   }
 
+  private getGrainProfilerStats(): GrainProfilerStats {
+    const grain = this.effects.get('bitcrusher');
+    return grain && 'getProfilerStats' in grain
+      ? (grain as Effect & { getProfilerStats(): GrainProfilerStats }).getProfilerStats()
+      : EMPTY_GRAIN_PROFILER_STATS;
+  }
+
   public getLatency(): { baseLatency: number | null; outputLatency: number | null } {
     if (!this.context) return { baseLatency: null, outputLatency: null };
     return {
@@ -266,7 +285,7 @@ export class AudioEngine {
       this.performanceMode = options.performanceMode ?? this.performanceMode;
       this.requestedRenderSize = renderSizeHintForMode(this.performanceMode);
       const contextOptions: ExtendedAudioContextOptions = {
-        latencyHint: this.performanceMode === 'studio' ? 'playback' : 'interactive',
+        latencyHint: this.performanceMode === 'studio' ? 'playback' : 0.02,
         renderSizeHint: this.requestedRenderSize,
       };
       try {
@@ -604,6 +623,7 @@ export class AudioEngine {
   }
 
   public async stop(): Promise<void> {
+    await this.routeTransition.catch(() => undefined);
     this.recorder?.dispose();
     this.recorder = null;
     this.dreamBuffer?.dispose();
@@ -717,8 +737,10 @@ export class AudioEngine {
     }
     this.analyser.fftSize = this.performanceMode === 'studio' ? 1024 : this.performanceMode === 'balanced' ? 512 : 256;
     this.analyser.smoothingTimeConstant = this.performanceMode === 'live' ? 0.72 : 0.8;
-    this.limiter.threshold.setValueAtTime(this.performanceMode === 'live' ? -1.2 : -3, this.context?.currentTime ?? 0);
-    this.limiter.ratio.setValueAtTime(this.performanceMode === 'live' ? 6 : 12, this.context?.currentTime ?? 0);
+    const threshold = this.performanceMode === 'studio' ? -0.75 : this.performanceMode === 'balanced' ? -1 : -1.2;
+    const ratio = this.performanceMode === 'studio' ? 4 : this.performanceMode === 'balanced' ? 5 : 6;
+    this.limiter.threshold.setValueAtTime(threshold, this.context?.currentTime ?? 0);
+    this.limiter.ratio.setValueAtTime(ratio, this.context?.currentTime ?? 0);
   }
 
   private configureEffectQuality(effect: Effect): void {
