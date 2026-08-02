@@ -49,7 +49,7 @@ const artifact = read('src/audio/effects/Media.ts');
 const emberDigitalCapture = read('public/ember-digital-capture-processor.js');
 
 const EMBER = ['velvet','tube','console','transformer','furnace','exciter','broken','goldlion','mullard','telefunken','bugleboy','rcablack','sp1200','mpc60','mirage','s950','emulator2','fairlightiix'];
-const DRIFT = ['chorus','ensemble','dimension','vibrato','rotary','doppler','liquid','orbit','ce1','dimensiond','mxrflanger','electricmistress','adaflanger','bf2','biphase','smallstone','univibe','leslie'];
+const DRIFT = ['chorus','ensemble','dimension','vibrato','rotary','doppler','liquid','orbit','ce1','dimensiond','mxrflanger','electricmistress','adaflanger','bf2','biphase','smallstone','univibe','leslie','phase90','instantphaser','schulte','pn2'];
 const HALO = ['clean','tape','bbd','pingpong','diffuse','scatter','constellation','re201','EP-3 Echoplex','Binson Echorec','Deluxe Memory Man','AMS DMX 15-80 S'];
 const ATMOS = ['room','plate','hall','cinema','cloud','freeze','celestial','aurora','nebula','abyss','emt140','lexicon224'];
 const GRAIN = ['mosaic','scatter','smear','prism','slice','freeze','clouds','beads','morphagene','arbhar','particle2','microcosm'];
@@ -76,13 +76,15 @@ requireText(ember, 'const MAX_CURVE_CACHE = 192', 'Ember bounded curve cache');
 
 // Drift: standard modulation and dedicated classic hardware must remain mutually exclusive.
 for (const mode of ['mxrflanger','electricmistress','adaflanger','bf2']) requireText(drift, mode, `Drift ${mode} implementation`);
-for (const mode of ['biphase','smallstone','univibe','leslie']) requireText(drift, `mode === '${mode}'`, `Drift ${mode} classic mapping`);
+for (const mode of ['biphase','smallstone','univibe','leslie','phase90','instantphaser','schulte','pn2']) requireText(drift, `mode === '${mode}'`, `Drift ${mode} classic mapping`);
 requireText(drift, 'this.setStandardBranchAttached(false)', 'Drift classic standard-network suspension');
 requireText(driftClassic, 'this.coefficientCountdown = 7', 'Drift classic coefficient throttling');
 requireText(driftClassic, 'this.result = [0, 0]', 'Drift classic reusable result buffer');
 forbidText(driftClassic, 'return [bL, bR]', 'Bi-Phase per-sample array allocation');
 forbidText(driftClassic, 'return [pL, pR]', 'Small Stone per-sample array allocation');
 forbidText(driftClassic, 'return [vibeL * tremL, vibeR * tremR]', 'Uni-Vibe per-sample array allocation');
+for (const engine of ['processPhase90','processInstantPhaser','processSchulte','processPn2']) requireText(driftClassic, engine, `Drift ${engine} engine`);
+requireText(driftClassic, 'Math.cos(angle) * Math.SQRT2', 'PN-2 equal-power pan law');
 
 // Halo: every non-RE-201 entry owns a config; RE-201 stays a dedicated network.
 for (const mode of HALO.filter((mode) => mode !== 're201')) requireObjectKey(halo, mode, `Halo ${mode}`);

@@ -295,7 +295,7 @@ if (BehaviorProcessor) {
 }
 
 if (DriftProcessor) {
-  for (let model = 0; model <= 4; model += 1) {
+  for (let model = 0; model <= 8; model += 1) {
     const processor = new DriftProcessor();
     const parameters = {
       model: parameter(model),
@@ -317,6 +317,45 @@ if (DriftProcessor) {
       processor.process([[...input]], [[...output]], parameters);
       assertFiniteBlock(`Drift classic model ${model}`, output, 1.201);
     }
+  }
+
+  for (const shape of [0, 1]) {
+    const processor = new DriftProcessor();
+    const parameters = {
+      model: parameter(8),
+      rate: parameter(0.72),
+      depth: parameter(1),
+      shape: parameter(shape),
+      spread: parameter(1),
+      motion: parameter(1),
+    };
+    let inputEnergy = 0;
+    let outputEnergy = 0;
+    let maxImbalance = 0;
+    for (let block = 0; block < 360; block += 1) {
+      const input = stereoBlock();
+      const output = stereoBlock();
+      for (let sample = 0; sample < BLOCK_SIZE; sample += 1) {
+        const frame = block * BLOCK_SIZE + sample;
+        const value = Math.sin(frame / SAMPLE_RATE * Math.PI * 2 * 211) * 0.34;
+        input[0][sample] = value;
+        input[1][sample] = value;
+      }
+      processor.process([[...input]], [[...output]], parameters);
+      assertFiniteBlock(`PN-2 ${shape ? 'square' : 'triangle'} pan`, output, 1.201);
+      if (block < 80) continue;
+      for (let sample = 0; sample < BLOCK_SIZE; sample += 1) {
+        const source = input[0][sample];
+        const left = output[0][sample];
+        const right = output[1][sample];
+        inputEnergy += source * source * 2;
+        outputEnergy += left * left + right * right;
+        maxImbalance = Math.max(maxImbalance, Math.abs(left * left - right * right));
+      }
+    }
+    const energyRatio = outputEnergy / Math.max(1e-9, inputEnergy);
+    if (Math.abs(energyRatio - 1) > 0.015) failures.push(`PN-2 ${shape ? 'square' : 'triangle'} pan changed power by ${((energyRatio - 1) * 100).toFixed(2)}%`);
+    if (maxImbalance < 0.08) failures.push(`PN-2 ${shape ? 'square' : 'triangle'} pan did not traverse the stereo field`);
   }
 }
 

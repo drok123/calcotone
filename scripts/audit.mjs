@@ -177,6 +177,10 @@ for (const [needle, label] of [
   ["| 'smallstone'", 'Small Stone mode'],
   ["| 'univibe'", 'Uni-Vibe mode'],
   ["| 'leslie'", 'Leslie mode'],
+  ["| 'phase90'", 'MXR Phase 90 mode'],
+  ["| 'instantphaser'", 'Eventide PS101 mode'],
+  ["| 'schulte'", 'Schulte Compact A mode'],
+  ["| 'pn2'", 'BOSS PN-2 mode'],
   ['private readonly classicStage: DriftClassicStage', 'Drift classic branch'],
   ["this.classicStage.configure(classic", 'Drift classic parameter routing'],
 ]) requireText(driftEffect, needle, label);
@@ -189,7 +193,16 @@ requireText(driftClassicProcessor, 'const rise =', 'Uni-Vibe asymmetric lamp res
 requireText(driftClassicProcessor, 'processLeslie', 'Leslie rotor engine');
 requireText(driftClassicProcessor, 'this.rotorHornSpeed +=', 'Leslie horn motor inertia');
 requireText(driftClassicProcessor, 'this.rotorDrumSpeed +=', 'Leslie drum motor inertia');
-requireText(registry, "case 'biphase': case 'smallstone': case 'univibe': case 'leslie': behavior = BYPASS", 'No double Drift classic simulation');
+requireText(driftClassicProcessor, 'processPhase90', 'Phase 90 four-stage FET engine');
+requireText(driftClassicProcessor, 'this.cascadeWithCoefficients(inputL, 4', 'Phase 90 four-stage network');
+requireText(driftClassicProcessor, 'processInstantPhaser', 'PS101 Main/Aux phase engine');
+requireText(driftClassicProcessor, 'stage === 5', 'PS101 six/eight-stage output tap');
+requireText(driftClassicProcessor, 'processSchulte', 'Schulte optical phase engine');
+requireText(driftClassicProcessor, 'this.schulteFeedbackL +=', 'Schulte filtered feedback memory');
+requireText(driftClassicProcessor, 'processPn2', 'PN-2 stereo pan engine');
+requireText(driftClassicProcessor, 'Math.cos(angle) * Math.SQRT2', 'PN-2 equal-power pan law');
+requireText(registry, "case 'biphase': case 'smallstone': case 'univibe': case 'leslie':", 'No double legacy Drift hardware simulation');
+requireText(registry, "case 'phase90': case 'instantphaser': case 'schulte': case 'pn2':", 'No double new Drift hardware simulation');
 
 requireText(grainProcessor, 'this.voices = Array.from({ length: 8 }', 'Grain bounded live-memory voice pool');
 requireText(grainProcessor, 'this.processSlice(window, density, pitch, motion, memory)', 'Grain slice mechanism');

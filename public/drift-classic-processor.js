@@ -1,7 +1,7 @@
 class CalcotoneDriftClassicProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
-      { name: 'model', defaultValue: 0, minValue: 0, maxValue: 4, automationRate: 'k-rate' },
+      { name: 'model', defaultValue: 0, minValue: 0, maxValue: 8, automationRate: 'k-rate' },
       { name: 'rate', defaultValue: 0.28, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
       { name: 'depth', defaultValue: 0.275, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
       { name: 'shape', defaultValue: 0.35, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
@@ -25,6 +25,8 @@ class CalcotoneDriftClassicProcessor extends AudioWorkletProcessor {
     this.phaseStateR = Array.from({ length: 12 }, () => ({ x1: 0, y1: 0 }));
     this.phaseFeedbackL = 0;
     this.phaseFeedbackR = 0;
+    this.schulteFeedbackL = 0;
+    this.schulteFeedbackR = 0;
     this.phaseCoefficientsL = new Float64Array(12);
     this.phaseCoefficientsR = new Float64Array(12);
     this.coefficientCountdown = 0;
@@ -43,6 +45,7 @@ class CalcotoneDriftClassicProcessor extends AudioWorkletProcessor {
     this.delayL = new Float32Array(2048);
     this.delayR = new Float32Array(2048);
     this.delayIndex = 0;
+    this.panPosition = 0;
   }
 
   coefficient(frequency) {
@@ -73,6 +76,12 @@ class CalcotoneDriftClassicProcessor extends AudioWorkletProcessor {
       value = this.allpassWithCoefficient(value, coefficients[offset + i], states[offset + i]);
     }
     return value;
+  }
+
+  // Unity-slope soft limiting approximates the level-dependent FET/op-amp
+  // behavior in the circuit studies without turning a phaser into a drive box.
+  normalizedSoftClip(input, drive) {
+    return Math.tanh(input * drive) / Math.max(1e-6, drive);
   }
 
   shouldRefreshCoefficients(model) {
@@ -221,6 +230,138 @@ class CalcotoneDriftClassicProcessor extends AudioWorkletProcessor {
     return this.result;
   }
 
+  processPhase90(left, right, rate, depth, shape, spread, motion) {
+    const speed = 0.055 + rate * 1.72;
+    this.phase += 2 * Math.PI * speed / sampleRate;
+    if (this.phase > Math.PI * 2) this.phase -= Math.PI * 2;
+
+    if (this.shouldRefreshCoefficients(5)) {
+      const phaseOffset = spread * 0.34;
+      const sweepL = 0.5 + 0.5 * Math.sin(this.phase);
+      const sweepR = 0.5 + 0.5 * Math.sin(this.phase + phaseOffset);
+      const range = 7.4 + depth * 8.6;
+      const centerL = 115 * Math.pow(range, Math.pow(sweepL, 1.12));
+      const centerR = 115 * Math.pow(range, Math.pow(sweepR, 1.12));
+      this.updateCascadeCoefficients(centerL, 4, 0, 0.32 + motion * 0.18, this.phaseCoefficientsL);
+      this.updateCascadeCoefficients(centerR * (0.994 + motion * 0.012), 4, 0, 0.32 + motion * 0.18, this.phaseCoefficientsR);
+    }
+
+    // Shape continuously travels from the low-feedback Script circuit toward
+    // the more resonant Block circuit; feedback stays well below instability.
+    const feedback = shape < 0.5 ? shape * 0.20 : 0.10 + (shape - 0.5) * 0.82;
+    const drive = 1.02 + shape * 0.72 + motion * 0.12;
+    const inputL = this.normalizedSoftClip(left + this.phaseFeedbackL * feedback, drive);
+    const inputR = this.normalizedSoftClip(right + this.phaseFeedbackR * feedback, drive * 1.006);
+    const phaseL = this.cascadeWithCoefficients(inputL, 4, this.phaseStateL, 0, this.phaseCoefficientsL);
+    const phaseR = this.cascadeWithCoefficients(inputR, 4, this.phaseStateR, 0, this.phaseCoefficientsR);
+    this.phaseFeedbackL = phaseL;
+    this.phaseFeedbackR = phaseR;
+    this.result[0] = phaseL;
+    this.result[1] = phaseR;
+    return this.result;
+  }
+
+  processInstantPhaser(left, right, rate, depth, shape, spread, motion) {
+    const speed = 0.028 + rate * 1.34;
+    this.phase += 2 * Math.PI * speed / sampleRate;
+    if (this.phase > Math.PI * 2) this.phase -= Math.PI * 2;
+
+    if (this.shouldRefreshCoefficients(6)) {
+      const sweep = 0.5 + 0.5 * Math.sin(this.phase);
+      const age = motion * motion;
+      const center = 92 + Math.pow(sweep, 1.18 + age * 0.28) * (1450 + depth * 4150);
+      this.updateCascadeCoefficients(center, 8, 0, 0.42 + age * 0.24, this.phaseCoefficientsL);
+      this.updateCascadeCoefficients(center * (0.986 + age * 0.024), 8, 0, 0.42 + age * 0.24, this.phaseCoefficientsR);
+    }
+
+    const feedback = 0.025 + shape * 0.54;
+    const drive = 1.015 + motion * 0.44;
+    let phaseL = this.normalizedSoftClip(left + this.phaseFeedbackL * feedback, drive);
+    let phaseR = this.normalizedSoftClip(right + this.phaseFeedbackR * feedback, drive * 1.004);
+    let auxL = phaseL;
+    let auxR = phaseR;
+    for (let stage = 0; stage < 8; stage += 1) {
+      phaseL = this.allpassWithCoefficient(phaseL, this.phaseCoefficientsL[stage], this.phaseStateL[stage]);
+      phaseR = this.allpassWithCoefficient(phaseR, this.phaseCoefficientsR[stage], this.phaseStateR[stage]);
+      if (stage === 5) {
+        auxL = phaseL;
+        auxR = phaseR;
+      }
+    }
+    this.phaseFeedbackL = phaseL;
+    this.phaseFeedbackR = phaseR;
+
+    // Continuous Shallow -> Deep -> Wide routing recreates the PS101's six-
+    // versus eight-stage Main/Aux relationship without topology-switch clicks.
+    if (spread <= 0.5) {
+      const deep = spread * 2;
+      this.result[0] = auxL + (phaseL - auxL) * deep;
+      this.result[1] = auxR + (phaseR - auxR) * deep;
+    } else {
+      const wide = (spread - 0.5) * 2;
+      this.result[0] = phaseL;
+      this.result[1] = phaseR + (auxR - phaseR) * wide;
+    }
+    return this.result;
+  }
+
+  processSchulte(left, right, rate, depth, shape, spread, motion) {
+    const speed = 0.018 + rate * 1.08;
+    this.phase += 2 * Math.PI * speed / sampleRate;
+    if (this.phase > Math.PI * 2) this.phase -= Math.PI * 2;
+
+    if (this.shouldRefreshCoefficients(7)) {
+      const targetL = 0.5 + 0.5 * Math.sin(this.phase);
+      const targetR = 0.5 + 0.5 * Math.sin(this.phase + spread * 0.28);
+      const rise = 0.0062 - motion * 0.0041;
+      const fall = 0.0018 - motion * 0.0011;
+      this.lamp += (targetL - this.lamp) * (targetL > this.lamp ? rise : fall);
+      this.lampR += (targetR - this.lampR) * (targetR > this.lampR ? rise * 0.982 : fall * 1.026);
+      const centerL = 82 + Math.pow(this.lamp, 1.82 + motion * 0.34) * (1850 + depth * 4200);
+      const centerR = 82 + Math.pow(this.lampR, 1.82 + motion * 0.34) * (1850 + depth * 4200);
+      this.updateCascadeCoefficients(centerL, 8, 0, 0.58 + motion * 0.18, this.phaseCoefficientsL);
+      this.updateCascadeCoefficients(centerR, 8, 0, 0.58 + motion * 0.18, this.phaseCoefficientsR);
+    }
+
+    // The original topology uses filtered negative feedback around the optical
+    // phase network. The pole prevents the thin, unstable whistle of broadband feedback.
+    const feedback = 0.08 + shape * 0.52;
+    const inputL = left - this.schulteFeedbackL * feedback;
+    const inputR = right - this.schulteFeedbackR * feedback;
+    const phaseL = this.cascadeWithCoefficients(inputL, 8, this.phaseStateL, 0, this.phaseCoefficientsL);
+    const phaseR = this.cascadeWithCoefficients(inputR, 8, this.phaseStateR, 0, this.phaseCoefficientsR);
+    const feedbackPole = 0.018 + (1 - motion) * 0.026;
+    this.schulteFeedbackL += (phaseL - this.schulteFeedbackL) * feedbackPole;
+    this.schulteFeedbackR += (phaseR - this.schulteFeedbackR) * feedbackPole;
+    this.result[0] = phaseL * 0.96;
+    this.result[1] = phaseR * 0.96;
+    return this.result;
+  }
+
+  processPn2(left, right, rate, depth, shape, spread, motion) {
+    const speed = 0.06 + rate * 7.4;
+    this.phase += 2 * Math.PI * speed / sampleRate;
+    if (this.phase > Math.PI * 2) this.phase -= Math.PI * 2;
+
+    const cycle = this.phase / (Math.PI * 2);
+    const triangle = 1 - 4 * Math.abs(cycle - 0.5);
+    const square = triangle >= 0 ? 1 : -1;
+    const squareBlend = Math.max(0, (shape - 0.36) / 0.64);
+    const target = triangle + (square - triangle) * squareBlend;
+    const slew = 0.0025 + motion * motion * 0.095;
+    this.panPosition += (target - this.panPosition) * slew;
+
+    const pan = this.panPosition * (0.08 + depth * 0.92);
+    const angle = (pan + 1) * Math.PI * 0.25;
+    const gainL = Math.cos(angle) * Math.SQRT2;
+    const gainR = Math.sin(angle) * Math.SQRT2;
+    const mid = (left + right) * 0.5;
+    const side = (left - right) * 0.5 * spread;
+    this.result[0] = (mid + side) * gainL;
+    this.result[1] = (mid - side) * gainR;
+    return this.result;
+  }
+
   process(inputs, outputs, parameters) {
     const input = inputs[0];
     const output = outputs[0];
@@ -229,7 +370,7 @@ class CalcotoneDriftClassicProcessor extends AudioWorkletProcessor {
     const inR = input?.[1] || inL;
     const outL = output[0];
     const outR = output[1] || output[0];
-    const model = Math.max(0, Math.min(4, Math.round(parameters.model[0])));
+    const model = Math.max(0, Math.min(8, Math.round(parameters.model[0])));
     const rate = Math.max(0, Math.min(1, parameters.rate[0]));
     const depth = Math.max(0, Math.min(1, parameters.depth[0]));
     const shape = Math.max(0, Math.min(1, parameters.shape[0]));
@@ -244,6 +385,10 @@ class CalcotoneDriftClassicProcessor extends AudioWorkletProcessor {
       else if (model === 2) processed = this.processSmallStone(left, right, rate, depth, shape, spread, motion);
       else if (model === 3) processed = this.processUniVibe(left, right, rate, depth, shape, spread, motion);
       else if (model === 4) processed = this.processLeslie(left, right, rate, depth, shape, spread, motion);
+      else if (model === 5) processed = this.processPhase90(left, right, rate, depth, shape, spread, motion);
+      else if (model === 6) processed = this.processInstantPhaser(left, right, rate, depth, shape, spread, motion);
+      else if (model === 7) processed = this.processSchulte(left, right, rate, depth, shape, spread, motion);
+      else if (model === 8) processed = this.processPn2(left, right, rate, depth, shape, spread, motion);
       else {
         this.result[0] = left;
         this.result[1] = right;

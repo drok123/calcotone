@@ -304,7 +304,7 @@ function validateWorklets() {
   reports.push(`Ember magnetic-core THD=${(magneticLow.thd * 100).toFixed(2)}→${(magneticHigh.thd * 100).toFixed(2)}%`);
 
   const driftDifferences = [];
-  for (let model = 1; model <= 4; model += 1) {
+  for (let model = 1; model <= 8; model += 1) {
     const difference = renderDriftDifference(DriftProcessor, model);
     assert(Number.isFinite(difference) && difference > 0.002, `Drift model ${model} did not produce a calibrated analog-network response`);
     driftDifferences.push(difference);

@@ -55,7 +55,7 @@ requireText(driftClassic, 'this.coefficientCountdown = 7', 'Drift coefficient re
 requireText(driftClassic, 'updateCascadeCoefficients', 'Drift cached all-pass coefficients');
 requireText(driftClassic, 'cascadeWithCoefficients', 'Drift cached coefficient processing');
 forbidText(driftClassic, 'left * (1 - wet)', 'Drift classic duplicate dry mix');
-requireText(driftStage, "const WORKLET_VERSION = '1.0.3-realtime-optimized'", 'Drift optimized cache bust');
+requireText(driftStage, "const WORKLET_VERSION = '1.1.0-classic-phase-pan'", 'Drift optimized cache bust');
 
 // MUSICAL RANDOM plans every destination at once, lets React/knob CSS own the visible motion,
 // then commits each active machine to DSP exactly once in a staggered order. Expensive topology

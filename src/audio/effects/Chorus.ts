@@ -20,12 +20,17 @@ export type DriftMode =
   | 'biphase'
   | 'smallstone'
   | 'univibe'
-  | 'leslie';
+  | 'leslie'
+  | 'phase90'
+  | 'instantphaser'
+  | 'schulte'
+  | 'pn2';
 
 // Existing indices stay fixed for preset compatibility; new studies append only.
 export const DRIFT_MODE_ORDER: DriftMode[] = [
   'chorus','ensemble','dimension','vibrato','rotary','doppler','liquid','orbit','ce1','dimensiond',
   'mxrflanger','electricmistress','adaflanger','bf2','biphase','smallstone','univibe','leslie',
+  'phase90','instantphaser','schulte','pn2',
 ];
 
 const MODE = { id: 'mode', label: 'Mode', min: 0, max: DRIFT_MODE_ORDER.length - 1, defaultValue: 0, step: 1 };
@@ -62,7 +67,10 @@ function isFlangerMode(mode: DriftMode): mode is keyof typeof FLANGER_CURVES {
 }
 
 function classicModel(mode: DriftMode): DriftClassicModel {
-  if (mode === 'biphase' || mode === 'smallstone' || mode === 'univibe' || mode === 'leslie') return mode;
+  if (
+    mode === 'biphase' || mode === 'smallstone' || mode === 'univibe' || mode === 'leslie'
+    || mode === 'phase90' || mode === 'instantphaser' || mode === 'schulte' || mode === 'pn2'
+  ) return mode;
   return 'bypass';
 }
 

@@ -402,6 +402,10 @@ function formatEmberMode(mode: EmberMode): string {
 function formatDriftMode(mode: DriftMode): string {
   if (mode === 'ce1') return 'BOSS CE-1';
   if (mode === 'dimensiond') return 'Roland Dimension D';
+  if (mode === 'phase90') return 'MXR Phase 90';
+  if (mode === 'instantphaser') return 'Eventide PS101';
+  if (mode === 'schulte') return 'Schulte Compact A';
+  if (mode === 'pn2') return 'BOSS PN-2 Pan';
   return mode.charAt(0).toUpperCase() + mode.slice(1);
 }
 
@@ -463,6 +467,34 @@ function parameterPresentation(module: ModuleState, parameterId: string, label: 
     if (parameterId === 'shape') return { label: 'Mode', display: dimensionDMode(value) };
     if (parameterId === 'spread') return { label: 'Stereo', display: 'FIXED', disabled: true };
     if (parameterId === 'motion') return { label: 'Circuit', display: 'FIXED', disabled: true };
+  }
+
+  if (module.id === 'chorus' && module.driftMode === 'phase90') {
+    if (parameterId === 'depth') return { label: 'Sweep', display };
+    if (parameterId === 'shape') return { label: 'Circuit', display: value < 0.5 ? 'SCRIPT' : 'BLOCK' };
+    if (parameterId === 'spread') return { label: 'Stereo', display };
+    if (parameterId === 'motion') return { label: 'FET Match', display };
+  }
+
+  if (module.id === 'chorus' && module.driftMode === 'instantphaser') {
+    if (parameterId === 'depth') return { label: 'Sweep', display };
+    if (parameterId === 'shape') return { label: 'Feedback', display };
+    if (parameterId === 'spread') return { label: 'Output', display: value < 0.34 ? 'SHALLOW' : value < 0.67 ? 'DEEP' : 'WIDE' };
+    if (parameterId === 'motion') return { label: 'Age', display };
+  }
+
+  if (module.id === 'chorus' && module.driftMode === 'schulte') {
+    if (parameterId === 'depth') return { label: 'Sweep', display };
+    if (parameterId === 'shape') return { label: 'Feedback', display };
+    if (parameterId === 'spread') return { label: 'Stereo', display };
+    if (parameterId === 'motion') return { label: 'Lamp Inertia', display };
+  }
+
+  if (module.id === 'chorus' && module.driftMode === 'pn2') {
+    if (parameterId === 'depth') return { label: 'Pan Width', display };
+    if (parameterId === 'shape') return { label: 'Wave', display: value < 0.5 ? 'TRIANGLE' : 'SQUARE' };
+    if (parameterId === 'spread') return { label: 'Stereo', display };
+    if (parameterId === 'motion') return { label: 'Edge', display: value < 0.5 ? 'SOFT' : 'HARD' };
   }
 
   if (module.id === 'reverb' && module.algorithm === 'emt140') {

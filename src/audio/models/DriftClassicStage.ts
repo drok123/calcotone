@@ -1,4 +1,13 @@
-export type DriftClassicModel = 'bypass' | 'biphase' | 'smallstone' | 'univibe' | 'leslie';
+export type DriftClassicModel =
+  | 'bypass'
+  | 'biphase'
+  | 'smallstone'
+  | 'univibe'
+  | 'leslie'
+  | 'phase90'
+  | 'instantphaser'
+  | 'schulte'
+  | 'pn2';
 
 const MODEL_INDEX: Record<DriftClassicModel, number> = {
   bypass: 0,
@@ -6,10 +15,14 @@ const MODEL_INDEX: Record<DriftClassicModel, number> = {
   smallstone: 2,
   univibe: 3,
   leslie: 4,
+  phase90: 5,
+  instantphaser: 6,
+  schulte: 7,
+  pn2: 8,
 };
 
 const workletLoads = new WeakMap<AudioContext, Promise<void>>();
-const WORKLET_VERSION = '1.0.3-realtime-optimized';
+const WORKLET_VERSION = '1.1.0-classic-phase-pan';
 
 async function ensureWorklet(context: AudioContext): Promise<void> {
   const existing = workletLoads.get(context);

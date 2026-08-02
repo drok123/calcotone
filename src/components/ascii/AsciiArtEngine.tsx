@@ -104,6 +104,10 @@ export const MODE_ART_VARIANTS = {
   'chorus:smallstone': { motif: 'phase', scale: 7.0, amount: 0.37, bias: 0.96 },
   'chorus:univibe': { motif: 'liquid', scale: 7.0, amount: 0.38, bias: 1.02 },
   'chorus:leslie': { motif: 'rotor', scale: 8.0, amount: 0.40, bias: 1.08 },
+  'chorus:phase90': { motif: 'phase', scale: 5.0, amount: 0.39, bias: 1.14 },
+  'chorus:instantphaser': { motif: 'phase', scale: 9.0, amount: 0.41, bias: 1.20 },
+  'chorus:schulte': { motif: 'liquid', scale: 10.0, amount: 0.40, bias: 1.26 },
+  'chorus:pn2': { motif: 'pingpong', scale: 7.0, amount: 0.40, bias: 1.32 },
 
   'delay:clean': { motif: 'echo', scale: 5.0, amount: 0.33, bias: 0.05 },
   'delay:tape': { motif: 'reels', scale: 4.0, amount: 0.39, bias: 0.13 },

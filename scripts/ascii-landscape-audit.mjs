@@ -57,8 +57,8 @@ for (const [moduleId, relative, orderName] of effectFiles) {
     requireText(engine, `'${normalizedKey}':`, `${key} named ASCII variant`);
   }
 }
-if (dropdownModeCount !== 86) {
-  failures.push(`Expected 86 dropdown ASCII identities; found ${dropdownModeCount}`);
+if (dropdownModeCount !== 90) {
+  failures.push(`Expected 90 dropdown ASCII identities; found ${dropdownModeCount}`);
 }
 requireText(engine, 'export function moduleModeKey', 'Exact module/mode identity');
 requireText(engine, 'return `${module.id}:${moduleMode(module)}`', 'Module-qualified dropdown key');

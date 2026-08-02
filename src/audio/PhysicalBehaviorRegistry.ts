@@ -116,7 +116,10 @@ export function syncPhysicalBehavior(effect: Effect): void {
       case 'electricmistress': behavior = spec('charge', 0.04 + shape * 0.045, mix(rate, motion, 0.28), 0.68 + depth * 0.16, 0.42); break;
       case 'adaflanger': behavior = spec('charge', 0.055 + shape * 0.065, mix(rate, motion, 0.42), 0.78 + depth * 0.18, 0.58); break;
       case 'bf2': behavior = spec('charge', 0.045 + shape * 0.05, mix(rate, motion, 0.32), 0.72 + depth * 0.16, 0.46); break;
-      case 'biphase': case 'smallstone': case 'univibe': case 'leslie': behavior = BYPASS; break;
+      case 'biphase': case 'smallstone': case 'univibe': case 'leslie':
+      case 'phase90': case 'instantphaser': case 'schulte': case 'pn2':
+        behavior = BYPASS;
+        break;
     }
   } else if (effect.id === 'delay') {
     const mode = DELAY_ALGORITHM_ORDER[index(effect, 'algorithm')] ?? 'tape';

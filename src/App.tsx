@@ -424,6 +424,22 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
     { name: 'MODE 2 WIDTH', parameters: { rate:[0.08,0.10], depth:[0.24,0.28], shape:[0.18,0.25], spread:[0.88,0.94], motion:[0.16,0.20], mix:[0.16,0.29] } },
     { name: 'MODE 3 MOTION', parameters: { rate:[0.18,0.20], depth:[0.22,0.26], shape:[0.31,0.39], spread:[0.88,0.94], motion:[0.16,0.20], mix:[0.16,0.29] } },
   ],
+  'chorus:phase90': [
+    { name: 'SCRIPT SLOW BURN', parameters: { rate:[0.05,0.13], depth:[0.42,0.66], shape:[0.16,0.38], spread:[0.08,0.30], motion:[0.16,0.34], mix:[0.14,0.28] } },
+    { name: 'BLOCK SWOOSH', parameters: { rate:[0.18,0.34], depth:[0.58,0.82], shape:[0.62,0.82], spread:[0.22,0.48], motion:[0.20,0.42], mix:[0.16,0.30] } },
+  ],
+  'chorus:instantphaser': [
+    { name: 'PS101 PSEUDO STEREO', parameters: { rate:[0.05,0.15], depth:[0.46,0.74], shape:[0.24,0.48], spread:[0.82,1.00], motion:[0.22,0.48], mix:[0.16,0.32] } },
+    { name: 'DEEP DRUM WASH', parameters: { rate:[0.10,0.24], depth:[0.66,0.88], shape:[0.42,0.66], spread:[0.42,0.58], motion:[0.34,0.62], mix:[0.18,0.34] } },
+  ],
+  'chorus:schulte': [
+    { name: 'KRAUTROCK DRIFT', parameters: { rate:[0.03,0.10], depth:[0.58,0.86], shape:[0.34,0.58], spread:[0.38,0.68], motion:[0.48,0.78], mix:[0.16,0.32] } },
+    { name: 'OPTICAL TIDE', parameters: { rate:[0.08,0.20], depth:[0.46,0.72], shape:[0.22,0.46], spread:[0.68,0.92], motion:[0.36,0.66], mix:[0.14,0.30] } },
+  ],
+  'chorus:pn2': [
+    { name: 'TRIANGLE PAN', parameters: { rate:[0.08,0.24], depth:[0.52,0.78], shape:[0.04,0.28], spread:[0.64,0.92], motion:[0.20,0.46], mix:[0.16,0.30] } },
+    { name: 'SQUARE CHOP', parameters: { rate:[0.18,0.40], depth:[0.72,0.94], shape:[0.74,0.96], spread:[0.56,0.86], motion:[0.68,0.92], mix:[0.12,0.26] } },
+  ],
 
   'delay:re201': [
     { name: 'MODE 3 SYNCOPATED', parameters: { time:[0.20,0.36], feedback:[0.24,0.40], color:[0.45,0.62], character:[0.14,0.30], width:[0.31,0.39], mix:[0.18,0.30] } },
