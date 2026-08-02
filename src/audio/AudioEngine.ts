@@ -29,6 +29,7 @@ export type AudioEngineState =
 
 export type PerformanceMode = 'live' | 'balanced' | 'studio';
 export type CalcotoneRenderSizeHint = 'default' | 'hardware' | number;
+export type LatencyStatus = 'unreported' | 'tight' | 'playable' | 'slow';
 
 type ExtendedAudioContextOptions = AudioContextOptions & {
   renderSizeHint?: CalcotoneRenderSizeHint;
@@ -38,7 +39,15 @@ type ExtendedAudioContext = AudioContext & {
   readonly renderQuantumSize?: number;
 };
 
-const WORKLET_BUILD_VERSION = '8.9.0-tpt-hermite-visual-ring';
+type ExtendedMediaTrackConstraints = MediaTrackConstraints & {
+  latency?: ConstrainDouble;
+};
+
+type ExtendedMediaTrackSettings = MediaTrackSettings & {
+  latency?: number;
+};
+
+const WORKLET_BUILD_VERSION = '9.0.0-stack-amp-latency';
 export type EngineHealth = 'offline' | 'healthy' | 'warm' | 'critical';
 
 export interface DspProfilerSnapshot {
@@ -46,6 +55,12 @@ export interface DspProfilerSnapshot {
   sampleRate: number;
   baseLatencyMs: number;
   outputLatencyMs: number;
+  inputLatencyMs: number | null;
+  estimatedRoundTripMs: number;
+  latencyStatus: LatencyStatus;
+  pathEstimateComplete: boolean;
+  inputSampleRate: number | null;
+  sampleRateMatched: boolean | null;
   requestedRenderSize: CalcotoneRenderSizeHint;
   renderQuantumFrames: number;
   renderSizeHintSupported: boolean;
@@ -57,6 +72,19 @@ export interface DspProfilerSnapshot {
   adaptiveAction: string;
   dreamBuffer: DreamBufferStats;
   synth: SynthTelemetryStats;
+}
+
+export interface AudioLatencyReport {
+  baseLatency: number | null;
+  outputLatency: number | null;
+  inputLatency: number | null;
+  renderQuantumLatency: number | null;
+  estimatedRoundTrip: number | null;
+  pathEstimateComplete: boolean;
+  inputSampleRate: number | null;
+  contextSampleRate: number | null;
+  sampleRateMatched: boolean | null;
+  status: LatencyStatus;
 }
 
 export interface StartAudioOptions {
@@ -166,11 +194,18 @@ export class AudioEngine {
       captureReady: false,
     };
     const contextQuantum = readRenderQuantumSize(this.context);
+    const latency = this.getLatencyReport();
     return {
       contextState: this.context?.state ?? 'offline',
       sampleRate: this.context?.sampleRate ?? 0,
       baseLatencyMs: (this.context?.baseLatency ?? 0) * 1000,
       outputLatencyMs: (this.context?.outputLatency ?? 0) * 1000,
+      inputLatencyMs: latency.inputLatency === null ? null : latency.inputLatency * 1000,
+      estimatedRoundTripMs: (latency.estimatedRoundTrip ?? 0) * 1000,
+      latencyStatus: latency.status,
+      pathEstimateComplete: latency.pathEstimateComplete,
+      inputSampleRate: latency.inputSampleRate,
+      sampleRateMatched: latency.sampleRateMatched,
       requestedRenderSize: this.requestedRenderSize,
       renderQuantumFrames: contextQuantum || synth.renderQuantumFrames,
       renderSizeHintSupported: this.renderSizeHintSupported,
@@ -272,6 +307,41 @@ export class AudioEngine {
     };
   }
 
+  /** Reported device/graph latency plus one render quantum. This is an estimate,
+   * not a physical loopback measurement; browsers may omit input latency. */
+  public getLatencyReport(): AudioLatencyReport {
+    if (!this.context) return emptyLatencyReport();
+    const settings = this.stream?.getAudioTracks()[0]?.getSettings() as ExtendedMediaTrackSettings | undefined;
+    const inputLatency = finiteNonnegativeOrNull(settings?.latency);
+    const baseLatency = finitePositiveOrNull(this.context.baseLatency);
+    const outputLatency = finitePositiveOrNull(this.context.outputLatency);
+    const quantumFrames = readRenderQuantumSize(this.context)
+      || (typeof this.requestedRenderSize === 'number' ? this.requestedRenderSize : 128);
+    const renderQuantumLatency = quantumFrames / this.context.sampleRate;
+    const reportedOutputPath = (baseLatency ?? 0) + (outputLatency ?? 0) + renderQuantumLatency;
+    const estimatedRoundTrip = reportedOutputPath + (inputLatency ?? 0);
+    const inputSampleRate = finitePositiveOrNull(settings?.sampleRate);
+    const sampleRateMatched = inputSampleRate === null
+      ? null
+      : Math.abs(inputSampleRate - this.context.sampleRate) < 1;
+    const pathEstimateComplete = inputLatency !== null
+      && baseLatency !== null
+      && outputLatency !== null;
+
+    return {
+      baseLatency,
+      outputLatency,
+      inputLatency,
+      renderQuantumLatency,
+      estimatedRoundTrip,
+      pathEstimateComplete,
+      inputSampleRate,
+      contextSampleRate: this.context.sampleRate,
+      sampleRateMatched,
+      status: classifyLatency(estimatedRoundTrip, pathEstimateComplete),
+    };
+  }
+
   public async start(options: StartAudioOptions = {}): Promise<void> {
     if (this.state === 'starting') return;
     if (this.state === 'running') {
@@ -285,7 +355,7 @@ export class AudioEngine {
       this.performanceMode = options.performanceMode ?? this.performanceMode;
       this.requestedRenderSize = renderSizeHintForMode(this.performanceMode);
       const contextOptions: ExtendedAudioContextOptions = {
-        latencyHint: this.performanceMode === 'studio' ? 'playback' : 0.02,
+        latencyHint: latencyHintForMode(this.performanceMode),
         renderSizeHint: this.requestedRenderSize,
       };
       try {
@@ -326,13 +396,15 @@ export class AudioEngine {
         ? this.createDiagnosticInputStream(this.context)
         : await navigator.mediaDevices.getUserMedia({
             video: false,
-            audio: {
+            audio: ({
               deviceId: options.deviceId ? { exact: options.deviceId } : undefined,
               echoCancellation: options.echoCancellation ?? false,
               noiseSuppression: options.noiseSuppression ?? false,
               autoGainControl: options.autoGainControl ?? false,
               channelCount: { ideal: 2 },
-            },
+              latency: { ideal: 0 },
+              sampleRate: { ideal: this.context.sampleRate },
+            } as ExtendedMediaTrackConstraints),
           });
 
       this.source = this.context.createMediaStreamSource(this.stream);
@@ -777,6 +849,7 @@ export class AudioEngine {
       ['Recorder', `recorder-processor.js?v=${WORKLET_BUILD_VERSION}`],
       ['Synth circuit', `synth-circuit-processor.js?v=${WORKLET_BUILD_VERSION}`],
       ['Visualizer ring', `visualizer-ring-processor.js?v=${WORKLET_BUILD_VERSION}`],
+      ['STACK amp', `stack-amp-processor.js?v=${WORKLET_BUILD_VERSION}`],
     ] as const;
     for (const [label, file] of modules) {
       const moduleUrl = new URL(`${import.meta.env.BASE_URL}${file}`, window.location.origin).toString();
@@ -791,7 +864,7 @@ export class AudioEngine {
   private attachDreamSource(effect: Effect): void {
     if (!this.dreamBuffer) return;
     const amount = effect.isBypassed() ? 0 : getDreamSendAmount(effect.id);
-    if (amount > 0 || ['saturation','chorus','delay','reverb','bitcrusher','media'].includes(effect.id)) {
+    if (amount > 0 || ['saturation','chorus','delay','reverb','bitcrusher','media','chaos'].includes(effect.id)) {
       this.dreamBuffer.attachSource(effect.id, effect.output, amount);
     }
   }
@@ -859,13 +932,49 @@ function getDreamSendAmount(effectId: string): number {
 function renderSizeHintForMode(mode: PerformanceMode): CalcotoneRenderSizeHint {
   if (mode === 'studio') return 512;
   if (mode === 'balanced') return 'hardware';
-  return 'default';
+  return 128;
+}
+
+function latencyHintForMode(mode: PerformanceMode): AudioContextLatencyCategory {
+  if (mode === 'studio') return 'playback';
+  if (mode === 'balanced') return 'balanced';
+  return 'interactive';
 }
 
 function readRenderQuantumSize(context: AudioContext | null): number {
   if (!context) return 0;
   const value = (context as ExtendedAudioContext).renderQuantumSize;
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
+}
+
+function finitePositiveOrNull(value: number | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function finiteNonnegativeOrNull(value: number | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function classifyLatency(seconds: number | null, includesInput: boolean): LatencyStatus {
+  if (seconds === null || !includesInput) return 'unreported';
+  if (seconds <= 0.015) return 'tight';
+  if (seconds <= 0.03) return 'playable';
+  return 'slow';
+}
+
+function emptyLatencyReport(): AudioLatencyReport {
+  return {
+    baseLatency: null,
+    outputLatency: null,
+    inputLatency: null,
+    renderQuantumLatency: null,
+    estimatedRoundTrip: null,
+    pathEstimateComplete: false,
+    inputSampleRate: null,
+    contextSampleRate: null,
+    sampleRateMatched: null,
+    status: 'unreported',
+  };
 }
 
 function sleepMilliseconds(milliseconds: number): Promise<void> {

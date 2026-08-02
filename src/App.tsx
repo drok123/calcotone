@@ -25,6 +25,12 @@ import { EMBER_MODE_ORDER, type EmberMode } from './audio/effects/Saturation';
 import { DRIFT_MODE_ORDER, type DriftMode } from './audio/effects/Chorus';
 import { GRAIN_MODE_ORDER, type GrainMode } from './audio/effects/Bitcrusher';
 import {
+  STACK_AMP_MODELS,
+  STACK_CABINETS,
+  type StackAmpModel,
+  type StackCabinet,
+} from './audio/effects/StackAmp';
+import {
   DELAY_ALGORITHM_ORDER,
   type DelayAlgorithm,
 } from './audio/effects/Delay';
@@ -93,7 +99,7 @@ const DEFAULT_RACK_ORDERS: RackOrders = {
 };
 const RAIL_C_MODULE_NAMES: Record<RailCRandomModuleId, string> = {
   synth: 'Synth',
-  chaos: 'Chaos',
+  chaos: 'Stack',
   pressure: 'Pressure',
 };
 type RoutingRail = RackRail;
@@ -666,6 +672,29 @@ export default function App() {
     engineRef.current?.setSynthSequencerStepListener(listener);
   }, []);
 
+  const setStackEnabled = useCallback((enabled: boolean) => {
+    engineRef.current?.setEffectBypassed('chaos', !enabled);
+  }, []);
+
+  const setStackModel = useCallback((model: StackAmpModel) => {
+    const index = STACK_AMP_MODELS.indexOf(model);
+    if (index >= 0) engineRef.current?.setEffectParameter('chaos', 'model', index);
+  }, []);
+
+  const setStackCabinet = useCallback((cabinet: StackCabinet) => {
+    const index = STACK_CABINETS.indexOf(cabinet);
+    if (index >= 0) engineRef.current?.setEffectParameter('chaos', 'cabinet', index);
+  }, []);
+
+  const setStackParameters = useCallback((values: readonly number[]) => {
+    const engine = engineRef.current;
+    if (!engine?.getEffect('chaos')) return;
+    for (const [index, parameterId] of ['drive', 'tone', 'sag', 'mix'].entries()) {
+      const value = values[index];
+      if (value !== undefined) engine.setEffectParameter('chaos', parameterId, value);
+    }
+  }, []);
+
   useEffect(() => {
     setRailCRandomOrder([...railAOrder, ...railBOrder, ...railCOrder]);
   }, [railAOrder, railBOrder, railCOrder]);
@@ -788,16 +817,14 @@ export default function App() {
       auditUiAgainstEngine(engine, modules);
       engine.setPerformanceMode(performanceMode);
 
-      const latencyInfo = engine.getLatency();
-      const totalLatency =
-        (latencyInfo.baseLatency ?? 0) + (latencyInfo.outputLatency ?? 0);
+      const latencyInfo = engine.getLatencyReport();
       const track = engine.getInputStream()?.getAudioTracks()[0];
       const context = engine.getContext();
 
       setInputDevice(diagnosticAudio ? 'Built-in DSP diagnostic signal' : track?.label || 'Default audio input');
       setLatency(
-        totalLatency > 0
-          ? `${(totalLatency * 1000).toFixed(1)} ms`
+        latencyInfo.estimatedRoundTrip !== null
+          ? `${latencyInfo.pathEstimateComplete ? '' : '≥'}${(latencyInfo.estimatedRoundTrip * 1000).toFixed(1)} ms`
           : 'Not reported'
       );
       setSampleRate(context ? `${context.sampleRate} Hz` : '—');
@@ -1590,7 +1617,9 @@ export default function App() {
   function changePerformanceMode(mode: PerformanceMode): void {
     setPerformanceMode(mode);
     engineRef.current?.setPerformanceMode(mode);
-    setMessage(`${mode.charAt(0).toUpperCase() + mode.slice(1)} quality selected.`);
+    setMessage(
+      `${mode.charAt(0).toUpperCase() + mode.slice(1)} quality selected.${engineState === 'running' ? ' Restart audio to apply its device-buffer policy.' : ''}`
+    );
   }
 
   useEffect(() => {
@@ -1775,6 +1804,12 @@ export default function App() {
             <strong>DSP PROFILER</strong>
             <span>CALLBACK <b title="Portable AudioWorklet wall-clock timing is disabled to protect audio stability">N/A</b></span>
             <span>TIMING <b title="AudioWorkletGlobalScope does not guarantee a wall-clock performance timer">AUDIO SAFE</b></span>
+            <span>INPUT LAT <b>{profiler?.inputLatencyMs === null || !profiler ? 'N/A' : `${profiler.inputLatencyMs.toFixed(1)} ms`}</b></span>
+            <span>OUTPUT LAT <b>{profiler ? `${(profiler.baseLatencyMs + profiler.outputLatencyMs).toFixed(1)} ms` : '—'}</b></span>
+            <span title={profiler?.pathEstimateComplete ? 'Browser-reported input + graph + output estimate' : 'Lower bound: the browser did not report input latency'}>
+              EST. RTT <b className={profiler?.latencyStatus === 'slow' ? 'warn' : ''}>{profiler ? `${profiler.pathEstimateComplete ? '' : '≥'}${profiler.estimatedRoundTripMs.toFixed(1)} ms` : '—'}</b>
+            </span>
+            <span>RATE MATCH <b>{profiler?.sampleRateMatched === null || !profiler ? 'N/A' : profiler.sampleRateMatched ? 'YES' : 'NO'}</b></span>
             <span>GRAIN <b>{profiler ? `${profiler.grain.activeVoices}/${profiler.grain.maxVoices}` : '0/0'}</b></span>
             <span>SYNTH <b>{profiler ? `${profiler.synth.activeVoices}/${profiler.synth.maxVoices}` : '0/10'}</b></span>
             <span>TOPOLOGY <b title={profiler?.synth.machine ?? 'model-d'}>{profiler?.synth.topology ?? '4× BJT-C SPICE LADDER'}</b></span>
@@ -1990,6 +2025,10 @@ export default function App() {
                             onSynthTriggerNote={triggerSynthNote}
                             onSynthSequencerChange={setSynthSequencerState}
                             onSynthSequencerStepListenerChange={setSynthSequencerStepListener}
+                            onStackEnabledChange={setStackEnabled}
+                            onStackModelChange={setStackModel}
+                            onStackCabinetChange={setStackCabinet}
+                            onStackParametersChange={setStackParameters}
                             motionPadProps={{
                               padRef: xyPadRef,
                               modules,
@@ -2056,7 +2095,7 @@ export default function App() {
               <strong>{inputDevice}</strong>
             </div>
             <div>
-              <span>LATENCY</span>
+              <span>EST. RTT</span>
               <strong>{latency}</strong>
             </div>
             <div>

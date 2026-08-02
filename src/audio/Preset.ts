@@ -80,6 +80,18 @@ export const DEFAULT_PRESET: Preset = {
         mix: 0.26,
       },
     },
+    {
+      id: 'chaos',
+      enabled: true,
+      parameters: {
+        model: 5,
+        cabinet: 2,
+        drive: 0.36,
+        tone: 0.52,
+        sag: 0.34,
+        mix: 0.62,
+      },
+    },
   ],
 };
 

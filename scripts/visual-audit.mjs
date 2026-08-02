@@ -129,6 +129,7 @@ requireText(railC, 'aria-label="16-step piano roll"', 'Functional Synth piano ro
 requireText(railC, 'toggleCell(step, pitchIndex)', 'Editable Synth notes');
 requireText(railC, 'setChain((current)', 'Synth pattern chaining');
 requireText(railC, '<MotionPad {...motionPadProps}', 'Chaos owns the XY surface');
+requireText(railC, 'stack-amp-readout', 'STACK circuit/cabinet readout');
 requireText(railC, 'pressure-ascii dsp-viewport', 'Pressure conventional ASCII display');
 requireText(railCCss, '.piano-roll-grid', 'Piano-roll screen geometry');
 requireText(railCCss, '@keyframes pressure-scan', 'Pressure ASCII display motion');

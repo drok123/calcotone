@@ -29,6 +29,12 @@ import type {
   SynthSequencerStep,
 } from '../../audio/SynthEngine';
 import {
+  STACK_AMP_MODELS,
+  STACK_CABINETS,
+  type StackAmpModel,
+  type StackCabinet,
+} from '../../audio/effects/StackAmp';
+import {
   RANDOM_MORPH_SECONDS,
   RANDOM_MUTATION_AMOUNT,
   type RandomizationProfile,
@@ -977,72 +983,86 @@ function SynthModule({
   );
 }
 
-type ChaosMode = 'chaos-pad' | 'performance-fx';
-
 const CHAOS_RACK_STATE = {
   enabled: true,
-  mode: 'chaos-pad' as ChaosMode,
-  effect: 'grain-delay',
-  values: [0.42, 0.34, 0.52, 0.68],
+  model: 'calcotone' as StackAmpModel,
+  cabinet: '4x12' as StackCabinet,
+  values: [0.36, 0.52, 0.34, 0.62],
 };
 
-const CHAOS_PROGRAMS: Record<ChaosMode, readonly { id: string; label: string }[]> = {
-  'chaos-pad': [
-    { id: 'grain-delay', label: 'Grain Delay' },
-    { id: 'dub-space', label: 'Dub Space' },
-    { id: 'spectral-freeze', label: 'Spectral Freeze' },
-    { id: 'pitch-vortex', label: 'Pitch Vortex' },
-    { id: 'filter-feedback', label: 'Filter Feedback' },
-  ],
-  'performance-fx': [
-    { id: 'djfx-looper', label: 'DJFX Looper' },
-    { id: 'vinyl-brake', label: 'Vinyl Brake' },
-    { id: 'scatter', label: 'Scatter' },
-    { id: 'isolator', label: 'Isolator' },
-    { id: 'stutter', label: 'Stutter' },
-  ],
+const STACK_MODEL_LABELS: Record<StackAmpModel, string> = {
+  blackface: 'Blackface', ac30: 'Vox AC30', plexi: 'Marshall Plexi',
+  svt: 'Ampeg SVT', 'model-t': 'Sunn Model T', calcotone: 'CALCOTONE Hybrid',
+};
+
+const STACK_CABINET_LABELS: Record<StackCabinet, string> = {
+  '1x12': '1×12 Open', '2x12': '2×12 Blue', '4x12': '4×12 Green',
+  '8x10': '8×10 Bass', direct: 'Direct / No Cab',
 };
 
 function ChaosModule({
   motionPadProps,
+  running,
+  visualState,
+  onEnabledChange,
+  onModelChange,
+  onCabinetChange,
+  onParametersChange,
   ...props
 }: RailInteractionProps & {
   motionPadProps: MotionPadProps;
+  running: boolean;
+  visualState: VisualAudioState;
+  onEnabledChange: (enabled: boolean) => void;
+  onModelChange: (model: StackAmpModel) => void;
+  onCabinetChange: (cabinet: StackCabinet) => void;
+  onParametersChange: (values: readonly number[]) => void;
 }) {
   const [enabled, setEnabled] = useState(CHAOS_RACK_STATE.enabled);
-  const [mode, setMode] = useState<ChaosMode>(CHAOS_RACK_STATE.mode);
-  const [effect, setEffect] = useState(CHAOS_RACK_STATE.effect);
+  const [model, setModel] = useState<StackAmpModel>(CHAOS_RACK_STATE.model);
+  const [cabinet, setCabinet] = useState<StackCabinet>(CHAOS_RACK_STATE.cabinet);
   const [values, setValues] = useState(() => [...CHAOS_RACK_STATE.values]);
   CHAOS_RACK_STATE.enabled = enabled;
-  CHAOS_RACK_STATE.mode = mode;
-  CHAOS_RACK_STATE.effect = effect;
+  CHAOS_RACK_STATE.model = model;
+  CHAOS_RACK_STATE.cabinet = cabinet;
   CHAOS_RACK_STATE.values = values;
-  const labels = mode === 'chaos-pad'
-    ? ['Depth', 'Feedback', 'Drift', 'Mix']
-    : ['Scatter', 'Rate', 'Color', 'Mix'];
+  const labels = ['Gain', 'Tone', 'Sag', 'Mix'];
+
+  useEffect(() => {
+    if (!running) return;
+    onEnabledChange(enabled);
+    onModelChange(model);
+    onCabinetChange(cabinet);
+    onParametersChange(values);
+  }, [cabinet, enabled, model, onCabinetChange, onEnabledChange, onModelChange, onParametersChange, running, values]);
 
   function randomizeChaos(profile: RandomizationProfile): string | null {
     if (profile === 'mutate') {
       setValues((current) => current.map((value) => clamp01(
         value + (Math.random() * 2 - 1) * RANDOM_MUTATION_AMOUNT
       )));
-      return 'Mutate 10% · current performance program';
+      return 'Mutate 10% · current STACK';
     }
-    const modes: readonly ChaosMode[] = ['chaos-pad', 'performance-fx'];
-    const nextMode = modes[Math.floor(Math.random() * modes.length)];
-    if (!nextMode) return null;
-    const programs = CHAOS_PROGRAMS[nextMode];
-    const nextProgram = programs[Math.floor(Math.random() * programs.length)];
-    if (!nextProgram) return null;
-    setMode(nextMode);
-    setEffect(nextProgram.id);
+    const modelPool: readonly StackAmpModel[] = profile === 'bass' ? ['svt', 'model-t']
+      : profile === 'lead' || profile === 'gritty-drive' ? ['plexi', 'model-t', 'calcotone']
+      : profile === 'pad' || profile === 'retro-ambient' ? ['blackface', 'ac30', 'calcotone']
+      : STACK_AMP_MODELS;
+    const nextModel = modelPool[Math.floor(Math.random() * modelPool.length)] ?? 'calcotone';
+    const cabinetPool: readonly StackCabinet[] = nextModel === 'svt' ? ['8x10', 'direct']
+      : nextModel === 'blackface' ? ['1x12', '2x12']
+      : nextModel === 'ac30' ? ['2x12', '1x12']
+      : ['4x12', '2x12'];
+    const nextCabinet = cabinetPool[Math.floor(Math.random() * cabinetPool.length)] ?? '4x12';
+    setModel(nextModel);
+    setCabinet(nextCabinet);
+    const driveRange: MusicalRange = profile === 'gritty-drive' ? [0.52, 0.74] : profile === 'pad' ? [0.12, 0.32] : [0.24, 0.58];
     setValues([
-      centeredRandom(0.18, 0.78),
-      centeredRandom(0.16, 0.64),
-      centeredRandom(0.22, 0.82),
-      centeredRandom(0.28, 0.62),
+      centeredRandom(...driveRange),
+      centeredRandom(0.32, 0.72),
+      centeredRandom(0.18, 0.62),
+      centeredRandom(0.42, 0.72),
     ]);
-    return `${nextMode === 'chaos-pad' ? 'Chaos Pad' : 'Performance FX'} · ${nextProgram.label}`;
+    return `STACK · ${STACK_MODEL_LABELS[nextModel]} · ${STACK_CABINET_LABELS[nextCabinet]}`;
   }
 
   useRailCRandomController('chaos', enabled, randomizeChaos);
@@ -1051,31 +1071,26 @@ function ChaosModule({
     <RailModuleFrame
       {...props}
       id="chaos"
-      name="Chaos"
+      name="Stack"
       enabled={enabled}
       onToggle={() => setEnabled((current) => !current)}
       headerControl={(
         <div className="chaos-selector-pair">
           <label className="algorithm-selector chaos-mode-selector">
-            <span className="sr-only">Chaos machine</span>
+            <span className="sr-only">STACK amplifier</span>
             <select
-              aria-label="Chaos machine"
-              value={mode}
-              onChange={(event) => {
-                const nextMode = event.target.value as ChaosMode;
-                setMode(nextMode);
-                setEffect(nextMode === 'chaos-pad' ? 'grain-delay' : 'djfx-looper');
-              }}
+              aria-label="STACK amplifier"
+              value={model}
+              onChange={(event) => setModel(event.target.value as StackAmpModel)}
             >
-              <option value="chaos-pad">Chaos Pad</option>
-              <option value="performance-fx">Performance FX</option>
+              {STACK_AMP_MODELS.map((candidate) => <option value={candidate} key={candidate}>{STACK_MODEL_LABELS[candidate]}</option>)}
             </select>
           </label>
           <label className="algorithm-selector chaos-program-selector">
-            <span className="sr-only">Chaos program</span>
-            <select aria-label="Chaos program" value={effect} onChange={(event) => setEffect(event.target.value)}>
-              {CHAOS_PROGRAMS[mode].map((program) => (
-                <option value={program.id} key={program.id}>{program.label}</option>
+            <span className="sr-only">STACK cabinet</span>
+            <select aria-label="STACK cabinet" value={cabinet} onChange={(event) => setCabinet(event.target.value as StackCabinet)}>
+              {STACK_CABINETS.map((candidate) => (
+                <option value={candidate} key={candidate}>{STACK_CABINET_LABELS[candidate]}</option>
               ))}
             </select>
           </label>
@@ -1088,6 +1103,11 @@ function ChaosModule({
         viewport={(
           <div className={`chaos-pad-shell dsp-viewport ${enabled ? 'active' : 'is-off'}`}>
             <MotionPad {...motionPadProps} />
+            <div className="stack-amp-readout" aria-hidden="true">
+              <strong>{STACK_MODEL_LABELS[model]}</strong>
+              <pre>{`┌─ PRE ─┬─ POWER ─┬─ ${cabinet.toUpperCase()} ─┐\n│  ▸▸▸  │  ≋ SAG  │  ◉  ◉  ◉  ◉ │\n└───────┴─────────┴────────────┘`}</pre>
+              <i style={{ '--stack-level': `${Math.round((enabled ? visualState.level : 0) * 100)}%` } as CSSProperties} />
+            </div>
           </div>
         )}
         knobs={labels.map((label, index) => (
@@ -1099,7 +1119,7 @@ function ChaosModule({
             display={`${Math.round(values[index] * 100)}%`}
             patchTarget={`chaos.${index}`}
             onChange={(value) => setValues((current) => current.map((item, valueIndex) => valueIndex === index ? value : item))}
-            onReset={() => setValues((current) => current.map((item, valueIndex) => valueIndex === index ? 0.5 : item))}
+            onReset={() => setValues((current) => current.map((item, valueIndex) => valueIndex === index ? [0.36, 0.52, 0.34, 0.62][index]! : item))}
             onPatchStart={() => undefined}
             onPatchMove={() => undefined}
             onPatchEnd={() => undefined}
@@ -1212,6 +1232,10 @@ export function RailCModule({
   onSynthTriggerNote,
   onSynthSequencerChange,
   onSynthSequencerStepListenerChange,
+  onStackEnabledChange,
+  onStackModelChange,
+  onStackCabinetChange,
+  onStackParametersChange,
   ...interaction
 }: RailInteractionProps & {
   moduleId: string;
@@ -1229,6 +1253,10 @@ export function RailCModule({
   onSynthSequencerStepListenerChange: (
     listener: ((position: SynthSequencerStep) => void) | null
   ) => void;
+  onStackEnabledChange: (enabled: boolean) => void;
+  onStackModelChange: (model: StackAmpModel) => void;
+  onStackCabinetChange: (cabinet: StackCabinet) => void;
+  onStackParametersChange: (values: readonly number[]) => void;
 }) {
   void modules;
   void assignments;
@@ -1247,7 +1275,18 @@ export function RailCModule({
       />
     );
   }
-  if (moduleId === 'chaos') return <ChaosModule {...interaction} motionPadProps={motionPadProps} />;
+  if (moduleId === 'chaos') return (
+    <ChaosModule
+      {...interaction}
+      motionPadProps={motionPadProps}
+      running={running}
+      visualState={visualState}
+      onEnabledChange={onStackEnabledChange}
+      onModelChange={onStackModelChange}
+      onCabinetChange={onStackCabinetChange}
+      onParametersChange={onStackParametersChange}
+    />
+  );
   if (moduleId === 'pressure') return <PressureModule {...interaction} running={running} visualState={visualState} />;
   return null;
 }

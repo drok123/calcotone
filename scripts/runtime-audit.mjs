@@ -45,6 +45,8 @@ const engine = read('src/audio/AudioEngine.ts');
 const baseEffect = read('src/audio/effects/Effect.ts');
 const physicalRegistry = read('src/audio/PhysicalBehaviorRegistry.ts');
 const knob = read('src/components/controls/Knob.tsx');
+const stackAmp = read('src/audio/effects/StackAmp.ts');
+const stackProcessor = read('public/stack-amp-processor.js');
 
 // Drift classic stays wet-only, allocation-conscious, and coefficient-throttled.
 requireText(driftClassic, 'this.result = [0, 0]', 'Drift reusable stereo result');
@@ -110,6 +112,13 @@ requireText(randomDspScheduler, "if (effectId === 'delay') return RANDOM_HALO_TO
 requireText(randomDspScheduler, "if (effectId === 'reverb') return RANDOM_ATMOS_TOPOLOGY_SETTLE_MS", 'RANDOM Atmos topology wait');
 forbidText(randomRuntime, 'directSetEffectBypassed.call(engine, effectId, bypassed)', 'RANDOM power mutation');
 
+// STACK replaces the UI-only Chaos controller with a real serial amp/cab insert.
+requireText(stackAmp, "public readonly id = 'chaos'", 'STACK preserves rack slot identity');
+requireText(stackAmp, "setTargetAtTime(value, now, 0.018)", 'STACK parameter smoothing');
+requireText(stackProcessor, 'SHAPER_LUT', 'STACK nonlinear LUT');
+requireText(stackProcessor, 'coefficientGlide', 'STACK click-safe topology glide');
+forbidText(stackProcessor, 'const target = [...model, ...cabinet]', 'STACK per-quantum target allocation');
+
 // Global engine quality should become more transparent as quality increases, and hidden diagnostics
 // must not keep doing FFT work while the DSP panel is closed. Shutdown also waits for any pending
 // click-safe reorder so the route fade cannot dereference graph/context after teardown.
@@ -151,7 +160,10 @@ requireText(media, 'if (cache.size >= MAX_CURVE_CACHE)', 'Artifact curve cache e
 // Bypass teardown and startup latency are native owners; no prototype patch may
 // silently rewrite AudioContext or hardware behavior at module import time.
 forbidText(main, "import './realtimeStabilityPatch'", 'Retired realtime prototype patch');
-requireText(engine, "latencyHint: this.performanceMode === 'studio' ? 'playback' : 0.02", 'Native audio scheduling headroom');
+requireText(engine, "if (mode === 'balanced') return 'balanced'", 'Balanced audio scheduling policy');
+requireText(engine, "return 'interactive'", 'Live interactive scheduling policy');
+requireText(engine, "latency: { ideal: 0 }", 'Low-latency input request');
+requireText(engine, "sampleRate: { ideal: this.context.sampleRate }", 'Input/context sample-rate match request');
 requireText(baseEffect, "if (this.bypassed && profile !== 'bypass') return", 'Bypassed behavior-stage allocation guard');
 requireText(baseEffect, 'if (this.bypassed && enabled) return', 'Bypassed spring allocation guard');
 requireText(physicalRegistry, "effect.configureBehavior('bypass', 0, 0, 0, 0.5)", 'Native bypass hardware teardown');

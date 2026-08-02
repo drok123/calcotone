@@ -27,11 +27,7 @@
   animation: pressure-display-reconfigure 360ms steps(4, end);
 }
 
-/*
- * Chaos no longer exposes an XY surface or patch bay. The existing host shell
- * becomes a compact modulation processor display while its four hardware
- * controls remain available below it.
- */
+/* STACK keeps the historical Chaos faceplate slot, now as a circuit/cab readout. */
 .module-chaos .chaos-pad-shell {
   position: relative;
   overflow: hidden;
@@ -49,19 +45,12 @@
   box-shadow: inset 0 0 28px rgba(0, 0, 0, 0.86);
 }
 
-.module-chaos .chaos-pad-shell > * {
+.module-chaos .chaos-pad-shell > .xy-pad {
   display: none !important;
 }
 
 .module-chaos .chaos-pad-shell::before {
-  content: "C H A O S\A MODULATION PROCESSOR\A ─────────────────────\A CLOCK  ▮▮▮▮▯▯▯▯\A DRIFT  ━━━━━━━╾────\A EVENT  · · ◆ · · · ◆ ·\A ─────────────────────\A CONTROLLED VARIATION";
-  white-space: pre;
-  font: 700 clamp(7px, 0.52vw, 10px)/1.48 "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
-  letter-spacing: 0.08em;
-  color: #9de8f2;
-  text-align: left;
-  text-shadow: 0 0 7px rgba(121, 215, 231, 0.52);
-  opacity: 0.92;
+  content: none;
 }
 
 .module-chaos .chaos-pad-shell::after {
@@ -72,6 +61,40 @@
   background-size: 100% 8px;
   opacity: 0.4;
   animation: chaos-processor-scan 4.8s linear infinite;
+}
+
+.module-chaos .stack-amp-readout {
+  position: relative;
+  z-index: 2;
+  display: grid !important;
+  width: min(92%, 310px);
+  gap: 7px;
+  color: #e7e1d3;
+  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  text-shadow: 0 0 7px rgba(231, 225, 211, 0.22);
+}
+
+.module-chaos .stack-amp-readout strong {
+  color: #9de8f2;
+  font-size: clamp(8px, 0.6vw, 11px);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.module-chaos .stack-amp-readout pre {
+  margin: 0;
+  overflow: hidden;
+  color: #e7e1d3;
+  font: 700 clamp(7px, 0.52vw, 10px)/1.45 "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  white-space: pre;
+}
+
+.module-chaos .stack-amp-readout i {
+  display: block;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, #9de8f2 var(--stack-level), rgba(231, 225, 211, 0.12) var(--stack-level));
+  box-shadow: 0 0 8px rgba(157, 232, 242, 0.36);
 }
 
 /* Belt-and-suspenders cleanup for legacy patch UI while declarations migrate. */

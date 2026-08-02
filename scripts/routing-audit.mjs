@@ -32,7 +32,8 @@ requireText(routing, 'top: normalized.slice(0, SERIAL_ROW_SIZE)', 'top row proje
 requireText(routing, 'bottom: normalized.slice(SERIAL_ROW_SIZE, SERIAL_SLOT_COUNT)', 'bottom row projection');
 requireText(routing, 'moveRackModule(', 'cross-rail rack move primitive');
 requireText(routing, 'next[source.rail][source.index] = targetId', 'fixed-slot cross-rail exchange');
-requireText(routing, 'serialOrderFromRack(', 'rack-to-six-effect projection');
+requireText(routing, 'serialOrderFromRack(', 'rack-to-seven-effect projection');
+requireText(routing, "STACK_MODULE_ID = 'chaos'", 'STACK serial insert ownership');
 requireText(routing, 'restoreRackRail(', 'per-rail factory restore');
 requireText(routing, 'shuffledRackOrder(', 'family-safe rack randomization');
 
@@ -41,7 +42,7 @@ requireText(app, 'moveRackModule(', 'native cross-rail drag');
 requireText(app, 'nudgeRackModule(', 'native rack keyboard routing');
 requireText(app, 'shuffledRackOrder(', 'native SIGNAL RANDOM routing');
 requireText(app, "const DEFAULT_RAIL_C_ORDER = ['synth', 'chaos', 'pressure']", 'third rail ownership');
-requireText(app, 'serialOrderFromRack({ A: nextA, B: nextB, C: nextC })', 'engine receives filtered six-effect order');
+requireText(app, 'serialOrderFromRack({ A: nextA, B: nextB, C: nextC })', 'engine receives filtered seven-effect order');
 requireText(app, 'setRailCOrder(next.C)', 'Rail C reorder state');
 requireText(app, 'setRailCRandomOrder([...railAOrder, ...railBOrder, ...railCOrder])', 'controller RANDOM serialization follows rack order');
 requireText(railCModules, 'SYNTH_RACK_STATE', 'Synth state survives cross-rail remount');
@@ -62,8 +63,8 @@ if (exchanged.A.length !== 3 || exchanged.B.length !== 3 || exchanged.C.length !
   failures.push('Cross-rail drag changed the three-by-three rack topology');
 }
 const serialAfterExchange = routingModule.serialOrderFromRack(exchanged);
-if (serialAfterExchange.join(',') !== 'chorus,delay,reverb,bitcrusher,media,saturation') {
-  failures.push(`Cross-rail drag lost the six-effect serial chain (${serialAfterExchange.join(',')})`);
+if (serialAfterExchange.join(',') !== 'chorus,delay,reverb,bitcrusher,media,saturation,chaos') {
+  failures.push(`Cross-rail drag lost the seven-effect serial chain (${serialAfterExchange.join(',')})`);
 }
 const restored = routingModule.restoreRackRail(exchanged, 'A', defaultRack);
 if (restored.A.join(',') !== defaultRack.A.join(',')) {
@@ -77,4 +78,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE routing audit passed (fixed nine-slot rack with cross-rail exchange and six-effect projection).');
+console.log('CALCOTONE routing audit passed (fixed nine-slot rack with cross-rail exchange and seven-effect projection).');

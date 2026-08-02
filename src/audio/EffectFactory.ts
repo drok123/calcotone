@@ -5,6 +5,7 @@ import { DelayEffect } from './effects/Delay';
 import { BitcrusherEffect } from './effects/Bitcrusher';
 import { ReverbEffect } from './effects/Reverb';
 import { MediaEffect } from './effects/Media';
+import { StackAmpEffect } from './effects/StackAmp';
 import { attachPhysicalBehavior } from './PhysicalBehaviorRegistry';
 
 export type EffectId =
@@ -14,6 +15,7 @@ export type EffectId =
   | 'bitcrusher'
   | 'reverb'
   | 'media'
+  | 'chaos'
   | 'bypass';
 
 export function createEffect(
@@ -39,6 +41,9 @@ export function createEffect(
       break;
     case 'media':
       effect = new MediaEffect(context);
+      break;
+    case 'chaos':
+      effect = new StackAmpEffect(context);
       break;
     case 'bypass':
       return null;
