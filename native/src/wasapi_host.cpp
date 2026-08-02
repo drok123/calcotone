@@ -127,9 +127,14 @@ Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow) {
   UINT32 default_period{}, fundamental{}, minimum{}, maximum{};
   check(endpoint.client->GetSharedModeEnginePeriod(endpoint.format, &default_period, &fundamental, &minimum, &maximum), "GetSharedModeEnginePeriod");
   endpoint.period_frames = minimum;
-  check(endpoint.client->InitializeSharedAudioStream(
-      AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_NOPERSIST,
-      endpoint.period_frames, endpoint.format, nullptr), "InitializeSharedAudioStream");
+  HRESULT initialize = endpoint.client->InitializeSharedAudioStream(
+      AUDCLNT_STREAMFLAGS_EVENTCALLBACK, endpoint.period_frames, endpoint.format, nullptr);
+  if (FAILED(initialize) && default_period != minimum) {
+    endpoint.period_frames = default_period;
+    initialize = endpoint.client->InitializeSharedAudioStream(
+        AUDCLNT_STREAMFLAGS_EVENTCALLBACK, endpoint.period_frames, endpoint.format, nullptr);
+  }
+  check(initialize, "InitializeSharedAudioStream");
   endpoint.event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
   if (!endpoint.event) throw std::runtime_error("CreateEvent failed");
   check(endpoint.client->SetEventHandle(endpoint.event), "SetEventHandle");
