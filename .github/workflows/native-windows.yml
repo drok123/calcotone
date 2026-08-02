@@ -1,0 +1,28 @@
+name: Native Windows Engine
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'native/**'
+      - '.github/workflows/native-windows.yml'
+
+jobs:
+  build-wasapi-host:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure x64 Release
+        run: cmake -S native -B native/build -A x64
+      - name: Build native engine
+        run: cmake --build native/build --config Release --parallel
+      - name: Run portable DSP test
+        run: ctest --test-dir native/build -C Release --output-on-failure
+      - name: Upload WASAPI host
+        uses: actions/upload-artifact@v4
+        with:
+          name: calcotone-native-windows
+          path: native/build/Release/calcotone_host.exe
+          if-no-files-found: error
