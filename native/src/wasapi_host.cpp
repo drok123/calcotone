@@ -87,7 +87,7 @@ Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow) {
   check(device->Activate(__uuidof(IAudioClient3), CLSCTX_ALL, nullptr, &endpoint.client), "Activate IAudioClient3");
   AudioClientProperties properties{};
   properties.cbSize = sizeof(properties);
-  properties.eCategory = AudioCategory_ProAudio;
+  properties.eCategory = AudioCategory_Media;
   properties.Options = AUDCLNT_STREAMOPTIONS_RAW;
   if (FAILED(endpoint.client->SetClientProperties(&properties))) {
     properties.Options = AUDCLNT_STREAMOPTIONS_NONE;
