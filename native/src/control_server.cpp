@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <iostream>
 #include <stdexcept>
 #include <utility>
@@ -89,7 +90,21 @@ void ControlServer::start() {
     throw std::runtime_error("WSAStartup failed");
   }
   network_started_ = true;
+  {
+    std::lock_guard lock(startup_mutex_);
+    startup_complete_ = false;
+    startup_ok_ = false;
+  }
   thread_ = std::thread([this] { run(); });
+  {
+    std::unique_lock lock(startup_mutex_);
+    startup_condition_.wait_for(lock, std::chrono::seconds(2), [this] { return startup_complete_; });
+    if (!startup_ok_) {
+      lock.unlock();
+      stop();
+      throw std::runtime_error("Control bridge could not bind 127.0.0.1:48157; close any older calcotone_host process and retry");
+    }
+  }
 }
 
 void ControlServer::stop() noexcept {
@@ -108,7 +123,12 @@ void ControlServer::stop() noexcept {
 
 void ControlServer::run() noexcept {
   const SOCKET listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-  if (listener == kInvalidSocket) { running_.store(false); return; }
+  if (listener == kInvalidSocket) {
+    running_.store(false);
+    { std::lock_guard lock(startup_mutex_); startup_complete_ = true; startup_ok_ = false; }
+    startup_condition_.notify_one();
+    return;
+  }
   listener_.store(static_cast<std::uintptr_t>(listener));
   sockaddr_in address{};
   address.sin_family = AF_INET;
@@ -116,8 +136,13 @@ void ControlServer::run() noexcept {
   address.sin_port = htons(port_);
   if (bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR ||
       listen(listener, 4) == SOCKET_ERROR) {
-    closesocket(listener); listener_.store(~std::uintptr_t{}); running_.store(false); return;
+    closesocket(listener); listener_.store(~std::uintptr_t{}); running_.store(false);
+    { std::lock_guard lock(startup_mutex_); startup_complete_ = true; startup_ok_ = false; }
+    startup_condition_.notify_one();
+    return;
   }
+  { std::lock_guard lock(startup_mutex_); startup_complete_ = true; startup_ok_ = true; }
+  startup_condition_.notify_one();
 
   while (running_.load()) {
     const SOCKET client = accept(listener, nullptr, nullptr);

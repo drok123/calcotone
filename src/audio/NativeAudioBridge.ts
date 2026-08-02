@@ -24,8 +24,8 @@ export class NativeAudioBridge {
     return new Request(url, {
       ...init,
       mode: 'cors',
-      targetAddressSpace: 'loopback',
-    } as RequestInit & { targetAddressSpace: 'loopback' });
+      credentials: 'omit',
+    });
   }
 
   public async probe(timeoutMs = 8_000): Promise<NativeAudioHealth | null> {

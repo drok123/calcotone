@@ -4,7 +4,9 @@
 
 #include <atomic>
 #include <cstdint>
+#include <condition_variable>
 #include <functional>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -33,6 +35,10 @@ class ControlServer final {
   std::thread thread_;
   std::atomic<std::uintptr_t> listener_{~std::uintptr_t{}};
   bool network_started_{};
+  std::mutex startup_mutex_;
+  std::condition_variable startup_condition_;
+  bool startup_complete_{};
+  bool startup_ok_{};
 };
 
 }  // namespace calcotone
