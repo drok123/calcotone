@@ -19,6 +19,10 @@ import {
 } from './audio/AudioEngine';
 import { DEFAULT_PRESET } from './audio/Preset';
 import type { InputMode } from './audio/InputMatrix';
+import {
+  runGpuCabinetExperiment,
+  type GpuCabinetExperimentReport,
+} from './audio/GpuCabinetExperiment';
 import { REVERB_ALGORITHM_ORDER, type ReverbAlgorithm } from './audio/effects/Reverb';
 import { MEDIA_MODE_ORDER, type MediaMode } from './audio/effects/Media';
 import { EMBER_MODE_ORDER, type EmberMode } from './audio/effects/Saturation';
@@ -617,6 +621,8 @@ export default function App() {
     useState<PerformanceMode>('live');
   const [profiler, setProfiler] = useState<DspProfilerSnapshot | null>(null);
   const [profilerOpen, setProfilerOpen] = useState(false);
+  const [gpuExperimentRunning, setGpuExperimentRunning] = useState(false);
+  const [gpuExperiment, setGpuExperiment] = useState<GpuCabinetExperimentReport | null>(null);
   const [adaptiveMode, setAdaptiveMode] = useState(true);
   const [explainMode, setExplainMode] = useState(false);
   const [xyAssignments, setXyAssignments] = useState<XYAssignment[]>(
@@ -858,6 +864,33 @@ export default function App() {
           ? error.message
           : 'The audio engine could not start.'
       );
+    }
+  }
+
+  async function testGpuCabinet(): Promise<void> {
+    if (engineState === 'running' || engineState === 'starting') {
+      setMessage('Stop the audio engine before running the GPU cabinet deadline test.');
+      return;
+    }
+    setGpuExperimentRunning(true);
+    setGpuExperiment(null);
+    setMessage('Testing WebGPU cabinet convolution against realtime audio deadlines...');
+    try {
+      const report = await runGpuCabinetExperiment();
+      setGpuExperiment(report);
+      setMessage(`GPU CAB TEST · ${report.verdict.toUpperCase()} · ${report.message}`);
+    } catch (error) {
+      setGpuExperiment({
+        supported: false,
+        verdict: 'unsupported',
+        message: error instanceof Error ? error.message : 'WebGPU cabinet test failed.',
+        taps: 1024,
+        sampleRate: 48_000,
+        batches: [],
+      });
+      setMessage(error instanceof Error ? `GPU CAB TEST · ${error.message}` : 'GPU CAB TEST failed.');
+    } finally {
+      setGpuExperimentRunning(false);
     }
   }
 
@@ -1804,6 +1837,21 @@ export default function App() {
             <strong>DSP PROFILER</strong>
             <span>CALLBACK <b title="Portable AudioWorklet wall-clock timing is disabled to protect audio stability">N/A</b></span>
             <span>TIMING <b title="AudioWorkletGlobalScope does not guarantee a wall-clock performance timer">AUDIO SAFE</b></span>
+            <button
+              type="button"
+              className="gpu-cabinet-test"
+              disabled={gpuExperimentRunning || isRunning}
+              onClick={() => void testGpuCabinet()}
+              title={isRunning ? 'Stop audio before benchmarking GPU dispatch/readback' : 'Benchmark 1024-tap cabinet convolution on CPU and WebGPU'}
+            >
+              {gpuExperimentRunning ? 'GPU TESTING…' : 'GPU CAB TEST'}
+            </button>
+            <span>GPU CAB <b className={gpuExperiment?.verdict === 'too-jittery' ? 'warn' : ''}>{gpuExperiment?.verdict.toUpperCase() ?? 'NOT TESTED'}</b></span>
+            {gpuExperiment?.batches.map((batch) => (
+              <span key={`gpu-${batch.blocks}`} title={`CPU ${batch.cpuMs.toFixed(2)} ms · max error ${batch.maxError.toExponential(2)}`}>
+                GPU {batch.blocks}×128 <b className={batch.realtimeSafe ? '' : 'warn'}>{batch.gpuMs.toFixed(2)} / {batch.algorithmicLatencyMs.toFixed(2)} ms</b>
+              </span>
+            ))}
             <span>INPUT LAT <b>{profiler?.inputLatencyMs === null || !profiler ? 'N/A' : `${profiler.inputLatencyMs.toFixed(1)} ms`}</b></span>
             <span>OUTPUT LAT <b>{profiler ? `${(profiler.baseLatencyMs + profiler.outputLatencyMs).toFixed(1)} ms` : '—'}</b></span>
             <span title={profiler?.pathEstimateComplete ? 'Browser-reported input + graph + output estimate' : 'Lower bound: the browser did not report input latency'}>

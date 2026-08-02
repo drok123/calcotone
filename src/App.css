@@ -2785,6 +2785,18 @@ body {
 .dsp-profiler span { white-space: nowrap; }
 .dsp-profiler b { color: #b7c1c6; font-weight: 800; }
 .dsp-profiler b.warn { color: #ffad7f; text-shadow: 0 0 7px rgba(255,122,72,.35); }
+.dsp-profiler .gpu-cabinet-test {
+  pointer-events: auto;
+  min-height: 22px;
+  border: 1px solid rgba(157, 232, 242, 0.32);
+  border-radius: 3px;
+  background: rgba(20, 31, 35, 0.92);
+  color: #9de8f2;
+  font: 800 .5rem/1 var(--mono);
+  letter-spacing: .1em;
+  cursor: pointer;
+}
+.dsp-profiler .gpu-cabinet-test:disabled { opacity: .42; cursor: not-allowed; }
 .dsp-viewport canvas { filter: brightness(1.16) contrast(1.08); }
 
 /* V8.3 Dream System */
