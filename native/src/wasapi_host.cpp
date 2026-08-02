@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -66,6 +67,15 @@ struct StereoRing {
     read.store(r + 1, std::memory_order_release);
     return true;
   }
+};
+
+struct ProcessBuffers {
+  std::array<float, kProcessFrames * 2> capture_input{};
+  std::array<float, kProcessFrames * 2> mixed_output{};
+  std::array<float, kProcessFrames * 2> lane_one_input{};
+  std::array<float, kProcessFrames * 2> lane_one_output{};
+  std::array<float, kProcessFrames * 2> lane_two_input{};
+  std::array<float, kProcessFrames * 2> lane_two_output{};
 };
 
 struct Endpoint {
@@ -162,7 +172,10 @@ int main() {
     const float sample_rate = static_cast<float>(render.format->nSamplesPerSec);
     calcotone::StackAmp stack_one(sample_rate);
     calcotone::StackAmp stack_two(sample_rate);
-    StereoRing ring;
+    // These blocks exceed Windows' default 1 MB stack when combined. Allocate
+    // once during startup; the realtime threads never allocate or resize them.
+    auto ring = std::make_unique<StereoRing>();
+    auto process = std::make_unique<ProcessBuffers>();
     std::atomic<bool> running{true};
     std::atomic<std::uint64_t> underruns{};
     std::atomic<bool> audible{true};
@@ -170,10 +183,6 @@ int main() {
     std::atomic<unsigned> stack_input{1};
     std::atomic<float> input_gain{1.F};
     std::atomic<float> output_gain{0.72F};
-    std::array<float, kProcessFrames * 2> capture_input{}, mixed_output{};
-    std::array<float, kProcessFrames * 2> lane_one_input{}, lane_one_output{};
-    std::array<float, kProcessFrames * 2> lane_two_input{}, lane_two_output{};
-
     const auto apply_command = [&](std::string_view line) -> std::string {
       if (line == "health" || line == "stats") {
         std::ostringstream status;
@@ -183,7 +192,7 @@ int main() {
                << ",\"inputChannels\":" << capture.format->nChannels
                << ",\"outputChannels\":" << render.format->nChannels
                << ",\"estimatedPathMs\":" << (capture.period_frames + render.buffer_frames) / sample_rate * 1000.
-               << ",\"underruns\":" << underruns.load() << ",\"overruns\":" << ring.overruns.load() << '}';
+               << ",\"underruns\":" << underruns.load() << ",\"overruns\":" << ring->overruns.load() << '}';
         return status.str();
       }
       std::istringstream command{std::string(line)}; std::string name; float value = 0.F; command >> name >> value;
@@ -227,7 +236,7 @@ int main() {
             const float left = flags & AUDCLNT_BUFFERFLAGS_SILENT ? 0.F : samples[frame * capture.format->nChannels];
             const float right = flags & AUDCLNT_BUFFERFLAGS_SILENT ? 0.F
                 : samples[frame * capture.format->nChannels + std::min<WORD>(1, capture.format->nChannels - 1)];
-            ring.push(left, right);
+            ring->push(left, right);
           }
           capture_service->ReleaseBuffer(frames);
           capture_service->GetNextPacketSize(&packet);
@@ -248,23 +257,23 @@ int main() {
           if (FAILED(render_service->GetBuffer(block, &bytes))) break;
           for (UINT32 frame = 0; frame < block; ++frame) {
             float left = 0.F, right = 0.F;
-            if (!ring.pop(left, right)) underruns.fetch_add(1, std::memory_order_relaxed);
-            capture_input[frame * 2] = left; capture_input[frame * 2 + 1] = right;
+            if (!ring->pop(left, right)) underruns.fetch_add(1, std::memory_order_relaxed);
+            process->capture_input[frame * 2] = left; process->capture_input[frame * 2 + 1] = right;
           }
           calcotone::split_dual_mono(
-              capture_input.data(), lane_one_input.data(), lane_two_input.data(), block,
+              process->capture_input.data(), process->lane_one_input.data(), process->lane_two_input.data(), block,
               input_gain.load(std::memory_order_relaxed));
           const bool bypassed = stack_bypassed.load(std::memory_order_relaxed);
           const auto source = static_cast<calcotone::StackInputSource>(stack_input.load(std::memory_order_relaxed));
-          if (!bypassed && calcotone::stack_receives_lane(source, 0)) stack_one.process(lane_one_input.data(), lane_one_output.data(), block);
-          else std::copy_n(lane_one_input.data(), block * 2, lane_one_output.data());
-          if (!bypassed && calcotone::stack_receives_lane(source, 1)) stack_two.process(lane_two_input.data(), lane_two_output.data(), block);
-          else std::copy_n(lane_two_input.data(), block * 2, lane_two_output.data());
+          if (!bypassed && calcotone::stack_receives_lane(source, 0)) stack_one.process(process->lane_one_input.data(), process->lane_one_output.data(), block);
+          else std::copy_n(process->lane_one_input.data(), block * 2, process->lane_one_output.data());
+          if (!bypassed && calcotone::stack_receives_lane(source, 1)) stack_two.process(process->lane_two_input.data(), process->lane_two_output.data(), block);
+          else std::copy_n(process->lane_two_input.data(), block * 2, process->lane_two_output.data());
           auto* destination = reinterpret_cast<float*>(bytes);
           const float gain = audible.load(std::memory_order_relaxed) ? output_gain.load(std::memory_order_relaxed) : 0.F;
-          calcotone::mix_dual_mono(lane_one_output.data(), lane_two_output.data(), mixed_output.data(), block, gain);
+          calcotone::mix_dual_mono(process->lane_one_output.data(), process->lane_two_output.data(), process->mixed_output.data(), block, gain);
           for (UINT32 frame = 0; frame < block; ++frame) for (WORD channel = 0; channel < render.format->nChannels; ++channel)
-            destination[frame * render.format->nChannels + channel] = mixed_output[frame * 2 + std::min<WORD>(channel, 1)];
+            destination[frame * render.format->nChannels + channel] = process->mixed_output[frame * 2 + std::min<WORD>(channel, 1)];
           render_service->ReleaseBuffer(block, 0);
           remaining -= block;
         }
