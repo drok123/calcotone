@@ -3317,6 +3317,7 @@ body {
   display: grid;
   grid-template-columns:
     104px
+    136px
     minmax(180px, 240px)
     112px
     136px
@@ -3363,6 +3364,57 @@ body {
 .footer-engine-status strong.active {
   color: #bfffd2;
   text-shadow: 0 0 6px rgba(101,255,154,.20);
+}
+
+.footer-engine-status strong.native-backend {
+  color: #8fffc1;
+  text-shadow: 0 0 7px rgba(74,255,154,.28);
+}
+
+.footer-engine-status strong.web-backend {
+  color: #ffd58f;
+}
+
+.audio-backend-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 27px;
+  padding: 0 9px;
+  border: 1px solid rgba(244,239,220,.2);
+  border-radius: 4px;
+  color: #aab1ac;
+  background: #111513;
+  font: 900 .52rem/1 var(--mono);
+  letter-spacing: .08em;
+  white-space: nowrap;
+}
+
+.audio-backend-badge i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #66706a;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.6);
+}
+
+.audio-backend-badge.native {
+  color: #aaffca;
+  border-color: rgba(83,255,155,.38);
+}
+
+.audio-backend-badge.native i {
+  background: #52ff99;
+  box-shadow: 0 0 8px rgba(82,255,153,.55);
+}
+
+.audio-backend-badge.web {
+  color: #ffd58f;
+  border-color: rgba(255,196,92,.32);
+}
+
+.audio-backend-badge.web i {
+  background: #ffc45c;
 }
 
 .footer-actions {

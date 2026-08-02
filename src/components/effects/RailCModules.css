@@ -476,7 +476,7 @@
 }
 
 .module-chaos .module-header {
-  grid-template-columns: minmax(72px, 1fr) minmax(210px, 248px) 42px;
+  grid-template-columns: minmax(72px, 1fr) minmax(300px, 360px) 42px;
 }
 
 .module-chaos .module-header-control {
@@ -486,7 +486,7 @@
 
 .chaos-selector-pair {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   min-width: 0;
   width: 100%;
@@ -500,6 +500,11 @@
 .module-header-control .chaos-selector-pair select {
   width: 100%;
   min-width: 0;
+}
+
+.module-header-control .chaos-input-selector select:disabled {
+  cursor: not-allowed;
+  opacity: .48;
 }
 
 .chaos-pad-shell {

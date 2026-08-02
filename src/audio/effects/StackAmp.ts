@@ -6,6 +6,8 @@ export const STACK_AMP_MODELS = ['blackface', 'ac30', 'plexi', 'svt', 'model-t',
 export type StackAmpModel = (typeof STACK_AMP_MODELS)[number];
 export const STACK_CABINETS = ['1x12', '2x12', '4x12', '8x10', 'direct'] as const;
 export type StackCabinet = (typeof STACK_CABINETS)[number];
+export const STACK_INPUT_SOURCES = ['input-1', 'input-2', 'both'] as const;
+export type StackInputSource = (typeof STACK_INPUT_SOURCES)[number];
 
 const MODEL: ParameterDefinition = { id: 'model', label: 'Amp', min: 0, max: STACK_AMP_MODELS.length - 1, defaultValue: 5, step: 1 };
 const CABINET: ParameterDefinition = { id: 'cabinet', label: 'Cabinet', min: 0, max: STACK_CABINETS.length - 1, defaultValue: 2, step: 1 };

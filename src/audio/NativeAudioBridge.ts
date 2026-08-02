@@ -4,6 +4,8 @@ export interface NativeAudioHealth {
   sampleRate: number;
   inputPeriodFrames: number;
   outputBufferFrames: number;
+  inputChannels: number;
+  outputChannels: number;
   estimatedPathMs: number;
   underruns: number;
   overruns: number;

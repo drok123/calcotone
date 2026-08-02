@@ -34,6 +34,7 @@ import {
   STACK_CABINETS,
   type StackAmpModel,
   type StackCabinet,
+  type StackInputSource,
 } from './audio/effects/StackAmp';
 import {
   DELAY_ALGORITHM_ORDER,
@@ -593,6 +594,7 @@ export default function App() {
   const nativeBridgeRef = useRef(new NativeAudioBridge());
   const backendRef = useRef<'web' | 'native' | null>(null);
   const [engineState, setEngineState] = useState<AudioEngineState>('idle');
+  const [audioBackend, setAudioBackend] = useState<'native' | 'web' | null>(null);
   const [canvasScale, setCanvasScale] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [modules, setModules] = useState<ModuleState[]>(INITIAL_MODULES);
@@ -701,6 +703,12 @@ export default function App() {
     if (index < 0) return;
     if (backendRef.current === 'native') void nativeBridgeRef.current.command('cab', index);
     else engineRef.current?.setEffectParameter('chaos', 'cabinet', index);
+  }, []);
+
+  const setStackInputSource = useCallback((source: StackInputSource) => {
+    if (backendRef.current !== 'native') return;
+    const index = source === 'input-1' ? 0 : source === 'input-2' ? 1 : 2;
+    void nativeBridgeRef.current.command('stackInput', index);
   }, []);
 
   const setStackParameters = useCallback((values: readonly number[]) => {
@@ -826,6 +834,7 @@ export default function App() {
       const native = await nativeBridgeRef.current.probe();
       if (native) {
         backendRef.current = 'native';
+        setAudioBackend('native');
         await Promise.all([
           nativeBridgeRef.current.command('active', 1),
           nativeBridgeRef.current.command('inputGain', inputGain),
@@ -835,7 +844,7 @@ export default function App() {
         setInputDevice('Windows native default input');
         setLatency(`${native.estimatedPathMs.toFixed(1)} ms engine path`);
         setSampleRate(`${native.sampleRate} Hz`);
-        setChannelInfo({ input: 'Native', output: 'Native' });
+        setChannelInfo({ input: `${native.inputChannels} ch native`, output: `${native.outputChannels} ch native` });
         setAnalyser(null);
         setEngineState('running');
         setMessage('Native WASAPI audio is active. STACK and master controls are running outside WebAudio.');
@@ -843,6 +852,7 @@ export default function App() {
       }
 
       backendRef.current = 'web';
+      setAudioBackend('web');
       const engine = getEngine();
       setMessage(diagnosticAudio
         ? 'Starting the built-in DSP diagnostic signal...'
@@ -897,6 +907,7 @@ export default function App() {
       }
       setAnalyser(null);
       backendRef.current = null;
+      setAudioBackend(null);
       setEngineState('error');
       setMessage(
         error instanceof Error
@@ -1052,6 +1063,7 @@ export default function App() {
       await nativeBridgeRef.current.command('active', 0);
       nativeBridgeRef.current.disconnect();
       backendRef.current = null;
+      setAudioBackend(null);
       setAnalyser(null);
       setEngineState('stopped');
       setInputDevice('No input connected');
@@ -1073,6 +1085,7 @@ export default function App() {
     clearRecordingTimer();
     await engine.stop();
     backendRef.current = null;
+    setAudioBackend(null);
     setAnalyser(null);
     setEngineState('stopped');
     setInputDevice('No input connected');
@@ -1863,6 +1876,10 @@ export default function App() {
           </div>
 
           <div className="control-strip-actions">
+            <span className={`audio-backend-badge ${audioBackend ?? 'detecting'}`} title="Active audio processing backend">
+              <i aria-hidden="true" />
+              {audioBackend === 'native' ? 'NATIVE WASAPI' : audioBackend === 'web' ? 'WEB AUDIO' : 'AUDIO AUTO'}
+            </span>
             <label className="random-profile-selector">
               <span className="sr-only">Randomization profile</span>
               <select
@@ -1954,11 +1971,12 @@ export default function App() {
                   <span>Input Mode</span>
                   <select
                     value={inputMode}
+                    disabled={audioBackend === 'native'}
                     onChange={(event: ReactChangeEvent<HTMLSelectElement>) =>
                       updateInputMode(event.target.value as InputMode)
                     }
                   >
-                    <option value="mono-to-stereo">Mono 1 → Stereo</option>
+                    <option value="mono-to-stereo">{audioBackend === 'native' ? 'Dual Mono → Stereo' : 'Mono 1 → Stereo'}</option>
                     <option value="stereo">True Stereo</option>
                     <option value="left">Left → Stereo</option>
                     <option value="right">Right → Stereo</option>
@@ -2136,7 +2154,9 @@ export default function App() {
                             onStackEnabledChange={setStackEnabled}
                             onStackModelChange={setStackModel}
                             onStackCabinetChange={setStackCabinet}
+                            onStackInputSourceChange={setStackInputSource}
                             onStackParametersChange={setStackParameters}
+                            nativeBackendActive={audioBackend === 'native'}
                             motionPadProps={{
                               padRef: xyPadRef,
                               modules,
@@ -2197,6 +2217,12 @@ export default function App() {
             <div>
               <span>ENGINE</span>
               <strong className={isRunning ? 'active' : ''}>{engineState}</strong>
+            </div>
+            <div>
+              <span>BACKEND</span>
+              <strong className={audioBackend === 'native' ? 'native-backend' : audioBackend === 'web' ? 'web-backend' : ''}>
+                {audioBackend === 'native' ? 'NATIVE WASAPI' : audioBackend === 'web' ? 'WEB AUDIO' : 'AUTO'}
+              </strong>
             </div>
             <div>
               <span>INPUT</span>

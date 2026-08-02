@@ -31,8 +31,10 @@ import type {
 import {
   STACK_AMP_MODELS,
   STACK_CABINETS,
+  STACK_INPUT_SOURCES,
   type StackAmpModel,
   type StackCabinet,
+  type StackInputSource,
 } from '../../audio/effects/StackAmp';
 import {
   RANDOM_MORPH_SECONDS,
@@ -987,6 +989,7 @@ const CHAOS_RACK_STATE = {
   enabled: true,
   model: 'calcotone' as StackAmpModel,
   cabinet: '4x12' as StackCabinet,
+  inputSource: 'input-2' as StackInputSource,
   values: [0.36, 0.52, 0.34, 0.62],
 };
 
@@ -1000,6 +1003,12 @@ const STACK_CABINET_LABELS: Record<StackCabinet, string> = {
   '8x10': '8×10 Bass', direct: 'Direct / No Cab',
 };
 
+const STACK_INPUT_LABELS: Record<StackInputSource, string> = {
+  'input-1': 'Input 1 · Tablet',
+  'input-2': 'Input 2 · Guitar',
+  both: 'Both Inputs',
+};
+
 function ChaosModule({
   motionPadProps,
   running,
@@ -1007,7 +1016,9 @@ function ChaosModule({
   onEnabledChange,
   onModelChange,
   onCabinetChange,
+  onInputSourceChange,
   onParametersChange,
+  nativeBackendActive,
   ...props
 }: RailInteractionProps & {
   motionPadProps: MotionPadProps;
@@ -1016,15 +1027,19 @@ function ChaosModule({
   onEnabledChange: (enabled: boolean) => void;
   onModelChange: (model: StackAmpModel) => void;
   onCabinetChange: (cabinet: StackCabinet) => void;
+  onInputSourceChange: (source: StackInputSource) => void;
   onParametersChange: (values: readonly number[]) => void;
+  nativeBackendActive: boolean;
 }) {
   const [enabled, setEnabled] = useState(CHAOS_RACK_STATE.enabled);
   const [model, setModel] = useState<StackAmpModel>(CHAOS_RACK_STATE.model);
   const [cabinet, setCabinet] = useState<StackCabinet>(CHAOS_RACK_STATE.cabinet);
+  const [inputSource, setInputSource] = useState<StackInputSource>(CHAOS_RACK_STATE.inputSource);
   const [values, setValues] = useState(() => [...CHAOS_RACK_STATE.values]);
   CHAOS_RACK_STATE.enabled = enabled;
   CHAOS_RACK_STATE.model = model;
   CHAOS_RACK_STATE.cabinet = cabinet;
+  CHAOS_RACK_STATE.inputSource = inputSource;
   CHAOS_RACK_STATE.values = values;
   const labels = ['Gain', 'Tone', 'Sag', 'Mix'];
 
@@ -1033,8 +1048,9 @@ function ChaosModule({
     onEnabledChange(enabled);
     onModelChange(model);
     onCabinetChange(cabinet);
+    onInputSourceChange(inputSource);
     onParametersChange(values);
-  }, [cabinet, enabled, model, onCabinetChange, onEnabledChange, onModelChange, onParametersChange, running, values]);
+  }, [cabinet, enabled, inputSource, model, onCabinetChange, onEnabledChange, onInputSourceChange, onModelChange, onParametersChange, running, values]);
 
   function randomizeChaos(profile: RandomizationProfile): string | null {
     if (profile === 'mutate') {
@@ -1092,6 +1108,17 @@ function ChaosModule({
               {STACK_CABINETS.map((candidate) => (
                 <option value={candidate} key={candidate}>{STACK_CABINET_LABELS[candidate]}</option>
               ))}
+            </select>
+          </label>
+          <label className="algorithm-selector chaos-input-selector" title={nativeBackendActive ? 'Choose which mono-to-stereo interface lane enters STACK' : 'Input assignment activates when the native WASAPI host is connected'}>
+            <span className="sr-only">STACK input source</span>
+            <select
+              aria-label="STACK input source"
+              value={inputSource}
+              disabled={!nativeBackendActive}
+              onChange={(event) => setInputSource(event.target.value as StackInputSource)}
+            >
+              {STACK_INPUT_SOURCES.map((candidate) => <option value={candidate} key={candidate}>{STACK_INPUT_LABELS[candidate]}</option>)}
             </select>
           </label>
         </div>
@@ -1235,7 +1262,9 @@ export function RailCModule({
   onStackEnabledChange,
   onStackModelChange,
   onStackCabinetChange,
+  onStackInputSourceChange,
   onStackParametersChange,
+  nativeBackendActive,
   ...interaction
 }: RailInteractionProps & {
   moduleId: string;
@@ -1256,7 +1285,9 @@ export function RailCModule({
   onStackEnabledChange: (enabled: boolean) => void;
   onStackModelChange: (model: StackAmpModel) => void;
   onStackCabinetChange: (cabinet: StackCabinet) => void;
+  onStackInputSourceChange: (source: StackInputSource) => void;
   onStackParametersChange: (values: readonly number[]) => void;
+  nativeBackendActive: boolean;
 }) {
   void modules;
   void assignments;
@@ -1284,7 +1315,9 @@ export function RailCModule({
       onEnabledChange={onStackEnabledChange}
       onModelChange={onStackModelChange}
       onCabinetChange={onStackCabinetChange}
+      onInputSourceChange={onStackInputSourceChange}
       onParametersChange={onStackParametersChange}
+      nativeBackendActive={nativeBackendActive}
     />
   );
   if (moduleId === 'pressure') return <PressureModule {...interaction} running={running} visualState={visualState} />;

@@ -1,12 +1,42 @@
 #include "calcotone/stack_amp.hpp"
+#include "calcotone/input_router.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <iostream>
 #include <vector>
 
 int main() {
+  {
+    constexpr std::array<float, 4> capture{0.25F, -0.5F, 0.75F, -1.F};
+    std::array<float, 4> lane_one{}, lane_two{}, mixed{};
+    calcotone::split_dual_mono(capture.data(), lane_one.data(), lane_two.data(), 2, 2.F);
+    const std::array<float, 4> expected_one{0.5F, 0.5F, 1.5F, 1.5F};
+    const std::array<float, 4> expected_two{-1.F, -1.F, -2.F, -2.F};
+    if (lane_one != expected_one || lane_two != expected_two) {
+      std::cerr << "dual-mono split failed\n";
+      return 3;
+    }
+    using calcotone::StackInputSource;
+    if (!calcotone::stack_receives_lane(StackInputSource::InputOne, 0) ||
+        calcotone::stack_receives_lane(StackInputSource::InputOne, 1) ||
+        calcotone::stack_receives_lane(StackInputSource::InputTwo, 0) ||
+        !calcotone::stack_receives_lane(StackInputSource::InputTwo, 1) ||
+        !calcotone::stack_receives_lane(StackInputSource::Both, 0) ||
+        !calcotone::stack_receives_lane(StackInputSource::Both, 1)) {
+      std::cerr << "STACK lane assignment failed\n";
+      return 4;
+    }
+    calcotone::mix_dual_mono(lane_one.data(), lane_two.data(), mixed.data(), 2, 1.F);
+    if (mixed[0] >= 0.F || mixed[2] >= 0.F ||
+        std::ranges::any_of(mixed, [](float value) { return !std::isfinite(value) || std::abs(value) > 1.F; })) {
+      std::cerr << "dual-mono mix guard failed\n";
+      return 5;
+    }
+  }
+
   constexpr float rate = 48'000.F;
   constexpr std::size_t frames = 48'000;
   std::vector<float> input(frames * 2), output(frames * 2);
@@ -33,7 +63,7 @@ int main() {
   }
   const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
   if (global_peak > 1.151F || minimum_rms < .004F) return 2;
-  std::cout << "Native STACK passed 90 paths | peak=" << global_peak << " rms=" << minimum_rms << ".." << maximum_rms
+  std::cout << "Native routing + STACK passed 90 paths | peak=" << global_peak << " rms=" << minimum_rms << ".." << maximum_rms
             << " | test wall=" << elapsed << "s\n";
   return 0;
 }

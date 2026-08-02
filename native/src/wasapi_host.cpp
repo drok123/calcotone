@@ -9,6 +9,7 @@
 
 #include "calcotone/stack_amp.hpp"
 #include "calcotone/control_server.hpp"
+#include "calcotone/input_router.hpp"
 
 #include <algorithm>
 #include <array>
@@ -133,15 +134,19 @@ int main() {
     check(render.client->GetService(IID_PPV_ARGS(&render_service)), "Get render service");
 
     const float sample_rate = static_cast<float>(render.format->nSamplesPerSec);
-    calcotone::StackAmp stack(sample_rate);
+    calcotone::StackAmp stack_one(sample_rate);
+    calcotone::StackAmp stack_two(sample_rate);
     StereoRing ring;
     std::atomic<bool> running{true};
     std::atomic<std::uint64_t> underruns{};
     std::atomic<bool> audible{true};
     std::atomic<bool> stack_bypassed{false};
+    std::atomic<unsigned> stack_input{1};
     std::atomic<float> input_gain{1.F};
     std::atomic<float> output_gain{0.72F};
-    std::array<float, kProcessFrames * 2> process_input{}, process_output{};
+    std::array<float, kProcessFrames * 2> capture_input{}, mixed_output{};
+    std::array<float, kProcessFrames * 2> lane_one_input{}, lane_one_output{};
+    std::array<float, kProcessFrames * 2> lane_two_input{}, lane_two_output{};
 
     const auto apply_command = [&](std::string_view line) -> std::string {
       if (line == "health" || line == "stats") {
@@ -149,6 +154,8 @@ int main() {
         status << "{\"engine\":\"calcotone-native\",\"protocol\":1,\"sampleRate\":" << sample_rate
                << ",\"inputPeriodFrames\":" << capture.period_frames
                << ",\"outputBufferFrames\":" << render.buffer_frames
+               << ",\"inputChannels\":" << capture.format->nChannels
+               << ",\"outputChannels\":" << render.format->nChannels
                << ",\"estimatedPathMs\":" << (capture.period_frames + render.buffer_frames) / sample_rate * 1000.
                << ",\"underruns\":" << underruns.load() << ",\"overruns\":" << ring.overruns.load() << '}';
         return status.str();
@@ -156,13 +163,22 @@ int main() {
       std::istringstream command{std::string(line)}; std::string name; float value = 0.F; command >> name >> value;
       if (!command || !std::isfinite(value)) return R"({"error":"expected name and numeric value"})";
       if (name == "active") audible.store(value >= 0.5F); else if (name == "bypass") stack_bypassed.store(value >= 0.5F);
+      else if (name == "stackInput") stack_input.store(std::min(2U, static_cast<unsigned>(std::max(0.F, value))));
       else if (name == "inputGain") input_gain.store(std::clamp(value, 0.F, 2.F));
       else if (name == "outputGain") output_gain.store(std::clamp(value, 0.F, 1.5F));
-      else if (name == "drive") stack.set_drive(value); else if (name == "tone") stack.set_tone(value);
-      else if (name == "sag") stack.set_sag(value); else if (name == "mix") stack.set_mix(value);
-      else if (name == "model") stack.set_model(static_cast<calcotone::AmpModel>(static_cast<unsigned>(value)));
-      else if (name == "cab") stack.set_cabinet(static_cast<calcotone::Cabinet>(static_cast<unsigned>(value)));
-      else if (name == "quality") stack.set_quality(static_cast<unsigned>(value));
+      else if (name == "drive") { stack_one.set_drive(value); stack_two.set_drive(value); }
+      else if (name == "tone") { stack_one.set_tone(value); stack_two.set_tone(value); }
+      else if (name == "sag") { stack_one.set_sag(value); stack_two.set_sag(value); }
+      else if (name == "mix") { stack_one.set_mix(value); stack_two.set_mix(value); }
+      else if (name == "model") {
+        const auto model = static_cast<calcotone::AmpModel>(static_cast<unsigned>(value));
+        stack_one.set_model(model); stack_two.set_model(model);
+      } else if (name == "cab") {
+        const auto cabinet = static_cast<calcotone::Cabinet>(static_cast<unsigned>(value));
+        stack_one.set_cabinet(cabinet); stack_two.set_cabinet(cabinet);
+      } else if (name == "quality") {
+        stack_one.set_quality(static_cast<unsigned>(value)); stack_two.set_quality(static_cast<unsigned>(value));
+      }
       else return R"({"error":"unknown command"})";
       return "{\"ok\":true,\"command\":\"" + name + "\"}";
     };
@@ -205,19 +221,22 @@ int main() {
           for (UINT32 frame = 0; frame < block; ++frame) {
             float left = 0.F, right = 0.F;
             if (!ring.pop(left, right)) underruns.fetch_add(1, std::memory_order_relaxed);
-            const float gain = input_gain.load(std::memory_order_relaxed);
-            process_input[frame * 2] = left * gain; process_input[frame * 2 + 1] = right * gain;
+            capture_input[frame * 2] = left; capture_input[frame * 2 + 1] = right;
           }
-          if (stack_bypassed.load(std::memory_order_relaxed)) {
-            std::copy_n(process_input.data(), block * 2, process_output.data());
-          } else {
-            stack.process(process_input.data(), process_output.data(), block);
-          }
+          calcotone::split_dual_mono(
+              capture_input.data(), lane_one_input.data(), lane_two_input.data(), block,
+              input_gain.load(std::memory_order_relaxed));
+          const bool bypassed = stack_bypassed.load(std::memory_order_relaxed);
+          const auto source = static_cast<calcotone::StackInputSource>(stack_input.load(std::memory_order_relaxed));
+          if (!bypassed && calcotone::stack_receives_lane(source, 0)) stack_one.process(lane_one_input.data(), lane_one_output.data(), block);
+          else std::copy_n(lane_one_input.data(), block * 2, lane_one_output.data());
+          if (!bypassed && calcotone::stack_receives_lane(source, 1)) stack_two.process(lane_two_input.data(), lane_two_output.data(), block);
+          else std::copy_n(lane_two_input.data(), block * 2, lane_two_output.data());
           auto* destination = reinterpret_cast<float*>(bytes);
           const float gain = audible.load(std::memory_order_relaxed) ? output_gain.load(std::memory_order_relaxed) : 0.F;
-          for (UINT32 frame = 0; frame < block; ++frame) for (WORD channel = 0; channel < render.format->nChannels; ++channel) {
-            destination[frame * render.format->nChannels + channel] = process_output[frame * 2 + std::min<WORD>(channel, 1)] * gain;
-          }
+          calcotone::mix_dual_mono(lane_one_output.data(), lane_two_output.data(), mixed_output.data(), block, gain);
+          for (UINT32 frame = 0; frame < block; ++frame) for (WORD channel = 0; channel < render.format->nChannels; ++channel)
+            destination[frame * render.format->nChannels + channel] = mixed_output[frame * 2 + std::min<WORD>(channel, 1)];
           render_service->ReleaseBuffer(block, 0);
           remaining -= block;
         }
@@ -231,7 +250,7 @@ int main() {
     std::cout << "CALCOTONE native audio active | " << sample_rate << " Hz | input period " << capture.period_frames
               << "f | output buffer " << render.buffer_frames << "f | estimated native path " << input_ms + output_ms << " ms\n";
     std::cout << "Control bridge: http://127.0.0.1:" << control_server.port() << " | GET /health | POST /command\n";
-    std::cout << "Commands: active/bypass 0/1, inputGain/outputGain, drive/tone/sag/mix, model, cab, quality, stats, quit\n";
+    std::cout << "Commands: active/bypass 0/1, stackInput 0/1/2, inputGain/outputGain, drive/tone/sag/mix, model, cab, quality, stats, quit\n";
     std::string line;
     while (std::getline(std::cin, line)) {
       std::istringstream command(line); std::string name; float value = 0.F; command >> name;
