@@ -10,6 +10,7 @@
 #include "calcotone/stack_amp.hpp"
 #include "calcotone/control_server.hpp"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -136,6 +137,10 @@ int main() {
     StereoRing ring;
     std::atomic<bool> running{true};
     std::atomic<std::uint64_t> underruns{};
+    std::atomic<bool> audible{true};
+    std::atomic<bool> stack_bypassed{false};
+    std::atomic<float> input_gain{1.F};
+    std::atomic<float> output_gain{0.72F};
     std::array<float, kProcessFrames * 2> process_input{}, process_output{};
 
     const auto apply_command = [&](std::string_view line) -> std::string {
@@ -150,7 +155,10 @@ int main() {
       }
       std::istringstream command{std::string(line)}; std::string name; float value = 0.F; command >> name >> value;
       if (!command || !std::isfinite(value)) return R"({"error":"expected name and numeric value"})";
-      if (name == "drive") stack.set_drive(value); else if (name == "tone") stack.set_tone(value);
+      if (name == "active") audible.store(value >= 0.5F); else if (name == "bypass") stack_bypassed.store(value >= 0.5F);
+      else if (name == "inputGain") input_gain.store(std::clamp(value, 0.F, 2.F));
+      else if (name == "outputGain") output_gain.store(std::clamp(value, 0.F, 1.5F));
+      else if (name == "drive") stack.set_drive(value); else if (name == "tone") stack.set_tone(value);
       else if (name == "sag") stack.set_sag(value); else if (name == "mix") stack.set_mix(value);
       else if (name == "model") stack.set_model(static_cast<calcotone::AmpModel>(static_cast<unsigned>(value)));
       else if (name == "cab") stack.set_cabinet(static_cast<calcotone::Cabinet>(static_cast<unsigned>(value)));
@@ -197,12 +205,18 @@ int main() {
           for (UINT32 frame = 0; frame < block; ++frame) {
             float left = 0.F, right = 0.F;
             if (!ring.pop(left, right)) underruns.fetch_add(1, std::memory_order_relaxed);
-            process_input[frame * 2] = left; process_input[frame * 2 + 1] = right;
+            const float gain = input_gain.load(std::memory_order_relaxed);
+            process_input[frame * 2] = left * gain; process_input[frame * 2 + 1] = right * gain;
           }
-          stack.process(process_input.data(), process_output.data(), block);
+          if (stack_bypassed.load(std::memory_order_relaxed)) {
+            std::copy_n(process_input.data(), block * 2, process_output.data());
+          } else {
+            stack.process(process_input.data(), process_output.data(), block);
+          }
           auto* destination = reinterpret_cast<float*>(bytes);
+          const float gain = audible.load(std::memory_order_relaxed) ? output_gain.load(std::memory_order_relaxed) : 0.F;
           for (UINT32 frame = 0; frame < block; ++frame) for (WORD channel = 0; channel < render.format->nChannels; ++channel) {
-            destination[frame * render.format->nChannels + channel] = process_output[frame * 2 + std::min<WORD>(channel, 1)];
+            destination[frame * render.format->nChannels + channel] = process_output[frame * 2 + std::min<WORD>(channel, 1)] * gain;
           }
           render_service->ReleaseBuffer(block, 0);
           remaining -= block;
@@ -217,7 +231,7 @@ int main() {
     std::cout << "CALCOTONE native audio active | " << sample_rate << " Hz | input period " << capture.period_frames
               << "f | output buffer " << render.buffer_frames << "f | estimated native path " << input_ms + output_ms << " ms\n";
     std::cout << "Control bridge: http://127.0.0.1:" << control_server.port() << " | GET /health | POST /command\n";
-    std::cout << "Commands: drive/tone/sag/mix 0..1, model 0..5, cab 0..4, quality 1/2/4, stats, quit\n";
+    std::cout << "Commands: active/bypass 0/1, inputGain/outputGain, drive/tone/sag/mix, model, cab, quality, stats, quit\n";
     std::string line;
     while (std::getline(std::cin, line)) {
       std::istringstream command(line); std::string name; float value = 0.F; command >> name;

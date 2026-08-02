@@ -18,6 +18,7 @@ import {
   type DspProfilerSnapshot,
 } from './audio/AudioEngine';
 import { DEFAULT_PRESET } from './audio/Preset';
+import { NativeAudioBridge } from './audio/NativeAudioBridge';
 import type { InputMode } from './audio/InputMatrix';
 import {
   runGpuCabinetExperiment,
@@ -589,6 +590,8 @@ export default function App() {
   const diagnosticAudio = import.meta.env.DEV
     && new URLSearchParams(window.location.search).has('diagnostic-audio');
   const engineRef = useRef<AudioEngine | null>(null);
+  const nativeBridgeRef = useRef(new NativeAudioBridge());
+  const backendRef = useRef<'web' | 'native' | null>(null);
   const [engineState, setEngineState] = useState<AudioEngineState>('idle');
   const [canvasScale, setCanvasScale] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -679,20 +682,35 @@ export default function App() {
   }, []);
 
   const setStackEnabled = useCallback((enabled: boolean) => {
+    if (backendRef.current === 'native') {
+      void nativeBridgeRef.current.command('bypass', enabled ? 0 : 1);
+      return;
+    }
     engineRef.current?.setEffectBypassed('chaos', !enabled);
   }, []);
 
   const setStackModel = useCallback((model: StackAmpModel) => {
     const index = STACK_AMP_MODELS.indexOf(model);
-    if (index >= 0) engineRef.current?.setEffectParameter('chaos', 'model', index);
+    if (index < 0) return;
+    if (backendRef.current === 'native') void nativeBridgeRef.current.command('model', index);
+    else engineRef.current?.setEffectParameter('chaos', 'model', index);
   }, []);
 
   const setStackCabinet = useCallback((cabinet: StackCabinet) => {
     const index = STACK_CABINETS.indexOf(cabinet);
-    if (index >= 0) engineRef.current?.setEffectParameter('chaos', 'cabinet', index);
+    if (index < 0) return;
+    if (backendRef.current === 'native') void nativeBridgeRef.current.command('cab', index);
+    else engineRef.current?.setEffectParameter('chaos', 'cabinet', index);
   }, []);
 
   const setStackParameters = useCallback((values: readonly number[]) => {
+    if (backendRef.current === 'native') {
+      for (const [index, parameterId] of ['drive', 'tone', 'sag', 'mix'].entries()) {
+        const value = values[index];
+        if (value !== undefined) void nativeBridgeRef.current.command(parameterId, value);
+      }
+      return;
+    }
     const engine = engineRef.current;
     if (!engine?.getEffect('chaos')) return;
     for (const [index, parameterId] of ['drive', 'tone', 'sag', 'mix'].entries()) {
@@ -802,10 +820,30 @@ export default function App() {
   }
 
   async function startAudio(): Promise<void> {
-    const engine = getEngine();
-
     try {
       setEngineState('starting');
+      setMessage('Looking for the native low-latency engine...');
+      const native = await nativeBridgeRef.current.probe();
+      if (native) {
+        backendRef.current = 'native';
+        await Promise.all([
+          nativeBridgeRef.current.command('active', 1),
+          nativeBridgeRef.current.command('inputGain', inputGain),
+          nativeBridgeRef.current.command('outputGain', outputGain),
+          nativeBridgeRef.current.command('quality', performanceMode === 'studio' ? 4 : performanceMode === 'balanced' ? 2 : 1),
+        ]);
+        setInputDevice('Windows native default input');
+        setLatency(`${native.estimatedPathMs.toFixed(1)} ms engine path`);
+        setSampleRate(`${native.sampleRate} Hz`);
+        setChannelInfo({ input: 'Native', output: 'Native' });
+        setAnalyser(null);
+        setEngineState('running');
+        setMessage('Native WASAPI audio is active. STACK and master controls are running outside WebAudio.');
+        return;
+      }
+
+      backendRef.current = 'web';
+      const engine = getEngine();
       setMessage(diagnosticAudio
         ? 'Starting the built-in DSP diagnostic signal...'
         : 'Requesting access to the audio input...');
@@ -853,11 +891,12 @@ export default function App() {
       // (preset construction, UI/DSP audit, later startup sync) must also tear
       // down the opened MediaStream/AudioContext before showing ERROR.
       try {
-        await engine.stop();
+        await engineRef.current?.stop();
       } catch (cleanupError) {
         console.error('CALCOTONE startup cleanup failed.', cleanupError);
       }
       setAnalyser(null);
+      backendRef.current = null;
       setEngineState('error');
       setMessage(
         error instanceof Error
@@ -1009,6 +1048,19 @@ export default function App() {
   }
 
   async function stopAudio(): Promise<void> {
+    if (backendRef.current === 'native') {
+      await nativeBridgeRef.current.command('active', 0);
+      nativeBridgeRef.current.disconnect();
+      backendRef.current = null;
+      setAnalyser(null);
+      setEngineState('stopped');
+      setInputDevice('No input connected');
+      setLatency('—');
+      setSampleRate('—');
+      setChannelInfo({ input: '—', output: '—' });
+      setMessage('Native audio output muted.');
+      return;
+    }
     const engine = engineRef.current;
 
     if (!engine) {
@@ -1020,6 +1072,7 @@ export default function App() {
     }
     clearRecordingTimer();
     await engine.stop();
+    backendRef.current = null;
     setAnalyser(null);
     setEngineState('stopped');
     setInputDevice('No input connected');
@@ -1062,12 +1115,14 @@ export default function App() {
 
   function updateInputGain(value: number): void {
     setInputGain(value);
-    engineRef.current?.setInputGain(value);
+    if (backendRef.current === 'native') void nativeBridgeRef.current.command('inputGain', value);
+    else engineRef.current?.setInputGain(value);
   }
 
   function updateOutputGain(value: number): void {
     setOutputGain(value);
-    engineRef.current?.setOutputGain(value);
+    if (backendRef.current === 'native') void nativeBridgeRef.current.command('outputGain', value);
+    else engineRef.current?.setOutputGain(value);
   }
 
   function toggleAdaptiveMode(): void {
@@ -1649,9 +1704,13 @@ export default function App() {
 
   function changePerformanceMode(mode: PerformanceMode): void {
     setPerformanceMode(mode);
-    engineRef.current?.setPerformanceMode(mode);
+    if (backendRef.current === 'native') {
+      void nativeBridgeRef.current.command('quality', mode === 'studio' ? 4 : mode === 'balanced' ? 2 : 1);
+    } else {
+      engineRef.current?.setPerformanceMode(mode);
+    }
     setMessage(
-      `${mode.charAt(0).toUpperCase() + mode.slice(1)} quality selected.${engineState === 'running' ? ' Restart audio to apply its device-buffer policy.' : ''}`
+      `${mode.charAt(0).toUpperCase() + mode.slice(1)} quality selected.${engineState === 'running' && backendRef.current === 'web' ? ' Restart audio to apply its device-buffer policy.' : ''}`
     );
   }
 
@@ -1668,6 +1727,7 @@ export default function App() {
       offlineRandomTimersRef.current = [];
       engineRef.current?.cancelRecording();
       void engineRef.current?.stop();
+      if (backendRef.current === 'native') void nativeBridgeRef.current.command('active', 0);
     };
   }, []);
 
