@@ -894,7 +894,7 @@ export default function App() {
       setAnalyser(engine.getVisualSpectrumSource());
       setEngineState('running');
       setMessage(
-        'Audio is active. The effect rails, internal instruments, and spectrum display are live.'
+        `WEB AUDIO FALLBACK · ${nativeBridgeRef.current.getLastProbeFailure()}`
       );
     } catch (error) {
       // engine.start() is transactional internally, but failures after it returns

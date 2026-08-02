@@ -44,6 +44,12 @@ negotiated device periods and dropout counters. Send a plain-text command such a
 `drive 0.5` to `POST /command`. Browser origins are restricted to loopback hosts;
 the server itself binds only to `127.0.0.1`.
 
+Hosted Calcotone previews must be opened in their own browser tab; an embedded
+StackBlitz iframe cannot request loopback access under modern browser permissions.
+Allow loopback/local-network access if the browser prompts. The bridge accepts
+Calcotone's StackBlitz/WebContainer preview origins and logs any denied origin in
+the native console so a fallback can no longer fail silently.
+
 `stackInput 0` assigns STACK to Input 1, `stackInput 1` assigns it to Input 2,
 and `stackInput 2` processes both lanes through independent STACK instances. A lane
 not assigned to STACK remains dry, so a tablet can stay clean on Input 1 while a
