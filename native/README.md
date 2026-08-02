@@ -13,6 +13,7 @@ audio capture, processing, and playback never enter the browser/webview.
 - lock-free stereo capture/render queue;
 - underrun/overrun and negotiated-buffer telemetry;
 - console control protocol for STACK parameters.
+- loopback-only HTTP control bridge for the React/native-shell UI (port 48157).
 
 ## Portable DSP validation
 
@@ -35,6 +36,11 @@ Match the input and output device formats in Windows Sound settings (48 kHz is
 recommended for the first hardware run). Start with speakers/monitor volume low.
 The host prints the actual periods and estimated native path before accepting
 commands. Type `stats` to inspect dropouts and `quit` to stop cleanly.
+
+The bridge never carries audio. `GET http://127.0.0.1:48157/health` returns the
+negotiated device periods and dropout counters. Send a plain-text command such as
+`drive 0.5` to `POST /command`. Browser origins are restricted to loopback hosts;
+the server itself binds only to `127.0.0.1`.
 
 Shared low-period `IAudioClient3` is the default because it can approach exclusive
 latency without seizing the device. Exclusive WASAPI and ASIO remain backend options

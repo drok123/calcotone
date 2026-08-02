@@ -8,10 +8,12 @@
 #include <wrl/client.h>
 
 #include "calcotone/stack_amp.hpp"
+#include "calcotone/control_server.hpp"
 
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <sstream>
@@ -136,6 +138,30 @@ int main() {
     std::atomic<std::uint64_t> underruns{};
     std::array<float, kProcessFrames * 2> process_input{}, process_output{};
 
+    const auto apply_command = [&](std::string_view line) -> std::string {
+      if (line == "health" || line == "stats") {
+        std::ostringstream status;
+        status << "{\"engine\":\"calcotone-native\",\"protocol\":1,\"sampleRate\":" << sample_rate
+               << ",\"inputPeriodFrames\":" << capture.period_frames
+               << ",\"outputBufferFrames\":" << render.buffer_frames
+               << ",\"estimatedPathMs\":" << (capture.period_frames + render.buffer_frames) / sample_rate * 1000.
+               << ",\"underruns\":" << underruns.load() << ",\"overruns\":" << ring.overruns.load() << '}';
+        return status.str();
+      }
+      std::istringstream command{std::string(line)}; std::string name; float value = 0.F; command >> name >> value;
+      if (!command || !std::isfinite(value)) return R"({"error":"expected name and numeric value"})";
+      if (name == "drive") stack.set_drive(value); else if (name == "tone") stack.set_tone(value);
+      else if (name == "sag") stack.set_sag(value); else if (name == "mix") stack.set_mix(value);
+      else if (name == "model") stack.set_model(static_cast<calcotone::AmpModel>(static_cast<unsigned>(value)));
+      else if (name == "cab") stack.set_cabinet(static_cast<calcotone::Cabinet>(static_cast<unsigned>(value)));
+      else if (name == "quality") stack.set_quality(static_cast<unsigned>(value));
+      else return R"({"error":"unknown command"})";
+      return "{\"ok\":true,\"command\":\"" + name + "\"}";
+    };
+
+    calcotone::ControlServer control_server(apply_command);
+    control_server.start();
+
     std::thread capture_thread([&] {
       set_realtime_thread();
       while (running.load(std::memory_order_relaxed)) {
@@ -190,19 +216,15 @@ int main() {
     const double output_ms = render.buffer_frames / sample_rate * 1000.;
     std::cout << "CALCOTONE native audio active | " << sample_rate << " Hz | input period " << capture.period_frames
               << "f | output buffer " << render.buffer_frames << "f | estimated native path " << input_ms + output_ms << " ms\n";
+    std::cout << "Control bridge: http://127.0.0.1:" << control_server.port() << " | GET /health | POST /command\n";
     std::cout << "Commands: drive/tone/sag/mix 0..1, model 0..5, cab 0..4, quality 1/2/4, stats, quit\n";
     std::string line;
     while (std::getline(std::cin, line)) {
       std::istringstream command(line); std::string name; float value = 0.F; command >> name;
       if (name == "quit") break;
-      if (name == "stats") { std::cout << "underruns=" << underruns.load() << " overruns=" << ring.overruns.load() << '\n'; continue; }
-      command >> value;
-      if (name == "drive") stack.set_drive(value); else if (name == "tone") stack.set_tone(value);
-      else if (name == "sag") stack.set_sag(value); else if (name == "mix") stack.set_mix(value);
-      else if (name == "model") stack.set_model(static_cast<calcotone::AmpModel>(static_cast<unsigned>(value)));
-      else if (name == "cab") stack.set_cabinet(static_cast<calcotone::Cabinet>(static_cast<unsigned>(value)));
-      else if (name == "quality") stack.set_quality(static_cast<unsigned>(value));
+      std::cout << apply_command(line) << '\n';
     }
+    control_server.stop();
     running.store(false); SetEvent(capture.event); SetEvent(render.event);
     capture_thread.join(); render_thread.join();
     capture.client->Stop(); render.client->Stop(); CoUninitialize();
