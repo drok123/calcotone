@@ -34,6 +34,11 @@ cmake --build native/build --config Release
 .\native\build\Release\calcotone_host.exe
 ```
 
+Release artifacts include `START-CALCOTONE-NATIVE.bat`. Double-click that launcher
+instead of opening the executable directly. It keeps the window visible on failure,
+while the host writes `calcotone-native.log` beside itself and shows a Windows popup
+for fatal startup errors.
+
 Match the input and output device formats in Windows Sound settings (48 kHz is
 recommended for the first hardware run). Start with speakers/monitor volume low.
 The host prints the actual periods and estimated native path before accepting

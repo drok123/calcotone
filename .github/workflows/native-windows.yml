@@ -20,9 +20,13 @@ jobs:
         run: cmake --build native/build --config Release --parallel
       - name: Run portable DSP test
         run: ctest --test-dir native/build -C Release --output-on-failure
+      - name: Add double-click launcher
+        run: Copy-Item native/START-CALCOTONE-NATIVE.bat native/build/Release/START-CALCOTONE-NATIVE.bat
       - name: Upload WASAPI host
         uses: actions/upload-artifact@v4
         with:
           name: calcotone-native-windows
-          path: native/build/Release/calcotone_host.exe
+          path: |
+            native/build/Release/calcotone_host.exe
+            native/build/Release/START-CALCOTONE-NATIVE.bat
           if-no-files-found: error

@@ -17,6 +17,8 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -28,6 +30,19 @@ namespace {
 constexpr std::size_t kRingFrames = 1U << 17U;
 constexpr std::size_t kRingMask = kRingFrames - 1U;
 constexpr std::size_t kProcessFrames = 2048;
+std::ofstream native_log;
+
+std::filesystem::path executable_directory() {
+  std::array<wchar_t, 32'768> path{};
+  const DWORD size = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
+  if (size == 0 || size >= path.size()) return std::filesystem::current_path();
+  return std::filesystem::path(path.data(), path.data() + size).parent_path();
+}
+
+void log_line(std::string_view message) {
+  std::cout << message << std::endl;
+  if (native_log) native_log << message << std::endl;
+}
 
 struct StereoRing {
   std::array<float, kRingFrames * 2> data{};
@@ -122,11 +137,22 @@ void set_realtime_thread() noexcept {
 
 int main() {
   try {
+    std::cout << std::unitbuf;
+    std::cerr << std::unitbuf;
+    native_log.open(executable_directory() / "calcotone-native.log", std::ios::out | std::ios::trunc);
+    log_line("CALCOTONE native host starting...");
+    log_line("Initializing Windows COM audio services...");
     check(CoInitializeEx(nullptr, COINIT_MULTITHREADED), "CoInitializeEx");
     ComPtr<IMMDeviceEnumerator> enumerator;
     check(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator)), "Create device enumerator");
+    log_line("Opening default Windows capture endpoint...");
     Endpoint capture = open_endpoint(enumerator.Get(), eCapture);
+    log_line("Capture endpoint ready: " + std::to_string(capture.format->nSamplesPerSec) + " Hz, " +
+             std::to_string(capture.format->nChannels) + " channels, " + std::to_string(capture.period_frames) + " frame period");
+    log_line("Opening default Windows render endpoint...");
     Endpoint render = open_endpoint(enumerator.Get(), eRender);
+    log_line("Render endpoint ready: " + std::to_string(render.format->nSamplesPerSec) + " Hz, " +
+             std::to_string(render.format->nChannels) + " channels, " + std::to_string(render.period_frames) + " frame period");
     if (capture.format->nSamplesPerSec != render.format->nSamplesPerSec) throw std::runtime_error("Input/output sample rates differ; select matching Windows device formats first.");
     ComPtr<IAudioCaptureClient> capture_service;
     ComPtr<IAudioRenderClient> render_service;
@@ -184,7 +210,9 @@ int main() {
     };
 
     calcotone::ControlServer control_server(apply_command);
+    log_line("Binding native control bridge to 127.0.0.1:48157...");
     control_server.start();
+    log_line("Native control bridge is listening on 127.0.0.1:48157.");
 
     std::thread capture_thread([&] {
       set_realtime_thread();
@@ -247,10 +275,12 @@ int main() {
     check(render.client->Start(), "Start render");
     const double input_ms = capture.period_frames / sample_rate * 1000.;
     const double output_ms = render.buffer_frames / sample_rate * 1000.;
-    std::cout << "CALCOTONE native audio active | " << sample_rate << " Hz | input period " << capture.period_frames
-              << "f | output buffer " << render.buffer_frames << "f | estimated native path " << input_ms + output_ms << " ms\n";
-    std::cout << "Control bridge: http://127.0.0.1:" << control_server.port() << " | GET /health | POST /command\n";
-    std::cout << "Commands: active/bypass 0/1, stackInput 0/1/2, inputGain/outputGain, drive/tone/sag/mix, model, cab, quality, stats, quit\n";
+    std::ostringstream startup;
+    startup << "CALCOTONE native audio active | " << sample_rate << " Hz | input period " << capture.period_frames
+            << "f | output buffer " << render.buffer_frames << "f | estimated native path " << input_ms + output_ms << " ms";
+    log_line(startup.str());
+    log_line("Control bridge: http://127.0.0.1:" + std::to_string(control_server.port()) + " | GET /health | POST /command");
+    log_line("Commands: active/bypass 0/1, stackInput 0/1/2, inputGain/outputGain, drive/tone/sag/mix, model, cab, quality, stats, quit");
     std::string line;
     while (std::getline(std::cin, line)) {
       std::istringstream command(line); std::string name; float value = 0.F; command >> name;
@@ -263,7 +293,10 @@ int main() {
     capture.client->Stop(); render.client->Stop(); CoUninitialize();
     return 0;
   } catch (const std::exception& error) {
-    std::cerr << "CALCOTONE native host error: " << error.what() << '\n';
+    const std::string message = "CALCOTONE native host error: " + std::string(error.what());
+    std::cerr << message << std::endl;
+    if (native_log) native_log << message << std::endl;
+    MessageBoxA(nullptr, message.c_str(), "CALCOTONE native host error", MB_OK | MB_ICONERROR);
     CoUninitialize(); return 1;
   }
 }
