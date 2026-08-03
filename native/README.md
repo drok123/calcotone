@@ -13,6 +13,8 @@ audio capture, processing, and playback never enter the browser/webview.
 - minimum shared-mode engine periods with raw-mode attempt;
 - 64-frame exclusive-WASAPI request with automatic minimum-period clamping and
   safe shared-mode fallback when the driver is busy or rejects its mix format;
+- exclusive format negotiation across float32, 24-in-32 PCM, packed PCM24, and
+  PCM16 with allocation-free capture/render conversion and alignment retry;
 - MMCSS `Pro Audio` realtime threads;
 - lock-free stereo capture/render queue;
 - underrun/overrun and negotiated-buffer telemetry;
@@ -61,6 +63,8 @@ buffers. If either device refuses exclusive access, Calcotone reactivates a clea
 audio client and falls back to the lowest shared `IAudioClient3` period instead of
 failing startup. Close DAWs or other apps holding the interface if you want the
 lowest exclusive period.
+Both endpoint log sections list every rejected exclusive format and its HRESULT,
+which distinguishes disabled/busy exclusive access from a driver format mismatch.
 
 The bridge never carries audio. `GET http://127.0.0.1:48157/health` returns the
 negotiated device periods and dropout counters. Send a plain-text command such as

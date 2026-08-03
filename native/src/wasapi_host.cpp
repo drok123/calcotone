@@ -20,6 +20,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -106,11 +107,61 @@ void check(HRESULT result, const char* operation) {
   }
 }
 
-bool float_format(const WAVEFORMATEX* format) noexcept {
-  if (format->wFormatTag == WAVE_FORMAT_IEEE_FLOAT && format->wBitsPerSample == 32) return true;
-  if (format->wFormatTag != WAVE_FORMAT_EXTENSIBLE || format->cbSize < 22) return false;
-  const auto* extensible = reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(format);
-  return extensible->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT && format->wBitsPerSample == 32;
+enum class SampleEncoding { Float32, Pcm16, Pcm24, Pcm32, Unsupported };
+
+SampleEncoding sample_encoding(const WAVEFORMATEX* format) noexcept {
+  const bool extensible = format->wFormatTag == WAVE_FORMAT_EXTENSIBLE && format->cbSize >= 22;
+  const GUID subtype = extensible ? reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(format)->SubFormat
+                                  : format->wFormatTag == WAVE_FORMAT_IEEE_FLOAT ? KSDATAFORMAT_SUBTYPE_IEEE_FLOAT
+                                  : format->wFormatTag == WAVE_FORMAT_PCM ? KSDATAFORMAT_SUBTYPE_PCM : GUID{};
+  if (subtype == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT && format->wBitsPerSample == 32) return SampleEncoding::Float32;
+  if (subtype != KSDATAFORMAT_SUBTYPE_PCM) return SampleEncoding::Unsupported;
+  if (format->wBitsPerSample == 16) return SampleEncoding::Pcm16;
+  if (format->wBitsPerSample == 24) return SampleEncoding::Pcm24;
+  if (format->wBitsPerSample == 32) return SampleEncoding::Pcm32;
+  return SampleEncoding::Unsupported;
+}
+
+std::string format_description(const WAVEFORMATEX* format) {
+  const char* encoding = sample_encoding(format) == SampleEncoding::Float32 ? "float"
+      : sample_encoding(format) == SampleEncoding::Pcm16 ? "PCM16"
+      : sample_encoding(format) == SampleEncoding::Pcm24 ? "PCM24"
+      : sample_encoding(format) == SampleEncoding::Pcm32 ? "PCM32" : "unsupported";
+  return std::to_string(format->nSamplesPerSec) + " Hz " + std::to_string(format->nChannels) + " ch " + encoding;
+}
+
+float decode_sample(const BYTE* bytes, std::size_t sample, SampleEncoding encoding) noexcept {
+  if (encoding == SampleEncoding::Float32) { float value{}; std::memcpy(&value, bytes + sample * 4, 4); return value; }
+  if (encoding == SampleEncoding::Pcm16) { std::int16_t value{}; std::memcpy(&value, bytes + sample * 2, 2); return static_cast<float>(value) / 32768.F; }
+  if (encoding == SampleEncoding::Pcm24) {
+    const BYTE* p = bytes + sample * 3; std::int32_t value = p[0] | (p[1] << 8) | (p[2] << 16);
+    if (value & 0x800000) value |= ~0xFFFFFF;
+    return static_cast<float>(value) / 8'388'608.F;
+  }
+  if (encoding == SampleEncoding::Pcm32) { std::int32_t value{}; std::memcpy(&value, bytes + sample * 4, 4); return static_cast<float>(value) / 2'147'483'648.F; }
+  return 0.F;
+}
+
+void encode_sample(BYTE* bytes, std::size_t sample, SampleEncoding encoding, float input) noexcept {
+  const float value = std::clamp(input, -1.F, .999999F);
+  if (encoding == SampleEncoding::Float32) { std::memcpy(bytes + sample * 4, &value, 4); return; }
+  if (encoding == SampleEncoding::Pcm16) { const auto pcm=static_cast<std::int16_t>(std::lrint(value*32767.F)); std::memcpy(bytes+sample*2,&pcm,2); return; }
+  if (encoding == SampleEncoding::Pcm24) { const auto pcm=static_cast<std::int32_t>(std::lrint(value*8'388'607.F)); BYTE* p=bytes+sample*3; p[0]=pcm&255; p[1]=(pcm>>8)&255; p[2]=(pcm>>16)&255; return; }
+  if (encoding == SampleEncoding::Pcm32) { const auto pcm=static_cast<std::int32_t>(std::llrint(static_cast<double>(value)*2'147'483'647.)); std::memcpy(bytes+sample*4,&pcm,4); }
+}
+
+WAVEFORMATEXTENSIBLE pcm_candidate(const WAVEFORMATEX* basis, WORD container_bits, WORD valid_bits) noexcept {
+  WAVEFORMATEXTENSIBLE format{};
+  format.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE; format.Format.nChannels = basis->nChannels;
+  format.Format.nSamplesPerSec = basis->nSamplesPerSec; format.Format.wBitsPerSample = container_bits;
+  format.Format.nBlockAlign = static_cast<WORD>(basis->nChannels * container_bits / 8);
+  format.Format.nAvgBytesPerSec = format.Format.nSamplesPerSec * format.Format.nBlockAlign;
+  format.Format.cbSize = 22; format.Samples.wValidBitsPerSample = valid_bits;
+  format.dwChannelMask = basis->nChannels == 1 ? SPEAKER_FRONT_CENTER : basis->nChannels == 2 ? SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT : 0;
+  if (basis->wFormatTag == WAVE_FORMAT_EXTENSIBLE && basis->cbSize >= 22)
+    format.dwChannelMask = reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(basis)->dwChannelMask;
+  format.SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
+  return format;
 }
 
 Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow, bool prefer_exclusive) {
@@ -127,17 +178,51 @@ Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow, bool pre
   };
   endpoint.client = activate();
   check(endpoint.client->GetMixFormat(&endpoint.format), "GetMixFormat");
-  if (!float_format(endpoint.format)) throw std::runtime_error("Default endpoint is not 32-bit float; native format conversion is the next backend milestone.");
+  const std::string endpoint_name = flow == eCapture ? "Capture" : "Render";
   HRESULT initialize = E_FAIL;
-  if (prefer_exclusive && endpoint.client->IsFormatSupported(AUDCLNT_SHAREMODE_EXCLUSIVE, endpoint.format, nullptr) == S_OK) {
-    REFERENCE_TIME default_period_hns{}, minimum_period_hns{};
-    if (SUCCEEDED(endpoint.client->GetDevicePeriod(&default_period_hns, &minimum_period_hns))) {
-      const auto desired_hns = static_cast<REFERENCE_TIME>(64.0 * 10'000'000.0 / endpoint.format->nSamplesPerSec);
+  if (prefer_exclusive) {
+    auto pcm32 = pcm_candidate(endpoint.format, 32, 24);
+    auto pcm24 = pcm_candidate(endpoint.format, 24, 24);
+    auto pcm16 = pcm_candidate(endpoint.format, 16, 16);
+    const std::array<const WAVEFORMATEX*, 4> candidates{
+        endpoint.format, &pcm32.Format, &pcm24.Format, &pcm16.Format};
+    for (const auto* candidate : candidates) {
+      const HRESULT support = endpoint.client->IsFormatSupported(AUDCLNT_SHAREMODE_EXCLUSIVE, candidate, nullptr);
+      if (support != S_OK) {
+        std::ostringstream reason; reason << endpoint_name << " exclusive format rejected: " << format_description(candidate)
+            << " (HRESULT 0x" << std::hex << static_cast<unsigned long>(support) << ')'; log_line(reason.str());
+        continue;
+      }
+      REFERENCE_TIME default_period_hns{}, minimum_period_hns{};
+      if (FAILED(endpoint.client->GetDevicePeriod(&default_period_hns, &minimum_period_hns))) continue;
+      const auto desired_hns = static_cast<REFERENCE_TIME>(64.0 * 10'000'000.0 / candidate->nSamplesPerSec);
       const auto period_hns = std::max(minimum_period_hns, desired_hns);
-      initialize = endpoint.client->Initialize(
-          AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-          period_hns, period_hns, endpoint.format, nullptr);
-      endpoint.exclusive = SUCCEEDED(initialize);
+      initialize = endpoint.client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+          period_hns, period_hns, candidate, nullptr);
+      if (initialize == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED) {
+        UINT32 aligned_frames{};
+        if (SUCCEEDED(endpoint.client->GetBufferSize(&aligned_frames)) && aligned_frames > 0) {
+          endpoint.client = activate();
+          const auto aligned_hns = static_cast<REFERENCE_TIME>(
+              std::ceil(10'000'000.0 * aligned_frames / candidate->nSamplesPerSec));
+          initialize = endpoint.client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+              aligned_hns, aligned_hns, candidate, nullptr);
+        }
+      }
+      if (SUCCEEDED(initialize)) {
+        endpoint.exclusive = true;
+        if (candidate != endpoint.format) {
+          const std::size_t bytes = sizeof(WAVEFORMATEX) + candidate->cbSize;
+          auto* replacement = static_cast<WAVEFORMATEX*>(CoTaskMemAlloc(bytes));
+          if (!replacement) throw std::bad_alloc();
+          std::memcpy(replacement, candidate, bytes); CoTaskMemFree(endpoint.format); endpoint.format = replacement;
+        }
+        log_line(endpoint_name + " exclusive format accepted: " + format_description(endpoint.format));
+        break;
+      }
+      std::ostringstream reason; reason << endpoint_name << " exclusive initialization failed for " << format_description(candidate)
+          << " (HRESULT 0x" << std::hex << static_cast<unsigned long>(initialize) << ')'; log_line(reason.str());
+      endpoint.client = activate();
     }
   }
   if (!endpoint.exclusive) {
@@ -154,6 +239,8 @@ Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow, bool pre
     }
     check(initialize, "InitializeSharedAudioStream");
   }
+  if (sample_encoding(endpoint.format) == SampleEncoding::Unsupported)
+    throw std::runtime_error(endpoint_name + " format is unsupported by the native converter: " + format_description(endpoint.format));
   endpoint.event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
   if (!endpoint.event) throw std::runtime_error("CreateEvent failed");
   check(endpoint.client->SetEventHandle(endpoint.event), "SetEventHandle");
@@ -199,6 +286,8 @@ int main() {
     ComPtr<IAudioRenderClient> render_service;
     check(capture.client->GetService(IID_PPV_ARGS(&capture_service)), "Get capture service");
     check(render.client->GetService(IID_PPV_ARGS(&render_service)), "Get render service");
+    const auto capture_encoding = sample_encoding(capture.format);
+    const auto render_encoding = sample_encoding(render.format);
 
     const float sample_rate = static_cast<float>(render.format->nSamplesPerSec);
     calcotone::PitchTracker tuner(sample_rate);
@@ -309,11 +398,11 @@ int main() {
         while (SUCCEEDED(capture_service->GetNextPacketSize(&packet)) && packet) {
           BYTE* bytes = nullptr; UINT32 frames = 0; DWORD flags = 0;
           if (FAILED(capture_service->GetBuffer(&bytes, &frames, &flags, nullptr, nullptr))) break;
-          const auto* samples = reinterpret_cast<const float*>(bytes);
           for (UINT32 frame = 0; frame < frames; ++frame) {
-            const float left = flags & AUDCLNT_BUFFERFLAGS_SILENT ? 0.F : samples[frame * capture.format->nChannels];
+            const float left = flags & AUDCLNT_BUFFERFLAGS_SILENT ? 0.F
+                : decode_sample(bytes, frame * capture.format->nChannels, capture_encoding);
             const float right = flags & AUDCLNT_BUFFERFLAGS_SILENT ? 0.F
-                : samples[frame * capture.format->nChannels + std::min<WORD>(1, capture.format->nChannels - 1)];
+                : decode_sample(bytes, frame * capture.format->nChannels + std::min<WORD>(1, capture.format->nChannels - 1), capture_encoding);
             tuner.push(right);
             ring->push(left, right);
           }
@@ -348,11 +437,11 @@ int main() {
           const auto source = static_cast<calcotone::StackInputSource>(stack_input.load(std::memory_order_relaxed));
           if (!bypassed && calcotone::stack_receives_lane(source, 0)) stack_one.process(process->lane_one_output.data(), process->lane_one_output.data(), block);
           if (!bypassed && calcotone::stack_receives_lane(source, 1)) stack_two.process(process->lane_two_output.data(), process->lane_two_output.data(), block);
-          auto* destination = reinterpret_cast<float*>(bytes);
           const float gain = audible.load(std::memory_order_relaxed) ? output_gain.load(std::memory_order_relaxed) : 0.F;
           calcotone::mix_dual_mono(process->lane_one_output.data(), process->lane_two_output.data(), process->mixed_output.data(), block, gain);
           for (UINT32 frame = 0; frame < block; ++frame) for (WORD channel = 0; channel < render.format->nChannels; ++channel)
-            destination[frame * render.format->nChannels + channel] = process->mixed_output[frame * 2 + std::min<WORD>(channel, 1)];
+            encode_sample(bytes, frame * render.format->nChannels + channel, render_encoding,
+                process->mixed_output[frame * 2 + std::min<WORD>(channel, 1)]);
           render_service->ReleaseBuffer(block, 0);
           remaining -= block;
         }
