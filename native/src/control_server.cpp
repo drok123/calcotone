@@ -9,7 +9,10 @@
 #include <array>
 #include <cctype>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <utility>
 
@@ -62,23 +65,57 @@ bool safe_origin(std::string_view origin) noexcept {
       host_matches(host, "staticblitz.com");
 }
 
-void send_response(SOCKET client, int status, std::string_view body, std::string_view origin) noexcept {
-  const char* label = status == 200 ? "OK" : status == 403 ? "Forbidden" : "Bad Request";
+void send_response(
+    SOCKET client,
+    int status,
+    std::string_view body,
+    std::string_view origin,
+    std::string_view content_type = "application/json") noexcept {
+  const char* label = status == 200 ? "OK" : status == 403 ? "Forbidden" : status == 404 ? "Not Found" : "Bad Request";
   const std::string_view allowed_origin = origin.empty() ? std::string_view{"*"} : origin;
   std::string response = "HTTP/1.1 " + std::to_string(status) + ' ' + label +
-      "\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: " + std::string(allowed_origin) +
+      "\r\nContent-Type: " + std::string(content_type) + "\r\nAccess-Control-Allow-Origin: " + std::string(allowed_origin) +
       "\r\nVary: Origin\r\nAccess-Control-Allow-Private-Network: true"
       "\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS"
       "\r\nAccess-Control-Allow-Headers: Content-Type"
       "\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: " +
       std::to_string(body.size()) + "\r\n\r\n";
   response.append(body);
-  send(client, response.data(), static_cast<int>(response.size()), 0);
+  std::size_t sent = 0;
+  while (sent < response.size()) {
+    const int written = send(
+        client,
+        response.data() + sent,
+        static_cast<int>(std::min<std::size_t>(response.size() - sent, 64U * 1024U)),
+        0);
+    if (written <= 0) break;
+    sent += static_cast<std::size_t>(written);
+  }
+}
+
+std::string_view content_type_for(const std::filesystem::path& path) {
+  const auto extension = path.extension().string();
+  if (extension == ".html") return "text/html; charset=utf-8";
+  if (extension == ".js") return "text/javascript; charset=utf-8";
+  if (extension == ".css") return "text/css; charset=utf-8";
+  if (extension == ".svg") return "image/svg+xml";
+  if (extension == ".png") return "image/png";
+  if (extension == ".json") return "application/json";
+  if (extension == ".f32") return "application/octet-stream";
+  return "application/octet-stream";
+}
+
+std::string_view request_target(std::string_view request) noexcept {
+  const auto first_space = request.find(' ');
+  if (first_space == std::string_view::npos) return {};
+  const auto second_space = request.find(' ', first_space + 1);
+  if (second_space == std::string_view::npos) return {};
+  return request.substr(first_space + 1, second_space - first_space - 1);
 }
 }  // namespace
 
-ControlServer::ControlServer(Handler handler, unsigned short port)
-    : handler_(std::move(handler)), port_(port) {}
+ControlServer::ControlServer(Handler handler, unsigned short port, std::filesystem::path static_root)
+    : handler_(std::move(handler)), port_(port), static_root_(std::move(static_root)) {}
 
 ControlServer::~ControlServer() { stop(); }
 
@@ -163,6 +200,23 @@ void ControlServer::run() noexcept {
       const auto separator = request.find("\r\n\r\n");
       const auto command = separator == std::string_view::npos ? std::string_view{} : trim(request.substr(separator + 4));
       send_response(client, command.empty() ? 400 : 200, command.empty() ? R"({"error":"empty command"})" : handler_(command), origin);
+    } else if (request.starts_with("GET ") && !static_root_.empty()) {
+      auto target = request_target(request);
+      const auto query = target.find('?');
+      if (query != std::string_view::npos) target = target.substr(0, query);
+      if (target.empty() || target == "/") target = "/index.html";
+      if (target.find("..") != std::string_view::npos || !target.starts_with('/')) {
+        send_response(client, 403, "Forbidden", origin, "text/plain; charset=utf-8");
+      } else {
+        const auto path = static_root_ / std::string(target.substr(1));
+        std::ifstream file(path, std::ios::binary);
+        if (!file) {
+          send_response(client, 404, "Not found", origin, "text/plain; charset=utf-8");
+        } else {
+          const std::string body((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+          send_response(client, 200, body, origin, content_type_for(path));
+        }
+      }
     } else {
       send_response(client, 400, R"({"error":"unknown route"})", origin);
     }

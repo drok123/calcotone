@@ -1,6 +1,7 @@
 #ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
+#include <shellapi.h>
 #include <audioclient.h>
 #include <avrt.h>
 #include <ksmedia.h>
@@ -223,7 +224,8 @@ int main() {
       return "{\"ok\":true,\"command\":\"" + name + "\"}";
     };
 
-    calcotone::ControlServer control_server(apply_command);
+    calcotone::ControlServer control_server(
+        apply_command, 48157, executable_directory() / "web");
     log_line("Binding native control bridge to 127.0.0.1:48157...");
     control_server.start();
     log_line("Native control bridge is listening on 127.0.0.1:48157.");
@@ -287,6 +289,9 @@ int main() {
 
     check(capture.client->Start(), "Start capture");
     check(render.client->Start(), "Start render");
+    const std::wstring faceplate_url = L"http://127.0.0.1:" + std::to_wstring(control_server.port()) + L"/";
+    log_line("Opening local native faceplate: http://127.0.0.1:" + std::to_string(control_server.port()) + "/");
+    ShellExecuteW(nullptr, L"open", faceplate_url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     const double input_ms = capture.period_frames / sample_rate * 1000.;
     const double output_ms = render.buffer_frames / sample_rate * 1000.;
     std::ostringstream startup;

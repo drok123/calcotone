@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <condition_variable>
 #include <functional>
+#include <filesystem>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -17,7 +18,10 @@ class ControlServer final {
  public:
   using Handler = std::function<std::string(std::string_view)>;
 
-  explicit ControlServer(Handler handler, unsigned short port = 48157);
+  explicit ControlServer(
+      Handler handler,
+      unsigned short port = 48157,
+      std::filesystem::path static_root = {});
   ~ControlServer();
   ControlServer(const ControlServer&) = delete;
   ControlServer& operator=(const ControlServer&) = delete;
@@ -31,6 +35,7 @@ class ControlServer final {
 
   Handler handler_;
   unsigned short port_;
+  std::filesystem::path static_root_;
   std::atomic<bool> running_{false};
   std::thread thread_;
   std::atomic<std::uintptr_t> listener_{~std::uintptr_t{}};

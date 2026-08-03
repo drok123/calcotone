@@ -39,6 +39,12 @@ instead of opening the executable directly. It keeps the window visible on failu
 while the host writes `calcotone-native.log` beside itself and shows a Windows popup
 for fatal startup errors.
 
+The release also contains the production faceplate under `web/`. Once WASAPI and
+the control bridge are active, the host opens its own `http://127.0.0.1:<port>/`
+faceplate automatically. Use that tab for native mode; it is same-origin with the
+bridge and does not depend on StackBlitz, CORS, iframe permissions, or hosted-page
+local-network access.
+
 Match the input and output device formats in Windows Sound settings (48 kHz is
 recommended for the first hardware run). Start with speakers/monitor volume low.
 The host prints the actual periods and estimated native path before accepting

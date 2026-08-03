@@ -14,6 +14,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Build native faceplate
+        run: npm ci && npm run build
       - name: Configure x64 Release
         run: cmake -S native -B native/build -A x64
       - name: Build native engine
@@ -21,7 +27,9 @@ jobs:
       - name: Run portable DSP test
         run: ctest --test-dir native/build -C Release --output-on-failure
       - name: Add double-click launcher
-        run: Copy-Item native/START-CALCOTONE-NATIVE.bat native/build/Release/START-CALCOTONE-NATIVE.bat
+        run: |
+          Copy-Item native/START-CALCOTONE-NATIVE.bat native/build/Release/START-CALCOTONE-NATIVE.bat
+          Copy-Item dist native/build/Release/web -Recurse
       - name: Upload WASAPI host
         uses: actions/upload-artifact@v4
         with:
@@ -29,4 +37,5 @@ jobs:
           path: |
             native/build/Release/calcotone_host.exe
             native/build/Release/START-CALCOTONE-NATIVE.bat
+            native/build/Release/web/**
           if-no-files-found: error
