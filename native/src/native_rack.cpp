@@ -11,6 +11,7 @@ namespace calcotone {
 namespace {
 constexpr float kPi = 3.14159265358979323846F;
 constexpr std::size_t kModules = static_cast<std::size_t>(RackModule::Count);
+constexpr std::size_t kRackBlockFrames = 2048;
 
 float clamp01(float x) noexcept { return std::clamp(x, 0.F, 1.F); }
 float one_pole(float input, float& state, float coefficient) noexcept {
@@ -25,6 +26,7 @@ struct Params {
   std::array<std::atomic<float>, 7> target{};
   std::array<float, 7> value{};
   std::atomic<bool> bypassed{true};
+  float active{};
   Params(std::initializer_list<float> defaults) noexcept {
     std::size_t i = 0;
     for (float v : defaults) { target[i].store(v); value[i++] = v; }
@@ -195,6 +197,7 @@ struct NativeRack::Impl {
   Drift drift;
   Halo halo;
   Atmos atmos;
+  std::array<float, kRackBlockFrames * 2> dry{};
   std::array<std::atomic<unsigned>, kModules> order{};
   explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)), drift(sample_rate), halo(sample_rate), atmos(sample_rate) {
     for (unsigned i = 0; i < kModules; ++i) order[i].store(i);
@@ -232,9 +235,26 @@ NativeRack::NativeRack(float rate) : impl_(std::make_unique<Impl>(rate)) {}
 NativeRack::~NativeRack() = default;
 void NativeRack::process(const float* input, float* output, std::size_t frames) noexcept {
   if (input != output) std::copy_n(input, frames * 2, output);
-  for (unsigned slot = 0; slot < kModules; ++slot) {
-    const auto module = static_cast<RackModule>(impl_->order[slot].load(std::memory_order_relaxed));
-    if (module < RackModule::Count && !impl_->params(module).bypassed.load(std::memory_order_relaxed)) impl_->run(module, output, frames);
+  for (std::size_t offset = 0; offset < frames; offset += kRackBlockFrames) {
+    const std::size_t block = std::min(kRackBlockFrames, frames - offset);
+    float* block_output = output + offset * 2;
+    for (unsigned slot = 0; slot < kModules; ++slot) {
+      const auto module = static_cast<RackModule>(impl_->order[slot].load(std::memory_order_relaxed));
+      if (module >= RackModule::Count) continue;
+      auto& params = impl_->params(module);
+      const float target = params.bypassed.load(std::memory_order_relaxed) ? 0.F : 1.F;
+      if (target == 0.F && params.active < 1e-5F) { params.active = 0.F; continue; }
+      std::copy_n(block_output, block * 2, impl_->dry.data());
+      impl_->run(module, block_output, block);
+      const float fade = 1.F - std::exp(-1.F / (impl_->sample_rate * .006F));
+      for (std::size_t frame = 0; frame < block; ++frame) {
+        params.active += (target - params.active) * fade;
+        for (unsigned ch = 0; ch < 2; ++ch) {
+          const auto i = frame * 2 + ch;
+          block_output[i] = impl_->dry[i] + (block_output[i] - impl_->dry[i]) * params.active;
+        }
+      }
+    }
   }
 }
 bool NativeRack::set_parameter(RackModule module, std::string_view name, float value) noexcept {
