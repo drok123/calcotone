@@ -804,7 +804,7 @@ function SynthModule({
     });
   }
 
-  useRailCRandomController('synth', enabled, randomizeSynth);
+  void randomizeSynth;
 
   return (
     <RailModuleFrame
@@ -857,7 +857,7 @@ function SynthModule({
       )}
     >
       <RailCFaceplateSurface
-        moduleId="synth"
+        moduleId="stomp"
         knobRowClass="synth-knob-row"
         viewport={(
           <div className={`synth-roll dsp-viewport ${enabled ? 'active' : 'is-off'}`}>
@@ -980,6 +980,115 @@ function SynthModule({
             onPatchDisconnect={() => undefined}
           />
         ))}
+      />
+    </RailModuleFrame>
+  );
+}
+
+export const STOMP_MODE_LABELS = [
+  '808 Overdrive', 'RAT Distortion', 'Big Muff', 'Fuzz Face', 'DS-1 Distortion',
+  'Blues Driver', 'Gold Horse', 'Swedish Chainsaw', 'Metal Zone', 'Octavia',
+  'Rangemaster', 'Cry Baby Wah', 'Whammy Octave', 'Dyna Comp',
+] as const;
+
+const STOMP_CONTROL_LABELS: readonly (readonly string[])[] = [
+  ['Drive','Tone','Level','Diodes','Body','Mix'], ['Distort','Filter','Level','Slew','Body','Mix'],
+  ['Sustain','Tone','Volume','Stages','Body','Mix'], ['Fuzz','Tone','Volume','Bias','Body','Mix'],
+  ['Distort','Tone','Level','Diodes','Body','Mix'], ['Gain','Tone','Level','Touch','Body','Mix'],
+  ['Gain','Treble','Output','Blend','Body','Mix'], ['Distort','High','Level','Chains','Low','Mix'],
+  ['Distort','High','Level','Contour','Low','Mix'], ['Fuzz','Tone','Level','Octave','Body','Mix'],
+  ['Boost','Tone','Level','Bias','Body','Mix'], ['Sweep','Tone','Level','Envelope','Q','Mix'],
+  ['Drive','Tone','Level','Octave','Body','Mix'], ['Sustain','Tone','Output','Attack','Release','Mix'],
+];
+
+type StompPreset = { id: string; label: string; values: readonly number[] };
+const STOMP_PRESETS: readonly StompPreset[][] = STOMP_MODE_LABELS.map((label, mode) => [
+  { id: 'classic', label: `${label} · Classic`, values: mode === 13 ? [.48,.52,.62,.28,.58,1] : [.38,.54,.68,.42,.52,1] },
+  { id: 'pushed', label: `${label} · Pushed`, values: mode === 11 ? [.62,.48,.72,.78,.68,.9] : [.72,.48,.62,.66,.58,.88] },
+  { id: 'subtle', label: `${label} · Edge`, values: [.22,.62,.72,.28,.46,.46] },
+]);
+
+const STOMP_RACK_STATE = { enabled: false, mode: 0, inputSource: 'input-2' as StackInputSource, presetId: 'classic', values: [.38,.54,.68,.42,.52,1] };
+
+type StompModuleProps = RailInteractionProps & {
+  engineRunning: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+  onModeChange: (mode: number) => void;
+  onInputSourceChange: (source: StackInputSource) => void;
+  onParametersChange: (values: readonly number[]) => void;
+};
+
+function StompModule({ engineRunning, onEnabledChange, onModeChange, onInputSourceChange, onParametersChange, ...props }: StompModuleProps) {
+  const [enabled, setEnabled] = useState(STOMP_RACK_STATE.enabled);
+  const [mode, setMode] = useState(STOMP_RACK_STATE.mode);
+  const [presetId, setPresetId] = useState(STOMP_RACK_STATE.presetId);
+  const [inputSource, setInputSource] = useState(STOMP_RACK_STATE.inputSource);
+  const [values, setValues] = useState(() => [...STOMP_RACK_STATE.values]);
+  STOMP_RACK_STATE.enabled=enabled; STOMP_RACK_STATE.mode=mode; STOMP_RACK_STATE.inputSource=inputSource; STOMP_RACK_STATE.presetId=presetId; STOMP_RACK_STATE.values=values;
+
+  useEffect(() => { onEnabledChange(enabled); }, [enabled, engineRunning, onEnabledChange]);
+  useEffect(() => { onModeChange(mode); }, [mode, engineRunning, onModeChange]);
+  useEffect(() => { onInputSourceChange(inputSource); }, [inputSource, engineRunning, onInputSourceChange]);
+  useEffect(() => { onParametersChange(values); }, [values, engineRunning, onParametersChange]);
+
+  function selectMode(next: number): void {
+    const safe = Math.max(0, Math.min(STOMP_MODE_LABELS.length - 1, next));
+    const preset = STOMP_PRESETS[safe]![0]!;
+    setMode(safe); setPresetId(preset.id); setValues([...preset.values]);
+  }
+  function selectPreset(id: string): void {
+    const preset = STOMP_PRESETS[mode]?.find((candidate) => candidate.id === id);
+    if (!preset) return; setPresetId(id); setValues([...preset.values]);
+  }
+  function randomizeStomp(profile: RandomizationProfile): string | null {
+    const pool = profile === 'bass' ? [0,2,3,6,10,13] : profile === 'pad' || profile === 'retro-ambient' ? [5,6,9,11,12,13] : profile === 'lead' ? [0,1,4,5,6,9,12] : [0,1,2,3,4,5,6,7,8,9,10,11,12,13];
+    const nextMode = profile === 'mutate' ? mode : pool[Math.floor(Math.random()*pool.length)]!;
+    const amount = profile === 'mutate' ? RANDOM_MUTATION_AMOUNT : 1;
+    const next = values.map((value, index) => {
+      const ranges: readonly MusicalRange[] = [[.16,.76],[.24,.78],[.48,.78],[.18,.72],[.28,.74],[.42,1]];
+      const [low, high] = ranges[index]!;
+      const target = centeredRandom(low, high);
+      return clamp01(value + (target - value) * amount);
+    });
+    setMode(nextMode); setPresetId('custom'); setValues(next);
+    return `${STOMP_MODE_LABELS[nextMode]} · ${profile === 'mutate' ? 'mutated' : 'pedal roll'}`;
+  }
+  useRailCRandomController('stomp', enabled, randomizeStomp);
+
+  const controls = STOMP_CONTROL_LABELS[mode] ?? STOMP_CONTROL_LABELS[0]!;
+  return (
+    <RailModuleFrame
+      {...props}
+      id="stomp"
+      name="Stomp"
+      enabled={enabled}
+      onToggle={() => setEnabled((current) => !current)}
+      headerControl={
+        <div className="synth-selector-pair stomp-selector-pair">
+          <label className="algorithm-selector"><span className="sr-only">Stomp pedal</span>
+            <select aria-label="Stomp pedal" value={mode} onChange={(event) => selectMode(Number(event.target.value))}>
+              {STOMP_MODE_LABELS.map((label,index)=><option key={label} value={index}>{label}</option>)}
+            </select>
+          </label>
+          <label className="algorithm-selector"><span className="sr-only">Stomp preset</span>
+            <select aria-label="Stomp preset" value={presetId} onChange={(event)=>selectPreset(event.target.value)}>
+              {presetId==='custom'&&<option value="custom">Custom</option>}
+              {STOMP_PRESETS[mode]!.map((preset)=><option key={preset.id} value={preset.id}>{preset.label}</option>)}
+            </select>
+          </label>
+          <label className="algorithm-selector chaos-input-selector"><span className="sr-only">Stomp input</span>
+            <select aria-label="Stomp input" value={inputSource} onChange={(event)=>setInputSource(event.target.value as StackInputSource)}>
+              {STACK_INPUT_SOURCES.map((source)=><option key={source} value={source}>{STACK_INPUT_LABELS[source]}</option>)}
+            </select>
+          </label>
+        </div>
+      }
+    >
+      <RailCFaceplateSurface
+        moduleId="stomp"
+        knobRowClass="synth-knob-row stomp-knob-row"
+        viewport={<div className={`stomp-display dsp-viewport ${enabled?'active':'is-off'}`}><span className="stomp-led"/><strong>STOMP</strong><small>{STOMP_MODE_LABELS[mode]}</small><div className="stomp-circuit-lines" aria-hidden="true"/></div>}
+        knobs={controls.map((label,index)=><Knob key={`${mode}-${label}`} label={label} value={values[index]!} effectiveValue={values[index]!} display={`${Math.round(values[index]!*100)}%`} patchTarget={`stomp.${index}`} onChange={(value)=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?value:item));}} onReset={()=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?0.5:item));}} onPatchStart={()=>undefined} onPatchMove={()=>undefined} onPatchEnd={()=>undefined} onPatchDisconnect={()=>undefined}/>) }
       />
     </RailModuleFrame>
   );
@@ -1259,6 +1368,10 @@ export function RailCModule({
   onSynthTriggerNote,
   onSynthSequencerChange,
   onSynthSequencerStepListenerChange,
+  onStompEnabledChange,
+  onStompModeChange,
+  onStompInputSourceChange,
+  onStompParametersChange,
   onStackEnabledChange,
   onStackModelChange,
   onStackCabinetChange,
@@ -1282,6 +1395,10 @@ export function RailCModule({
   onSynthSequencerStepListenerChange: (
     listener: ((position: SynthSequencerStep) => void) | null
   ) => void;
+  onStompEnabledChange: (enabled: boolean) => void;
+  onStompModeChange: (mode: number) => void;
+  onStompInputSourceChange: (source: StackInputSource) => void;
+  onStompParametersChange: (values: readonly number[]) => void;
   onStackEnabledChange: (enabled: boolean) => void;
   onStackModelChange: (model: StackAmpModel) => void;
   onStackCabinetChange: (cabinet: StackCabinet) => void;
@@ -1291,6 +1408,9 @@ export function RailCModule({
 }) {
   void modules;
   void assignments;
+  if (moduleId === 'stomp') {
+    return <StompModule {...interaction} engineRunning={running} onEnabledChange={onStompEnabledChange} onModeChange={onStompModeChange} onInputSourceChange={onStompInputSourceChange} onParametersChange={onStompParametersChange} />;
+  }
   if (moduleId === 'synth') {
     return (
       <SynthModule

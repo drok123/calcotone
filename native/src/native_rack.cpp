@@ -12,6 +12,29 @@ namespace {
 constexpr float kPi = 3.14159265358979323846F;
 constexpr std::size_t kModules = static_cast<std::size_t>(RackModule::Count);
 constexpr std::size_t kRackBlockFrames = 2048;
+constexpr std::size_t kShapeLutSize = 2048;
+
+const std::array<float, kShapeLutSize>& shape_lut() noexcept {
+  static const auto table = [] {
+    std::array<float, kShapeLutSize> values{};
+    for (std::size_t i = 0; i < values.size(); ++i) {
+      const float x = static_cast<float>(i) / static_cast<float>(values.size() - 1) * 10.F - 5.F;
+      values[i] = std::tanh(x);
+    }
+    return values;
+  }();
+  return table;
+}
+float fast_shape(float value) noexcept {
+  const auto& table = shape_lut();
+  const float position = std::clamp((value + 5.F) * .1F, 0.F, 1.F) * static_cast<float>(kShapeLutSize - 1);
+  const auto index = static_cast<std::size_t>(position);
+  const float mu = position - static_cast<float>(index), mu2 = mu * mu;
+  const auto at = [&](std::ptrdiff_t offset) { return table[std::clamp<std::ptrdiff_t>(static_cast<std::ptrdiff_t>(index) + offset, 0, kShapeLutSize - 1)]; };
+  const float y0=at(-1), y1=at(0), y2=at(1), y3=at(2);
+  const float a0=-.5F*y0+1.5F*y1-1.5F*y2+.5F*y3, a1=y0-2.5F*y1+2.F*y2-.5F*y3, a2=-.5F*y0+.5F*y2;
+  return a0*mu*mu2+a1*mu2+a2*mu+y1;
+}
 
 float clamp01(float x) noexcept { return std::clamp(x, 0.F, 1.F); }
 float one_pole(float input, float& state, float coefficient) noexcept {
@@ -189,6 +212,102 @@ struct Atmos {
     }
   }
 };
+
+struct Stomp {
+  struct Profile { float input_hz, tone_low, tone_high, gain, asymmetry, body, output, sag; };
+  static constexpr std::array<Profile, 11> profiles{{
+    {690.F, 900.F, 4'800.F, 4.8F, .02F, .42F, .78F, .10F}, // 808 JFET/diode splice
+    {38.F, 620.F, 7'200.F, 7.8F, .01F, .34F, .72F, .16F},  // RAT op-amp/hard clip
+    {26.F, 540.F, 5'600.F, 11.F, .04F, .72F, .64F, .24F},  // Muff transistor cascade
+    {34.F, 760.F, 7'800.F, 8.4F, .16F, .64F, .69F, .34F},  // Fuzz Face germanium
+    {42.F, 720.F, 6'400.F, 6.7F, .06F, .38F, .70F, .14F},  // DS-1 transistor/op-amp
+    {30.F, 900.F, 9'600.F, 4.2F, .09F, .48F, .82F, .12F},  // Blues Driver discrete
+    {72.F, 820.F, 8'800.F, 3.8F, .03F, .54F, .86F, .08F},  // Klon dual path
+    {22.F, 380.F, 3'900.F, 12.F, .08F, .88F, .58F, .28F},  // HM-2 stacked EQ
+    {54.F, 680.F, 8'200.F, 13.F, .02F, .44F, .56F, .18F},  // Metal Zone multiband
+    {48.F, 840.F, 8'600.F, 7.2F, .18F, .42F, .66F, .20F},  // Octavia transformer/rectifier
+    {820.F, 1'200.F, 11'000.F, 3.2F, .12F, .24F, .90F, .18F}, // Rangemaster germanium
+  }};
+  Params p{0.F, .34F, .56F, .72F, .42F, .48F, 1.F};
+  std::array<float, 2> input_low{}, tone_low{}, body_low{}, dc_in{}, dc_out{}, envelope{};
+  std::array<float, 2> previous{}, device_memory{}, supply{1.F, 1.F};
+
+  float clip(float x, unsigned mode, float drive, float character) noexcept {
+    switch (mode) {
+      case 0: return fast_shape(x * (1.7F + drive * 4.8F)) * .82F;                       // 808
+      case 1: return std::atan(x * (2.4F + drive * 9.F)) * .62F;                          // RAT
+      case 2: return fast_shape(x * (4.F + drive * 14.F)) * (1.F - character * .12F);    // Muff
+      case 3: return fast_shape((x + .08F * character) * (3.F + drive * 12.F)) - .08F;   // Fuzz Face
+      case 4: return fast_shape(x * (2.6F + drive * 8.F) + x * x * .12F) * .88F;          // DS-1
+      case 5: return x / (1.F + std::abs(x) * (1.2F + drive * 5.F));                       // Blues Driver
+      case 6: return fast_shape(x * (1.4F + drive * 5.F)) * .74F + x * .18F;              // Klon
+      case 7: return fast_shape(x * (5.F + drive * 16.F)) * .92F;                         // HM-2
+      case 8: return fast_shape(x * (4.F + drive * 18.F) + std::sin(x * 3.F) * .08F);     // Metal Zone
+      case 9: return fast_shape(x * (3.F + drive * 10.F)) + std::abs(x) * character*.34F; // Octavia
+      case 10:return fast_shape(x * (1.2F + drive * 3.8F)) * .84F;                        // Rangemaster
+      default: return x;
+    }
+  }
+
+  void process(float* data, std::size_t frames, float rate) noexcept {
+    const float glide = 1.F - std::exp(-1.F / (rate * .035F));
+    for (std::size_t frame = 0; frame < frames; ++frame) {
+      p.glide(glide);
+      const unsigned mode = std::min(13U, static_cast<unsigned>(std::round(p.value[0])));
+      const float drive = clamp01(p.value[1]), tone = clamp01(p.value[2]);
+      const float level = clamp01(p.value[3]), character = clamp01(p.value[4]);
+      const float body = clamp01(p.value[5]), mix = clamp01(p.value[6]);
+      const Profile profile = profiles[std::min(mode, 10U)];
+      const float hp_g = filter_coefficient(profile.input_hz, rate * 2.F);
+      const float tone_g = filter_coefficient(profile.tone_low + tone * (profile.tone_high - profile.tone_low), rate * 2.F);
+      const float body_g = filter_coefficient(120.F + body * (900.F + profile.body * 1'500.F), rate * 2.F);
+      for (unsigned ch = 0; ch < 2; ++ch) {
+        const auto i = frame * 2 + ch;
+        const float dry = data[i];
+        float wet = dry;
+        if (mode == 11) { // Cry Baby: envelope-assisted resonant wah approximation.
+          envelope[ch] += (std::abs(dry) - envelope[ch]) * (.0015F + drive * .009F);
+          const float cutoff = 360.F + (tone * .72F + envelope[ch] * character * .55F) * 1'850.F;
+          const float wah_g = filter_coefficient(cutoff, rate);
+          const float low = one_pole(dry, body_low[ch], wah_g);
+          wet = std::clamp((dry - low) * (1.2F + body * 3.4F) + low * .32F, -1.2F, 1.2F);
+        } else if (mode == 12) { // Whammy-style octave: clean octave-up texture, latency free.
+          const float rectified = std::abs(dry) * 2.F - std::abs(previous[ch]) * .75F;
+          previous[ch] = dry;
+          wet = fast_shape((dry * (1.F - character) + rectified * character) * (1.F + drive * 1.8F));
+        } else if (mode == 13) { // Dyna Comp: fixed fast attack, musical release, bounded makeup.
+          const float magnitude = std::abs(dry);
+          const float coefficient = magnitude > envelope[ch] ? .045F + drive * .11F : .0007F + body * .0018F;
+          envelope[ch] += (magnitude - envelope[ch]) * coefficient;
+          const float gain = 1.F / (1.F + envelope[ch] * (2.F + drive * 7.F));
+          wet = dry * gain * (1.F + level * 2.2F);
+        } else {
+          // Two midpoint samples reduce aliasing without allocating or changing host latency.
+          const float midpoint = (previous[ch] + dry) * .5F;
+          previous[ch] = dry;
+          const float demand = std::abs(dry) * drive;
+          supply[ch] += ((1.F - demand * profile.sag) - supply[ch]) * (demand > .2F ? .012F : .0008F);
+          const float hybrid_gain = profile.gain * (.18F + drive * .82F) * std::clamp(supply[ch], .58F, 1.F);
+          const float bias_zero = clip(profile.asymmetry * hybrid_gain, mode, drive, character);
+          const float high_mid = midpoint - one_pole(midpoint, input_low[ch], hp_g);
+          const float transistor_mid = high_mid + device_memory[ch] * character * .12F + profile.asymmetry;
+          const float shaped_mid = clip(transistor_mid * hybrid_gain, mode, drive, character) - bias_zero;
+          const float high = dry - one_pole(dry, input_low[ch], hp_g);
+          const float transistor = high + device_memory[ch] * character * .12F + profile.asymmetry;
+          float shaped = (shaped_mid + clip(transistor * hybrid_gain, mode, drive, character) - bias_zero) * .5F;
+          device_memory[ch] += (shaped - device_memory[ch]) * (.025F + character * .055F);
+          const float low = one_pole(shaped, body_low[ch], body_g);
+          shaped = low * (.68F + body * .48F) + (shaped - low) * (.72F + tone * .44F);
+          wet = one_pole(shaped, tone_low[ch], tone_g);
+          const float pre_dc = wet;
+          wet = pre_dc - dc_in[ch] + .995F * dc_out[ch]; dc_in[ch] = pre_dc; dc_out[ch] = wet;
+          wet *= profile.output * (.48F + level * .9F);
+        }
+        data[i] = std::clamp(dry + (wet - dry) * mix, -1.2F, 1.2F);
+      }
+    }
+  }
+};
 }  // namespace
 
 struct NativeRack::Impl {
@@ -197,15 +316,17 @@ struct NativeRack::Impl {
   Drift drift;
   Halo halo;
   Atmos atmos;
+  Stomp stomp;
   std::array<float, kRackBlockFrames * 2> dry{};
   std::array<std::atomic<unsigned>, kModules> order{};
   explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)), drift(sample_rate), halo(sample_rate), atmos(sample_rate) {
+    (void)shape_lut();
     for (unsigned i = 0; i < kModules; ++i) order[i].store(i);
   }
   Params& params(RackModule module) noexcept {
     switch (module) {
       case RackModule::Ember: return ember.p; case RackModule::Drift: return drift.p;
-      case RackModule::Halo: return halo.p; default: return atmos.p;
+      case RackModule::Halo: return halo.p; case RackModule::Atmos: return atmos.p; default: return stomp.p;
     }
   }
   void run(RackModule module, float* data, std::size_t frames) noexcept {
@@ -214,6 +335,7 @@ struct NativeRack::Impl {
       case RackModule::Drift: drift.process(data, frames, sample_rate); break;
       case RackModule::Halo: halo.process(data, frames, sample_rate); break;
       case RackModule::Atmos: atmos.process(data, frames, sample_rate); break;
+      case RackModule::Stomp: stomp.process(data, frames, sample_rate); break;
       default: break;
     }
   }
@@ -224,10 +346,11 @@ RackModule rack_module_from_name(std::string_view name) noexcept {
   if (name == "chorus" || name == "drift") return RackModule::Drift;
   if (name == "delay" || name == "halo") return RackModule::Halo;
   if (name == "reverb" || name == "atmos") return RackModule::Atmos;
+  if (name == "stomp") return RackModule::Stomp;
   return RackModule::Count;
 }
 std::string_view rack_module_name(RackModule module) noexcept {
-  constexpr std::array<std::string_view, kModules> names{"saturation", "chorus", "delay", "reverb"};
+  constexpr std::array<std::string_view, kModules> names{"saturation", "chorus", "delay", "reverb", "stomp"};
   const auto i = static_cast<std::size_t>(module); return i < names.size() ? names[i] : std::string_view{};
 }
 
@@ -269,6 +392,8 @@ bool NativeRack::set_parameter(RackModule module, std::string_view name, float v
       if(name=="algorithm")index=0; else if(name=="time")index=1; else if(name=="feedback")index=2; else if(name=="color")index=3; else if(name=="character")index=4; else if(name=="width")index=5; else if(name=="mix")index=6; break;
     case RackModule::Atmos:
       if(name=="algorithm")index=0; else if(name=="decay")index=1; else if(name=="size")index=2; else if(name=="color")index=3; else if(name=="diffusion")index=4; else if(name=="motion")index=5; else if(name=="mix")index=6; break;
+    case RackModule::Stomp:
+      if(name=="mode")index=0; else if(name=="drive")index=1; else if(name=="tone")index=2; else if(name=="level")index=3; else if(name=="character")index=4; else if(name=="body")index=5; else if(name=="mix")index=6; break;
     default: break;
   }
   if (index >= 7) return false;

@@ -32,8 +32,9 @@ requireText(routing, 'top: normalized.slice(0, SERIAL_ROW_SIZE)', 'top row proje
 requireText(routing, 'bottom: normalized.slice(SERIAL_ROW_SIZE, SERIAL_SLOT_COUNT)', 'bottom row projection');
 requireText(routing, 'moveRackModule(', 'cross-rail rack move primitive');
 requireText(routing, 'next[source.rail][source.index] = targetId', 'fixed-slot cross-rail exchange');
-requireText(routing, 'serialOrderFromRack(', 'rack-to-seven-effect projection');
+requireText(routing, 'serialOrderFromRack(', 'rack-to-eight-effect projection');
 requireText(routing, "STACK_MODULE_ID = 'chaos'", 'STACK serial insert ownership');
+requireText(routing, "STOMP_MODULE_ID = 'stomp'", 'STOMP serial insert ownership');
 requireText(routing, 'restoreRackRail(', 'per-rail factory restore');
 requireText(routing, 'shuffledRackOrder(', 'family-safe rack randomization');
 
@@ -41,21 +42,21 @@ requireText(app, "from './routing/serialRouting'", 'App directly uses routing ow
 requireText(app, 'moveRackModule(', 'native cross-rail drag');
 requireText(app, 'nudgeRackModule(', 'native rack keyboard routing');
 requireText(app, 'shuffledRackOrder(', 'native SIGNAL RANDOM routing');
-requireText(app, "const DEFAULT_RAIL_C_ORDER = ['synth', 'chaos', 'pressure']", 'third rail ownership');
-requireText(app, 'serialOrderFromRack({ A: nextA, B: nextB, C: nextC })', 'engine receives filtered seven-effect order');
+requireText(app, "const DEFAULT_RAIL_C_ORDER = ['stomp', 'chaos', 'pressure']", 'third rail ownership');
+requireText(app, 'serialOrderFromRack({ A: nextA, B: nextB, C: nextC })', 'engine receives filtered eight-effect order');
 requireText(app, 'setRailCOrder(next.C)', 'Rail C reorder state');
 requireText(app, 'setRailCRandomOrder([...railAOrder, ...railBOrder, ...railCOrder])', 'controller RANDOM serialization follows rack order');
-requireText(railCModules, 'SYNTH_RACK_STATE', 'Synth state survives cross-rail remount');
+requireText(railCModules, 'STOMP_RACK_STATE', 'Stomp state survives cross-rail remount');
 requireText(railCModules, 'CHAOS_RACK_STATE', 'Chaos state survives cross-rail remount');
 if (vite.includes('serialRoutingTransform()')) failures.push('Retired serial routing transform is still enabled');
 
 const defaultRack = {
   A: ['saturation', 'chorus', 'delay'],
   B: ['reverb', 'bitcrusher', 'media'],
-  C: ['synth', 'chaos', 'pressure'],
+  C: ['stomp', 'chaos', 'pressure'],
 };
-const exchanged = routingModule.moveRackModule(defaultRack, 'synth', 'saturation');
-if (exchanged.A.join(',') !== 'synth,chorus,delay' || exchanged.C.join(',') !== 'saturation,chaos,pressure') {
+const exchanged = routingModule.moveRackModule(defaultRack, 'stomp', 'saturation');
+if (exchanged.A.join(',') !== 'stomp,chorus,delay' || exchanged.C.join(',') !== 'saturation,chaos,pressure') {
   failures.push('Rail C → Rail A drag did not exchange fixed rack slots');
 }
 const exchangedIds = [...exchanged.A, ...exchanged.B, ...exchanged.C];
@@ -63,8 +64,8 @@ if (exchanged.A.length !== 3 || exchanged.B.length !== 3 || exchanged.C.length !
   failures.push('Cross-rail drag changed the three-by-three rack topology');
 }
 const serialAfterExchange = routingModule.serialOrderFromRack(exchanged);
-if (serialAfterExchange.join(',') !== 'chorus,delay,reverb,bitcrusher,media,saturation,chaos') {
-  failures.push(`Cross-rail drag lost the seven-effect serial chain (${serialAfterExchange.join(',')})`);
+if (serialAfterExchange.join(',') !== 'stomp,chorus,delay,reverb,bitcrusher,media,saturation,chaos') {
+  failures.push(`Cross-rail drag lost the eight-effect serial chain (${serialAfterExchange.join(',')})`);
 }
 const restored = routingModule.restoreRackRail(exchanged, 'A', defaultRack);
 if (restored.A.join(',') !== defaultRack.A.join(',')) {
@@ -78,4 +79,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE routing audit passed (fixed nine-slot rack with cross-rail exchange and seven-effect projection).');
+console.log('CALCOTONE routing audit passed (fixed nine-slot rack with cross-rail exchange and eight-effect projection).');

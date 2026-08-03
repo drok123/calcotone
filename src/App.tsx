@@ -97,14 +97,14 @@ const REVERB_ALGORITHMS: ReverbAlgorithm[] = [...REVERB_ALGORITHM_ORDER];
 
 const DEFAULT_RAIL_A_ORDER = ['saturation', 'chorus', 'delay'] as const;
 const DEFAULT_RAIL_B_ORDER = ['reverb', 'bitcrusher', 'media'] as const;
-const DEFAULT_RAIL_C_ORDER = ['synth', 'chaos', 'pressure'] as const;
+const DEFAULT_RAIL_C_ORDER = ['stomp', 'chaos', 'pressure'] as const;
 const DEFAULT_RACK_ORDERS: RackOrders = {
   A: [...DEFAULT_RAIL_A_ORDER],
   B: [...DEFAULT_RAIL_B_ORDER],
   C: [...DEFAULT_RAIL_C_ORDER],
 };
 const RAIL_C_MODULE_NAMES: Record<RailCRandomModuleId, string> = {
-  synth: 'Synth',
+  stomp: 'Stomp',
   chaos: 'Stack',
   pressure: 'Pressure',
 };
@@ -683,6 +683,28 @@ export default function App() {
     engineRef.current?.setSynthSequencerStepListener(listener);
   }, []);
 
+  const setStompEnabled = useCallback((enabled: boolean) => {
+    if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine(`moduleBypass stomp ${enabled ? 0 : 1}`);
+  }, []);
+
+  const setStompMode = useCallback((mode: number) => {
+    if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine(`param stomp mode ${mode}`);
+  }, []);
+
+  const setStompInputSource = useCallback((source: StackInputSource) => {
+    if (backendRef.current !== 'native') return;
+    const index = source === 'input-1' ? 0 : source === 'input-2' ? 1 : 2;
+    void nativeBridgeRef.current.command('stompInput', index);
+  }, []);
+
+  const setStompParameters = useCallback((values: readonly number[]) => {
+    if (backendRef.current !== 'native') return;
+    for (const [index, parameter] of ['drive','tone','level','character','body','mix'].entries()) {
+      const value = values[index];
+      if (value !== undefined) void nativeBridgeRef.current.commandLine(`param stomp ${parameter} ${value}`);
+    }
+  }, []);
+
   const setStackEnabled = useCallback((enabled: boolean) => {
     if (backendRef.current === 'native') {
       void nativeBridgeRef.current.command('bypass', enabled ? 0 : 1);
@@ -868,7 +890,7 @@ export default function App() {
         setChannelInfo({ input: `${native.inputChannels} ch native`, output: `${native.outputChannels} ch native` });
         setAnalyser(null);
         setEngineState('running');
-        setMessage('Native WASAPI audio is active. Ember, Drift, Halo, Atmos, STACK, and master controls are running outside WebAudio.');
+        setMessage('Native WASAPI audio is active. Ember, Drift, Halo, Atmos, STOMP, STACK, and master controls are running outside WebAudio.');
         return;
       }
 
@@ -1953,16 +1975,16 @@ export default function App() {
             </span>
             <span>RATE MATCH <b>{profiler?.sampleRateMatched === null || !profiler ? 'N/A' : profiler.sampleRateMatched ? 'YES' : 'NO'}</b></span>
             <span>GRAIN <b>{profiler ? `${profiler.grain.activeVoices}/${profiler.grain.maxVoices}` : '0/0'}</b></span>
-            <span>SYNTH <b>{profiler ? `${profiler.synth.activeVoices}/${profiler.synth.maxVoices}` : '0/10'}</b></span>
-            <span>TOPOLOGY <b title={profiler?.synth.machine ?? 'model-d'}>{profiler?.synth.topology ?? '4× BJT-C SPICE LADDER'}</b></span>
-            <span>SOLVER <b>{profiler?.synth.solver ?? 'BJT-C NEWTON'}</b></span>
-            <span>ITER <b>{profiler?.synth.solverIterations ?? 1}</b></span>
-            <span>SYNTH OS <b>{profiler ? `${profiler.synth.oversample}×` : '1×'}</b></span>
-            <span>SYNTH PEAK <b>{profiler ? profiler.synth.peak.toFixed(2) : '0.00'}</b></span>
+            <span>STOMP <b>{audioBackend === 'native' ? 'NATIVE' : 'OFFLINE'}</b></span>
+            <span>TOPOLOGY <b>SPICE HYBRID PEDAL</b></span>
+            <span>SHAPER <b>HERMITE LUT</b></span>
+            <span>FILTER <b>TPT STATE</b></span>
+            <span>STOMP OS <b>2× MIDPOINT</b></span>
+            <span>MODELS <b>14</b></span>
             <span title={profiler ? `Requested ${profiler.requestedRenderSize}; context API ${profiler.renderSizeHintSupported ? 'available' : 'unavailable'}` : undefined}>
               QUANTUM <b>{profiler?.renderQuantumFrames ? `${profiler.renderQuantumFrames}f` : '—'}</b>
             </span>
-            <span>MODEL TEMP <b>{profiler ? `${profiler.synth.temperatureC.toFixed(1)}°C` : '27.0°C'}</b></span>
+            <span>DEVICE MEMORY <b>ACTIVE</b></span>
             <span>GUARD <b>{profiler ? `${profiler.grain.effectiveVoiceLimit}/${profiler.grain.maxVoices}` : '0/0'}</b></span>
             <span>OVERRUN <b className={profiler && profiler.grain.overruns > 0 ? 'warn' : ''}>{profiler?.grain.overruns ?? 0}</b></span>
             <span>DROP <b>{profiler?.grain.droppedSpawns ?? 0}</b></span>
@@ -2168,6 +2190,10 @@ export default function App() {
                             onSynthTriggerNote={triggerSynthNote}
                             onSynthSequencerChange={setSynthSequencerState}
                             onSynthSequencerStepListenerChange={setSynthSequencerStepListener}
+                            onStompEnabledChange={setStompEnabled}
+                            onStompModeChange={setStompMode}
+                            onStompInputSourceChange={setStompInputSource}
+                            onStompParametersChange={setStompParameters}
                             onStackEnabledChange={setStackEnabled}
                             onStackModelChange={setStackModel}
                             onStackCabinetChange={setStackCabinet}
@@ -2515,7 +2541,7 @@ function formatRailOrder(order: readonly string[]): string {
     reverb: 'ATMOS',
     bitcrusher: 'GRAIN',
     media: 'ARTIFACT',
-    synth: 'SYNTH',
+    stomp: 'STOMP',
     chaos: 'CHAOS',
     pressure: 'PRESSURE',
   };

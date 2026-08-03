@@ -613,3 +613,19 @@
 @media (max-width: 760px) {
   .synth-knob-row { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; }
 }
+.stomp-display {
+  position: relative;
+  display: grid;
+  place-content: center;
+  gap: 0.32rem;
+  overflow: hidden;
+  color: var(--module-ink, #e8e1cf);
+  text-align: center;
+  background: radial-gradient(circle at 50% 42%, rgba(220, 214, 193, 0.09), transparent 42%), #171816;
+}
+
+.stomp-display strong { font: 800 1.3rem/1 monospace; letter-spacing: 0.34em; }
+.stomp-display small { font: 600 0.66rem/1.2 monospace; letter-spacing: 0.12em; color: rgba(232,225,207,.72); }
+.stomp-led { width: .52rem; height: .52rem; margin: 0 auto .2rem; border-radius: 50%; background: #5f625b; box-shadow: inset 0 0 0 1px #111; }
+.stomp-display.active .stomp-led { background: #d9e5c0; box-shadow: 0 0 12px rgba(217,229,192,.55); }
+.stomp-circuit-lines { position:absolute; inset:12% 8%; border:1px solid rgba(232,225,207,.14); border-left-style:dashed; border-right-style:dashed; pointer-events:none; }

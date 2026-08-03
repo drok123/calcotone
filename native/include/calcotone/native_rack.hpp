@@ -7,7 +7,7 @@
 
 namespace calcotone {
 
-enum class RackModule : unsigned { Ember, Drift, Halo, Atmos, Count };
+enum class RackModule : unsigned { Ember, Drift, Halo, Atmos, Stomp, Count };
 
 RackModule rack_module_from_name(std::string_view name) noexcept;
 std::string_view rack_module_name(RackModule module) noexcept;

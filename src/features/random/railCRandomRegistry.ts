@@ -1,6 +1,6 @@
 import type { RandomizationProfile } from './randomProfiles';
 
-export const RAIL_C_RANDOM_ORDER = ['synth', 'chaos', 'pressure'] as const;
+export const RAIL_C_RANDOM_ORDER = ['stomp', 'chaos', 'pressure'] as const;
 
 export type RailCRandomModuleId = (typeof RAIL_C_RANDOM_ORDER)[number];
 

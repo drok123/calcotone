@@ -174,7 +174,7 @@ export function flushCapturedRandom(
     chain = chain.then(() => commitOneBatch(engine, effectId, values, engineIsUsable, revealModule));
   }
 
-  // Rail C owns synth/performance state outside the six-effect capture shim. Reveal those
+  // Rail C owns stomp/performance state outside the six-effect capture shim. Reveal those
   // controllers after the captured effect packets so their React effects, worklet messages,
   // and Pressure event bridge also land one module at a time.
   for (const moduleId of deferredModuleIds) {

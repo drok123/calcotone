@@ -190,8 +190,16 @@ int main() {
     std::atomic<bool> audible{true};
     std::atomic<bool> stack_bypassed{false};
     std::atomic<unsigned> stack_input{1};
+    std::atomic<bool> stomp_bypassed{true};
+    std::atomic<unsigned> stomp_input{1};
     std::atomic<float> input_gain{1.F};
     std::atomic<float> output_gain{0.72F};
+    const auto apply_stomp_route = [&] {
+      const bool bypassed = stomp_bypassed.load(std::memory_order_relaxed);
+      const auto source = static_cast<calcotone::StackInputSource>(stomp_input.load(std::memory_order_relaxed));
+      rack_one.set_bypassed(calcotone::RackModule::Stomp, bypassed || !calcotone::stack_receives_lane(source, 0));
+      rack_two.set_bypassed(calcotone::RackModule::Stomp, bypassed || !calcotone::stack_receives_lane(source, 1));
+    };
     const auto apply_command = [&](std::string_view line) -> std::string {
       if (line == "health" || line == "stats") {
         std::ostringstream status;
@@ -217,11 +225,15 @@ int main() {
         std::string module_name; float value = 0.F; command >> module_name >> value;
         const auto module = calcotone::rack_module_from_name(module_name);
         if (!command || module == calcotone::RackModule::Count || !std::isfinite(value)) return R"({"error":"expected moduleBypass module 0/1"})";
-        rack_one.set_bypassed(module, value >= .5F); rack_two.set_bypassed(module, value >= .5F);
+        if (module == calcotone::RackModule::Stomp) {
+          stomp_bypassed.store(value >= .5F); apply_stomp_route();
+        } else {
+          rack_one.set_bypassed(module, value >= .5F); rack_two.set_bypassed(module, value >= .5F);
+        }
         return R"({"ok":true,"command":"moduleBypass"})";
       }
       if (name == "order") {
-        std::array<calcotone::RackModule, 4> modules{}; std::size_t count = 0; std::string module_name;
+        std::array<calcotone::RackModule, 5> modules{}; std::size_t count = 0; std::string module_name;
         while (command >> module_name) {
           const auto module = calcotone::rack_module_from_name(module_name);
           if (module != calcotone::RackModule::Count && count < modules.size()) modules[count++] = module;
@@ -235,6 +247,7 @@ int main() {
       if (!command || !std::isfinite(value)) return R"({"error":"expected name and numeric value"})";
       if (name == "active") audible.store(value >= 0.5F); else if (name == "bypass") stack_bypassed.store(value >= 0.5F);
       else if (name == "stackInput") stack_input.store(std::min(2U, static_cast<unsigned>(std::max(0.F, value))));
+      else if (name == "stompInput") { stomp_input.store(std::min(2U, static_cast<unsigned>(std::max(0.F, value)))); apply_stomp_route(); }
       else if (name == "inputGain") input_gain.store(std::clamp(value, 0.F, 2.F));
       else if (name == "outputGain") output_gain.store(std::clamp(value, 0.F, 1.5F));
       else if (name == "drive") { stack_one.set_drive(value); stack_two.set_drive(value); }

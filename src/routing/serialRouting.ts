@@ -11,6 +11,7 @@ export const DEFAULT_SERIAL_ORDER = [
 ] as const;
 
 export const STACK_MODULE_ID = 'chaos';
+export const STOMP_MODULE_ID = 'stomp';
 
 export type SerialModuleId = (typeof DEFAULT_SERIAL_ORDER)[number];
 export type SerialOrder = readonly string[];
@@ -99,11 +100,11 @@ export function describeSerialOrder(order: SerialOrder): string {
 }
 
 export function serialOrderFromRack(rack: RackOrders): string[] {
-  const serialIds = new Set<string>([...DEFAULT_SERIAL_ORDER, STACK_MODULE_ID]);
+  const serialIds = new Set<string>([...DEFAULT_SERIAL_ORDER, STOMP_MODULE_ID, STACK_MODULE_ID]);
   const projected = ([...rack.A, ...rack.B, ...rack.C]).filter((moduleId) => serialIds.has(moduleId));
-  return projected.length === DEFAULT_SERIAL_ORDER.length + 1
+  return projected.length === DEFAULT_SERIAL_ORDER.length + 2
     ? projected
-    : [...DEFAULT_SERIAL_ORDER, STACK_MODULE_ID];
+    : [...DEFAULT_SERIAL_ORDER, STOMP_MODULE_ID, STACK_MODULE_ID];
 }
 
 function locateRackModule(rack: RackOrders, moduleId: string): { rail: RackRail; index: number } | null {

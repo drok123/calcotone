@@ -124,7 +124,7 @@ if (hardwarePolishImport < 0 || charcoalPassImport < 0 || charcoalPassImport < h
 forbidText(vite, 'signalLabUiTransform()', 'Retired Signal panel placement transform');
 forbidText(vite, 'dreamFieldCompositionTransform()', 'Obsolete Dream visual transform');
 requireText(motionPad, 'signalLab={signalLab}', 'Existing Signal state forwarded to XY');
-requireText(app, "const DEFAULT_RAIL_C_ORDER = ['synth', 'chaos', 'pressure']", 'Three-module Rail C');
+requireText(app, "const DEFAULT_RAIL_C_ORDER = ['stomp', 'chaos', 'pressure']", 'Three-module Rail C');
 requireText(railC, 'aria-label="16-step piano roll"', 'Functional Synth piano roll');
 requireText(railC, 'toggleCell(step, pitchIndex)', 'Editable Synth notes');
 requireText(railC, 'setChain((current)', 'Synth pattern chaining');

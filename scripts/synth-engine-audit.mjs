@@ -121,15 +121,15 @@ requireText(css, '.piano-roll-note-handle', 'Visible note-length handle');
 requireText(css, '.module-synth.module-overlay-active .faceplate-viewport-shell', 'Full-module sequencer overlay');
 requireText(css, '.synth-pattern-strip .sequencer-expand-button', 'Sequencer fullscreen button styling');
 requireText(css, 'grid-template-rows: 18px 58px 16px', 'Full-size Rail C knob typography');
-requireText(rail, 'moduleId="synth"', 'Synth layout surface');
+requireText(rail, 'moduleId="stomp"', 'STOMP replacement layout surface');
 requireText(rail, 'moduleId="chaos"', 'Chaos layout surface');
 requireText(rail, 'moduleId="pressure"', 'Pressure layout surface');
 requireText(rail, 'faceplate-pressure-slot', 'Editable Pressure buttons');
-requireText(faceplate, "export type RailCFaceplateId = 'synth' | 'chaos' | 'pressure'", 'Rail C layout ownership');
+requireText(faceplate, "export type RailCFaceplateId = 'stomp' | 'chaos' | 'pressure'", 'Rail C layout ownership');
 requireText(faceplate, 'setRailCFaceplateControl(', 'Persistent Rail C control movement');
 requireText(faceplate, 'linkedModules: boolean', 'Linked/independent editor state');
 requireText(layoutEditor, "'MODULES LINKED' : 'INDEPENDENT'", 'Independent layout editor toggle');
-requireText(rail, "useRailCRandomController('synth', enabled, randomizeSynth)", 'Synth MUSICAL RANDOM registration');
+requireText(rail, "useRailCRandomController('stomp', enabled, randomizeStomp)", 'STOMP MUSICAL RANDOM registration');
 requireText(rail, 'const presets = SYNTH_PRESETS[nextMachine.id]', 'Machine-scoped random hardware preset');
 
 const SAMPLE_RATE = 48_000;

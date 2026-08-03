@@ -5,7 +5,7 @@ export interface FaceplatePoint {
   y: number;
 }
 
-export type RailCFaceplateId = 'synth' | 'chaos' | 'pressure';
+export type RailCFaceplateId = 'stomp' | 'chaos' | 'pressure';
 export type CoreFaceplateId = 'saturation' | 'chorus' | 'delay' | 'reverb' | 'bitcrusher' | 'media';
 export type FaceplateModuleId = CoreFaceplateId | RailCFaceplateId;
 
@@ -61,7 +61,7 @@ const FACTORY_LAYOUT_REVISION = '2026-07-30-banked-knob-faceplate';
 const KNOB_COUNT = 6;
 const listeners = new Set<() => void>();
 const CORE_FACEPLATE_IDS: readonly CoreFaceplateId[] = ['saturation', 'chorus', 'delay', 'reverb', 'bitcrusher', 'media'];
-const RAIL_C_FACEPLATE_IDS: readonly RailCFaceplateId[] = ['synth', 'chaos', 'pressure'];
+const RAIL_C_FACEPLATE_IDS: readonly RailCFaceplateId[] = ['stomp', 'chaos', 'pressure'];
 
 const MASTER_KNOBS: FaceplatePoint[] = [
   { x: 0.07, y: 246 },
@@ -89,7 +89,7 @@ export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
   knobs: MASTER_KNOBS.map((point) => ({ ...point })),
   core: createCoreFactoryLayouts(),
   railC: {
-    synth: {
+    stomp: {
       viewportHeight: 168,
       stageHeight: 292,
       knobs: [
@@ -712,13 +712,13 @@ function sanitizeV2Layout(layout: Partial<FaceplateLayout>): FaceplateLayout {
     };
   };
   const savedCore = layout.core as Partial<Record<CoreFaceplateId, RailCFaceplateModuleLayout>> | undefined;
-  const savedRailC = layout.railC as Partial<Record<RailCFaceplateId, RailCFaceplateModuleLayout>> | undefined;
+  const savedRailC = layout.railC as Partial<Record<RailCFaceplateId | 'synth', RailCFaceplateModuleLayout>> | undefined;
   const core = Object.fromEntries(CORE_FACEPLATE_IDS.map((id) => [
     id,
     sanitizeModule(savedCore?.[id], masterLayout, KNOB_COUNT, 0),
   ])) as Record<CoreFaceplateId, RailCFaceplateModuleLayout>;
   const railC = {
-    synth: sanitizeModule(savedRailC?.synth, FACTORY_FACEPLATE_LAYOUT.railC.synth, 6, 0),
+    stomp: sanitizeModule(savedRailC?.stomp ?? savedRailC?.synth, FACTORY_FACEPLATE_LAYOUT.railC.stomp, 6, 0),
     chaos: sanitizeModule(savedRailC?.chaos, FACTORY_FACEPLATE_LAYOUT.railC.chaos, 4, 0),
     pressure: sanitizeModule(savedRailC?.pressure, FACTORY_FACEPLATE_LAYOUT.railC.pressure, 4, 4),
   };
