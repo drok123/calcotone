@@ -11,6 +11,8 @@ audio capture, processing, and playback never enter the browser/webview.
   bounded feedback, click-free bypass state, and realtime-safe fixed buffers;
 - event-driven `IAudioClient3` capture/render host;
 - minimum shared-mode engine periods with raw-mode attempt;
+- 64-frame exclusive-WASAPI request with automatic minimum-period clamping and
+  safe shared-mode fallback when the driver is busy or rejects its mix format;
 - MMCSS `Pro Audio` realtime threads;
 - lock-free stereo capture/render queue;
 - underrun/overrun and negotiated-buffer telemetry;
@@ -18,6 +20,7 @@ audio capture, processing, and playback never enter the browser/webview.
 - loopback-only HTTP control bridge for the React/native-shell UI (port 48157).
 - independent Input 1 / Input 2 mono-to-stereo lanes with per-STACK assignment;
 - equal-power guarded summing after the two lanes are processed.
+- allocation-free native guitar tuner on Input 2 with atomic note telemetry.
 
 ## Portable DSP validation
 
@@ -51,6 +54,13 @@ Match the input and output device formats in Windows Sound settings (48 kHz is
 recommended for the first hardware run). Start with speakers/monitor volume low.
 The host prints the actual periods and estimated native path before accepting
 commands. Type `stats` to inspect dropouts and `quit` to stop cleanly.
+
+The launcher requests exclusive mode first. When both endpoints accept it, the
+health panel reports `exclusive` and the path estimate uses the actual negotiated
+buffers. If either device refuses exclusive access, Calcotone reactivates a clean
+audio client and falls back to the lowest shared `IAudioClient3` period instead of
+failing startup. Close DAWs or other apps holding the interface if you want the
+lowest exclusive period.
 
 The bridge never carries audio. `GET http://127.0.0.1:48157/health` returns the
 negotiated device periods and dropout counters. Send a plain-text command such as

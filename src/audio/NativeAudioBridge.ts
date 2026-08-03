@@ -9,6 +9,9 @@ export interface NativeAudioHealth {
   estimatedPathMs: number;
   underruns: number;
   overruns: number;
+  audioMode: 'exclusive' | 'mixed' | 'shared';
+  tunerHz: number;
+  tunerLevel: number;
 }
 
 const NATIVE_ORIGIN = 'http://127.0.0.1:48157';
@@ -66,6 +69,17 @@ export class NativeAudioBridge {
   public async command(name: string, value: number): Promise<boolean> {
     if (!Number.isFinite(value)) return false;
     return this.commandLine(`${name} ${value}`);
+  }
+
+  public async readHealth(): Promise<NativeAudioHealth | null> {
+    if (!this.connected) return null;
+    try {
+      const response = await fetch(this.request(`${NATIVE_ORIGIN}/health`, { cache: 'no-store' }));
+      if (!response.ok) return null;
+      return await response.json() as NativeAudioHealth;
+    } catch {
+      return null;
+    }
   }
 
   public async commandLine(line: string): Promise<boolean> {

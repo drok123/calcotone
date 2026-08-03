@@ -4,6 +4,8 @@ import { resolve } from 'node:path';
 const root = process.cwd();
 const engine = readFileSync(resolve(root, 'src/audio/AudioEngine.ts'), 'utf8');
 const app = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
+const nativeHost = readFileSync(resolve(root, 'native/src/wasapi_host.cpp'), 'utf8');
+const launcher = readFileSync(resolve(root, 'native/START-CALCOTONE-NATIVE.bat'), 'utf8');
 const failures = [];
 
 const requireText = (source, needle, label) => {
@@ -23,6 +25,11 @@ requireText(engine, "if (seconds <= 0.015) return 'tight'", 'Tight latency thres
 requireText(engine, "if (seconds <= 0.03) return 'playable'", 'Playable latency threshold');
 requireText(app, 'EST. RTT', 'Round-trip estimate surfaced in UI');
 requireText(app, "Restart audio to apply its device-buffer policy.", 'Runtime mode-change disclosure');
+requireText(nativeHost, 'AUDCLNT_SHAREMODE_EXCLUSIVE', 'Native exclusive-WASAPI fast path');
+requireText(nativeHost, '64.0 * 10\'000\'000.0', 'Native 64-frame latency request');
+requireText(nativeHost, 'GetSharedModeEnginePeriod', 'Native minimum shared-period fallback');
+requireText(nativeHost, 'endpoint.client = activate()', 'Clean client reactivation after exclusive rejection');
+requireText(launcher, 'CALCOTONE_AUDIO_MODE=exclusive', 'Launcher exclusive-mode request');
 
 const estimateMs = ({ input, base, output, frames, rate }) =>
   (input + base + output + frames / rate) * 1000;

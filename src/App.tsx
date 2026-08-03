@@ -619,6 +619,7 @@ export default function App() {
   const [inputDevice, setInputDevice] = useState('No input connected');
   const [latency, setLatency] = useState('—');
   const [sampleRate, setSampleRate] = useState('—');
+  const [nativeTuner, setNativeTuner] = useState({ hz: 0, level: 0 });
   const [xyPosition, setXyPosition] = useState({ x: 50, y: 50 });
   const [xyDragging, setXyDragging] = useState(false);
   const [analyser, setAnalyser] = useState<VisualSpectrumSource | null>(null);
@@ -637,6 +638,21 @@ export default function App() {
   const [persistentPatchLines, setPersistentPatchLines] = useState<
     PersistentPatchLine[]
   >([]);
+
+  useEffect(() => {
+    if (engineState !== 'running' || audioBackend !== 'native') {
+      setNativeTuner({ hz: 0, level: 0 });
+      return;
+    }
+    let cancelled = false;
+    const refresh = async (): Promise<void> => {
+      const health = await nativeBridgeRef.current.readHealth();
+      if (!cancelled && health) setNativeTuner({ hz: health.tunerHz || 0, level: health.tunerLevel || 0 });
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 80);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [audioBackend, engineState]);
   const [recordingState, setRecordingState] = useState<
     'idle' | 'recording' | 'ready' | 'error'
   >('idle');
@@ -885,7 +901,7 @@ export default function App() {
         nativeSync.push(nativeBridgeRef.current.commandLine(`order ${serialOrderFromRack({ A: railAOrder, B: railBOrder, C: railCOrder }).join(' ')}`));
         await Promise.all(nativeSync);
         setInputDevice('Windows native default input');
-        setLatency(`${native.estimatedPathMs.toFixed(1)} ms engine path`);
+        setLatency(`${native.estimatedPathMs.toFixed(1)} ms ${native.audioMode ?? 'shared'} path`);
         setSampleRate(`${native.sampleRate} Hz`);
         setChannelInfo({ input: `${native.inputChannels} ch native`, output: `${native.outputChannels} ch native` });
         setAnalyser(null);
@@ -2200,6 +2216,8 @@ export default function App() {
                             onStackInputSourceChange={setStackInputSource}
                             onStackParametersChange={setStackParameters}
                             nativeBackendActive={audioBackend === 'native'}
+                            tunerHz={nativeTuner.hz}
+                            tunerLevel={nativeTuner.level}
                             motionPadProps={{
                               padRef: xyPadRef,
                               modules,

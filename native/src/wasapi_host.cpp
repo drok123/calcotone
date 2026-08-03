@@ -12,6 +12,7 @@
 #include "calcotone/control_server.hpp"
 #include "calcotone/input_router.hpp"
 #include "calcotone/native_rack.hpp"
+#include "calcotone/pitch_tracker.hpp"
 
 #include <algorithm>
 #include <array>
@@ -86,12 +87,13 @@ struct Endpoint {
   HANDLE event{};
   UINT32 period_frames{};
   UINT32 buffer_frames{};
+  bool exclusive{};
   Endpoint() = default;
   Endpoint(const Endpoint&) = delete;
   Endpoint& operator=(const Endpoint&) = delete;
   Endpoint(Endpoint&& other) noexcept
       : client(std::move(other.client)), format(std::exchange(other.format, nullptr)),
-        event(std::exchange(other.event, nullptr)), period_frames(other.period_frames), buffer_frames(other.buffer_frames) {}
+        event(std::exchange(other.event, nullptr)), period_frames(other.period_frames), buffer_frames(other.buffer_frames), exclusive(other.exclusive) {}
   Endpoint& operator=(Endpoint&&) = delete;
   ~Endpoint() { if (event) CloseHandle(event); if (format) CoTaskMemFree(format); }
 };
@@ -111,38 +113,55 @@ bool float_format(const WAVEFORMATEX* format) noexcept {
   return extensible->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT && format->wBitsPerSample == 32;
 }
 
-Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow) {
+Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow, bool prefer_exclusive) {
   Endpoint endpoint;
   ComPtr<IMMDevice> device;
   check(enumerator->GetDefaultAudioEndpoint(flow, eConsole, &device), "GetDefaultAudioEndpoint");
-  check(device->Activate(__uuidof(IAudioClient3), CLSCTX_ALL, nullptr, &endpoint.client), "Activate IAudioClient3");
-  AudioClientProperties properties{};
-  properties.cbSize = sizeof(properties);
-  properties.eCategory = AudioCategory_Media;
-  properties.Options = AUDCLNT_STREAMOPTIONS_RAW;
-  if (FAILED(endpoint.client->SetClientProperties(&properties))) {
-    properties.Options = AUDCLNT_STREAMOPTIONS_NONE;
-    check(endpoint.client->SetClientProperties(&properties), "SetClientProperties");
-  }
+  const auto activate = [&]() {
+    ComPtr<IAudioClient3> client;
+    check(device->Activate(__uuidof(IAudioClient3), CLSCTX_ALL, nullptr, &client), "Activate IAudioClient3");
+    AudioClientProperties properties{};
+    properties.cbSize = sizeof(properties); properties.eCategory = AudioCategory_Media; properties.Options = AUDCLNT_STREAMOPTIONS_RAW;
+    if (FAILED(client->SetClientProperties(&properties))) { properties.Options = AUDCLNT_STREAMOPTIONS_NONE; check(client->SetClientProperties(&properties), "SetClientProperties"); }
+    return client;
+  };
+  endpoint.client = activate();
   check(endpoint.client->GetMixFormat(&endpoint.format), "GetMixFormat");
   if (!float_format(endpoint.format)) throw std::runtime_error("Default endpoint is not 32-bit float; native format conversion is the next backend milestone.");
-  UINT32 default_period{}, fundamental{}, minimum{}, maximum{};
-  check(endpoint.client->GetSharedModeEnginePeriod(endpoint.format, &default_period, &fundamental, &minimum, &maximum), "GetSharedModeEnginePeriod");
-  endpoint.period_frames = minimum;
-  HRESULT initialize = endpoint.client->InitializeSharedAudioStream(
-      AUDCLNT_STREAMFLAGS_EVENTCALLBACK, endpoint.period_frames, endpoint.format, nullptr);
-  if (FAILED(initialize) && default_period != minimum) {
-    endpoint.period_frames = default_period;
-    initialize = endpoint.client->InitializeSharedAudioStream(
-        AUDCLNT_STREAMFLAGS_EVENTCALLBACK, endpoint.period_frames, endpoint.format, nullptr);
+  HRESULT initialize = E_FAIL;
+  if (prefer_exclusive && endpoint.client->IsFormatSupported(AUDCLNT_SHAREMODE_EXCLUSIVE, endpoint.format, nullptr) == S_OK) {
+    REFERENCE_TIME default_period_hns{}, minimum_period_hns{};
+    if (SUCCEEDED(endpoint.client->GetDevicePeriod(&default_period_hns, &minimum_period_hns))) {
+      const auto desired_hns = static_cast<REFERENCE_TIME>(64.0 * 10'000'000.0 / endpoint.format->nSamplesPerSec);
+      const auto period_hns = std::max(minimum_period_hns, desired_hns);
+      initialize = endpoint.client->Initialize(
+          AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+          period_hns, period_hns, endpoint.format, nullptr);
+      endpoint.exclusive = SUCCEEDED(initialize);
+    }
   }
-  check(initialize, "InitializeSharedAudioStream");
+  if (!endpoint.exclusive) {
+    // A failed exclusive Initialize can leave a driver-specific client in an
+    // indeterminate state. Reactivate before the guaranteed shared fallback.
+    endpoint.client = activate();
+    UINT32 default_period{}, fundamental{}, minimum{}, maximum{};
+    check(endpoint.client->GetSharedModeEnginePeriod(endpoint.format, &default_period, &fundamental, &minimum, &maximum), "GetSharedModeEnginePeriod");
+    endpoint.period_frames = minimum;
+    initialize = endpoint.client->InitializeSharedAudioStream(AUDCLNT_STREAMFLAGS_EVENTCALLBACK, endpoint.period_frames, endpoint.format, nullptr);
+    if (FAILED(initialize) && default_period != minimum) {
+      endpoint.period_frames = default_period;
+      initialize = endpoint.client->InitializeSharedAudioStream(AUDCLNT_STREAMFLAGS_EVENTCALLBACK, endpoint.period_frames, endpoint.format, nullptr);
+    }
+    check(initialize, "InitializeSharedAudioStream");
+  }
   endpoint.event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
   if (!endpoint.event) throw std::runtime_error("CreateEvent failed");
   check(endpoint.client->SetEventHandle(endpoint.event), "SetEventHandle");
   check(endpoint.client->GetBufferSize(&endpoint.buffer_frames), "GetBufferSize");
+  if (endpoint.exclusive) endpoint.period_frames = endpoint.buffer_frames;
   return endpoint;
 }
+
 
 void set_realtime_thread() noexcept {
   DWORD task_index = 0;
@@ -162,14 +181,19 @@ int main() {
     check(CoInitializeEx(nullptr, COINIT_MULTITHREADED), "CoInitializeEx");
     ComPtr<IMMDeviceEnumerator> enumerator;
     check(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator)), "Create device enumerator");
+    std::array<char, 32> audio_mode{};
+    GetEnvironmentVariableA("CALCOTONE_AUDIO_MODE", audio_mode.data(), static_cast<DWORD>(audio_mode.size()));
+    const bool prefer_exclusive = std::string_view(audio_mode.data()) == "exclusive";
     log_line("Opening default Windows capture endpoint...");
-    Endpoint capture = open_endpoint(enumerator.Get(), eCapture);
+    Endpoint capture = open_endpoint(enumerator.Get(), eCapture, prefer_exclusive);
     log_line("Capture endpoint ready: " + std::to_string(capture.format->nSamplesPerSec) + " Hz, " +
-             std::to_string(capture.format->nChannels) + " channels, " + std::to_string(capture.period_frames) + " frame period");
+             std::to_string(capture.format->nChannels) + " channels, " + std::to_string(capture.period_frames) +
+             " frame period, " + (capture.exclusive ? "exclusive" : "shared") + " mode");
     log_line("Opening default Windows render endpoint...");
-    Endpoint render = open_endpoint(enumerator.Get(), eRender);
+    Endpoint render = open_endpoint(enumerator.Get(), eRender, prefer_exclusive);
     log_line("Render endpoint ready: " + std::to_string(render.format->nSamplesPerSec) + " Hz, " +
-             std::to_string(render.format->nChannels) + " channels, " + std::to_string(render.period_frames) + " frame period");
+             std::to_string(render.format->nChannels) + " channels, " + std::to_string(render.period_frames) +
+             " frame period, " + (render.exclusive ? "exclusive" : "shared") + " mode");
     if (capture.format->nSamplesPerSec != render.format->nSamplesPerSec) throw std::runtime_error("Input/output sample rates differ; select matching Windows device formats first.");
     ComPtr<IAudioCaptureClient> capture_service;
     ComPtr<IAudioRenderClient> render_service;
@@ -177,6 +201,7 @@ int main() {
     check(render.client->GetService(IID_PPV_ARGS(&render_service)), "Get render service");
 
     const float sample_rate = static_cast<float>(render.format->nSamplesPerSec);
+    calcotone::PitchTracker tuner(sample_rate);
     calcotone::StackAmp stack_one(sample_rate);
     calcotone::StackAmp stack_two(sample_rate);
     calcotone::NativeRack rack_one(sample_rate);
@@ -204,12 +229,15 @@ int main() {
       if (line == "health" || line == "stats") {
         std::ostringstream status;
         status << "{\"engine\":\"calcotone-native\",\"protocol\":1,\"sampleRate\":" << sample_rate
+               << ",\"audioMode\":\"" << (capture.exclusive && render.exclusive ? "exclusive" : capture.exclusive || render.exclusive ? "mixed" : "shared") << '"'
                << ",\"inputPeriodFrames\":" << capture.period_frames
                << ",\"outputBufferFrames\":" << render.buffer_frames
                << ",\"inputChannels\":" << capture.format->nChannels
                << ",\"outputChannels\":" << render.format->nChannels
                << ",\"estimatedPathMs\":" << (capture.period_frames + render.buffer_frames) / sample_rate * 1000.
-               << ",\"underruns\":" << underruns.load() << ",\"overruns\":" << ring->overruns.load() << '}';
+               << ",\"underruns\":" << underruns.load() << ",\"overruns\":" << ring->overruns.load()
+               << ",\"tunerHz\":" << tuner.frequency()
+               << ",\"tunerLevel\":" << tuner.level() << '}';
         return status.str();
       }
       std::istringstream command{std::string(line)}; std::string name; command >> name;
@@ -286,6 +314,7 @@ int main() {
             const float left = flags & AUDCLNT_BUFFERFLAGS_SILENT ? 0.F : samples[frame * capture.format->nChannels];
             const float right = flags & AUDCLNT_BUFFERFLAGS_SILENT ? 0.F
                 : samples[frame * capture.format->nChannels + std::min<WORD>(1, capture.format->nChannels - 1)];
+            tuner.push(right);
             ring->push(left, right);
           }
           capture_service->ReleaseBuffer(frames);

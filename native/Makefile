@@ -3,9 +3,10 @@ CXXFLAGS ?= -std=c++20 -O3 -Wall -Wextra -Wpedantic -Werror
 INCLUDES = -Iinclude
 
 .PHONY: test clean
-test: build/stack_amp_test build/native_rack_test
+test: build/stack_amp_test build/native_rack_test build/pitch_tracker_test
 	./build/stack_amp_test
 	./build/native_rack_test
+	./build/pitch_tracker_test
 
 build/stack_amp_test: src/stack_amp.cpp tests/stack_amp_test.cpp include/calcotone/stack_amp.hpp
 	mkdir -p build
@@ -15,5 +16,9 @@ build/native_rack_test: src/native_rack.cpp tests/native_rack_test.cpp include/c
 	mkdir -p build
 	$(CXX) $(CXXFLAGS) $(INCLUDES) src/native_rack.cpp tests/native_rack_test.cpp -o $@
 
+build/pitch_tracker_test: tests/pitch_tracker_test.cpp include/calcotone/pitch_tracker.hpp
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) $(INCLUDES) tests/pitch_tracker_test.cpp -o $@
+
 clean:
-	rm -f build/stack_amp_test build/native_rack_test
+	rm -f build/stack_amp_test build/native_rack_test build/pitch_tracker_test

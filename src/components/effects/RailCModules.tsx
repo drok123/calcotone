@@ -109,6 +109,7 @@ type FrameProps = RailInteractionProps & {
   enabled: boolean;
   onToggle: () => void;
   headerControl: ReactNode;
+  titleAccessory?: ReactNode;
   overlayActive?: boolean;
   children: ReactNode;
 };
@@ -119,6 +120,7 @@ function RailModuleFrame({
   enabled,
   onToggle,
   headerControl,
+  titleAccessory,
   overlayActive = false,
   children,
   slotLabel,
@@ -161,6 +163,7 @@ function RailModuleFrame({
           <span className="module-number" aria-hidden="true">{slotLabel}</span>
           <span className="module-jewel" aria-hidden="true" />
           <h3>{name}</h3>
+          {titleAccessory}
           <span className="module-route-cue" aria-hidden="true">↔</span>
         </div>
         <div className="module-header-control">{headerControl}</div>
@@ -1064,13 +1067,13 @@ function StompModule({ engineRunning, onEnabledChange, onModeChange, onInputSour
       enabled={enabled}
       onToggle={() => setEnabled((current) => !current)}
       headerControl={
-        <div className="synth-selector-pair stomp-selector-pair">
-          <label className="algorithm-selector"><span className="sr-only">Stomp pedal</span>
+        <div className="chaos-selector-pair stomp-selector-pair">
+          <label className="algorithm-selector chaos-mode-selector"><span className="sr-only">Stomp pedal</span>
             <select aria-label="Stomp pedal" value={mode} onChange={(event) => selectMode(Number(event.target.value))}>
               {STOMP_MODE_LABELS.map((label,index)=><option key={label} value={index}>{label}</option>)}
             </select>
           </label>
-          <label className="algorithm-selector"><span className="sr-only">Stomp preset</span>
+          <label className="algorithm-selector chaos-program-selector"><span className="sr-only">Stomp preset</span>
             <select aria-label="Stomp preset" value={presetId} onChange={(event)=>selectPreset(event.target.value)}>
               {presetId==='custom'&&<option value="custom">Custom</option>}
               {STOMP_PRESETS[mode]!.map((preset)=><option key={preset.id} value={preset.id}>{preset.label}</option>)}
@@ -1118,6 +1121,22 @@ const STACK_INPUT_LABELS: Record<StackInputSource, string> = {
   both: 'Both Inputs',
 };
 
+function StackTuner({ frequency, level }: { frequency: number; level: number }) {
+  const active = Number.isFinite(frequency) && frequency >= 38 && frequency <= 1_400 && level >= .0025;
+  if (!active) return <span className="stack-tuner is-idle" aria-label="Guitar tuner waiting for signal"><b>--</b><i>TUNER</i></span>;
+  const midiFloat = 69 + 12 * Math.log2(frequency / 440);
+  const midi = Math.round(midiFloat);
+  const cents = Math.round((midiFloat - midi) * 100);
+  const notes = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+  const note = `${notes[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}`;
+  const inTune = Math.abs(cents) <= 4;
+  return (
+    <span className={`stack-tuner ${inTune ? 'is-tuned' : cents < 0 ? 'is-flat' : 'is-sharp'}`} aria-label={`${note}, ${Math.abs(cents)} cents ${cents < 0 ? 'flat' : cents > 0 ? 'sharp' : 'in tune'}`} title={`${frequency.toFixed(1)} Hz`}>
+      <b>{note}</b><i>{cents > 0 ? '+' : ''}{cents}¢</i>
+    </span>
+  );
+}
+
 function ChaosModule({
   motionPadProps,
   running,
@@ -1128,6 +1147,8 @@ function ChaosModule({
   onInputSourceChange,
   onParametersChange,
   nativeBackendActive,
+  tunerHz,
+  tunerLevel,
   ...props
 }: RailInteractionProps & {
   motionPadProps: MotionPadProps;
@@ -1139,6 +1160,8 @@ function ChaosModule({
   onInputSourceChange: (source: StackInputSource) => void;
   onParametersChange: (values: readonly number[]) => void;
   nativeBackendActive: boolean;
+  tunerHz: number;
+  tunerLevel: number;
 }) {
   const [enabled, setEnabled] = useState(CHAOS_RACK_STATE.enabled);
   const [model, setModel] = useState<StackAmpModel>(CHAOS_RACK_STATE.model);
@@ -1197,6 +1220,7 @@ function ChaosModule({
       {...props}
       id="chaos"
       name="Stack"
+      titleAccessory={<StackTuner frequency={tunerHz} level={tunerLevel} />}
       enabled={enabled}
       onToggle={() => setEnabled((current) => !current)}
       headerControl={(
@@ -1378,6 +1402,8 @@ export function RailCModule({
   onStackInputSourceChange,
   onStackParametersChange,
   nativeBackendActive,
+  tunerHz,
+  tunerLevel,
   ...interaction
 }: RailInteractionProps & {
   moduleId: string;
@@ -1405,6 +1431,8 @@ export function RailCModule({
   onStackInputSourceChange: (source: StackInputSource) => void;
   onStackParametersChange: (values: readonly number[]) => void;
   nativeBackendActive: boolean;
+  tunerHz: number;
+  tunerLevel: number;
 }) {
   void modules;
   void assignments;
@@ -1438,6 +1466,8 @@ export function RailCModule({
       onInputSourceChange={onStackInputSourceChange}
       onParametersChange={onStackParametersChange}
       nativeBackendActive={nativeBackendActive}
+      tunerHz={tunerHz}
+      tunerLevel={tunerLevel}
     />
   );
   if (moduleId === 'pressure') return <PressureModule {...interaction} running={running} visualState={visualState} />;
