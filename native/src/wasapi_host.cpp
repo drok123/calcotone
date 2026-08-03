@@ -11,6 +11,7 @@
 #include "calcotone/stack_amp.hpp"
 #include "calcotone/control_server.hpp"
 #include "calcotone/input_router.hpp"
+#include "calcotone/native_rack.hpp"
 
 #include <algorithm>
 #include <array>
@@ -178,6 +179,8 @@ int main() {
     const float sample_rate = static_cast<float>(render.format->nSamplesPerSec);
     calcotone::StackAmp stack_one(sample_rate);
     calcotone::StackAmp stack_two(sample_rate);
+    calcotone::NativeRack rack_one(sample_rate);
+    calcotone::NativeRack rack_two(sample_rate);
     // These blocks exceed Windows' default 1 MB stack when combined. Allocate
     // once during startup; the realtime threads never allocate or resize them.
     auto ring = std::make_unique<StereoRing>();
@@ -201,7 +204,34 @@ int main() {
                << ",\"underruns\":" << underruns.load() << ",\"overruns\":" << ring->overruns.load() << '}';
         return status.str();
       }
-      std::istringstream command{std::string(line)}; std::string name; float value = 0.F; command >> name >> value;
+      std::istringstream command{std::string(line)}; std::string name; command >> name;
+      if (name == "param") {
+        std::string module_name, parameter; float value = 0.F;
+        command >> module_name >> parameter >> value;
+        const auto module = calcotone::rack_module_from_name(module_name);
+        if (!command || module == calcotone::RackModule::Count || !std::isfinite(value)) return R"({"error":"expected param module parameter value"})";
+        if (!rack_one.set_parameter(module, parameter, value) || !rack_two.set_parameter(module, parameter, value)) return R"({"error":"unknown native parameter"})";
+        return R"({"ok":true,"command":"param"})";
+      }
+      if (name == "moduleBypass") {
+        std::string module_name; float value = 0.F; command >> module_name >> value;
+        const auto module = calcotone::rack_module_from_name(module_name);
+        if (!command || module == calcotone::RackModule::Count || !std::isfinite(value)) return R"({"error":"expected moduleBypass module 0/1"})";
+        rack_one.set_bypassed(module, value >= .5F); rack_two.set_bypassed(module, value >= .5F);
+        return R"({"ok":true,"command":"moduleBypass"})";
+      }
+      if (name == "order") {
+        std::array<calcotone::RackModule, 4> modules{}; std::size_t count = 0; std::string module_name;
+        while (command >> module_name) {
+          const auto module = calcotone::rack_module_from_name(module_name);
+          if (module != calcotone::RackModule::Count && count < modules.size()) modules[count++] = module;
+        }
+        if (count == 0) return R"({"error":"order needs native module names"})";
+        rack_one.set_order(std::span<const calcotone::RackModule>(modules.data(), count));
+        rack_two.set_order(std::span<const calcotone::RackModule>(modules.data(), count));
+        return R"({"ok":true,"command":"order"})";
+      }
+      float value = 0.F; command >> value;
       if (!command || !std::isfinite(value)) return R"({"error":"expected name and numeric value"})";
       if (name == "active") audible.store(value >= 0.5F); else if (name == "bypass") stack_bypassed.store(value >= 0.5F);
       else if (name == "stackInput") stack_input.store(std::min(2U, static_cast<unsigned>(std::max(0.F, value))));
@@ -270,12 +300,12 @@ int main() {
           calcotone::split_dual_mono(
               process->capture_input.data(), process->lane_one_input.data(), process->lane_two_input.data(), block,
               input_gain.load(std::memory_order_relaxed));
+          rack_one.process(process->lane_one_input.data(), process->lane_one_output.data(), block);
+          rack_two.process(process->lane_two_input.data(), process->lane_two_output.data(), block);
           const bool bypassed = stack_bypassed.load(std::memory_order_relaxed);
           const auto source = static_cast<calcotone::StackInputSource>(stack_input.load(std::memory_order_relaxed));
-          if (!bypassed && calcotone::stack_receives_lane(source, 0)) stack_one.process(process->lane_one_input.data(), process->lane_one_output.data(), block);
-          else std::copy_n(process->lane_one_input.data(), block * 2, process->lane_one_output.data());
-          if (!bypassed && calcotone::stack_receives_lane(source, 1)) stack_two.process(process->lane_two_input.data(), process->lane_two_output.data(), block);
-          else std::copy_n(process->lane_two_input.data(), block * 2, process->lane_two_output.data());
+          if (!bypassed && calcotone::stack_receives_lane(source, 0)) stack_one.process(process->lane_one_output.data(), process->lane_one_output.data(), block);
+          if (!bypassed && calcotone::stack_receives_lane(source, 1)) stack_two.process(process->lane_two_output.data(), process->lane_two_output.data(), block);
           auto* destination = reinterpret_cast<float*>(bytes);
           const float gain = audible.load(std::memory_order_relaxed) ? output_gain.load(std::memory_order_relaxed) : 0.F;
           calcotone::mix_dual_mono(process->lane_one_output.data(), process->lane_two_output.data(), process->mixed_output.data(), block, gain);
@@ -299,7 +329,7 @@ int main() {
             << "f | output buffer " << render.buffer_frames << "f | estimated native path " << input_ms + output_ms << " ms";
     log_line(startup.str());
     log_line("Control bridge: http://127.0.0.1:" + std::to_string(control_server.port()) + " | GET /health | POST /command");
-    log_line("Commands: active/bypass 0/1, stackInput 0/1/2, inputGain/outputGain, drive/tone/sag/mix, model, cab, quality, stats, quit");
+    log_line("Commands: param/moduleBypass/order, active/bypass, stackInput, inputGain/outputGain, STACK controls, stats, quit");
     std::string line;
     while (std::getline(std::cin, line)) {
       std::istringstream command(line); std::string name; float value = 0.F; command >> name;

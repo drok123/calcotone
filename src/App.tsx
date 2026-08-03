@@ -752,11 +752,17 @@ export default function App() {
 
 
   async function applyRoutingOrder(nextA: string[], nextB: string[], nextC: string[]): Promise<void> {
+    const order = serialOrderFromRack({ A: nextA, B: nextB, C: nextC });
+    if (backendRef.current === 'native') {
+      await nativeBridgeRef.current.commandLine(`order ${order.join(' ')}`);
+      setMessage(`Native routing updated · A ${formatRailOrder(nextA)} · B ${formatRailOrder(nextB)} · C ${formatRailOrder(nextC)}`);
+      return;
+    }
     const engine = engineRef.current;
     if (!engine || engineState !== 'running') return;
 
     try {
-      await engine.reorderEffectsClickSafe(serialOrderFromRack({ A: nextA, B: nextB, C: nextC }));
+      await engine.reorderEffectsClickSafe(order);
       setMessage(
         `Routing updated · A ${formatRailOrder(nextA)} · B ${formatRailOrder(nextB)} · C ${formatRailOrder(nextC)}`
       );
@@ -841,13 +847,28 @@ export default function App() {
           nativeBridgeRef.current.command('outputGain', outputGain),
           nativeBridgeRef.current.command('quality', performanceMode === 'studio' ? 4 : performanceMode === 'balanced' ? 2 : 1),
         ]);
+        const nativeSync: Promise<boolean>[] = [];
+        for (const module of modules) {
+          nativeSync.push(nativeBridgeRef.current.commandLine(`moduleBypass ${module.id} ${module.enabled ? 0 : 1}`));
+          for (const parameter of module.parameters) {
+            nativeSync.push(nativeBridgeRef.current.commandLine(
+              `param ${module.id} ${parameter.id} ${toDspParameterValue(module.id, parameter.id, parameter.value)}`
+            ));
+          }
+          if (module.id === 'saturation' && module.emberMode) nativeSync.push(nativeBridgeRef.current.commandLine(`param saturation mode ${EMBER_MODE_ORDER.indexOf(module.emberMode)}`));
+          if (module.id === 'chorus' && module.driftMode) nativeSync.push(nativeBridgeRef.current.commandLine(`param chorus mode ${DRIFT_MODE_ORDER.indexOf(module.driftMode)}`));
+          if (module.id === 'delay' && module.delayAlgorithm) nativeSync.push(nativeBridgeRef.current.commandLine(`param delay algorithm ${DELAY_ALGORITHMS.indexOf(module.delayAlgorithm)}`));
+          if (module.id === 'reverb' && module.algorithm) nativeSync.push(nativeBridgeRef.current.commandLine(`param reverb algorithm ${REVERB_ALGORITHMS.indexOf(module.algorithm)}`));
+        }
+        nativeSync.push(nativeBridgeRef.current.commandLine(`order ${serialOrderFromRack({ A: railAOrder, B: railBOrder, C: railCOrder }).join(' ')}`));
+        await Promise.all(nativeSync);
         setInputDevice('Windows native default input');
         setLatency(`${native.estimatedPathMs.toFixed(1)} ms engine path`);
         setSampleRate(`${native.sampleRate} Hz`);
         setChannelInfo({ input: `${native.inputChannels} ch native`, output: `${native.outputChannels} ch native` });
         setAnalyser(null);
         setEngineState('running');
-        setMessage('Native WASAPI audio is active. STACK and master controls are running outside WebAudio.');
+        setMessage('Native WASAPI audio is active. Ember, Drift, Halo, Atmos, STACK, and master controls are running outside WebAudio.');
         return;
       }
 
@@ -1174,12 +1195,9 @@ export default function App() {
     );
 
     if (engineState === 'running') {
-      setEffectParameterIfLoaded(
-        engineRef.current,
-        moduleId,
-        parameterId,
-        toDspParameterValue(moduleId, parameterId, value)
-      );
+      const dspValue = toDspParameterValue(moduleId, parameterId, value);
+      if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine(`param ${moduleId} ${parameterId} ${dspValue}`);
+      else setEffectParameterIfLoaded(engineRef.current, moduleId, parameterId, dspValue);
     }
   }
 
@@ -1189,12 +1207,9 @@ export default function App() {
         module.id === 'delay' ? { ...module, delayAlgorithm: algorithm } : module
       )
     );
-    setEffectParameterIfLoaded(
-      engineRef.current,
-      'delay',
-      'algorithm',
-      DELAY_ALGORITHMS.indexOf(algorithm)
-    );
+    const index = DELAY_ALGORITHMS.indexOf(algorithm);
+    if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine(`param delay algorithm ${index}`);
+    else setEffectParameterIfLoaded(engineRef.current, 'delay', 'algorithm', index);
     setMessage(`Halo changed to ${algorithm}. Existing repeats will fade naturally.`);
   }
 
@@ -1204,24 +1219,25 @@ export default function App() {
         module.id === 'reverb' ? { ...module, algorithm } : module
       )
     );
-    setEffectParameterIfLoaded(
-      engineRef.current,
-      'reverb',
-      'algorithm',
-      REVERB_ALGORITHMS.indexOf(algorithm)
-    );
+    const index = REVERB_ALGORITHMS.indexOf(algorithm);
+    if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine(`param reverb algorithm ${index}`);
+    else setEffectParameterIfLoaded(engineRef.current, 'reverb', 'algorithm', index);
     setMessage(`Atmos changed to ${algorithm}. Existing tails will fade naturally.`);
   }
 
   function updateEmberMode(mode: EmberMode): void {
     setModules((current) => current.map((module) => module.id === 'saturation' ? { ...module, emberMode: mode } : module));
-    setEffectParameterIfLoaded(engineRef.current, 'saturation', 'mode', EMBER_MODE_ORDER.indexOf(mode));
+    const index = EMBER_MODE_ORDER.indexOf(mode);
+    if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine(`param saturation mode ${index}`);
+    else setEffectParameterIfLoaded(engineRef.current, 'saturation', 'mode', index);
     setMessage(`Ember changed to ${mode}.`);
   }
 
   function updateDriftMode(mode: DriftMode): void {
     setModules((current) => current.map((module) => module.id === 'chorus' ? { ...module, driftMode: mode } : module));
-    setEffectParameterIfLoaded(engineRef.current, 'chorus', 'mode', DRIFT_MODE_ORDER.indexOf(mode));
+    const index = DRIFT_MODE_ORDER.indexOf(mode);
+    if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine(`param chorus mode ${index}`);
+    else setEffectParameterIfLoaded(engineRef.current, 'chorus', 'mode', index);
     setMessage(`Drift changed to ${mode}.`);
   }
 
@@ -1412,7 +1428,8 @@ export default function App() {
       )
     );
 
-    engineRef.current?.setEffectBypassed(moduleId, !nextEnabled);
+    if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine(`moduleBypass ${moduleId} ${nextEnabled ? 0 : 1}`);
+    else engineRef.current?.setEffectBypassed(moduleId, !nextEnabled);
     setMessage(`${module.name} ${nextEnabled ? 'enabled' : 'bypassed'}.`);
   }
 

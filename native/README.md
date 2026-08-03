@@ -7,6 +7,8 @@ audio capture, processing, and playback never enter the browser/webview.
 
 - allocation-free C++ STACK amp/cab DSP core;
 - deterministic dual-input routing and 90-path native signal test;
+- native Ember, Drift, Halo, and Atmos rack processors with smoothed controls,
+  bounded feedback, click-free bypass state, and realtime-safe fixed buffers;
 - event-driven `IAudioClient3` capture/render host;
 - minimum shared-mode engine periods with raw-mode attempt;
 - MMCSS `Pro Audio` realtime threads;
@@ -60,6 +62,13 @@ StackBlitz iframe cannot request loopback access under modern browser permission
 Allow loopback/local-network access if the browser prompts. The bridge accepts
 Calcotone's StackBlitz/WebContainer preview origins and logs any denied origin in
 the native console so a fallback can no longer fail silently.
+
+The faceplate sends rack controls through three text commands: `param <module>
+<parameter> <value>`, `moduleBypass <module> <0|1>`, and `order <modules...>`.
+The first native migration batch covers Ember (`saturation`), Drift (`chorus`),
+Halo (`delay`), and Atmos (`reverb`). Grain, Artifact, Pressure, the synth, and
+Dream Buffer remain on the migration checklist and are not represented as
+native-complete until their DSP and parity tests land.
 
 `stackInput 0` assigns STACK to Input 1, `stackInput 1` assigns it to Input 2,
 and `stackInput 2` processes both lanes through independent STACK instances. A lane

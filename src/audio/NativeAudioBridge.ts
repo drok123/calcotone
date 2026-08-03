@@ -64,12 +64,17 @@ export class NativeAudioBridge {
   }
 
   public async command(name: string, value: number): Promise<boolean> {
-    if (!this.connected || !Number.isFinite(value)) return false;
+    if (!Number.isFinite(value)) return false;
+    return this.commandLine(`${name} ${value}`);
+  }
+
+  public async commandLine(line: string): Promise<boolean> {
+    if (!this.connected || !line.trim()) return false;
     try {
       const response = await fetch(this.request(`${NATIVE_ORIGIN}/command`, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
-        body: `${name} ${value}`,
+        body: line,
       }));
       if (!response.ok) throw new Error(`Native command failed (${response.status}).`);
       const result = await response.json() as { ok?: boolean };
