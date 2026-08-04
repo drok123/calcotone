@@ -11,20 +11,21 @@ execute_process(
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/apply_atmos_parity.py"
           "${CMAKE_CURRENT_SOURCE_DIR}/src/native_rack.cpp"
           "${CALCOTONE_GENERATED_NATIVE_RACK}"
-  RESULT_VARIABLE CALCOTONE_ATMOS_PATCH_RESULT
-  OUTPUT_VARIABLE CALCOTONE_ATMOS_PATCH_OUTPUT
-  ERROR_VARIABLE CALCOTONE_ATMOS_PATCH_ERROR
+  RESULT_VARIABLE CALCOTONE_PARITY_PATCH_RESULT
+  OUTPUT_VARIABLE CALCOTONE_PARITY_PATCH_OUTPUT
+  ERROR_VARIABLE CALCOTONE_PARITY_PATCH_ERROR
 )
-if(NOT CALCOTONE_ATMOS_PATCH_RESULT EQUAL 0)
-  message(FATAL_ERROR "Failed to generate live parity rack: ${CALCOTONE_ATMOS_PATCH_ERROR}")
+if(NOT CALCOTONE_PARITY_PATCH_RESULT EQUAL 0)
+  message(FATAL_ERROR "Failed to generate live parity rack: ${CALCOTONE_PARITY_PATCH_ERROR}")
 endif()
-message(STATUS "${CALCOTONE_ATMOS_PATCH_OUTPUT}")
+message(STATUS "${CALCOTONE_PARITY_PATCH_OUTPUT}")
 
 add_library(calcotone_dsp STATIC
   src/stack_amp.cpp
   "${CALCOTONE_GENERATED_NATIVE_RACK}"
   src/atmos_parity_processor.cpp
   src/ember_parity_processor.cpp
+  src/drift_parity_processor.cpp
   src/native_processor.cpp
   src/audio_device_config.cpp
   src/elastic_stereo_fifo.cpp
@@ -55,6 +56,8 @@ add_executable(ember_parity_processor_test tests/ember_parity_processor_test.cpp
 target_link_libraries(ember_parity_processor_test PRIVATE calcotone_dsp)
 add_executable(native_ember_live_parity_test tests/native_ember_live_parity_test.cpp)
 target_link_libraries(native_ember_live_parity_test PRIVATE calcotone_dsp)
+add_executable(drift_parity_processor_test tests/drift_parity_processor_test.cpp)
+target_link_libraries(drift_parity_processor_test PRIVATE calcotone_dsp)
 
 enable_testing()
 add_test(NAME stack_amp_test COMMAND stack_amp_test)
@@ -69,6 +72,7 @@ add_test(NAME native_atmos_live_parity_test COMMAND native_atmos_live_parity_tes
 add_test(NAME ember_parity_profile_test COMMAND ember_parity_profile_test)
 add_test(NAME ember_parity_processor_test COMMAND ember_parity_processor_test)
 add_test(NAME native_ember_live_parity_test COMMAND native_ember_live_parity_test)
+add_test(NAME drift_parity_processor_test COMMAND drift_parity_processor_test)
 
 if(WIN32)
   set(CALCOTONE_WEBVIEW2_ROOT "" CACHE PATH "Extracted Microsoft.Web.WebView2 NuGet package")
