@@ -4,16 +4,17 @@
 #include <shellapi.h>
 #include <audioclient.h>
 #include <avrt.h>
+#include <functiondiscoverykeys_devpkey.h>
 #include <ksmedia.h>
 #include <mmdeviceapi.h>
+#include <propvarutil.h>
 #include <wrl/client.h>
 
-#include "calcotone/stack_amp.hpp"
+#include "calcotone/audio_device_config.hpp"
 #include "calcotone/control_server.hpp"
 #include "calcotone/desktop_shell.hpp"
-#include "calcotone/input_router.hpp"
-#include "calcotone/native_rack.hpp"
-#include "calcotone/pitch_tracker.hpp"
+#include "calcotone/ks_wavert_probe.hpp"
+#include "calcotone/native_processor.hpp"
 
 #include <algorithm>
 #include <array>
@@ -22,6 +23,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdint>
+#include <cwctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -153,10 +155,6 @@ class NativeRecorder {
 struct ProcessBuffers {
   std::array<float, kProcessFrames * 2> capture_input{};
   std::array<float, kProcessFrames * 2> mixed_output{};
-  std::array<float, kProcessFrames * 2> lane_one_input{};
-  std::array<float, kProcessFrames * 2> lane_one_output{};
-  std::array<float, kProcessFrames * 2> lane_two_input{};
-  std::array<float, kProcessFrames * 2> lane_two_output{};
 };
 
 struct Endpoint {
@@ -166,15 +164,117 @@ struct Endpoint {
   UINT32 period_frames{};
   UINT32 buffer_frames{};
   bool exclusive{};
+  std::string name;
+  std::string id;
   Endpoint() = default;
   Endpoint(const Endpoint&) = delete;
   Endpoint& operator=(const Endpoint&) = delete;
   Endpoint(Endpoint&& other) noexcept
       : client(std::move(other.client)), format(std::exchange(other.format, nullptr)),
-        event(std::exchange(other.event, nullptr)), period_frames(other.period_frames), buffer_frames(other.buffer_frames), exclusive(other.exclusive) {}
+        event(std::exchange(other.event, nullptr)), period_frames(other.period_frames), buffer_frames(other.buffer_frames), exclusive(other.exclusive),
+        name(std::move(other.name)), id(std::move(other.id)) {}
   Endpoint& operator=(Endpoint&&) = delete;
   ~Endpoint() { if (event) CloseHandle(event); if (format) CoTaskMemFree(format); }
 };
+
+void check(HRESULT result, const char* operation);
+
+std::string utf8_from_wide(std::wstring_view text) {
+  if (text.empty()) return {};
+  const int size = WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
+  if (size <= 0) return {};
+  std::string result(static_cast<std::size_t>(size), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), result.data(), size, nullptr, nullptr);
+  return result;
+}
+
+std::wstring wide_from_utf8(std::string_view text) {
+  if (text.empty()) return {};
+  const int size = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
+  if (size <= 0) return {};
+  std::wstring result(static_cast<std::size_t>(size), L'\0');
+  MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), result.data(), size);
+  return result;
+}
+
+std::wstring lowercase(std::wstring value) {
+  std::transform(value.begin(), value.end(), value.begin(), [](wchar_t character) {
+    return static_cast<wchar_t>(std::towlower(character));
+  });
+  return value;
+}
+
+std::string json_escape(std::string_view value) {
+  std::string result;
+  result.reserve(value.size() + 8);
+  for (const char character : value) {
+    if (character == '"' || character == '\\') result.push_back('\\');
+    if (character == '\n') { result += "\\n"; continue; }
+    if (character == '\r') continue;
+    result.push_back(character);
+  }
+  return result;
+}
+
+void describe_device(IMMDevice* device, std::string& id, std::string& name) {
+  LPWSTR device_id = nullptr;
+  check(device->GetId(&device_id), "Get device id");
+  id = utf8_from_wide(device_id ? std::wstring_view(device_id) : std::wstring_view{});
+  if (device_id) CoTaskMemFree(device_id);
+  ComPtr<IPropertyStore> properties;
+  if (SUCCEEDED(device->OpenPropertyStore(STGM_READ, &properties))) {
+    PROPVARIANT friendly;
+    PropVariantInit(&friendly);
+    if (SUCCEEDED(properties->GetValue(PKEY_Device_FriendlyName, &friendly)) && friendly.vt == VT_LPWSTR && friendly.pwszVal)
+      name = utf8_from_wide(friendly.pwszVal);
+    PropVariantClear(&friendly);
+  }
+  if (name.empty()) name = id;
+}
+
+ComPtr<IMMDevice> select_device(IMMDeviceEnumerator* enumerator, EDataFlow flow, std::string_view selector) {
+  ComPtr<IMMDevice> selected;
+  if (selector.empty() || selector == "default") {
+    check(enumerator->GetDefaultAudioEndpoint(flow, eConsole, &selected), "GetDefaultAudioEndpoint");
+    return selected;
+  }
+  ComPtr<IMMDeviceCollection> devices;
+  check(enumerator->EnumAudioEndpoints(flow, DEVICE_STATE_ACTIVE, &devices), "EnumAudioEndpoints");
+  UINT count = 0;
+  check(devices->GetCount(&count), "Get audio endpoint count");
+  const auto wanted = lowercase(wide_from_utf8(selector));
+  std::string choices;
+  for (UINT index = 0; index < count; ++index) {
+    ComPtr<IMMDevice> candidate;
+    if (FAILED(devices->Item(index, &candidate))) continue;
+    std::string id, name;
+    describe_device(candidate.Get(), id, name);
+    if (!choices.empty()) choices += ", ";
+    choices += name;
+    if (lowercase(wide_from_utf8(id)) == wanted || lowercase(wide_from_utf8(name)).find(wanted) != std::wstring::npos) {
+      selected = candidate;
+      break;
+    }
+  }
+  if (!selected) throw std::runtime_error("Audio device selector '" + std::string(selector) + "' did not match an active endpoint. Available: " + choices);
+  return selected;
+}
+
+void log_device_list(IMMDeviceEnumerator* enumerator, EDataFlow flow, std::string_view heading) {
+  log_line(std::string(heading));
+  ComPtr<IMMDeviceCollection> devices;
+  check(enumerator->EnumAudioEndpoints(flow, DEVICE_STATE_ACTIVE, &devices), "EnumAudioEndpoints");
+  UINT count = 0;
+  check(devices->GetCount(&count), "Get audio endpoint count");
+  for (UINT index = 0; index < count; ++index) {
+    ComPtr<IMMDevice> device;
+    if (FAILED(devices->Item(index, &device))) continue;
+    std::string id, name;
+    describe_device(device.Get(), id, name);
+    log_line("  [" + std::to_string(index + 1U) + "] " + name + " | " + id);
+  }
+  if (count == 0) log_line("  (none)");
+}
 
 void check(HRESULT result, const char* operation) {
   if (FAILED(result)) {
@@ -227,10 +327,12 @@ void encode_sample(BYTE* bytes, std::size_t sample, SampleEncoding encoding, flo
   if (encoding == SampleEncoding::Pcm32) { const auto pcm=static_cast<std::int32_t>(std::llrint(static_cast<double>(value)*2'147'483'647.)); std::memcpy(bytes+sample*4,&pcm,4); }
 }
 
-WAVEFORMATEXTENSIBLE pcm_candidate(const WAVEFORMATEX* basis, WORD container_bits, WORD valid_bits) noexcept {
+WAVEFORMATEXTENSIBLE pcm_candidate(const WAVEFORMATEX* basis, WORD container_bits, WORD valid_bits,
+                                   std::uint32_t requested_rate = 0) noexcept {
   WAVEFORMATEXTENSIBLE format{};
   format.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE; format.Format.nChannels = basis->nChannels;
-  format.Format.nSamplesPerSec = basis->nSamplesPerSec; format.Format.wBitsPerSample = container_bits;
+  format.Format.nSamplesPerSec = requested_rate ? requested_rate : basis->nSamplesPerSec;
+  format.Format.wBitsPerSample = container_bits;
   format.Format.nBlockAlign = static_cast<WORD>(basis->nChannels * container_bits / 8);
   format.Format.nAvgBytesPerSec = format.Format.nSamplesPerSec * format.Format.nBlockAlign;
   format.Format.cbSize = 22; format.Samples.wValidBitsPerSample = valid_bits;
@@ -241,10 +343,12 @@ WAVEFORMATEXTENSIBLE pcm_candidate(const WAVEFORMATEX* basis, WORD container_bit
   return format;
 }
 
-Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow, bool prefer_exclusive) {
+Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow, bool prefer_exclusive,
+                       std::string_view selector, std::uint32_t requested_frames,
+                       std::uint32_t requested_rate) {
   Endpoint endpoint;
-  ComPtr<IMMDevice> device;
-  check(enumerator->GetDefaultAudioEndpoint(flow, eConsole, &device), "GetDefaultAudioEndpoint");
+  ComPtr<IMMDevice> device = select_device(enumerator, flow, selector);
+  describe_device(device.Get(), endpoint.id, endpoint.name);
   const auto activate = [&]() {
     ComPtr<IAudioClient3> client;
     check(device->Activate(__uuidof(IAudioClient3), CLSCTX_ALL, nullptr, &client), "Activate IAudioClient3");
@@ -258,11 +362,14 @@ Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow, bool pre
   const std::string endpoint_name = flow == eCapture ? "Capture" : "Render";
   HRESULT initialize = E_FAIL;
   if (prefer_exclusive) {
-    auto pcm32 = pcm_candidate(endpoint.format, 32, 24);
-    auto pcm24 = pcm_candidate(endpoint.format, 24, 24);
-    auto pcm16 = pcm_candidate(endpoint.format, 16, 16);
+    auto pcm32 = pcm_candidate(endpoint.format, 32, 24, requested_rate);
+    auto pcm24 = pcm_candidate(endpoint.format, 24, 24, requested_rate);
+    auto pcm16 = pcm_candidate(endpoint.format, 16, 16, requested_rate);
     const std::array<const WAVEFORMATEX*, 4> candidates{
-        endpoint.format, &pcm32.Format, &pcm24.Format, &pcm16.Format};
+        requested_rate ? &pcm32.Format : endpoint.format,
+        requested_rate ? &pcm24.Format : &pcm32.Format,
+        requested_rate ? &pcm16.Format : &pcm24.Format,
+        requested_rate ? endpoint.format : &pcm16.Format};
     for (const auto* candidate : candidates) {
       const HRESULT support = endpoint.client->IsFormatSupported(AUDCLNT_SHAREMODE_EXCLUSIVE, candidate, nullptr);
       if (support != S_OK) {
@@ -272,7 +379,7 @@ Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow, bool pre
       }
       REFERENCE_TIME default_period_hns{}, minimum_period_hns{};
       if (FAILED(endpoint.client->GetDevicePeriod(&default_period_hns, &minimum_period_hns))) continue;
-      const auto desired_hns = static_cast<REFERENCE_TIME>(64.0 * 10'000'000.0 / candidate->nSamplesPerSec);
+      const auto desired_hns = static_cast<REFERENCE_TIME>(requested_frames * 10'000'000.0 / candidate->nSamplesPerSec);
       const auto period_hns = std::max(minimum_period_hns, desired_hns);
       initialize = endpoint.client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
           period_hns, period_hns, candidate, nullptr);
@@ -308,9 +415,13 @@ Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow, bool pre
     endpoint.client = activate();
     UINT32 default_period{}, fundamental{}, minimum{}, maximum{};
     check(endpoint.client->GetSharedModeEnginePeriod(endpoint.format, &default_period, &fundamental, &minimum, &maximum), "GetSharedModeEnginePeriod");
-    endpoint.period_frames = minimum;
+    const UINT32 clamped = std::clamp<UINT32>(requested_frames, minimum, maximum);
+    endpoint.period_frames = fundamental > 0
+        ? minimum + ((clamped - minimum + fundamental - 1U) / fundamental) * fundamental
+        : clamped;
+    endpoint.period_frames = std::min(endpoint.period_frames, maximum);
     initialize = endpoint.client->InitializeSharedAudioStream(AUDCLNT_STREAMFLAGS_EVENTCALLBACK, endpoint.period_frames, endpoint.format, nullptr);
-    if (FAILED(initialize) && default_period != minimum) {
+    if (FAILED(initialize) && default_period != endpoint.period_frames) {
       endpoint.period_frames = default_period;
       initialize = endpoint.client->InitializeSharedAudioStream(AUDCLNT_STREAMFLAGS_EVENTCALLBACK, endpoint.period_frames, endpoint.format, nullptr);
     }
@@ -345,17 +456,36 @@ int main(int argc, char** argv) {
     check(CoInitializeEx(nullptr, COINIT_MULTITHREADED), "CoInitializeEx");
     ComPtr<IMMDeviceEnumerator> enumerator;
     check(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator)), "Create device enumerator");
-    std::array<char, 32> audio_mode{};
-    GetEnvironmentVariableA("CALCOTONE_AUDIO_MODE", audio_mode.data(), static_cast<DWORD>(audio_mode.size()));
-    const bool prefer_exclusive = std::string_view(audio_mode.data()) == "exclusive";
-    log_line("Opening default Windows capture endpoint...");
-    Endpoint capture = open_endpoint(enumerator.Get(), eCapture, prefer_exclusive);
-    log_line("Capture endpoint ready: " + std::to_string(capture.format->nSamplesPerSec) + " Hz, " +
+    const bool list_devices = std::any_of(argv + 1, argv + argc, [](const char* argument) {
+      return std::string_view(argument) == "--list-devices";
+    });
+    if (list_devices) {
+      log_device_list(enumerator.Get(), eCapture, "Active capture devices:");
+      log_device_list(enumerator.Get(), eRender, "Active render devices:");
+      CoUninitialize();
+      return 0;
+    }
+    const auto audio_config = calcotone::audio_device_config_from_environment();
+    const auto ks_probe = audio_config.backend == calcotone::AudioBackend::Wasapi
+        ? calcotone::KsWaveRtProbe{} : calcotone::probe_ks_wavert_devices();
+    log_line("Audio request: backend " + std::string(calcotone::audio_backend_name(audio_config.backend)) +
+             " | " + std::to_string(audio_config.buffer_frames) + " frames | " +
+             (audio_config.sample_rate ? std::to_string(audio_config.sample_rate) + " Hz" : "device sample rate"));
+    if (audio_config.backend != calcotone::AudioBackend::Wasapi)
+      log_line("KS/WaveRT probe: " + ks_probe.summary + " Filters " +
+               std::to_string(ks_probe.filter_count) + ", pins " + std::to_string(ks_probe.pin_count) + '.');
+    if (audio_config.backend == calcotone::AudioBackend::KsWaveRt)
+      log_line("KS/WaveRT streaming is experimental and not armed in this build; continuing with safe WASAPI fallback.");
+    log_line("Opening Windows capture endpoint...");
+    Endpoint capture = open_endpoint(enumerator.Get(), eCapture, audio_config.prefer_exclusive,
+        audio_config.capture_device, audio_config.buffer_frames, audio_config.sample_rate);
+    log_line("Capture endpoint ready: " + capture.name + " | " + std::to_string(capture.format->nSamplesPerSec) + " Hz, " +
              std::to_string(capture.format->nChannels) + " channels, " + std::to_string(capture.period_frames) +
              " frame period, " + (capture.exclusive ? "exclusive" : "shared") + " mode");
-    log_line("Opening default Windows render endpoint...");
-    Endpoint render = open_endpoint(enumerator.Get(), eRender, prefer_exclusive);
-    log_line("Render endpoint ready: " + std::to_string(render.format->nSamplesPerSec) + " Hz, " +
+    log_line("Opening Windows render endpoint...");
+    Endpoint render = open_endpoint(enumerator.Get(), eRender, audio_config.prefer_exclusive,
+        audio_config.render_device, audio_config.buffer_frames, audio_config.sample_rate);
+    log_line("Render endpoint ready: " + render.name + " | " + std::to_string(render.format->nSamplesPerSec) + " Hz, " +
              std::to_string(render.format->nChannels) + " channels, " + std::to_string(render.period_frames) +
              " frame period, " + (render.exclusive ? "exclusive" : "shared") + " mode");
     if (capture.format->nSamplesPerSec != render.format->nSamplesPerSec) throw std::runtime_error("Input/output sample rates differ; select matching Windows device formats first.");
@@ -365,17 +495,16 @@ int main(int argc, char** argv) {
     check(render.client->GetService(IID_PPV_ARGS(&render_service)), "Get render service");
     const auto capture_encoding = sample_encoding(capture.format);
     const auto render_encoding = sample_encoding(render.format);
+    const auto input_one_channel = std::min<unsigned>(audio_config.input_one_channel, capture.format->nChannels - 1U);
+    const auto input_two_channel = std::min<unsigned>(audio_config.input_two_channel, capture.format->nChannels - 1U);
+    const auto output_left_channel = std::min<unsigned>(audio_config.output_left_channel, render.format->nChannels - 1U);
+    const auto output_right_channel = std::min<unsigned>(audio_config.output_right_channel, render.format->nChannels - 1U);
+    log_line("Channel map: inputs " + std::to_string(input_one_channel + 1U) + "/" +
+             std::to_string(input_two_channel + 1U) + " -> outputs " +
+             std::to_string(output_left_channel + 1U) + "/" + std::to_string(output_right_channel + 1U));
 
     const float sample_rate = static_cast<float>(render.format->nSamplesPerSec);
-    calcotone::PitchTracker tuner(sample_rate);
-    calcotone::StackAmp stack_one(sample_rate);
-    calcotone::StackAmp stack_two(sample_rate);
-    calcotone::NativeRack rack_one(sample_rate);
-    calcotone::NativeRack rack_two(sample_rate);
-    calcotone::NativePressure pressure_one(sample_rate);
-    calcotone::NativePressure pressure_two(sample_rate);
-    calcotone::NativeDreamBuffer dream_one(sample_rate);
-    calcotone::NativeDreamBuffer dream_two(sample_rate);
+    calcotone::NativeProcessor processor(sample_rate);
     NativeRecorder recorder(sample_rate);
     // These blocks exceed Windows' default 1 MB stack when combined. Allocate
     // once during startup; the realtime threads never allocate or resize them.
@@ -390,28 +519,17 @@ int main(int argc, char** argv) {
         2U * std::max(capture.period_frames, render.buffer_frames));
     const auto fifo_guard_frames = static_cast<std::uint64_t>(
         std::max(capture.period_frames, render.buffer_frames));
-    std::atomic<bool> audible{true};
-    std::atomic<bool> stack_bypassed{false};
-    std::atomic<unsigned> stack_input{1};
-    std::atomic<bool> stomp_bypassed{true};
-    std::atomic<unsigned> stomp_input{1};
-    std::atomic<float> input_gain{1.F};
-    std::atomic<float> output_gain{0.72F};
-    constexpr unsigned kStackOrderToken = static_cast<unsigned>(calcotone::RackModule::Count);
-    constexpr unsigned kNativeOrderSlots = kStackOrderToken + 1U;
-    std::array<std::atomic<unsigned>, kNativeOrderSlots> native_order{};
-    for (unsigned slot = 0; slot < kNativeOrderSlots; ++slot) native_order[slot].store(slot);
-    const auto apply_stomp_route = [&] {
-      const bool bypassed = stomp_bypassed.load(std::memory_order_relaxed);
-      const auto source = static_cast<calcotone::StackInputSource>(stomp_input.load(std::memory_order_relaxed));
-      rack_one.set_bypassed(calcotone::RackModule::Stomp, bypassed || !calcotone::stack_receives_lane(source, 0));
-      rack_two.set_bypassed(calcotone::RackModule::Stomp, bypassed || !calcotone::stack_receives_lane(source, 1));
-    };
     const auto apply_command = [&](std::string_view line) -> std::string {
       if (line == "health" || line == "stats") {
         std::ostringstream status;
         status << "{\"engine\":\"calcotone-native\",\"protocol\":1,\"sampleRate\":" << sample_rate
+               << ",\"transport\":\"wasapi\",\"requestedBackend\":\"" << calcotone::audio_backend_name(audio_config.backend) << '"'
+               << ",\"ksAvailable\":" << (ks_probe.kernel_streaming_available ? "true" : "false")
+               << ",\"ksFilterCount\":" << ks_probe.filter_count << ",\"ksPinCount\":" << ks_probe.pin_count
                << ",\"audioMode\":\"" << (capture.exclusive && render.exclusive ? "exclusive" : capture.exclusive || render.exclusive ? "mixed" : "shared") << '"'
+               << ",\"captureDevice\":\"" << json_escape(capture.name) << '"'
+               << ",\"renderDevice\":\"" << json_escape(render.name) << '"'
+               << ",\"requestedBufferFrames\":" << audio_config.buffer_frames
                << ",\"inputPeriodFrames\":" << capture.period_frames
                << ",\"outputBufferFrames\":" << render.buffer_frames
                << ",\"inputChannels\":" << capture.format->nChannels
@@ -427,8 +545,8 @@ int main(int argc, char** argv) {
                << ",\"recording\":" << (recorder.active() ? "true" : "false")
                << ",\"recordingFrames\":" << recorder.frames()
                << ",\"recordingPeak\":" << recorder.peak()
-               << ",\"tunerHz\":" << tuner.frequency()
-               << ",\"tunerLevel\":" << tuner.level() << '}';
+               << ",\"tunerHz\":" << processor.tuner_frequency()
+               << ",\"tunerLevel\":" << processor.tuner_level() << '}';
         return status.str();
       }
       std::istringstream command{std::string(line)}; std::string name; command >> name;
@@ -442,66 +560,54 @@ int main(int argc, char** argv) {
         std::string module_name, parameter; float value = 0.F;
         command >> module_name >> parameter >> value;
         if (module_name == "pressure") {
-          if (!command || !std::isfinite(value) || !pressure_one.set_parameter(parameter, value) || !pressure_two.set_parameter(parameter, value))
+          if (!command || !processor.set_pressure_parameter(parameter, value))
             return R"({"error":"unknown native pressure parameter"})";
           return R"({"ok":true,"command":"param"})";
         }
         const auto module = calcotone::rack_module_from_name(module_name);
         if (!command || module == calcotone::RackModule::Count || !std::isfinite(value)) return R"({"error":"expected param module parameter value"})";
-        if (!rack_one.set_parameter(module, parameter, value) || !rack_two.set_parameter(module, parameter, value)) return R"({"error":"unknown native parameter"})";
+        if (!processor.set_module_parameter(module, parameter, value)) return R"({"error":"unknown native parameter"})";
         return R"({"ok":true,"command":"param"})";
       }
       if (name == "moduleBypass") {
         std::string module_name; float value = 0.F; command >> module_name >> value;
         if (module_name == "pressure") {
           if (!command || !std::isfinite(value)) return R"({"error":"expected moduleBypass pressure 0/1"})";
-          pressure_one.set_bypassed(value >= .5F); pressure_two.set_bypassed(value >= .5F);
+          processor.set_pressure_bypassed(value >= .5F);
           return R"({"ok":true,"command":"moduleBypass"})";
         }
         const auto module = calcotone::rack_module_from_name(module_name);
         if (!command || module == calcotone::RackModule::Count || !std::isfinite(value)) return R"({"error":"expected moduleBypass module 0/1"})";
-        if (module == calcotone::RackModule::Stomp) {
-          stomp_bypassed.store(value >= .5F); apply_stomp_route();
-        } else {
-          rack_one.set_bypassed(module, value >= .5F); rack_two.set_bypassed(module, value >= .5F);
-        }
+        processor.set_module_bypassed(module, value >= .5F);
         return R"({"ok":true,"command":"moduleBypass"})";
       }
       if (name == "order") {
-        std::array<unsigned, kNativeOrderSlots> modules{};
-        std::array<bool, kNativeOrderSlots> used{};
-        std::size_t count = 0; std::string module_name;
-        while (command >> module_name) {
-          const auto rack_module = calcotone::rack_module_from_name(module_name);
-          const unsigned module = module_name == "chaos" ? kStackOrderToken : static_cast<unsigned>(rack_module);
-          if (module < kNativeOrderSlots && !used[module]) { used[module] = true; modules[count++] = module; }
-        }
-        if (count == 0) return R"({"error":"order needs native module names"})";
-        for (unsigned module = 0; module < kNativeOrderSlots; ++module)
-          if (!used[module]) modules[count++] = module;
-        for (unsigned slot = 0; slot < kNativeOrderSlots; ++slot)
-          native_order[slot].store(modules[slot], std::memory_order_relaxed);
+        std::array<std::string, static_cast<unsigned>(calcotone::RackModule::Count) + 1U> names{};
+        std::array<std::string_view, names.size()> stages{};
+        std::size_t count = 0;
+        while (count < names.size() && command >> names[count]) { stages[count] = names[count]; ++count; }
+        if (!processor.set_serial_order(std::span(stages.data(), count))) return R"({"error":"order needs native module names"})";
         return R"({"ok":true,"command":"order"})";
       }
       float value = 0.F; command >> value;
       if (!command || !std::isfinite(value)) return R"({"error":"expected name and numeric value"})";
-      if (name == "active") audible.store(value >= 0.5F); else if (name == "bypass") stack_bypassed.store(value >= 0.5F);
-      else if (name == "stackInput") stack_input.store(std::min(2U, static_cast<unsigned>(std::max(0.F, value))));
-      else if (name == "stompInput") { stomp_input.store(std::min(2U, static_cast<unsigned>(std::max(0.F, value)))); apply_stomp_route(); }
-      else if (name == "inputGain") input_gain.store(std::clamp(value, 0.F, 2.F));
-      else if (name == "outputGain") output_gain.store(std::clamp(value, 0.F, 1.5F));
-      else if (name == "drive") { stack_one.set_drive(value); stack_two.set_drive(value); }
-      else if (name == "tone") { stack_one.set_tone(value); stack_two.set_tone(value); }
-      else if (name == "sag") { stack_one.set_sag(value); stack_two.set_sag(value); }
-      else if (name == "mix") { stack_one.set_mix(value); stack_two.set_mix(value); }
+      if (name == "active") processor.set_active(value >= 0.5F); else if (name == "bypass") processor.set_stack_bypassed(value >= 0.5F);
+      else if (name == "stackInput") processor.set_stack_input(static_cast<unsigned>(std::max(0.F, value)));
+      else if (name == "stompInput") processor.set_stomp_input(static_cast<unsigned>(std::max(0.F, value)));
+      else if (name == "inputGain") processor.set_input_gain(value);
+      else if (name == "outputGain") processor.set_output_gain(value);
+      else if (name == "drive") processor.set_stack_drive(value);
+      else if (name == "tone") processor.set_stack_tone(value);
+      else if (name == "sag") processor.set_stack_sag(value);
+      else if (name == "mix") processor.set_stack_mix(value);
       else if (name == "model") {
         const auto model = static_cast<calcotone::AmpModel>(static_cast<unsigned>(value));
-        stack_one.set_model(model); stack_two.set_model(model);
+        processor.set_stack_model(model);
       } else if (name == "cab") {
         const auto cabinet = static_cast<calcotone::Cabinet>(static_cast<unsigned>(value));
-        stack_one.set_cabinet(cabinet); stack_two.set_cabinet(cabinet);
+        processor.set_stack_cabinet(cabinet);
       } else if (name == "quality") {
-        stack_one.set_quality(static_cast<unsigned>(value)); stack_two.set_quality(static_cast<unsigned>(value));
+        processor.set_stack_quality(static_cast<unsigned>(value));
       }
       else return R"({"error":"unknown command"})";
       return "{\"ok\":true,\"command\":\"" + name + "\"}";
@@ -523,10 +629,9 @@ int main(int argc, char** argv) {
           if (FAILED(capture_service->GetBuffer(&bytes, &frames, &flags, nullptr, nullptr))) break;
           for (UINT32 frame = 0; frame < frames; ++frame) {
             const float left = flags & AUDCLNT_BUFFERFLAGS_SILENT ? 0.F
-                : decode_sample(bytes, frame * capture.format->nChannels, capture_encoding);
+                : decode_sample(bytes, frame * capture.format->nChannels + input_one_channel, capture_encoding);
             const float right = flags & AUDCLNT_BUFFERFLAGS_SILENT ? 0.F
-                : decode_sample(bytes, frame * capture.format->nChannels + std::min<WORD>(1, capture.format->nChannels - 1), capture_encoding);
-            tuner.push(right);
+                : decode_sample(bytes, frame * capture.format->nChannels + input_two_channel, capture_encoding);
             ring->push(left, right);
           }
           capture_service->ReleaseBuffer(frames);
@@ -586,33 +691,18 @@ int main(int argc, char** argv) {
             }
             process->capture_input[frame * 2] = left; process->capture_input[frame * 2 + 1] = right;
           }
-          calcotone::split_dual_mono(
-              process->capture_input.data(), process->lane_one_input.data(), process->lane_two_input.data(), block,
-              input_gain.load(std::memory_order_relaxed));
-          std::copy_n(process->lane_one_input.data(), block * 2, process->lane_one_output.data());
-          std::copy_n(process->lane_two_input.data(), block * 2, process->lane_two_output.data());
-          const bool bypassed = stack_bypassed.load(std::memory_order_relaxed);
-          const auto source = static_cast<calcotone::StackInputSource>(stack_input.load(std::memory_order_relaxed));
-          for (unsigned slot = 0; slot < kNativeOrderSlots; ++slot) {
-            const unsigned module = native_order[slot].load(std::memory_order_relaxed);
-            if (module == kStackOrderToken) {
-              if (!bypassed && calcotone::stack_receives_lane(source, 0)) stack_one.process(process->lane_one_output.data(), process->lane_one_output.data(), block);
-              if (!bypassed && calcotone::stack_receives_lane(source, 1)) stack_two.process(process->lane_two_output.data(), process->lane_two_output.data(), block);
-            } else if (module < kStackOrderToken) {
-              rack_one.process_module(static_cast<calcotone::RackModule>(module), process->lane_one_output.data(), block);
-              rack_two.process_module(static_cast<calcotone::RackModule>(module), process->lane_two_output.data(), block);
+          processor.process(process->capture_input.data(), process->mixed_output.data(), block);
+          recorder.capture(process->mixed_output.data(), block);
+          for (UINT32 frame = 0; frame < block; ++frame) {
+            for (WORD channel = 0; channel < render.format->nChannels; ++channel) {
+              float value = 0.F;
+              if (output_left_channel == output_right_channel && channel == output_left_channel)
+                value = (process->mixed_output[frame * 2] + process->mixed_output[frame * 2 + 1]) * .70710678F;
+              else if (channel == output_left_channel) value = process->mixed_output[frame * 2];
+              else if (channel == output_right_channel) value = process->mixed_output[frame * 2 + 1];
+              encode_sample(bytes, frame * render.format->nChannels + channel, render_encoding, value);
             }
           }
-          pressure_one.process(process->lane_one_output.data(), block);
-          pressure_two.process(process->lane_two_output.data(), block);
-          dream_one.process(process->lane_one_output.data(), block);
-          dream_two.process(process->lane_two_output.data(), block);
-          const float gain = audible.load(std::memory_order_relaxed) ? output_gain.load(std::memory_order_relaxed) : 0.F;
-          calcotone::mix_dual_mono(process->lane_one_output.data(), process->lane_two_output.data(), process->mixed_output.data(), block, gain);
-          recorder.capture(process->mixed_output.data(), block);
-          for (UINT32 frame = 0; frame < block; ++frame) for (WORD channel = 0; channel < render.format->nChannels; ++channel)
-            encode_sample(bytes, frame * render.format->nChannels + channel, render_encoding,
-                process->mixed_output[frame * 2 + std::min<WORD>(channel, 1)]);
           render_service->ReleaseBuffer(block, 0);
           remaining -= block;
         }

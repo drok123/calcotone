@@ -1,0 +1,51 @@
+#pragma once
+
+#include "calcotone/native_rack.hpp"
+#include "calcotone/stack_amp.hpp"
+
+#include <cstddef>
+#include <memory>
+#include <span>
+#include <string_view>
+
+namespace calcotone {
+
+// Transport-independent realtime processor. WASAPI, KS/WaveRT, and future
+// backends hand it interleaved stereo frames and receive the final stereo mix.
+// All memory is allocated at construction; process() is allocation-free.
+class NativeProcessor final {
+ public:
+  explicit NativeProcessor(float sample_rate = 48'000.F);
+  ~NativeProcessor();
+  NativeProcessor(const NativeProcessor&) = delete;
+  NativeProcessor& operator=(const NativeProcessor&) = delete;
+
+  void process(const float* input_stereo, float* output_stereo, std::size_t frames) noexcept;
+  bool set_module_parameter(RackModule module, std::string_view parameter, float value) noexcept;
+  bool set_pressure_parameter(std::string_view parameter, float value) noexcept;
+  void set_module_bypassed(RackModule module, bool bypassed) noexcept;
+  void set_pressure_bypassed(bool bypassed) noexcept;
+  bool set_serial_order(std::span<const std::string_view> stages) noexcept;
+  void set_active(bool active) noexcept;
+  void set_stack_bypassed(bool bypassed) noexcept;
+  void set_stack_input(unsigned source) noexcept;
+  void set_stomp_input(unsigned source) noexcept;
+  void set_input_gain(float gain) noexcept;
+  void set_output_gain(float gain) noexcept;
+  void set_stack_drive(float value) noexcept;
+  void set_stack_tone(float value) noexcept;
+  void set_stack_sag(float value) noexcept;
+  void set_stack_mix(float value) noexcept;
+  void set_stack_model(AmpModel model) noexcept;
+  void set_stack_cabinet(Cabinet cabinet) noexcept;
+  void set_stack_quality(unsigned quality) noexcept;
+  float tuner_frequency() const noexcept;
+  float tuner_level() const noexcept;
+  float sample_rate() const noexcept;
+
+ private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
+}  // namespace calcotone

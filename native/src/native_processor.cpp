@@ -1,0 +1,136 @@
+#include "calcotone/native_processor.hpp"
+
+#include "calcotone/input_router.hpp"
+#include "calcotone/pitch_tracker.hpp"
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cmath>
+
+namespace calcotone {
+namespace {
+constexpr std::size_t kBlockFrames = 2048;
+constexpr unsigned kStackToken = static_cast<unsigned>(RackModule::Count);
+constexpr unsigned kOrderSlots = kStackToken + 1U;
+}
+
+struct NativeProcessor::Impl {
+  explicit Impl(float sample_rate)
+      : rate(std::clamp(sample_rate, 8'000.F, 384'000.F)), tuner(rate),
+        stack_one(rate), stack_two(rate), rack_one(rate), rack_two(rate),
+        pressure_one(rate), pressure_two(rate), dream_one(rate), dream_two(rate) {
+    for (unsigned slot = 0; slot < kOrderSlots; ++slot) order[slot].store(slot);
+    apply_stomp_route();
+  }
+
+  void apply_stomp_route() noexcept {
+    const bool bypassed = stomp_bypassed.load(std::memory_order_relaxed);
+    const auto source = static_cast<StackInputSource>(stomp_input.load(std::memory_order_relaxed));
+    rack_one.set_bypassed(RackModule::Stomp, bypassed || !stack_receives_lane(source, 0));
+    rack_two.set_bypassed(RackModule::Stomp, bypassed || !stack_receives_lane(source, 1));
+  }
+
+  void process_block(const float* input, float* output, std::size_t frames) noexcept {
+    for (std::size_t frame = 0; frame < frames; ++frame) tuner.push(input[frame * 2 + 1]);
+    split_dual_mono(input, lane_one_input.data(), lane_two_input.data(), frames,
+                    input_gain.load(std::memory_order_relaxed));
+    std::copy_n(lane_one_input.data(), frames * 2, lane_one_output.data());
+    std::copy_n(lane_two_input.data(), frames * 2, lane_two_output.data());
+    const bool stack_off = stack_bypassed.load(std::memory_order_relaxed);
+    const auto stack_source = static_cast<StackInputSource>(stack_input.load(std::memory_order_relaxed));
+    for (unsigned slot = 0; slot < kOrderSlots; ++slot) {
+      const unsigned module = order[slot].load(std::memory_order_relaxed);
+      if (module == kStackToken) {
+        if (!stack_off && stack_receives_lane(stack_source, 0))
+          stack_one.process(lane_one_output.data(), lane_one_output.data(), frames);
+        if (!stack_off && stack_receives_lane(stack_source, 1))
+          stack_two.process(lane_two_output.data(), lane_two_output.data(), frames);
+      } else if (module < kStackToken) {
+        rack_one.process_module(static_cast<RackModule>(module), lane_one_output.data(), frames);
+        rack_two.process_module(static_cast<RackModule>(module), lane_two_output.data(), frames);
+      }
+    }
+    pressure_one.process(lane_one_output.data(), frames);
+    pressure_two.process(lane_two_output.data(), frames);
+    dream_one.process(lane_one_output.data(), frames);
+    dream_two.process(lane_two_output.data(), frames);
+    const float gain = active.load(std::memory_order_relaxed)
+        ? output_gain.load(std::memory_order_relaxed) : 0.F;
+    mix_dual_mono(lane_one_output.data(), lane_two_output.data(), output, frames, gain);
+  }
+
+  float rate;
+  PitchTracker tuner;
+  StackAmp stack_one, stack_two;
+  NativeRack rack_one, rack_two;
+  NativePressure pressure_one, pressure_two;
+  NativeDreamBuffer dream_one, dream_two;
+  std::array<float, kBlockFrames * 2> lane_one_input{}, lane_two_input{};
+  std::array<float, kBlockFrames * 2> lane_one_output{}, lane_two_output{};
+  std::array<std::atomic<unsigned>, kOrderSlots> order{};
+  std::atomic<bool> active{true}, stack_bypassed{false}, stomp_bypassed{true};
+  std::atomic<unsigned> stack_input{1}, stomp_input{1};
+  std::atomic<float> input_gain{1.F}, output_gain{.72F};
+};
+
+NativeProcessor::NativeProcessor(float rate) : impl_(std::make_unique<Impl>(rate)) {}
+NativeProcessor::~NativeProcessor() = default;
+void NativeProcessor::process(const float* input, float* output, std::size_t frames) noexcept {
+  for (std::size_t offset = 0; offset < frames; offset += kBlockFrames) {
+    const auto block = std::min(kBlockFrames, frames - offset);
+    impl_->process_block(input + offset * 2, output + offset * 2, block);
+  }
+}
+bool NativeProcessor::set_module_parameter(RackModule module, std::string_view name, float value) noexcept {
+  return std::isfinite(value) && impl_->rack_one.set_parameter(module, name, value)
+      && impl_->rack_two.set_parameter(module, name, value);
+}
+bool NativeProcessor::set_pressure_parameter(std::string_view name, float value) noexcept {
+  return std::isfinite(value) && impl_->pressure_one.set_parameter(name, value)
+      && impl_->pressure_two.set_parameter(name, value);
+}
+void NativeProcessor::set_module_bypassed(RackModule module, bool bypassed) noexcept {
+  if (module == RackModule::Stomp) {
+    impl_->stomp_bypassed.store(bypassed, std::memory_order_relaxed); impl_->apply_stomp_route();
+  } else {
+    impl_->rack_one.set_bypassed(module, bypassed); impl_->rack_two.set_bypassed(module, bypassed);
+  }
+}
+void NativeProcessor::set_pressure_bypassed(bool bypassed) noexcept {
+  impl_->pressure_one.set_bypassed(bypassed); impl_->pressure_two.set_bypassed(bypassed);
+}
+bool NativeProcessor::set_serial_order(std::span<const std::string_view> stages) noexcept {
+  std::array<unsigned, kOrderSlots> next{};
+  std::array<bool, kOrderSlots> used{};
+  std::size_t count = 0;
+  for (const auto name : stages) {
+    const auto rack_module = rack_module_from_name(name);
+    const unsigned module = name == "chaos" || name == "stack"
+        ? kStackToken : static_cast<unsigned>(rack_module);
+    if (module < kOrderSlots && !used[module]) { used[module] = true; next[count++] = module; }
+  }
+  if (count == 0) return false;
+  for (unsigned module = 0; module < kOrderSlots; ++module)
+    if (!used[module]) next[count++] = module;
+  for (unsigned slot = 0; slot < kOrderSlots; ++slot) impl_->order[slot].store(next[slot]);
+  return true;
+}
+void NativeProcessor::set_active(bool value) noexcept { impl_->active.store(value); }
+void NativeProcessor::set_stack_bypassed(bool value) noexcept { impl_->stack_bypassed.store(value); }
+void NativeProcessor::set_stack_input(unsigned value) noexcept { impl_->stack_input.store(std::min(2U, value)); }
+void NativeProcessor::set_stomp_input(unsigned value) noexcept { impl_->stomp_input.store(std::min(2U, value)); impl_->apply_stomp_route(); }
+void NativeProcessor::set_input_gain(float value) noexcept { impl_->input_gain.store(std::clamp(value, 0.F, 2.F)); }
+void NativeProcessor::set_output_gain(float value) noexcept { impl_->output_gain.store(std::clamp(value, 0.F, 1.5F)); }
+void NativeProcessor::set_stack_drive(float value) noexcept { impl_->stack_one.set_drive(value); impl_->stack_two.set_drive(value); }
+void NativeProcessor::set_stack_tone(float value) noexcept { impl_->stack_one.set_tone(value); impl_->stack_two.set_tone(value); }
+void NativeProcessor::set_stack_sag(float value) noexcept { impl_->stack_one.set_sag(value); impl_->stack_two.set_sag(value); }
+void NativeProcessor::set_stack_mix(float value) noexcept { impl_->stack_one.set_mix(value); impl_->stack_two.set_mix(value); }
+void NativeProcessor::set_stack_model(AmpModel value) noexcept { impl_->stack_one.set_model(value); impl_->stack_two.set_model(value); }
+void NativeProcessor::set_stack_cabinet(Cabinet value) noexcept { impl_->stack_one.set_cabinet(value); impl_->stack_two.set_cabinet(value); }
+void NativeProcessor::set_stack_quality(unsigned value) noexcept { impl_->stack_one.set_quality(value); impl_->stack_two.set_quality(value); }
+float NativeProcessor::tuner_frequency() const noexcept { return impl_->tuner.frequency(); }
+float NativeProcessor::tuner_level() const noexcept { return impl_->tuner.level(); }
+float NativeProcessor::sample_rate() const noexcept { return impl_->rate; }
+
+}  // namespace calcotone

@@ -36,6 +36,8 @@ jobs:
       - name: Add double-click launcher
         run: |
           Copy-Item native/START-CALCOTONE-NATIVE.bat native/build/Release/START-CALCOTONE-NATIVE.bat
+          Copy-Item native/CALCOTONE-AUDIO-CONFIG.bat native/build/Release/CALCOTONE-AUDIO-CONFIG.bat
+          Copy-Item native/LIST-CALCOTONE-DEVICES.bat native/build/Release/LIST-CALCOTONE-DEVICES.bat
           Copy-Item dist native/build/Release/web -Recurse
       - name: Upload WASAPI host
         uses: actions/upload-artifact@v4
@@ -44,5 +46,7 @@ jobs:
           path: |
             native/build/Release/calcotone_host.exe
             native/build/Release/START-CALCOTONE-NATIVE.bat
+            native/build/Release/CALCOTONE-AUDIO-CONFIG.bat
+            native/build/Release/LIST-CALCOTONE-DEVICES.bat
             native/build/Release/web/**
           if-no-files-found: error

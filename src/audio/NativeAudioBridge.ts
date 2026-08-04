@@ -10,6 +10,14 @@ export interface NativeAudioHealth {
   underruns: number;
   overruns: number;
   audioMode: 'exclusive' | 'mixed' | 'shared';
+  transport: 'wasapi' | 'ks-wavert' | 'asio';
+  requestedBackend: 'auto' | 'wasapi' | 'ks-wavert';
+  captureDevice: string;
+  renderDevice: string;
+  requestedBufferFrames: number;
+  ksAvailable: boolean;
+  ksFilterCount: number;
+  ksPinCount: number;
   tunerHz: number;
   tunerLevel: number;
 }

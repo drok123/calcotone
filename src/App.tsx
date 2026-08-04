@@ -599,6 +599,7 @@ export default function App() {
   const backendRef = useRef<'web' | 'native' | null>(null);
   const [engineState, setEngineState] = useState<AudioEngineState>('idle');
   const [audioBackend, setAudioBackend] = useState<'native' | 'web' | null>(null);
+  const [nativeTransport, setNativeTransport] = useState<'wasapi' | 'ks-wavert' | 'asio' | null>(null);
   const [canvasScale, setCanvasScale] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [modules, setModules] = useState<ModuleState[]>(INITIAL_MODULES);
@@ -900,6 +901,7 @@ export default function App() {
       if (native) {
         backendRef.current = 'native';
         setAudioBackend('native');
+        setNativeTransport(native.transport ?? 'wasapi');
         await Promise.all([
           nativeBridgeRef.current.command('active', 1),
           nativeBridgeRef.current.command('inputGain', inputGain),
@@ -929,13 +931,16 @@ export default function App() {
           nativeSync.push(nativeBridgeRef.current.commandLine(`param pressure ${key} ${pressure[key]}`));
         nativeSync.push(nativeBridgeRef.current.commandLine(`order ${serialOrderFromRack({ A: railAOrder, B: railBOrder, C: railCOrder }).join(' ')}`));
         await Promise.all(nativeSync);
-        setInputDevice('Windows native default input');
-        setLatency(`${native.estimatedPathMs.toFixed(1)} ms ${native.audioMode ?? 'shared'} path`);
+        setInputDevice(native.captureDevice || 'Windows native input');
+        setLatency(`${native.estimatedPathMs.toFixed(1)} ms ${native.transport ?? 'wasapi'} ${native.audioMode ?? 'shared'} path`);
         setSampleRate(`${native.sampleRate} Hz`);
         setChannelInfo({ input: `${native.inputChannels} ch native`, output: `${native.outputChannels} ch native` });
         setAnalyser(null);
         setEngineState('running');
-        setMessage('Native WASAPI audio is active. The complete effects rack, STOMP, STACK, Pressure, Dream memory, and master controls are running in C++.');
+        const fallback = native.requestedBackend === 'ks-wavert' && native.transport !== 'ks-wavert'
+          ? ` · KS/WaveRT probe ${native.ksAvailable ? 'eligible' : 'unavailable'}; WASAPI fallback active`
+          : '';
+        setMessage(`Native ${native.transport.toUpperCase()} audio is active · ${native.captureDevice} → ${native.renderDevice} · ${native.inputPeriodFrames}/${native.outputBufferFrames} frames${fallback}.`);
         return;
       }
 
@@ -945,6 +950,7 @@ export default function App() {
 
       backendRef.current = 'web';
       setAudioBackend('web');
+      setNativeTransport(null);
       const engine = getEngine();
       setMessage(diagnosticAudio
         ? 'Starting the built-in DSP diagnostic signal...'
@@ -1000,6 +1006,7 @@ export default function App() {
       setAnalyser(null);
       backendRef.current = null;
       setAudioBackend(null);
+      setNativeTransport(null);
       setEngineState('error');
       setMessage(
         error instanceof Error
@@ -1184,6 +1191,7 @@ export default function App() {
       nativeBridgeRef.current.disconnect();
       backendRef.current = null;
       setAudioBackend(null);
+      setNativeTransport(null);
       setAnalyser(null);
       setEngineState('stopped');
       setInputDevice('No input connected');
@@ -1206,6 +1214,7 @@ export default function App() {
     await engine.stop();
     backendRef.current = null;
     setAudioBackend(null);
+    setNativeTransport(null);
     setAnalyser(null);
     setEngineState('stopped');
     setInputDevice('No input connected');
@@ -2356,7 +2365,7 @@ export default function App() {
             <div>
               <span>BACKEND</span>
               <strong className={audioBackend === 'native' ? 'native-backend' : audioBackend === 'web' ? 'web-backend' : ''}>
-                {audioBackend === 'native' ? 'NATIVE WASAPI' : audioBackend === 'web' ? 'WEB AUDIO' : 'AUTO'}
+                {audioBackend === 'native' ? `NATIVE ${(nativeTransport ?? 'wasapi').toUpperCase()}` : audioBackend === 'web' ? 'WEB AUDIO' : 'AUTO'}
               </strong>
             </div>
             <div>

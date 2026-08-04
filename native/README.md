@@ -6,6 +6,8 @@ audio capture, processing, and playback never enter the browser/webview.
 ## Current milestone
 
 - allocation-free C++ STACK amp/cab DSP core;
+- transport-independent, allocation-free `NativeProcessor` shared by every
+  current and future native audio backend;
 - deterministic dual-input routing and 90-path native signal test;
 - native Ember, Drift, Halo, Atmos, Grain, Artifact, and STOMP rack processors
   with smoothed controls, bounded feedback, click-free bypass state, and
@@ -34,6 +36,10 @@ audio capture, processing, and playback never enter the browser/webview.
 - allocation-free native guitar tuner on Input 2 with atomic note telemetry.
 - two-minute native final-output recorder with a preallocated realtime capture
   buffer, off-thread PCM24 WAV encoding, and RAW/CLEAN/LOUD faceplate exports.
+- runtime capture/render device selectors, physical channel mapping, requested
+  sample rate and buffer size; no interface model is hardcoded;
+- read-only Kernel Streaming/WaveRT filter and pin discovery with an explicit
+  WASAPI fallback while experimental WaveRT streaming is being armed.
 
 ## Portable DSP validation
 
@@ -63,6 +69,23 @@ the internal bridge are active, the host embeds that local faceplate automatical
 It does not depend on Chrome, StackBlitz, browser device permissions, hosted-page
 local-network access, or Web Audio. The bridge carries controls and telemetry only;
 all audio remains in the C++ engine.
+
+## Audio device configuration
+
+Run `LIST-CALCOTONE-DEVICES.bat` to print every active Windows capture and render
+endpoint and its stable device ID. Edit `CALCOTONE-AUDIO-CONFIG.bat` to choose a
+device by full ID or a unique part of its friendly name. The same file controls:
+
+- `CALCOTONE_AUDIO_BACKEND`: `auto`, `wasapi`, or experimental `ks-wavert`;
+- `CALCOTONE_AUDIO_MODE`: `exclusive` or `shared`;
+- `CALCOTONE_BUFFER_FRAMES`: requested frames, clamped to the driver's limits;
+- `CALCOTONE_SAMPLE_RATE`: requested exclusive-mode rate, or blank to follow the device;
+- Input 1/Input 2 and left/right output channel numbers, using one-based labels.
+
+`auto` performs a read-only KS/WaveRT capability probe and runs the proven WASAPI
+transport. Requesting `ks-wavert` currently reports filter/pin eligibility in the
+health panel and log, then falls back to WASAPI. It never opens an unvalidated
+stream or leaves the interface in a partially configured state.
 
 Match the input and output device formats in Windows Sound settings (48 kHz is
 recommended for the first hardware run). Start with speakers/monitor volume low.
