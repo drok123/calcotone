@@ -51,7 +51,12 @@ app = replaceIfPresent(
   /\s*motionPadProps=\{\{[\s\S]*?\n\s*\}\}\n\s*\{\.\.\.routingProps\}/,
   '\n                            {...routingProps}',
 );
-
+app = replaceIfPresent(app, /\n  const \[xyDragging, setXyDragging\] = useState\(false\);/, '');
+app = replaceIfPresent(
+  app,
+  /\n  function handleXYPad\([\s\S]*?\n  \}\n\n  function applyXYAssignments/,
+  '\n  function applyXYAssignments',
+);
 app = replaceIfPresent(
   app,
   /\n  function updateMotionRoute\([\s\S]*?\n  \}\n\n  function refreshPersistentPatchLines/,
@@ -68,6 +73,8 @@ assertAbsent(app, [
   'onSynthSequencerChange=',
   'onSynthSequencerStepListenerChange=',
   'motionPadProps={{',
+  'xyDragging, setXyDragging',
+  'function handleXYPad(',
   'function updateMotionRoute(',
 ], 'App retired UI');
 write(appPath, app);
