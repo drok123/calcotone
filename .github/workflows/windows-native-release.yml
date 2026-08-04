@@ -40,13 +40,26 @@ jobs:
       - name: Install web dependencies
         run: npm ci
 
-      - name: Apply and verify Artifact matrix UI
+      - name: Apply desktop UI parity
         run: |
           node scripts/apply-artifact-matrix-ui.mjs
           node scripts/artifact-matrix-ui-audit.mjs
+          node scripts/apply-native-desktop-ui-parity.mjs
 
       - name: Build production faceplate
         run: npm run build
+
+      - name: Generate native spectrum host sources
+        shell: pwsh
+        run: |
+          python native/tools/apply_native_host_visual_parity.py native/src/wasapi_host.cpp native/src/wasapi_host.parity.cpp
+          Move-Item -Force native/src/wasapi_host.parity.cpp native/src/wasapi_host.cpp
+          python native/tools/apply_control_server_spectrum.py native/src/control_server.cpp native/src/control_server.parity.cpp
+          Move-Item -Force native/src/control_server.parity.cpp native/src/control_server.cpp
+          Select-String -Path native/src/wasapi_host.cpp -Pattern 'visual_spectrum.publish' -Quiet | ForEach-Object { if (-not $_) { throw 'Native spectrum publish path missing.' } }
+          Select-String -Path native/src/control_server.cpp -Pattern 'GET /spectrum' -Quiet | ForEach-Object { if (-not $_) { throw 'Native spectrum route missing.' } }
+          Select-String -Path src/App.tsx -Pattern 'new NativeVisualSpectrum' -Quiet | ForEach-Object { if (-not $_) { throw 'Native spectrum UI source missing.' } }
+          Select-String -Path src/components/effects/RailCModules.css -Pattern 'position: fixed !important' -Quiet | ForEach-Object { if (-not $_) { throw 'Synth fullscreen overlay parity missing.' } }
 
       - name: Restore WebView2 SDK
         shell: pwsh
@@ -102,6 +115,11 @@ jobs:
             native = 'CMake Release build passed'
             tests = 'CTest passed'
             parityModules = @('Ember', 'Drift', 'Halo', 'Atmos', 'Artifact')
+            uiParity = [ordered]@{
+              nativeSpectrum = 'post-rack FFT endpoint active'
+              synthFullscreen = 'viewport fixed overlay active'
+              controls = 'native command/state synchronization audited'
+            }
             artifactMatrix = [ordered]@{
               consoles = 6
               tubes = 6
