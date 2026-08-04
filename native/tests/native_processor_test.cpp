@@ -19,6 +19,13 @@ int main() {
     input[frame * 2] = .22F * std::sin(6.2831853F * 220.F * frame / rate);
     input[frame * 2 + 1] = .18F * std::sin(6.2831853F * 440.F * frame / rate);
   }
+
+  // Construction is intentionally silent until the faceplate publishes a
+  // coherent state and explicitly arms the engine.
+  processor.process(input.data(), output.data(), frames);
+  assert(std::all_of(output.begin(), output.end(), [](float value) { return value == 0.F; }));
+  processor.set_active(true);
+
   processor.process(input.data(), output.data(), frames);
   assert(std::all_of(output.begin(), output.end(), [](float value) { return std::isfinite(value) && std::abs(value) <= 1.F; }));
   assert(std::any_of(output.begin(), output.end(), [](float value) { return std::abs(value) > 1e-5F; }));
