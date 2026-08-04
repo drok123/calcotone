@@ -118,7 +118,8 @@ std::size_t request_content_length(std::string_view request) noexcept {
   while (cursor != std::string_view::npos) {
     const auto start = cursor + 2, end = request.find("\r\n", start);
     if (end == std::string_view::npos || end == start) break;
-    const auto line = request.substr(start, end - start), colon = line.find(':');
+    const auto line = request.substr(start, end - start);
+    const auto colon = line.find(':');
     if (colon != std::string_view::npos && case_equal(line.substr(0, colon), "content-length")) {
       std::size_t value = 0;
       for (char character : trim(line.substr(colon + 1))) {
