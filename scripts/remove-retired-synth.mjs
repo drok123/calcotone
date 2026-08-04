@@ -2,7 +2,7 @@ import fs from 'node:fs';
 
 function replaceRequired(source, pattern, replacement, label) {
   const next = source.replace(pattern, replacement);
-  if (next === source) throw new Error(`Retired Synth cleanup anchor missing: ${label}`);
+  if (next === source) throw new Error(`Retired UI cleanup anchor missing: ${label}`);
   return next;
 }
 
@@ -38,6 +38,13 @@ for (const prop of [
 ]) {
   app = replaceRequired(app, new RegExp(`\\s*${prop.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n`), '\n', `App ${prop}`);
 }
+
+app = replaceRequired(
+  app,
+  /\s*motionPadProps=\{\{[\s\S]*?\n\s*\}\}\n\s*\{\.\.\.routingProps\}/,
+  '\n                            {...routingProps}',
+  'Stack MotionPad prop block',
+);
 write(appPath, app);
 
 const railPath = 'src/components/effects/RailCModules.tsx';
@@ -49,6 +56,8 @@ rail = replaceRequired(
   '',
   'Rail C SynthEngine type import',
 );
+rail = replaceRequired(rail, /import type \{ MotionPadProps \} from '\.\.\/motion\/MotionPad';\n/, '', 'MotionPadProps import');
+rail = replaceRequired(rail, /import \{ MotionPad \} from '\.\.\/motion\/MotionPad';\n/, '', 'MotionPad import');
 
 rail = replaceRequired(
   rail,
@@ -83,5 +92,12 @@ rail = replaceRequired(
   'Rail C Synth render branch',
 );
 
+rail = replaceRequired(rail, /  motionPadProps,\n/, '', 'Chaos MotionPad destructuring');
+rail = replaceRequired(rail, /  motionPadProps: MotionPadProps;\n/, '', 'Chaos MotionPad prop type');
+rail = replaceRequired(rail, /\s*<MotionPad \{\.\.\.motionPadProps\} \/>\n/, '\n', 'Stack MotionPad render');
+rail = replaceRequired(rail, /  motionPadProps,\n/, '', 'Rail C MotionPad destructuring');
+rail = replaceRequired(rail, /  motionPadProps: MotionPadProps;\n/, '', 'Rail C MotionPad prop type');
+rail = replaceRequired(rail, /\n      motionPadProps=\{motionPadProps\}/, '', 'Stack MotionPad forwarding');
+
 write(railPath, rail);
-console.log('Retired Synth module removed from App and Rail C source.');
+console.log('Retired Synth module and Stack XY input panel removed from App and Rail C source.');
