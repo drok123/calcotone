@@ -2,8 +2,34 @@ cmake_minimum_required(VERSION 3.24)
 project(calcotone_native LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-add_library(calcotone_dsp STATIC src/stack_amp.cpp src/native_rack.cpp src/native_processor.cpp src/audio_device_config.cpp src/elastic_stereo_fifo.cpp src/atmos_parity_processor.cpp)
+
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(CALCOTONE_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(CALCOTONE_GENERATED_NATIVE_RACK "${CALCOTONE_GENERATED_DIR}/native_rack.cpp")
+file(MAKE_DIRECTORY "${CALCOTONE_GENERATED_DIR}")
+execute_process(
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/apply_atmos_parity.py"
+          "${CMAKE_CURRENT_SOURCE_DIR}/src/native_rack.cpp"
+          "${CALCOTONE_GENERATED_NATIVE_RACK}"
+  RESULT_VARIABLE CALCOTONE_ATMOS_PATCH_RESULT
+  OUTPUT_VARIABLE CALCOTONE_ATMOS_PATCH_OUTPUT
+  ERROR_VARIABLE CALCOTONE_ATMOS_PATCH_ERROR
+)
+if(NOT CALCOTONE_ATMOS_PATCH_RESULT EQUAL 0)
+  message(FATAL_ERROR "Failed to generate live Atmos parity rack: ${CALCOTONE_ATMOS_PATCH_ERROR}")
+endif()
+message(STATUS "${CALCOTONE_ATMOS_PATCH_OUTPUT}")
+
+add_library(calcotone_dsp STATIC
+  src/stack_amp.cpp
+  "${CALCOTONE_GENERATED_NATIVE_RACK}"
+  src/atmos_parity_processor.cpp
+  src/native_processor.cpp
+  src/audio_device_config.cpp
+  src/elastic_stereo_fifo.cpp
+)
 target_include_directories(calcotone_dsp PUBLIC include)
+
 add_executable(stack_amp_test tests/stack_amp_test.cpp)
 target_link_libraries(stack_amp_test PRIVATE calcotone_dsp)
 add_executable(native_rack_test tests/native_rack_test.cpp)
@@ -20,6 +46,9 @@ add_executable(atmos_parity_profile_test tests/atmos_parity_profile_test.cpp)
 target_link_libraries(atmos_parity_profile_test PRIVATE calcotone_dsp)
 add_executable(atmos_parity_processor_test tests/atmos_parity_processor_test.cpp)
 target_link_libraries(atmos_parity_processor_test PRIVATE calcotone_dsp)
+add_executable(native_atmos_live_parity_test tests/native_atmos_live_parity_test.cpp)
+target_link_libraries(native_atmos_live_parity_test PRIVATE calcotone_dsp)
+
 enable_testing()
 add_test(NAME stack_amp_test COMMAND stack_amp_test)
 add_test(NAME native_rack_test COMMAND native_rack_test)
@@ -29,6 +58,8 @@ add_test(NAME audio_device_config_test COMMAND audio_device_config_test)
 add_test(NAME elastic_stereo_fifo_test COMMAND elastic_stereo_fifo_test)
 add_test(NAME atmos_parity_profile_test COMMAND atmos_parity_profile_test)
 add_test(NAME atmos_parity_processor_test COMMAND atmos_parity_processor_test)
+add_test(NAME native_atmos_live_parity_test COMMAND native_atmos_live_parity_test)
+
 if(WIN32)
   set(CALCOTONE_WEBVIEW2_ROOT "" CACHE PATH "Extracted Microsoft.Web.WebView2 NuGet package")
   if(NOT CALCOTONE_WEBVIEW2_ROOT)
