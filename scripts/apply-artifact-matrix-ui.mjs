@@ -73,14 +73,30 @@ effectModule = replaceOnce(
 
 effectModule = replaceOnce(
   effectModule,
+  "  const moduleStyle = {",
+  "  const visibleParameters = module.parameters.filter((parameter) => !['console', 'tube', 'chainOrder'].includes(parameter.id));\n  const moduleStyle = {",
+  'Artifact discrete knob filtering',
+);
+
+effectModule = replaceOnce(
+  effectModule,
   "          {module.id === 'media' && (\n            <label className=\"algorithm-selector media-mode-selector\">\n              <span className=\"sr-only\">Format</span>\n              <select aria-label=\"Artifact format\" value={module.mediaMode ?? 'cassette'} onChange={(event: ReactChangeEvent<HTMLSelectElement>) => onMediaModeChange(event.target.value as MediaMode)}>\n                {MEDIA_MODE_GROUPS.map((group) => (\n                  <optgroup key={group.label} label={group.label}>\n                    {group.modes.map((mode) => <option key={mode} value={mode}>{formatMediaMode(mode)}</option>)}\n                  </optgroup>\n                ))}\n              </select>\n            </label>\n          )}",
   "          {module.id === 'media' && (\n            <>\n              <label className=\"algorithm-selector media-mode-selector\">\n                <span className=\"sr-only\">Format</span>\n                <select aria-label=\"Artifact format\" value={module.mediaMode ?? 'cassette'} onChange={(event: ReactChangeEvent<HTMLSelectElement>) => onMediaModeChange(event.target.value as MediaMode)}>\n                  {MEDIA_MODE_GROUPS.map((group) => (\n                    <optgroup key={group.label} label={group.label}>\n                      {group.modes.map((mode) => <option key={mode} value={mode}>{formatMediaMode(mode)}</option>)}\n                    </optgroup>\n                  ))}\n                </select>\n              </label>\n              <ArtifactMatrixSelectors\n                value={normalizeArtifactMatrix({\n                  console: module.parameters.find((parameter) => parameter.id === 'console')?.value,\n                  tube: module.parameters.find((parameter) => parameter.id === 'tube')?.value,\n                  chainOrder: module.parameters.find((parameter) => parameter.id === 'chainOrder')?.value,\n                })}\n                disabled={!module.available}\n                onChange={(next) => {\n                  onParameterChange('console', next.console);\n                  onParameterChange('tube', next.tube);\n                  onParameterChange('chainOrder', next.chainOrder);\n                }}\n              />\n            </>\n          )}",
   'Artifact selector rendering',
 );
 
-effectModule = effectModule.replaceAll(
-  'module.parameters.map(renderKnob)',
-  "module.parameters.filter((parameter) => !['console', 'tube', 'chainOrder'].includes(parameter.id)).map(renderKnob)",
+effectModule = replaceOnce(
+  effectModule,
+  '{module.parameters.map((parameter, index) => {',
+  '{visibleParameters.map((parameter, index) => {',
+  'Artifact custom faceplate knob filtering',
+);
+
+effectModule = replaceOnce(
+  effectModule,
+  '{module.parameters.map((parameter) => renderKnob(parameter))}',
+  '{visibleParameters.map((parameter) => renderKnob(parameter))}',
+  'Artifact standard knob filtering',
 );
 
 writeIfChanged(modulePath, effectModule);
