@@ -9,6 +9,7 @@ const host = read('native/src/wasapi_host.cpp');
 const nativeProcessor = read('native/include/calcotone/native_processor.hpp');
 const routing = read('src/routing/serialRouting.ts');
 const faceplate = read('src/ui/faceplateLayout.ts');
+const launcher = read('native/START-CALCOTONE-NATIVE.bat');
 
 const checks = [];
 const check = (ok, category, label, severity = 'error') => checks.push({ ok, category, label, severity });
@@ -43,6 +44,9 @@ check(app.includes('setStackInputSource'), 'stack', 'Stack input-source callback
 check(app.includes('setStackParameters'), 'stack', 'Stack parameter callback');
 check(host.includes('set_stack_model') && host.includes('set_stack_cabinet'), 'stack', 'native Stack model/cabinet DSP route');
 check(nativeProcessor.includes('set_stack_drive') && nativeProcessor.includes('set_stack_tone') && nativeProcessor.includes('set_stack_sag') && nativeProcessor.includes('set_stack_mix'), 'stack', 'native Stack parameter DSP route');
+check(!railC.includes('<MotionPad {...motionPadProps} />'), 'stack', 'Stack XY input panel removed');
+check(!railC.includes('motionPadProps: MotionPadProps'), 'stack', 'Stack MotionPad prop contract removed');
+check(!app.includes('motionPadProps={{'), 'stack', 'Stack MotionPad App wiring removed');
 
 for (const retired of [
   "moduleId === 'synth'",
@@ -65,15 +69,17 @@ for (const command of ['inputGain', 'outputGain', 'stackInput', 'stompInput']) {
   check(app.includes(command), 'device-controls', `${command} frontend command`);
   check(host.includes(`name == \"${command}\"`), 'device-controls', `${command} native command`);
 }
+check(launcher.includes('CALCOTONE_AUDIO_MODE=exclusive'), 'device-controls', 'launcher exclusive-mode default');
+check(launcher.includes('if exist "CALCOTONE-AUDIO-CONFIG.bat" call'), 'device-controls', 'launcher configuration override');
 
 check(app.includes('randomizeActiveModules'), 'randomization', 'active-module randomization');
 check(app.includes('randomizeRailCModule'), 'randomization', 'rail-C randomization');
 check(app.includes('RANDOM_MUTATION_AMOUNT'), 'randomization', 'guarded mutate mode');
 check(railC.includes("registerRailCRandomController('chaos'") || railC.includes('registerRailCRandomController(moduleId'), 'randomization', 'Stack randomization registration');
 
-check(app.includes('applyXYAssignments'), 'xy', 'XY assignment engine');
-check(app.includes('backendRef.current === \'native\'') && app.includes('modulatedValue'), 'xy', 'XY native backend branch');
-check(app.includes('commandLine(`param ${moduleId} ${parameterId}'), 'xy', 'XY native parameter command');
+check(app.includes('applyXYAssignments'), 'xy', 'global XY assignment engine');
+check(app.includes("backendRef.current === 'native'") && app.includes('modulatedValue'), 'xy', 'global XY native backend branch');
+check(app.includes('commandLine(`param ${moduleId} ${parameterId}'), 'xy', 'global XY native parameter command');
 
 for (const parameter of ['console', 'tube', 'chainOrder']) {
   check(app.includes(`id: '${parameter}'`), 'artifact', `${parameter} state`);
