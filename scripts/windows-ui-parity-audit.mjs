@@ -73,7 +73,7 @@ check(launcher.includes('if exist "CALCOTONE-AUDIO-CONFIG.bat" call'), 'device-c
 
 check(app.includes('randomizeActiveModules'), 'randomization', 'active-module randomization');
 check(app.includes('randomizeRailCModule'), 'randomization', 'rail-C randomization');
-check(app.includes('RANDOM_MUTATION_AMOUNT'), 'randomization', 'guarded mutate mode');
+check(app.includes('RANDOM_MUTATION_AMOUNT') || railC.includes('RANDOM_MUTATION_AMOUNT'), 'randomization', 'guarded mutate mode');
 check(railC.includes("useRailCRandomController('chaos'"), 'randomization', 'Stack randomization registration');
 
 check(app.includes('applyXYAssignments'), 'xy', 'global XY assignment engine');
