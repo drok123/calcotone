@@ -1,5 +1,13 @@
 import fs from 'node:fs';
 
+function normalizeNewlines(source) {
+  return source.replace(/\r\n?/g, '\n');
+}
+
+function readNormalized(path) {
+  return normalizeNewlines(fs.readFileSync(path, 'utf8'));
+}
+
 function replaceOnce(source, search, replacement, label) {
   if (source.includes(replacement)) return source;
   const index = source.indexOf(search);
@@ -8,14 +16,14 @@ function replaceOnce(source, search, replacement, label) {
 }
 
 function writeIfChanged(path, next) {
-  const current = fs.readFileSync(path, 'utf8');
+  const current = readNormalized(path);
   if (current === next) return false;
   fs.writeFileSync(path, next, 'utf8');
   return true;
 }
 
 const appPath = 'src/App.tsx';
-let app = fs.readFileSync(appPath, 'utf8');
+let app = readNormalized(appPath);
 
 app = replaceOnce(
   app,
@@ -62,7 +70,7 @@ app = replaceOnce(
 writeIfChanged(appPath, app);
 
 const modulePath = 'src/components/effects/EffectModule.tsx';
-let effectModule = fs.readFileSync(modulePath, 'utf8');
+let effectModule = readNormalized(modulePath);
 
 effectModule = replaceOnce(
   effectModule,
