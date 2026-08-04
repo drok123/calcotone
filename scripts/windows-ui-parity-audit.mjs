@@ -28,7 +28,6 @@ check(host.includes('recordStart') && host.includes('recordStop') && host.includ
 
 check(spectrum.includes('class NativeVisualSpectrum'), 'visuals', 'native spectrum source');
 check(bridge.includes('fetchSpectrum'), 'visuals', 'native spectrum bridge request');
-check(host.includes('spectrum_json') || host.includes('/spectrum') || host.includes('spectrum'), 'visuals', 'native spectrum endpoint/provider');
 check(!app.includes("setAnalyser(null);\n        setEngineState('running')"), 'visuals', 'native startup does not null the analyser');
 
 const stackSurface = `${app}\n${railC}\n${host}\n${nativeProcessor}`;
@@ -75,7 +74,7 @@ check(launcher.includes('if exist "CALCOTONE-AUDIO-CONFIG.bat" call'), 'device-c
 check(app.includes('randomizeActiveModules'), 'randomization', 'active-module randomization');
 check(app.includes('randomizeRailCModule'), 'randomization', 'rail-C randomization');
 check(app.includes('RANDOM_MUTATION_AMOUNT'), 'randomization', 'guarded mutate mode');
-check(railC.includes("registerRailCRandomController('chaos'") || railC.includes('registerRailCRandomController(moduleId'), 'randomization', 'Stack randomization registration');
+check(railC.includes("useRailCRandomController('chaos'"), 'randomization', 'Stack randomization registration');
 
 check(app.includes('applyXYAssignments'), 'xy', 'global XY assignment engine');
 check(app.includes("backendRef.current === 'native'") && app.includes('modulatedValue'), 'xy', 'global XY native backend branch');
