@@ -18,6 +18,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: windows-native-release-main
+  cancel-in-progress: true
+
 jobs:
   build-windows-native:
     runs-on: windows-2022
@@ -25,10 +29,10 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -89,12 +93,35 @@ jobs:
           Build commit: $env:GITHUB_SHA
           "@ | Set-Content (Join-Path $packageRoot 'INSTALL.txt')
 
+          $manifest = [ordered]@{
+            product = 'CALCOTONE Windows Native'
+            commit = $env:GITHUB_SHA
+            workflowRun = $env:GITHUB_RUN_ID
+            builtAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+            frontend = 'TypeScript + Vite production build passed'
+            native = 'CMake Release build passed'
+            tests = 'CTest passed'
+            parityModules = @('Ember', 'Drift', 'Halo', 'Atmos', 'Artifact')
+            artifactMatrix = [ordered]@{
+              consoles = 6
+              tubes = 6
+              orders = 2
+              combinations = 72
+            }
+          }
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $packageRoot 'BUILD-MANIFEST.json')
+
           Compress-Archive -Path $packageRoot -DestinationPath 'artifact/CALCOTONE-Windows-Native.zip' -Force
+          Get-FileHash 'artifact/CALCOTONE-Windows-Native.zip' -Algorithm SHA256 |
+            Select-Object Algorithm, Hash, Path |
+            ConvertTo-Json | Set-Content 'artifact/CALCOTONE-Windows-Native.sha256.json'
 
       - name: Upload standalone ZIP
         uses: actions/upload-artifact@v7
         with:
           name: CALCOTONE-Windows-Native
-          path: artifact/CALCOTONE-Windows-Native.zip
+          path: |
+            artifact/CALCOTONE-Windows-Native.zip
+            artifact/CALCOTONE-Windows-Native.sha256.json
           if-no-files-found: error
           retention-days: 90
