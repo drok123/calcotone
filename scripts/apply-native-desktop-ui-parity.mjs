@@ -21,5 +21,11 @@ app = replaceOnce(
   "        setChannelInfo({ input: `${native.inputChannels} ch native`, output: `${native.outputChannels} ch native` });\n        setAnalyser(new NativeVisualSpectrum());\n        setEngineState('running');",
   'native analyser activation',
 );
+app = replaceOnce(
+  app,
+  "      if (engineState === 'running') {\n        setEffectParameterIfLoaded(\n          engineRef.current,\n          moduleId,\n          parameterId,\n          toDspParameterValue(moduleId, parameterId, modulatedValue)\n        );\n      }",
+  "      if (engineState === 'running') {\n        const dspValue = toDspParameterValue(moduleId, parameterId, modulatedValue);\n        if (backendRef.current === 'native') {\n          void nativeBridgeRef.current.commandLine(`param ${moduleId} ${parameterId} ${dspValue}`);\n        } else {\n          setEffectParameterIfLoaded(engineRef.current, moduleId, parameterId, dspValue);\n        }\n      }",
+  'native XY parameter routing',
+);
 fs.writeFileSync(appPath, app, 'utf8');
-console.log('Native desktop spectrum parity applied.');
+console.log('Native desktop spectrum and XY parity applied.');
