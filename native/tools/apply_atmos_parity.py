@@ -30,8 +30,9 @@ def main() -> int:
         '#include "calcotone/ember_parity_processor.hpp"\n'
         '#include "calcotone/drift_parity_processor.hpp"\n'
         '#include "calcotone/halo_parity_processor.hpp"\n'
+        '#include "calcotone/artifact_chain_processor.hpp"\n'
     )
-    if '#include "calcotone/halo_parity_processor.hpp"' not in source:
+    if '#include "calcotone/artifact_chain_processor.hpp"' not in source:
         if include_anchor not in source:
             raise RuntimeError("native rack include anchor was not found")
         source = source.replace(include_anchor, include_anchor + parity_includes, 1)
@@ -100,8 +101,85 @@ struct Atmos {'''
 struct Grain {'''
     source = replace_once(source, r"struct Atmos \{.*?\n\};\n\nstruct Grain \{", atmos_replacement, "Atmos")
 
-    # Ember is the only migrated processor whose legacy struct lacked a
-    # sample-rate constructor. Drift, Halo, and Atmos are already initialized.
+    artifact_replacement = r'''struct Artifact {
+  Params p{0.F, .162F, .16F, .10F, .62F, .26F};
+  std::array<std::vector<float>, 2> transport;
+  std::array<float, 2> low{}, dc_in{}, dc_out{}, envelope{};
+  std::size_t write{};
+  float wow_phase{}, flutter_phase{};
+  std::uint32_t random_state{0xA471FAC7U};
+  std::atomic<float> console{0.F}, tube{0.F}, chain_order{0.F};
+  ArtifactChainProcessor chain;
+  explicit Artifact(float rate) : chain(rate) {
+    const auto size = static_cast<std::size_t>(rate * .075F) + 16;
+    transport[0].assign(size, 0.F); transport[1].assign(size, 0.F);
+  }
+  float noise() noexcept {
+    random_state ^= random_state << 13; random_state ^= random_state >> 17; random_state ^= random_state << 5;
+    return static_cast<float>(random_state & 0xffffU) / 32767.5F - 1.F;
+  }
+  bool set_extra(std::string_view name, float value) noexcept {
+    if (name == "console") console.store(value, std::memory_order_relaxed);
+    else if (name == "tube") tube.store(value, std::memory_order_relaxed);
+    else if (name == "chainOrder" || name == "order") chain_order.store(value, std::memory_order_relaxed);
+    else return false;
+    return true;
+  }
+  void process(float* data, std::size_t frames, float rate) noexcept {
+    const float glide = 1.F - std::exp(-1.F / (rate * .055F));
+    for (std::size_t frame = 0; frame < frames; ++frame) {
+      p.glide(glide);
+      const unsigned mode = std::min(13U, static_cast<unsigned>(std::round(p.value[0])));
+      const float wear = clamp01(p.value[1]), wow = clamp01(p.value[2]);
+      const float hiss = clamp01(p.value[3]), tone_value = clamp01(p.value[4]), mix = clamp01(p.value[5]);
+      const bool console_mode = (mode >= 8 && mode <= 11) || mode == 13;
+      const bool atr = mode == 12;
+      const bool narrow = mode == 4 || mode == 7;
+      const bool broken = mode == 6;
+      const float wow_hz = mode == 1 ? .18F : mode == 3 ? .72F : broken ? .91F : .32F;
+      const float flutter_hz = mode == 1 ? 3.2F : mode == 3 ? 7.4F : broken ? 9.1F : 4.8F;
+      wow_phase += 2.F * kPi * wow_hz / rate; flutter_phase += 2.F * kPi * flutter_hz / rate;
+      if (wow_phase >= 2.F*kPi) wow_phase -= 2.F*kPi;
+      if (flutter_phase >= 2.F*kPi) flutter_phase -= 2.F*kPi;
+      const float delay = console_mode ? 1.F : (atr ? .0012F : .0035F) * rate +
+          (std::sin(wow_phase) + std::sin(flutter_phase) * .22F) * wow * (broken ? .0042F : .0022F) * rate;
+      const float cutoff = narrow ? 4'600.F + tone_value * 2'100.F : console_mode ? 10'500.F + tone_value * 6'500.F : 5'800.F + tone_value * 10'200.F;
+      const float g = filter_coefficient(cutoff, rate);
+      for (unsigned ch = 0; ch < 2; ++ch) {
+        const auto i = frame * 2 + ch; const float dry = data[i];
+        transport[ch][write] = dry;
+        envelope[ch] += (std::abs(dry) - envelope[ch]) * .0012F;
+        float wet = console_mode ? dry : read_delay(transport[ch], write, std::max(1.F, delay + ch * 1.7F));
+        const float drive = console_mode ? (mode == 13 ? 1.8F + wear * 3.4F : 1.25F + wear * 2.2F)
+            : atr ? 1.35F + wear * 2.8F : 1.F + wear * (broken ? 7.F : 4.2F);
+        const float shaped = fast_shape(wet * drive + (mode == 13 ? .018F : .006F) * wear);
+        wet = wet + (shaped / std::max(1.F, drive * .72F) - wet) * (console_mode ? .42F : .28F + wear * .34F);
+        wet = one_pole(wet, low[ch], g);
+        if (!console_mode) wet += noise() * hiss * envelope[ch] * (mode == 2 || mode == 5 ? .055F : .018F);
+        const float dc = wet - dc_in[ch] + .995F * dc_out[ch]; dc_in[ch]=wet; dc_out[ch]=dc;
+        const float trim = mode == 13 ? .91F : console_mode ? .96F : atr ? .94F : 1.F;
+        data[i] = std::clamp(dry + (dc * trim - dry) * mix, -1.2F, 1.2F);
+      }
+      write = (write + 1) % transport[0].size();
+    }
+    chain.set_parameter("console", console.load(std::memory_order_relaxed));
+    chain.set_parameter("tube", tube.load(std::memory_order_relaxed));
+    chain.set_parameter("order", chain_order.load(std::memory_order_relaxed));
+    chain.set_parameter("drive", p.value[1]);
+    chain.set_parameter("tone", p.value[4]);
+    chain.process(data, frames);
+  }
+};
+
+struct Stomp {'''
+    source = replace_once(source, r"struct Artifact \{.*?\n\};\n\nstruct Stomp \{", artifact_replacement, "Artifact")
+
+    source = source.replace(
+        "case RackModule::Artifact:\n      if(name==\"mode\")index=0; else if(name==\"wear\")index=1; else if(name==\"wow\")index=2; else if(name==\"noise\")index=3; else if(name==\"tone\")index=4; else if(name==\"mix\")index=5; break;",
+        "case RackModule::Artifact:\n      if (impl_->artifact.set_extra(name, value)) return true;\n      if(name==\"mode\")index=0; else if(name==\"wear\")index=1; else if(name==\"wow\")index=2; else if(name==\"noise\")index=3; else if(name==\"tone\")index=4; else if(name==\"mix\")index=5; break;",
+        1,
+    )
+
     source = source.replace(
         "explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)), drift(sample_rate)",
         "explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)), ember(sample_rate), drift(sample_rate)",
@@ -110,7 +188,7 @@ struct Grain {'''
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(source, encoding="utf-8", newline="\n")
-    print(f"generated {output_path} with live Ember, Drift, Halo, and Atmos parity processing")
+    print(f"generated {output_path} with live Ember, Drift, Halo, Atmos, and Artifact matrix processing")
     return 0
 
 
