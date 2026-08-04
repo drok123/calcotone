@@ -1,30 +1,33 @@
 import fs from 'node:fs';
 
-function replaceRequired(source, pattern, replacement, label) {
-  const next = source.replace(pattern, replacement);
-  if (next === source) throw new Error(`Retired UI cleanup anchor missing: ${label}`);
-  return next;
+function replaceIfPresent(source, pattern, replacement) {
+  return source.replace(pattern, replacement);
 }
 
 function write(path, content) {
   fs.writeFileSync(path, content, 'utf8');
 }
 
+function assertAbsent(source, needles, label) {
+  const remaining = needles.filter((needle) => source.includes(needle));
+  if (remaining.length) {
+    throw new Error(`${label} cleanup incomplete: ${remaining.join(', ')}`);
+  }
+}
+
 const appPath = 'src/App.tsx';
 let app = fs.readFileSync(appPath, 'utf8');
 
-app = replaceRequired(
+app = replaceIfPresent(
   app,
   /import type \{\n  SynthArchetype,\n  SynthMachine,\n  SynthSequencerState,\n  SynthSequencerStep,\n\} from '\.\/audio\/SynthEngine';\n/,
   '',
-  'App SynthEngine type import',
 );
 
-app = replaceRequired(
+app = replaceIfPresent(
   app,
   /  const setSynthEnabled = useCallback\([\s\S]*?\n  const setStompEnabled = useCallback/,
   '  const setStompEnabled = useCallback',
-  'App native Synth callbacks',
 );
 
 for (const prop of [
@@ -36,34 +39,47 @@ for (const prop of [
   'onSynthSequencerChange={setSynthSequencerState}',
   'onSynthSequencerStepListenerChange={setSynthSequencerStepListener}',
 ]) {
-  app = replaceRequired(app, new RegExp(`\\s*${prop.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n`), '\n', `App ${prop}`);
+  app = replaceIfPresent(
+    app,
+    new RegExp(`\\s*${prop.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n`),
+    '\n',
+  );
 }
 
-app = replaceRequired(
+app = replaceIfPresent(
   app,
   /\s*motionPadProps=\{\{[\s\S]*?\n\s*\}\}\n\s*\{\.\.\.routingProps\}/,
   '\n                            {...routingProps}',
-  'Stack MotionPad prop block',
 );
+
+assertAbsent(app, [
+  "from './audio/SynthEngine'",
+  'onSynthEnabledChange=',
+  'onSynthMachineChange=',
+  'onSynthArchetypeChange=',
+  'onSynthParametersChange=',
+  'onSynthTriggerNote=',
+  'onSynthSequencerChange=',
+  'onSynthSequencerStepListenerChange=',
+  'motionPadProps={{',
+], 'App retired UI');
 write(appPath, app);
 
 const railPath = 'src/components/effects/RailCModules.tsx';
 let rail = fs.readFileSync(railPath, 'utf8');
 
-rail = replaceRequired(
+rail = replaceIfPresent(
   rail,
   /import type \{\n  SynthArchetype,\n  SynthMachine,\n  SynthSequencerNote,\n  SynthSequencerState,\n  SynthSequencerStep,\n\} from '\.\.\/\.\.\/audio\/SynthEngine';\n/,
   '',
-  'Rail C SynthEngine type import',
 );
-rail = replaceRequired(rail, /import type \{ MotionPadProps \} from '\.\.\/motion\/MotionPad';\n/, '', 'MotionPadProps import');
-rail = replaceRequired(rail, /import \{ MotionPad \} from '\.\.\/motion\/MotionPad';\n/, '', 'MotionPad import');
+rail = replaceIfPresent(rail, /import type \{ MotionPadProps \} from '\.\.\/motion\/MotionPad';\n/, '');
+rail = replaceIfPresent(rail, /import \{ MotionPad \} from '\.\.\/motion\/MotionPad';\n/, '');
 
-rail = replaceRequired(
+rail = replaceIfPresent(
   rail,
   /const SYNTH_MACHINES:[\s\S]*?\nexport const STOMP_MODE_LABELS = \[/,
   'export const STOMP_MODE_LABELS = [',
-  'Synth implementation block',
 );
 
 for (const name of [
@@ -75,29 +91,44 @@ for (const name of [
   'onSynthSequencerChange',
   'onSynthSequencerStepListenerChange',
 ]) {
-  rail = replaceRequired(rail, new RegExp(`\\n  ${name},`), '', `Rail C destructured ${name}`);
+  rail = replaceIfPresent(rail, new RegExp(`\\n  ${name},`), '');
 }
 
-rail = replaceRequired(
+rail = replaceIfPresent(
   rail,
   /  onSynthEnabledChange: \(enabled: boolean\) => void;\n  onSynthMachineChange: \(machine: SynthMachine\) => void;\n  onSynthArchetypeChange: \(archetype: SynthArchetype\) => void;\n  onSynthParametersChange: \(values: readonly number\[\], morphSeconds\?: number\) => void;\n  onSynthTriggerNote: \(midi: number, durationSeconds: number\) => void;\n  onSynthSequencerChange: \(state: SynthSequencerState\) => void;\n  onSynthSequencerStepListenerChange: \(\n    listener: \(\(position: SynthSequencerStep\) => void\) \| null\n  \) => void;\n/,
   '',
-  'Rail C Synth prop contract',
 );
 
-rail = replaceRequired(
+rail = replaceIfPresent(
   rail,
   /  if \(moduleId === 'synth'\) \{[\s\S]*?\n  \}\n  if \(moduleId === 'chaos'\)/,
   "  if (moduleId === 'chaos')",
-  'Rail C Synth render branch',
 );
 
-rail = replaceRequired(rail, /  motionPadProps,\n/, '', 'Chaos MotionPad destructuring');
-rail = replaceRequired(rail, /  motionPadProps: MotionPadProps;\n/, '', 'Chaos MotionPad prop type');
-rail = replaceRequired(rail, /\s*<MotionPad \{\.\.\.motionPadProps\} \/>\n/, '\n', 'Stack MotionPad render');
-rail = replaceRequired(rail, /  motionPadProps,\n/, '', 'Rail C MotionPad destructuring');
-rail = replaceRequired(rail, /  motionPadProps: MotionPadProps;\n/, '', 'Rail C MotionPad prop type');
-rail = replaceRequired(rail, /\n      motionPadProps=\{motionPadProps\}/, '', 'Stack MotionPad forwarding');
+rail = replaceIfPresent(rail, /  motionPadProps,\n/, '');
+rail = replaceIfPresent(rail, /  motionPadProps: MotionPadProps;\n/, '');
+rail = replaceIfPresent(rail, /\s*<MotionPad \{\.\.\.motionPadProps\} \/>\n/, '\n');
+rail = replaceIfPresent(rail, /  motionPadProps,\n/, '');
+rail = replaceIfPresent(rail, /  motionPadProps: MotionPadProps;\n/, '');
+rail = replaceIfPresent(rail, /\n      motionPadProps=\{motionPadProps\}/, '');
 
+assertAbsent(rail, [
+  "from '../../audio/SynthEngine'",
+  "from '../motion/MotionPad'",
+  'const SYNTH_MACHINES',
+  "moduleId === 'synth'",
+  'SynthModule',
+  'onSynthEnabledChange',
+  'onSynthMachineChange',
+  'onSynthArchetypeChange',
+  'onSynthParametersChange',
+  'onSynthTriggerNote',
+  'onSynthSequencerChange',
+  'onSynthSequencerStepListenerChange',
+  'motionPadProps',
+  '<MotionPad',
+], 'Rail C retired UI');
 write(railPath, rail);
+
 console.log('Retired Synth module and Stack XY input panel removed from App and Rail C source.');
