@@ -15,7 +15,9 @@ const checks = [
   [moduleSource.includes("onParameterChange('console'"), 'console native command route'],
   [moduleSource.includes("onParameterChange('tube'"), 'tube native command route'],
   [moduleSource.includes("onParameterChange('chainOrder'"), 'order native command route'],
-  [moduleSource.includes("!['console', 'tube', 'chainOrder'].includes(parameter.id)"), 'discrete selectors hidden from knob row'],
+  [moduleSource.includes("const visibleParameters = module.parameters.filter"), 'discrete selectors hidden from knob rows'],
+  [moduleSource.includes('{visibleParameters.map((parameter, index) => {'), 'custom faceplate indices use visible controls'],
+  [moduleSource.includes('{visibleParameters.map((parameter) => renderKnob(parameter))}'), 'standard knob row uses visible controls'],
   [matrix.includes('NEVE_GOLD_LION_ARTIFACT_MATRIX'), 'legacy Neve/Gold Lion alias'],
   [selectors.includes('disabled={disabled || state.console === 0 || state.tube === 0}'), 'order selector bypass guard'],
 ];
