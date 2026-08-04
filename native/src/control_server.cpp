@@ -101,6 +101,7 @@ std::string_view content_type_for(const std::filesystem::path& path) {
   if (extension == ".svg") return "image/svg+xml";
   if (extension == ".png") return "image/png";
   if (extension == ".json") return "application/json";
+  if (extension == ".wav") return "audio/wav";
   if (extension == ".f32") return "application/octet-stream";
   return "application/octet-stream";
 }

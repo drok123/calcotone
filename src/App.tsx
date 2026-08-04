@@ -19,6 +19,9 @@ import {
 } from './audio/AudioEngine';
 import { DEFAULT_PRESET } from './audio/Preset';
 import { NativeAudioBridge } from './audio/NativeAudioBridge';
+import { nativeWaveToRecordedWav } from './audio/NativeRecording';
+import { SIGNAL_LAB_MODES, SIGNAL_LAB_STYLES, type SignalLabState } from './audio/SignalLab';
+import { getPressureState } from './components/signal/pressureStore';
 import type { InputMode } from './audio/InputMatrix';
 import {
   runGpuCabinetExperiment,
@@ -653,6 +656,21 @@ export default function App() {
     const timer = window.setInterval(() => void refresh(), 80);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [audioBackend, engineState]);
+
+  useEffect(() => {
+    const syncNativePressure = (event: Event): void => {
+      if (backendRef.current !== 'native') return;
+      const state = (event as CustomEvent<SignalLabState>).detail ?? getPressureState();
+      const bridge = nativeBridgeRef.current;
+      void bridge.commandLine(`moduleBypass pressure ${state.enabled ? 0 : 1}`);
+      void bridge.commandLine(`param pressure mode ${SIGNAL_LAB_MODES.indexOf(state.mode)}`);
+      void bridge.commandLine(`param pressure style ${SIGNAL_LAB_STYLES.indexOf(state.style)}`);
+      for (const key of ['drive', 'time', 'character', 'mix'] as const)
+        void bridge.commandLine(`param pressure ${key} ${state[key]}`);
+    };
+    window.addEventListener('calcotone:pressure-change', syncNativePressure);
+    return () => window.removeEventListener('calcotone:pressure-change', syncNativePressure);
+  }, []);
   const [recordingState, setRecordingState] = useState<
     'idle' | 'recording' | 'ready' | 'error'
   >('idle');
@@ -897,7 +915,15 @@ export default function App() {
           if (module.id === 'chorus' && module.driftMode) nativeSync.push(nativeBridgeRef.current.commandLine(`param chorus mode ${DRIFT_MODE_ORDER.indexOf(module.driftMode)}`));
           if (module.id === 'delay' && module.delayAlgorithm) nativeSync.push(nativeBridgeRef.current.commandLine(`param delay algorithm ${DELAY_ALGORITHMS.indexOf(module.delayAlgorithm)}`));
           if (module.id === 'reverb' && module.algorithm) nativeSync.push(nativeBridgeRef.current.commandLine(`param reverb algorithm ${REVERB_ALGORITHMS.indexOf(module.algorithm)}`));
+          if (module.id === 'bitcrusher' && module.grainMode) nativeSync.push(nativeBridgeRef.current.commandLine(`param bitcrusher mode ${GRAIN_MODE_ORDER.indexOf(module.grainMode)}`));
+          if (module.id === 'media' && module.mediaMode) nativeSync.push(nativeBridgeRef.current.commandLine(`param media mode ${MEDIA_MODE_ORDER.indexOf(module.mediaMode)}`));
         }
+        const pressure = getPressureState();
+        nativeSync.push(nativeBridgeRef.current.commandLine(`moduleBypass pressure ${pressure.enabled ? 0 : 1}`));
+        nativeSync.push(nativeBridgeRef.current.commandLine(`param pressure mode ${SIGNAL_LAB_MODES.indexOf(pressure.mode)}`));
+        nativeSync.push(nativeBridgeRef.current.commandLine(`param pressure style ${SIGNAL_LAB_STYLES.indexOf(pressure.style)}`));
+        for (const key of ['drive', 'time', 'character', 'mix'] as const)
+          nativeSync.push(nativeBridgeRef.current.commandLine(`param pressure ${key} ${pressure[key]}`));
         nativeSync.push(nativeBridgeRef.current.commandLine(`order ${serialOrderFromRack({ A: railAOrder, B: railBOrder, C: railCOrder }).join(' ')}`));
         await Promise.all(nativeSync);
         setInputDevice('Windows native default input');
@@ -906,7 +932,7 @@ export default function App() {
         setChannelInfo({ input: `${native.inputChannels} ch native`, output: `${native.outputChannels} ch native` });
         setAnalyser(null);
         setEngineState('running');
-        setMessage('Native WASAPI audio is active. Ember, Drift, Halo, Atmos, STOMP, STACK, and master controls are running outside WebAudio.');
+        setMessage('Native WASAPI audio is active. The complete effects rack, STOMP, STACK, Pressure, Dream memory, and master controls are running in C++.');
         return;
       }
 
@@ -1028,7 +1054,16 @@ export default function App() {
     }, 100);
   }
 
-  function startRecording(): void {
+  async function startRecording(): Promise<void> {
+    if (backendRef.current === 'native' && engineState === 'running') {
+      const started = await nativeBridgeRef.current.commandLine('recordStart');
+      if (!started) { setRecordingState('error'); setMessage('Native recorder could not start.'); return; }
+      if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }
+      setRecordedTake(null); setRecordingSeconds(0); setRecordingState('recording');
+      beginRecordingTimer(120);
+      setMessage('Recording the final native stereo output at 24-bit PCM.');
+      return;
+    }
     const engine = engineRef.current;
     if (!engine || engineState !== 'running') {
       setMessage('Start the audio engine before recording a sample.');
@@ -1057,6 +1092,23 @@ export default function App() {
   }
 
   async function finishRecording(reachedLimit = false): Promise<void> {
+    if (backendRef.current === 'native' && recordingState === 'recording') {
+      clearRecordingTimer();
+      try {
+        if (!await nativeBridgeRef.current.commandLine('recordStop')) throw new Error('Native recording could not be finalized.');
+        const take = await nativeWaveToRecordedWav(await nativeBridgeRef.current.fetchRecording());
+        const completeTake: RecordedTake = { ...take, createdAt: new Date() };
+        const url = URL.createObjectURL(take.blob);
+        setRecordedTake(completeTake);
+        setPreviewUrl((current) => { if (current) URL.revokeObjectURL(current); return url; });
+        setRecordingSeconds(take.durationSeconds); setRecordingState('ready');
+        setMessage(reachedLimit ? 'Maximum native take captured and ready to save.' : 'Native take captured in lossless 24-bit stereo WAV format.');
+      } catch (error) {
+        setRecordingState('error');
+        setMessage(error instanceof Error ? error.message : 'Native recording could not be finalized.');
+      }
+      return;
+    }
     const engine = engineRef.current;
     if (!engine?.isRecording()) return;
 
@@ -1088,6 +1140,7 @@ export default function App() {
   }
 
   function discardRecording(): void {
+    if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine('recordCancel');
     engineRef.current?.cancelRecording();
     clearRecordingTimer();
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -1119,6 +1172,7 @@ export default function App() {
 
   async function stopAudio(): Promise<void> {
     if (backendRef.current === 'native') {
+      if (recordingState === 'recording') await finishRecording();
       await nativeBridgeRef.current.command('active', 0);
       nativeBridgeRef.current.disconnect();
       backendRef.current = null;
@@ -1281,7 +1335,9 @@ export default function App() {
 
   function updateGrainMode(mode: GrainMode): void {
     setModules((current) => current.map((module) => module.id === 'bitcrusher' ? { ...module, grainMode: mode } : module));
-    setEffectParameterIfLoaded(engineRef.current, 'bitcrusher', 'mode', GRAIN_MODE_ORDER.indexOf(mode));
+    const index = GRAIN_MODE_ORDER.indexOf(mode);
+    if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine(`param bitcrusher mode ${index}`);
+    else setEffectParameterIfLoaded(engineRef.current, 'bitcrusher', 'mode', index);
     setMessage(`Grain changed to ${mode}.`);
   }
 
@@ -1291,12 +1347,9 @@ export default function App() {
         module.id === 'media' ? { ...module, mediaMode: mode } : module
       )
     );
-    setEffectParameterIfLoaded(
-      engineRef.current,
-      'media',
-      'mode',
-      MEDIA_MODE_ORDER.indexOf(mode)
-    );
+    const index = MEDIA_MODE_ORDER.indexOf(mode);
+    if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine(`param media mode ${index}`);
+    else setEffectParameterIfLoaded(engineRef.current, 'media', 'mode', index);
     setMessage(`Artifact changed to ${mode}.`);
   }
 
@@ -1399,6 +1452,20 @@ export default function App() {
     setMessage(`RANDOM FLOW queued · ${totalTargets} module packet${totalTargets === 1 ? '' : 's'}.`);
 
     if (engineState === 'running') {
+      if (backendRef.current === 'native') {
+        for (const module of nextModules) {
+          if (!module.enabled) continue;
+          if (module.id === 'saturation' && module.emberMode) void nativeBridgeRef.current.commandLine(`param saturation mode ${EMBER_MODE_ORDER.indexOf(module.emberMode)}`);
+          if (module.id === 'chorus' && module.driftMode) void nativeBridgeRef.current.commandLine(`param chorus mode ${DRIFT_MODE_ORDER.indexOf(module.driftMode)}`);
+          if (module.id === 'delay' && module.delayAlgorithm) void nativeBridgeRef.current.commandLine(`param delay algorithm ${DELAY_ALGORITHMS.indexOf(module.delayAlgorithm)}`);
+          if (module.id === 'reverb' && module.algorithm) void nativeBridgeRef.current.commandLine(`param reverb algorithm ${REVERB_ALGORITHMS.indexOf(module.algorithm)}`);
+          if (module.id === 'media' && module.mediaMode) void nativeBridgeRef.current.commandLine(`param media mode ${MEDIA_MODE_ORDER.indexOf(module.mediaMode)}`);
+          if (module.id === 'bitcrusher' && module.grainMode) void nativeBridgeRef.current.commandLine(`param bitcrusher mode ${GRAIN_MODE_ORDER.indexOf(module.grainMode)}`);
+          for (const parameter of module.parameters)
+            void nativeBridgeRef.current.commandLine(`param ${module.id} ${parameter.id} ${toDspParameterValue(module.id, parameter.id, parameter.value)}`);
+        }
+        return;
+      }
       const engine = engineRef.current;
       for (const module of nextModules) {
         if (!module.enabled) continue;

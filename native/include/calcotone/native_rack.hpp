@@ -7,7 +7,7 @@
 
 namespace calcotone {
 
-enum class RackModule : unsigned { Ember, Drift, Halo, Atmos, Stomp, Count };
+enum class RackModule : unsigned { Ember, Drift, Halo, Atmos, Grain, Artifact, Stomp, Count };
 
 RackModule rack_module_from_name(std::string_view name) noexcept;
 std::string_view rack_module_name(RackModule module) noexcept;
@@ -22,10 +22,41 @@ class NativeRack final {
   NativeRack& operator=(const NativeRack&) = delete;
 
   void process(const float* input, float* output, std::size_t frames) noexcept;
+  void process_module(RackModule module, float* data, std::size_t frames) noexcept;
   bool set_parameter(RackModule module, std::string_view parameter, float value) noexcept;
   void set_bypassed(RackModule module, bool bypassed) noexcept;
   void set_order(std::span<const RackModule> order) noexcept;
 
+ private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
+// Post-rack dynamics station. Kept outside NativeRack because PRESSURE follows
+// STACK in the browser topology and therefore must run after the amp insert.
+class NativePressure final {
+ public:
+  explicit NativePressure(float sample_rate = 48'000.F);
+  ~NativePressure();
+  NativePressure(const NativePressure&) = delete;
+  NativePressure& operator=(const NativePressure&) = delete;
+  void process(float* data, std::size_t frames) noexcept;
+  bool set_parameter(std::string_view parameter, float value) noexcept;
+  void set_bypassed(bool bypassed) noexcept;
+ private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
+// Always-on, very-low-level acoustic memory return corresponding to the WebAudio
+// Dream Buffer. All eight seconds of history are allocated during startup.
+class NativeDreamBuffer final {
+ public:
+  explicit NativeDreamBuffer(float sample_rate = 48'000.F);
+  ~NativeDreamBuffer();
+  NativeDreamBuffer(const NativeDreamBuffer&) = delete;
+  NativeDreamBuffer& operator=(const NativeDreamBuffer&) = delete;
+  void process(float* data, std::size_t frames) noexcept;
  private:
   struct Impl;
   std::unique_ptr<Impl> impl_;

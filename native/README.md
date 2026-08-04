@@ -7,8 +7,13 @@ audio capture, processing, and playback never enter the browser/webview.
 
 - allocation-free C++ STACK amp/cab DSP core;
 - deterministic dual-input routing and 90-path native signal test;
-- native Ember, Drift, Halo, Atmos, and STOMP rack processors with smoothed controls,
-  bounded feedback, click-free bypass state, and realtime-safe fixed buffers;
+- native Ember, Drift, Halo, Atmos, Grain, Artifact, and STOMP rack processors
+  with smoothed controls, bounded feedback, click-free bypass state, and
+  realtime-safe fixed buffers;
+- fixed-memory granular voices for all twelve Grain machines, and fourteen
+  Artifact media/console/tape paths including the level-trimmed BCM10 hybrid;
+- post-STACK native Pressure dynamics with FET, optical, vari-mu, and VCA
+  topologies plus an eight-second native Dream memory return;
 - event-driven `IAudioClient3` capture/render host;
 - minimum shared-mode engine periods with raw-mode attempt;
 - 64-frame exclusive-WASAPI request with automatic minimum-period clamping and
@@ -26,6 +31,8 @@ audio capture, processing, and playback never enter the browser/webview.
 - independent Input 1 / Input 2 mono-to-stereo lanes with per-STACK assignment;
 - equal-power guarded summing after the two lanes are processed.
 - allocation-free native guitar tuner on Input 2 with atomic note telemetry.
+- two-minute native final-output recorder with a preallocated realtime capture
+  buffer, off-thread PCM24 WAV encoding, and RAW/CLEAN/LOUD faceplate exports.
 
 ## Portable DSP validation
 
@@ -92,12 +99,14 @@ the native console so a fallback can no longer fail silently.
 
 The faceplate sends rack controls through three text commands: `param <module>
 <parameter> <value>`, `moduleBypass <module> <0|1>`, and `order <modules...>`.
-The first native migration batch covers Ember (`saturation`), Drift (`chorus`),
-Halo (`delay`), Atmos (`reverb`), and the fourteen-mode STOMP hybrid pedal bank.
+The native rack covers Ember (`saturation`), Drift (`chorus`), Halo (`delay`),
+Atmos (`reverb`), Grain (`bitcrusher`), Artifact (`media`), and the fourteen-mode
+STOMP hybrid pedal bank. STACK participates in the same atomic serial order, so
+cross-rail moves alter the C++ topology instead of leaving the amp fixed at the end.
 STOMP splices pedal-specific filter/gain profiles with stateful device memory,
 supply sag, Hermite-LUT nonlinear stages, and 2× midpoint antialiasing. Grain,
-Artifact, Pressure, and Dream Buffer remain on the migration checklist and are not represented as
-native-complete until their DSP and parity tests land.
+Artifact, Pressure, and Dream Buffer use startup-allocated native memory and never
+allocate from the realtime render thread.
 
 `stackInput 0` assigns STACK to Input 1, `stackInput 1` assigns it to Input 2,
 and `stackInput 2` processes both lanes through independent STACK instances. A lane

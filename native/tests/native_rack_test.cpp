@@ -30,13 +30,16 @@ int main() {
   assert(input == output);
 
   constexpr std::array modules{calcotone::RackModule::Ember, calcotone::RackModule::Drift,
-      calcotone::RackModule::Halo, calcotone::RackModule::Atmos, calcotone::RackModule::Stomp};
+      calcotone::RackModule::Halo, calcotone::RackModule::Atmos, calcotone::RackModule::Grain,
+      calcotone::RackModule::Artifact, calcotone::RackModule::Stomp};
   for (const auto module : modules) {
     calcotone::NativeRack rack(kRate); rack.set_bypassed(module, false);
     if (module == calcotone::RackModule::Ember) { assert(rack.set_parameter(module, "drive", 1.F)); assert(rack.set_parameter(module, "mix", .8F)); }
     else if (module == calcotone::RackModule::Drift) { assert(rack.set_parameter(module, "depth", .008F)); assert(rack.set_parameter(module, "mix", .8F)); }
     else if (module == calcotone::RackModule::Halo) { assert(rack.set_parameter(module, "time", .03F)); assert(rack.set_parameter(module, "feedback", .86F)); assert(rack.set_parameter(module, "mix", .8F)); }
     else if (module == calcotone::RackModule::Atmos) { assert(rack.set_parameter(module, "decay", 16.F)); assert(rack.set_parameter(module, "mix", .8F)); }
+    else if (module == calcotone::RackModule::Grain) { assert(rack.set_parameter(module, "density", 1.F)); assert(rack.set_parameter(module, "mix", .8F)); }
+    else if (module == calcotone::RackModule::Artifact) { assert(rack.set_parameter(module, "mode", 13.F)); assert(rack.set_parameter(module, "wear", .8F)); assert(rack.set_parameter(module, "mix", .8F)); }
     else { assert(rack.set_parameter(module, "mode", 8.F)); assert(rack.set_parameter(module, "drive", 1.F)); assert(rack.set_parameter(module, "mix", 1.F)); }
     rack.process(input.data(), output.data(), kFrames); require_safe(output); assert(output != input);
   }
@@ -46,7 +49,9 @@ int main() {
   std::vector<float> silence(input.size(), 0.F);
   for (int pass = 0; pass < 4; ++pass) silence_rack.process(silence.data(), silence.data(), kFrames);
   require_safe(silence);
-  assert(std::all_of(silence.begin(), silence.end(), [](float x) { return x == 0.F; }));
+  // Artifact models may contribute a bounded analog floor while enabled; the
+  // complete rack must nevertheless remain quiet and never self-oscillate.
+  assert(std::all_of(silence.begin(), silence.end(), [](float x) { return std::abs(x) < .025F; }));
 
   // Every STOMP topology survives a full-scale control sweep without NaN,
   // runaway output, or a silent model selection.
@@ -63,7 +68,22 @@ int main() {
     assert(std::abs(peak) > .001F);
   }
   assert(calcotone::rack_module_from_name("saturation") == calcotone::RackModule::Ember);
+  assert(calcotone::rack_module_from_name("bitcrusher") == calcotone::RackModule::Grain);
+  assert(calcotone::rack_module_from_name("media") == calcotone::RackModule::Artifact);
   assert(calcotone::rack_module_from_name("stomp") == calcotone::RackModule::Stomp);
   assert(calcotone::rack_module_from_name("garbage") == calcotone::RackModule::Count);
+
+  calcotone::NativePressure pressure(kRate);
+  pressure.set_bypassed(false);
+  assert(pressure.set_parameter("mode", 2.F));
+  assert(pressure.set_parameter("style", 3.F));
+  assert(pressure.set_parameter("drive", .8F));
+  output = input; pressure.process(output.data(), kFrames); require_safe(output); assert(output != input);
+
+  calcotone::NativeDreamBuffer dream(kRate);
+  output = input; dream.process(output.data(), kFrames); require_safe(output);
+  std::vector<float> recalled(input.size(), 0.F);
+  dream.process(recalled.data(), kFrames); require_safe(recalled);
+  assert(std::any_of(recalled.begin(), recalled.end(), [](float x) { return std::abs(x) > 1e-7F; }));
   std::cout << "native rack tests passed\n";
 }

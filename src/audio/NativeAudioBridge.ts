@@ -90,6 +90,12 @@ export class NativeAudioBridge {
     return operation;
   }
 
+  public async fetchRecording(): Promise<Blob> {
+    const response = await fetch(this.request(`${NATIVE_ORIGIN}/calcotone-recording.wav?cache=${Date.now()}`, { cache: 'no-store' }));
+    if (!response.ok) throw new Error(`Native recording download failed (${response.status}).`);
+    return response.blob();
+  }
+
   private async sendCommand(line: string): Promise<boolean> {
     try {
       const response = await fetch(this.request(`${NATIVE_ORIGIN}/command`, {

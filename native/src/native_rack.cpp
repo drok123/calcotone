@@ -213,6 +213,140 @@ struct Atmos {
   }
 };
 
+struct Grain {
+  struct Voice { float read{}, increment{1.F}; std::uint32_t age{}, length{}; bool active{}; };
+  Params p{2.F, 13.F, .42F, .38F, .16F, .36F, .12F};
+  std::array<std::vector<float>, 2> memory;
+  std::array<std::array<Voice, 8>, 2> voices{};
+  std::array<float, 2> bloom_state{};
+  std::size_t write{};
+  std::uint32_t random_state{0xC41C07U};
+  float spawn_countdown{};
+  explicit Grain(float rate) {
+    const auto size = static_cast<std::size_t>(rate * 2.1F) + 16;
+    memory[0].assign(size, 0.F); memory[1].assign(size, 0.F);
+  }
+  float random_signed() noexcept {
+    random_state ^= random_state << 13; random_state ^= random_state >> 17; random_state ^= random_state << 5;
+    return static_cast<float>(random_state & 0xffffU) / 32767.5F - 1.F;
+  }
+  float read_memory(unsigned ch, float position) const noexcept {
+    const float size = static_cast<float>(memory[ch].size());
+    while (position < 0.F) position += size;
+    while (position >= size) position -= size;
+    const auto i0 = static_cast<std::size_t>(position);
+    const auto i1 = (i0 + 1) % memory[ch].size();
+    const float fraction = position - static_cast<float>(i0);
+    return memory[ch][i0] + (memory[ch][i1] - memory[ch][i0]) * fraction;
+  }
+  void spawn(unsigned mode, float window_frames, float pitch, float chaos) noexcept {
+    for (unsigned ch = 0; ch < 2; ++ch) {
+      auto found = std::find_if(voices[ch].begin(), voices[ch].end(), [](const Voice& voice) { return !voice.active; });
+      if (found == voices[ch].end()) continue;
+      const float random = random_signed();
+      const float spread = window_frames * (.16F + (.42F + chaos * .48F) * std::abs(random));
+      found->read = static_cast<float>(write) - std::max(8.F, spread);
+      const float semitones = random_signed() * pitch * 12.F;
+      found->increment = std::pow(2.F, semitones / 12.F);
+      if (mode == 4 || mode == 8 || (mode == 9 && random > 0.F)) found->increment = -found->increment;
+      found->length = static_cast<std::uint32_t>(std::max(32.F, window_frames * (.45F + std::abs(random_signed()) * .55F)));
+      found->age = 0; found->active = true;
+    }
+  }
+  void process(float* data, std::size_t frames, float rate) noexcept {
+    const float glide = 1.F - std::exp(-1.F / (rate * .05F));
+    for (std::size_t frame = 0; frame < frames; ++frame) {
+      p.glide(glide);
+      const unsigned mode = std::min(11U, static_cast<unsigned>(std::round(p.value[0])));
+      const float window = std::clamp((p.value[1] - 4.F) / 12.F, 0.F, 1.F);
+      const float window_frames = (.018F + window * .742F) * rate;
+      const float density = clamp01(p.value[2]), pitch = clamp01(p.value[3]);
+      const float chaos = clamp01(p.value[4]), bloom = clamp01(p.value[5]), mix = clamp01(p.value[6]);
+      memory[0][write] = data[frame * 2]; memory[1][write] = data[frame * 2 + 1];
+      if (--spawn_countdown <= 0.F) {
+        spawn(mode, window_frames, pitch, chaos);
+        const float hardware_density = mode >= 6 ? 1.22F : 1.F;
+        spawn_countdown = rate / ((5.F + density * 43.F) * hardware_density);
+      }
+      for (unsigned ch = 0; ch < 2; ++ch) {
+        const auto i = frame * 2 + ch;
+        const float dry = data[i];
+        float wet = 0.F, weight = 0.F;
+        for (auto& voice : voices[ch]) {
+          if (!voice.active || voice.length == 0) continue;
+          const float phase = static_cast<float>(voice.age) / static_cast<float>(voice.length);
+          const float envelope = .5F - .5F * std::cos(2.F * kPi * std::clamp(phase, 0.F, 1.F));
+          wet += read_memory(ch, voice.read) * envelope; weight += envelope;
+          voice.read += voice.increment; ++voice.age;
+          if (voice.age >= voice.length) voice.active = false;
+        }
+        if (weight > .001F) wet /= std::max(1.F, weight * .72F);
+        if (mode == 3 || mode == 7 || mode == 10) wet = wet * .82F + std::abs(wet) * .18F * (ch ? -1.F : 1.F);
+        if (mode == 5) wet = wet * .985F + bloom_state[ch] * .015F;
+        bloom_state[ch] += (wet - bloom_state[ch]) * (.002F + (1.F - bloom) * .02F);
+        wet += bloom_state[ch] * bloom * .28F;
+        data[i] = std::clamp(dry + (wet - dry) * mix, -1.2F, 1.2F);
+      }
+      write = (write + 1) % memory[0].size();
+    }
+  }
+};
+
+struct Artifact {
+  Params p{0.F, .162F, .16F, .10F, .62F, .26F};
+  std::array<std::vector<float>, 2> transport;
+  std::array<float, 2> low{}, dc_in{}, dc_out{}, envelope{};
+  std::size_t write{};
+  float wow_phase{}, flutter_phase{};
+  std::uint32_t random_state{0xA471FAC7U};
+  explicit Artifact(float rate) {
+    const auto size = static_cast<std::size_t>(rate * .075F) + 16;
+    transport[0].assign(size, 0.F); transport[1].assign(size, 0.F);
+  }
+  float noise() noexcept {
+    random_state ^= random_state << 13; random_state ^= random_state >> 17; random_state ^= random_state << 5;
+    return static_cast<float>(random_state & 0xffffU) / 32767.5F - 1.F;
+  }
+  void process(float* data, std::size_t frames, float rate) noexcept {
+    const float glide = 1.F - std::exp(-1.F / (rate * .055F));
+    for (std::size_t frame = 0; frame < frames; ++frame) {
+      p.glide(glide);
+      const unsigned mode = std::min(13U, static_cast<unsigned>(std::round(p.value[0])));
+      const float wear = clamp01(p.value[1]), wow = clamp01(p.value[2]);
+      const float hiss = clamp01(p.value[3]), tone = clamp01(p.value[4]), mix = clamp01(p.value[5]);
+      const bool console = (mode >= 8 && mode <= 11) || mode == 13;
+      const bool atr = mode == 12;
+      const bool narrow = mode == 4 || mode == 7;
+      const bool broken = mode == 6;
+      const float wow_hz = mode == 1 ? .18F : mode == 3 ? .72F : broken ? .91F : .32F;
+      const float flutter_hz = mode == 1 ? 3.2F : mode == 3 ? 7.4F : broken ? 9.1F : 4.8F;
+      wow_phase += 2.F * kPi * wow_hz / rate; flutter_phase += 2.F * kPi * flutter_hz / rate;
+      if (wow_phase >= 2.F*kPi) wow_phase -= 2.F*kPi;
+      if (flutter_phase >= 2.F*kPi) flutter_phase -= 2.F*kPi;
+      const float delay = console ? 1.F : (atr ? .0012F : .0035F) * rate +
+          (std::sin(wow_phase) + std::sin(flutter_phase) * .22F) * wow * (broken ? .0042F : .0022F) * rate;
+      const float cutoff = narrow ? 4'600.F + tone * 2'100.F : console ? 10'500.F + tone * 6'500.F : 5'800.F + tone * 10'200.F;
+      const float g = filter_coefficient(cutoff, rate);
+      for (unsigned ch = 0; ch < 2; ++ch) {
+        const auto i = frame * 2 + ch; const float dry = data[i];
+        transport[ch][write] = dry;
+        envelope[ch] += (std::abs(dry) - envelope[ch]) * .0012F;
+        float wet = console ? dry : read_delay(transport[ch], write, std::max(1.F, delay + ch * 1.7F));
+        const float drive = console ? (mode == 13 ? 1.8F + wear * 3.4F : 1.25F + wear * 2.2F)
+            : atr ? 1.35F + wear * 2.8F : 1.F + wear * (broken ? 7.F : 4.2F);
+        const float shaped = fast_shape(wet * drive + (mode == 13 ? .018F : .006F) * wear);
+        wet = wet + (shaped / std::max(1.F, drive * .72F) - wet) * (console ? .42F : .28F + wear * .34F);
+        wet = one_pole(wet, low[ch], g);
+        if (!console) wet += noise() * hiss * envelope[ch] * (mode == 2 || mode == 5 ? .055F : .018F);
+        const float dc = wet - dc_in[ch] + .995F * dc_out[ch]; dc_in[ch]=wet; dc_out[ch]=dc;
+        const float trim = mode == 13 ? .91F : console ? .96F : atr ? .94F : 1.F;
+        data[i] = std::clamp(dry + (dc * trim - dry) * mix, -1.2F, 1.2F);
+      }
+      write = (write + 1) % transport[0].size();
+    }
+  }
+};
+
 struct Stomp {
   struct Profile { float input_hz, tone_low, tone_high, gain, asymmetry, body, output, sag; };
   static constexpr std::array<Profile, 11> profiles{{
@@ -316,17 +450,20 @@ struct NativeRack::Impl {
   Drift drift;
   Halo halo;
   Atmos atmos;
+  Grain grain;
+  Artifact artifact;
   Stomp stomp;
   std::array<float, kRackBlockFrames * 2> dry{};
   std::array<std::atomic<unsigned>, kModules> order{};
-  explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)), drift(sample_rate), halo(sample_rate), atmos(sample_rate) {
+  explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)), drift(sample_rate), halo(sample_rate), atmos(sample_rate), grain(sample_rate), artifact(sample_rate) {
     (void)shape_lut();
     for (unsigned i = 0; i < kModules; ++i) order[i].store(i);
   }
   Params& params(RackModule module) noexcept {
     switch (module) {
       case RackModule::Ember: return ember.p; case RackModule::Drift: return drift.p;
-      case RackModule::Halo: return halo.p; case RackModule::Atmos: return atmos.p; default: return stomp.p;
+      case RackModule::Halo: return halo.p; case RackModule::Atmos: return atmos.p;
+      case RackModule::Grain: return grain.p; case RackModule::Artifact: return artifact.p; default: return stomp.p;
     }
   }
   void run(RackModule module, float* data, std::size_t frames) noexcept {
@@ -335,6 +472,8 @@ struct NativeRack::Impl {
       case RackModule::Drift: drift.process(data, frames, sample_rate); break;
       case RackModule::Halo: halo.process(data, frames, sample_rate); break;
       case RackModule::Atmos: atmos.process(data, frames, sample_rate); break;
+      case RackModule::Grain: grain.process(data, frames, sample_rate); break;
+      case RackModule::Artifact: artifact.process(data, frames, sample_rate); break;
       case RackModule::Stomp: stomp.process(data, frames, sample_rate); break;
       default: break;
     }
@@ -346,11 +485,13 @@ RackModule rack_module_from_name(std::string_view name) noexcept {
   if (name == "chorus" || name == "drift") return RackModule::Drift;
   if (name == "delay" || name == "halo") return RackModule::Halo;
   if (name == "reverb" || name == "atmos") return RackModule::Atmos;
+  if (name == "bitcrusher" || name == "grain") return RackModule::Grain;
+  if (name == "media" || name == "artifact") return RackModule::Artifact;
   if (name == "stomp") return RackModule::Stomp;
   return RackModule::Count;
 }
 std::string_view rack_module_name(RackModule module) noexcept {
-  constexpr std::array<std::string_view, kModules> names{"saturation", "chorus", "delay", "reverb", "stomp"};
+  constexpr std::array<std::string_view, kModules> names{"saturation", "chorus", "delay", "reverb", "bitcrusher", "media", "stomp"};
   const auto i = static_cast<std::size_t>(module); return i < names.size() ? names[i] : std::string_view{};
 }
 
@@ -358,24 +499,25 @@ NativeRack::NativeRack(float rate) : impl_(std::make_unique<Impl>(rate)) {}
 NativeRack::~NativeRack() = default;
 void NativeRack::process(const float* input, float* output, std::size_t frames) noexcept {
   if (input != output) std::copy_n(input, frames * 2, output);
+  for (unsigned slot = 0; slot < kModules; ++slot)
+    process_module(static_cast<RackModule>(impl_->order[slot].load(std::memory_order_relaxed)), output, frames);
+}
+void NativeRack::process_module(RackModule module, float* data, std::size_t frames) noexcept {
+  if (module >= RackModule::Count) return;
+  auto& params = impl_->params(module);
+  const float target = params.bypassed.load(std::memory_order_relaxed) ? 0.F : 1.F;
+  if (target == 0.F && params.active < 1e-5F) { params.active = 0.F; return; }
+  const float fade = 1.F - std::exp(-1.F / (impl_->sample_rate * .006F));
   for (std::size_t offset = 0; offset < frames; offset += kRackBlockFrames) {
     const std::size_t block = std::min(kRackBlockFrames, frames - offset);
-    float* block_output = output + offset * 2;
-    for (unsigned slot = 0; slot < kModules; ++slot) {
-      const auto module = static_cast<RackModule>(impl_->order[slot].load(std::memory_order_relaxed));
-      if (module >= RackModule::Count) continue;
-      auto& params = impl_->params(module);
-      const float target = params.bypassed.load(std::memory_order_relaxed) ? 0.F : 1.F;
-      if (target == 0.F && params.active < 1e-5F) { params.active = 0.F; continue; }
-      std::copy_n(block_output, block * 2, impl_->dry.data());
-      impl_->run(module, block_output, block);
-      const float fade = 1.F - std::exp(-1.F / (impl_->sample_rate * .006F));
-      for (std::size_t frame = 0; frame < block; ++frame) {
-        params.active += (target - params.active) * fade;
-        for (unsigned ch = 0; ch < 2; ++ch) {
-          const auto i = frame * 2 + ch;
-          block_output[i] = impl_->dry[i] + (block_output[i] - impl_->dry[i]) * params.active;
-        }
+    float* block_output = data + offset * 2;
+    std::copy_n(block_output, block * 2, impl_->dry.data());
+    impl_->run(module, block_output, block);
+    for (std::size_t frame = 0; frame < block; ++frame) {
+      params.active += (target - params.active) * fade;
+      for (unsigned ch = 0; ch < 2; ++ch) {
+        const auto i = frame * 2 + ch;
+        block_output[i] = impl_->dry[i] + (block_output[i] - impl_->dry[i]) * params.active;
       }
     }
   }
@@ -392,6 +534,10 @@ bool NativeRack::set_parameter(RackModule module, std::string_view name, float v
       if(name=="algorithm")index=0; else if(name=="time")index=1; else if(name=="feedback")index=2; else if(name=="color")index=3; else if(name=="character")index=4; else if(name=="width")index=5; else if(name=="mix")index=6; break;
     case RackModule::Atmos:
       if(name=="algorithm")index=0; else if(name=="decay")index=1; else if(name=="size")index=2; else if(name=="color")index=3; else if(name=="diffusion")index=4; else if(name=="motion")index=5; else if(name=="mix")index=6; break;
+    case RackModule::Grain:
+      if(name=="mode")index=0; else if(name=="bits")index=1; else if(name=="density")index=2; else if(name=="pitch")index=3; else if(name=="chaos")index=4; else if(name=="bloom")index=5; else if(name=="mix")index=6; break;
+    case RackModule::Artifact:
+      if(name=="mode")index=0; else if(name=="wear")index=1; else if(name=="wow")index=2; else if(name=="noise")index=3; else if(name=="tone")index=4; else if(name=="mix")index=5; break;
     case RackModule::Stomp:
       if(name=="mode")index=0; else if(name=="drive")index=1; else if(name=="tone")index=2; else if(name=="level")index=3; else if(name=="character")index=4; else if(name=="body")index=5; else if(name=="mix")index=6; break;
     default: break;
@@ -408,4 +554,97 @@ void NativeRack::set_order(std::span<const RackModule> requested) noexcept {
   for (unsigned i=0;i<kModules;++i) if(!used[i]) clean[count++]=static_cast<RackModule>(i);
   for (unsigned i=0;i<kModules;++i) impl_->order[i].store(static_cast<unsigned>(clean[i]), std::memory_order_relaxed);
 }
+
+struct NativePressure::Impl {
+  float sample_rate;
+  Params p{0.F, 2.F, .42F, .46F, .38F, .72F};
+  std::array<float, 2> envelope{}, gain_state{1.F, 1.F};
+  explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)) {}
+  void process(float* data, std::size_t frames) noexcept {
+    const float glide = 1.F - std::exp(-1.F / (sample_rate * .06F));
+    for (std::size_t frame=0; frame<frames; ++frame) {
+      p.glide(glide);
+      const unsigned mode=std::min(3U,static_cast<unsigned>(std::round(p.value[0])));
+      const unsigned style=std::min(3U,static_cast<unsigned>(std::round(p.value[1])));
+      const float drive=clamp01(p.value[2]), time=clamp01(p.value[3]), character=clamp01(p.value[4]), mix=clamp01(p.value[5]);
+      const float style_drive=style==0?.72F:style==1?.95F:style==3?1.42F:.84F;
+      const float effective=clamp01(drive*style_drive);
+      const float threshold_db=-8.F-effective*(mode==0?30.F:mode==1?23.F:mode==2?20.F:26.F);
+      const float ratio_base=mode==0?4.F:mode==1?2.1F:mode==2?2.4F:3.2F;
+      const float ratio_style=style==0?.72F:style==1?1.18F:style==3?2.8F:.92F;
+      const float ratio=std::clamp(ratio_base*ratio_style+character*(mode==0?3.2F:1.4F),1.2F,20.F);
+      const float attack=mode==0?.00022F+time*.0065F:mode==1?.008F+time*.045F:mode==2?.004F+time*.032F:.0008F+time*.018F;
+      const float release=mode==1?.18F+time*1.05F+effective*.32F:mode==2?.10F+time*.72F+effective*.18F:mode==0?.035F+time*.34F:.045F+time*.46F;
+      const float attack_g=1.F-std::exp(-1.F/(sample_rate*std::max(.0001F,attack)));
+      const float release_g=1.F-std::exp(-1.F/(sample_rate*std::min(1.5F,release)));
+      const float reference_reduction=std::max(0.F,-18.F-threshold_db)*(1.F-1.F/ratio);
+      const float recovery=style==3?.32F:style==0?.42F:style==1?.52F:.48F;
+      const float trim_db=mode==0?-.5F:mode==2?.4F:mode==3?-.1F:0.F;
+      const float makeup=std::pow(10.F,std::clamp(reference_reduction*recovery+effective*.6F+trim_db,-.75F,2.5F)/20.F);
+      const float dry_mix=std::cos(mix*kPi*.5F), wet_mix=std::sin(mix*kPi*.5F);
+      const float normalization=std::max(1.F,dry_mix+wet_mix);
+      for(unsigned ch=0;ch<2;++ch){
+        const auto i=frame*2+ch; const float dry=data[i], magnitude=std::abs(dry);
+        envelope[ch]+=(magnitude-envelope[ch])*(magnitude>envelope[ch]?attack_g:release_g);
+        const float level_db=20.F*std::log10(std::max(envelope[ch],1e-7F));
+        const float reduction_db=level_db>threshold_db?-(level_db-threshold_db)*(1.F-1.F/ratio):0.F;
+        const float target_gain=std::pow(10.F,reduction_db/20.F);
+        gain_state[ch]+=(target_gain-gain_state[ch])*(target_gain<gain_state[ch]?attack_g:release_g);
+        float wet=dry*gain_state[ch]*makeup;
+        const float nonlinearity=mode==0?.16F+effective*.24F:mode==2?.12F+effective*.18F:mode==1?.08F+effective*.14F:.025F+character*.045F;
+        const float shaped=fast_shape((wet+(wet>0.F?wet:0.F)*(mode==2?.055F+character*.075F:.01F))* (1.F+effective*(mode==0?4.8F:mode==2?3.1F:mode==1?2.3F:1.8F)));
+        wet += (shaped-wet)*nonlinearity;
+        data[i]=std::clamp((dry*dry_mix+wet*wet_mix)/normalization,-1.2F,1.2F);
+      }
+    }
+  }
+};
+
+NativePressure::NativePressure(float rate):impl_(std::make_unique<Impl>(rate)){}
+NativePressure::~NativePressure()=default;
+void NativePressure::process(float* data,std::size_t frames) noexcept {
+  const float target=impl_->p.bypassed.load(std::memory_order_relaxed)?0.F:1.F;
+  if(target==0.F&&impl_->p.active<1e-5F){impl_->p.active=0.F;return;}
+  std::array<float,kRackBlockFrames*2> dry{};
+  for(std::size_t offset=0;offset<frames;offset+=kRackBlockFrames){
+    const auto block=std::min(kRackBlockFrames,frames-offset); float* current=data+offset*2;
+    std::copy_n(current,block*2,dry.data()); impl_->process(current,block);
+    const float fade=1.F-std::exp(-1.F/(impl_->sample_rate*.006F));
+    for(std::size_t i=0;i<block*2;i+=2){impl_->p.active+=(target-impl_->p.active)*fade;current[i]=dry[i]+(current[i]-dry[i])*impl_->p.active;current[i+1]=dry[i+1]+(current[i+1]-dry[i+1])*impl_->p.active;}
+  }
+}
+bool NativePressure::set_parameter(std::string_view name,float value) noexcept {
+  if(!std::isfinite(value)) return false;
+  std::size_t index=99;
+  if(name=="mode")index=0;else if(name=="style")index=1;else if(name=="drive")index=2;else if(name=="time")index=3;else if(name=="character")index=4;else if(name=="mix")index=5;
+  if(index>=7) return false;
+  impl_->p.target[index].store(value,std::memory_order_relaxed);
+  return true;
+}
+void NativePressure::set_bypassed(bool value) noexcept {impl_->p.bypassed.store(value,std::memory_order_relaxed);}
+
+struct NativeDreamBuffer::Impl {
+  float sample_rate; std::array<std::vector<float>,2> memory; std::size_t write{},filled{};
+  std::array<std::array<float,3>,2> low{};
+  explicit Impl(float rate):sample_rate(std::clamp(rate,8000.F,384000.F)){
+    const auto size=static_cast<std::size_t>(sample_rate*8.F);memory[0].assign(size,0.F);memory[1].assign(size,0.F);
+  }
+  void process(float* data,std::size_t frames) noexcept {
+    constexpr std::array<float,3> ages{.07F,.48F,4.2F};constexpr std::array<float,3> gains{.013F,.008F,.0045F};
+    constexpr std::array<float,3> cutoffs{4300.F,2450.F,1120.F};
+    for(std::size_t frame=0;frame<frames;++frame){
+      for(unsigned ch=0;ch<2;++ch){
+        const auto i=frame*2+ch;const float dry=data[i];float recall=0.F;
+        for(unsigned head=0;head<3;++head){const auto delay=static_cast<std::size_t>(ages[head]*sample_rate);if(filled>delay){const auto read=(write+memory[ch].size()-delay)%memory[ch].size();const float g=filter_coefficient(cutoffs[head],sample_rate);recall+=one_pole(memory[ch][read],low[ch][head],g)*gains[head];}}
+        memory[ch][write]=dry;
+        const float recalled=dry+recall*.58F;
+        data[i]=std::clamp(std::abs(recalled)<=1.F?recalled:fast_shape(recalled),-1.2F,1.2F);
+      }
+      write=(write+1)%memory[0].size();filled=std::min(filled+1,memory[0].size());
+    }
+  }
+};
+NativeDreamBuffer::NativeDreamBuffer(float rate):impl_(std::make_unique<Impl>(rate)){}
+NativeDreamBuffer::~NativeDreamBuffer()=default;
+void NativeDreamBuffer::process(float* data,std::size_t frames) noexcept {impl_->process(data,frames);}
 }  // namespace calcotone

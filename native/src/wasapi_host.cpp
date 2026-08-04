@@ -29,6 +29,7 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 using Microsoft::WRL::ComPtr;
 namespace {
@@ -81,6 +82,71 @@ struct StereoRing {
     const auto r = read.load(std::memory_order_acquire);
     return w - r;
   }
+};
+
+class NativeRecorder {
+ public:
+  explicit NativeRecorder(float rate)
+      : sample_rate_(static_cast<std::uint32_t>(rate)), max_frames_(sample_rate_ * 120U), samples_(max_frames_ * 2U) {}
+  bool start() noexcept {
+    if (active_.exchange(true, std::memory_order_acq_rel)) return false;
+    frames_.store(0, std::memory_order_release); peak_.store(0.F, std::memory_order_release);
+    return true;
+  }
+  void capture(const float* stereo, std::size_t count) noexcept {
+    if (!active_.load(std::memory_order_acquire)) return;
+    writers_.fetch_add(1, std::memory_order_acq_rel);
+    if (active_.load(std::memory_order_acquire)) {
+      const auto start = frames_.load(std::memory_order_relaxed);
+      const auto accepted = std::min<std::size_t>(count, max_frames_ - std::min<std::size_t>(start, max_frames_));
+      float peak = peak_.load(std::memory_order_relaxed);
+      for (std::size_t frame = 0; frame < accepted; ++frame) {
+        samples_[(start + frame) * 2] = stereo[frame * 2];
+        samples_[(start + frame) * 2 + 1] = stereo[frame * 2 + 1];
+        peak = std::max({peak, std::abs(stereo[frame * 2]), std::abs(stereo[frame * 2 + 1])});
+      }
+      frames_.store(start + accepted, std::memory_order_release);
+      peak_.store(peak, std::memory_order_relaxed);
+      if (start + accepted >= max_frames_) active_.store(false, std::memory_order_release);
+    }
+    writers_.fetch_sub(1, std::memory_order_release);
+  }
+  bool stop(const std::filesystem::path& path) noexcept {
+    active_.store(false, std::memory_order_release);
+    while (writers_.load(std::memory_order_acquire) != 0) Sleep(0);
+    const auto frames = frames_.load(std::memory_order_acquire);
+    if (frames == 0) return false;
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    if (!file) return false;
+    const std::uint32_t data_bytes = static_cast<std::uint32_t>(frames * 6U);
+    file.write("RIFF", 4); write_u32(file, 36U + data_bytes); file.write("WAVEfmt ", 8);
+    write_u32(file, 16); write_u16(file, 1); write_u16(file, 2); write_u32(file, sample_rate_);
+    write_u32(file, sample_rate_ * 6U); write_u16(file, 6); write_u16(file, 24);
+    file.write("data", 4); write_u32(file, data_bytes);
+    for (std::size_t i = 0; i < frames * 2U; ++i) {
+      const auto sample = static_cast<std::int32_t>(std::round(std::clamp(samples_[i], -1.F, .999999F) * 8'388'607.F));
+      const char bytes[3]{static_cast<char>(sample & 0xff), static_cast<char>((sample >> 8) & 0xff), static_cast<char>((sample >> 16) & 0xff)};
+      file.write(bytes, 3);
+    }
+    return static_cast<bool>(file);
+  }
+  void cancel() noexcept { active_.store(false, std::memory_order_release); frames_.store(0, std::memory_order_release); }
+  bool active() const noexcept { return active_.load(std::memory_order_acquire); }
+  std::uint64_t frames() const noexcept { return frames_.load(std::memory_order_acquire); }
+  float peak() const noexcept { return peak_.load(std::memory_order_relaxed); }
+ private:
+  static void write_u16(std::ofstream& file, std::uint16_t value) {
+    const char bytes[2]{static_cast<char>(value & 0xff), static_cast<char>((value >> 8) & 0xff)}; file.write(bytes, 2);
+  }
+  static void write_u32(std::ofstream& file, std::uint32_t value) {
+    const char bytes[4]{static_cast<char>(value & 0xff), static_cast<char>((value >> 8) & 0xff), static_cast<char>((value >> 16) & 0xff), static_cast<char>((value >> 24) & 0xff)}; file.write(bytes, 4);
+  }
+  std::uint32_t sample_rate_, max_frames_;
+  std::vector<float> samples_;
+  std::atomic<std::uint64_t> frames_{};
+  std::atomic<float> peak_{};
+  std::atomic<unsigned> writers_{};
+  std::atomic<bool> active_{};
 };
 
 struct ProcessBuffers {
@@ -305,6 +371,11 @@ int main() {
     calcotone::StackAmp stack_two(sample_rate);
     calcotone::NativeRack rack_one(sample_rate);
     calcotone::NativeRack rack_two(sample_rate);
+    calcotone::NativePressure pressure_one(sample_rate);
+    calcotone::NativePressure pressure_two(sample_rate);
+    calcotone::NativeDreamBuffer dream_one(sample_rate);
+    calcotone::NativeDreamBuffer dream_two(sample_rate);
+    NativeRecorder recorder(sample_rate);
     // These blocks exceed Windows' default 1 MB stack when combined. Allocate
     // once during startup; the realtime threads never allocate or resize them.
     auto ring = std::make_unique<StereoRing>();
@@ -325,6 +396,10 @@ int main() {
     std::atomic<unsigned> stomp_input{1};
     std::atomic<float> input_gain{1.F};
     std::atomic<float> output_gain{0.72F};
+    constexpr unsigned kStackOrderToken = static_cast<unsigned>(calcotone::RackModule::Count);
+    constexpr unsigned kNativeOrderSlots = kStackOrderToken + 1U;
+    std::array<std::atomic<unsigned>, kNativeOrderSlots> native_order{};
+    for (unsigned slot = 0; slot < kNativeOrderSlots; ++slot) native_order[slot].store(slot);
     const auto apply_stomp_route = [&] {
       const bool bypassed = stomp_bypassed.load(std::memory_order_relaxed);
       const auto source = static_cast<calcotone::StackInputSource>(stomp_input.load(std::memory_order_relaxed));
@@ -348,14 +423,28 @@ int main() {
                << ",\"clockCorrections\":" << clock_corrections.load()
                << ",\"renderDeadlineMisses\":" << render_deadline_misses.load()
                << ",\"maxRenderMicros\":" << max_render_micros.load()
+               << ",\"recording\":" << (recorder.active() ? "true" : "false")
+               << ",\"recordingFrames\":" << recorder.frames()
+               << ",\"recordingPeak\":" << recorder.peak()
                << ",\"tunerHz\":" << tuner.frequency()
                << ",\"tunerLevel\":" << tuner.level() << '}';
         return status.str();
       }
       std::istringstream command{std::string(line)}; std::string name; command >> name;
+      if (name == "recordStart") return recorder.start() ? R"({"ok":true,"command":"recordStart"})" : R"({"error":"recording already active"})";
+      if (name == "recordStop") {
+        const bool saved = recorder.stop(executable_directory() / "web" / "calcotone-recording.wav");
+        return saved ? R"({"ok":true,"command":"recordStop"})" : R"({"error":"native recording was empty or could not be saved"})";
+      }
+      if (name == "recordCancel") { recorder.cancel(); return R"({"ok":true,"command":"recordCancel"})"; }
       if (name == "param") {
         std::string module_name, parameter; float value = 0.F;
         command >> module_name >> parameter >> value;
+        if (module_name == "pressure") {
+          if (!command || !std::isfinite(value) || !pressure_one.set_parameter(parameter, value) || !pressure_two.set_parameter(parameter, value))
+            return R"({"error":"unknown native pressure parameter"})";
+          return R"({"ok":true,"command":"param"})";
+        }
         const auto module = calcotone::rack_module_from_name(module_name);
         if (!command || module == calcotone::RackModule::Count || !std::isfinite(value)) return R"({"error":"expected param module parameter value"})";
         if (!rack_one.set_parameter(module, parameter, value) || !rack_two.set_parameter(module, parameter, value)) return R"({"error":"unknown native parameter"})";
@@ -363,6 +452,11 @@ int main() {
       }
       if (name == "moduleBypass") {
         std::string module_name; float value = 0.F; command >> module_name >> value;
+        if (module_name == "pressure") {
+          if (!command || !std::isfinite(value)) return R"({"error":"expected moduleBypass pressure 0/1"})";
+          pressure_one.set_bypassed(value >= .5F); pressure_two.set_bypassed(value >= .5F);
+          return R"({"ok":true,"command":"moduleBypass"})";
+        }
         const auto module = calcotone::rack_module_from_name(module_name);
         if (!command || module == calcotone::RackModule::Count || !std::isfinite(value)) return R"({"error":"expected moduleBypass module 0/1"})";
         if (module == calcotone::RackModule::Stomp) {
@@ -373,14 +467,19 @@ int main() {
         return R"({"ok":true,"command":"moduleBypass"})";
       }
       if (name == "order") {
-        std::array<calcotone::RackModule, 5> modules{}; std::size_t count = 0; std::string module_name;
+        std::array<unsigned, kNativeOrderSlots> modules{};
+        std::array<bool, kNativeOrderSlots> used{};
+        std::size_t count = 0; std::string module_name;
         while (command >> module_name) {
-          const auto module = calcotone::rack_module_from_name(module_name);
-          if (module != calcotone::RackModule::Count && count < modules.size()) modules[count++] = module;
+          const auto rack_module = calcotone::rack_module_from_name(module_name);
+          const unsigned module = module_name == "chaos" ? kStackOrderToken : static_cast<unsigned>(rack_module);
+          if (module < kNativeOrderSlots && !used[module]) { used[module] = true; modules[count++] = module; }
         }
         if (count == 0) return R"({"error":"order needs native module names"})";
-        rack_one.set_order(std::span<const calcotone::RackModule>(modules.data(), count));
-        rack_two.set_order(std::span<const calcotone::RackModule>(modules.data(), count));
+        for (unsigned module = 0; module < kNativeOrderSlots; ++module)
+          if (!used[module]) modules[count++] = module;
+        for (unsigned slot = 0; slot < kNativeOrderSlots; ++slot)
+          native_order[slot].store(modules[slot], std::memory_order_relaxed);
         return R"({"ok":true,"command":"order"})";
       }
       float value = 0.F; command >> value;
@@ -489,14 +588,27 @@ int main() {
           calcotone::split_dual_mono(
               process->capture_input.data(), process->lane_one_input.data(), process->lane_two_input.data(), block,
               input_gain.load(std::memory_order_relaxed));
-          rack_one.process(process->lane_one_input.data(), process->lane_one_output.data(), block);
-          rack_two.process(process->lane_two_input.data(), process->lane_two_output.data(), block);
+          std::copy_n(process->lane_one_input.data(), block * 2, process->lane_one_output.data());
+          std::copy_n(process->lane_two_input.data(), block * 2, process->lane_two_output.data());
           const bool bypassed = stack_bypassed.load(std::memory_order_relaxed);
           const auto source = static_cast<calcotone::StackInputSource>(stack_input.load(std::memory_order_relaxed));
-          if (!bypassed && calcotone::stack_receives_lane(source, 0)) stack_one.process(process->lane_one_output.data(), process->lane_one_output.data(), block);
-          if (!bypassed && calcotone::stack_receives_lane(source, 1)) stack_two.process(process->lane_two_output.data(), process->lane_two_output.data(), block);
+          for (unsigned slot = 0; slot < kNativeOrderSlots; ++slot) {
+            const unsigned module = native_order[slot].load(std::memory_order_relaxed);
+            if (module == kStackOrderToken) {
+              if (!bypassed && calcotone::stack_receives_lane(source, 0)) stack_one.process(process->lane_one_output.data(), process->lane_one_output.data(), block);
+              if (!bypassed && calcotone::stack_receives_lane(source, 1)) stack_two.process(process->lane_two_output.data(), process->lane_two_output.data(), block);
+            } else if (module < kStackOrderToken) {
+              rack_one.process_module(static_cast<calcotone::RackModule>(module), process->lane_one_output.data(), block);
+              rack_two.process_module(static_cast<calcotone::RackModule>(module), process->lane_two_output.data(), block);
+            }
+          }
+          pressure_one.process(process->lane_one_output.data(), block);
+          pressure_two.process(process->lane_two_output.data(), block);
+          dream_one.process(process->lane_one_output.data(), block);
+          dream_two.process(process->lane_two_output.data(), block);
           const float gain = audible.load(std::memory_order_relaxed) ? output_gain.load(std::memory_order_relaxed) : 0.F;
           calcotone::mix_dual_mono(process->lane_one_output.data(), process->lane_two_output.data(), process->mixed_output.data(), block, gain);
+          recorder.capture(process->mixed_output.data(), block);
           for (UINT32 frame = 0; frame < block; ++frame) for (WORD channel = 0; channel < render.format->nChannels; ++channel)
             encode_sample(bytes, frame * render.format->nChannels + channel, render_encoding,
                 process->mixed_output[frame * 2 + std::min<WORD>(channel, 1)]);
@@ -543,6 +655,7 @@ int main() {
       std::cout << apply_command(line) << '\n';
     }
     control_server.stop();
+    recorder.cancel();
     running.store(false); SetEvent(capture.event); SetEvent(render.event);
     capture_thread.join(); render_thread.join();
     capture.client->Stop(); render.client->Stop(); CoUninitialize();
