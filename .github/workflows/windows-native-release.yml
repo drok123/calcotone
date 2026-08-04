@@ -47,6 +47,7 @@ jobs:
           node scripts/artifact-matrix-ui-audit.mjs
           node scripts/apply-native-desktop-ui-parity.mjs
           node scripts/windows-ui-parity-audit.mjs
+          npm run audit:latency
 
       - name: Build production faceplate
         run: npm run build
@@ -63,7 +64,9 @@ jobs:
           Select-String -Path src/App.tsx -Pattern 'new NativeVisualSpectrum' -Quiet | ForEach-Object { if (-not $_) { throw 'Native spectrum UI source missing.' } }
           Select-String -Path src/App.tsx -Pattern "DEFAULT_RAIL_C_ORDER = \['stomp', 'chaos', 'pressure'\]" -Quiet | ForEach-Object { if (-not $_) { throw 'Stack Rail C placement missing.' } }
           Select-String -Path src/App.tsx,src/components/effects/RailCModules.tsx -Pattern 'SynthModule|onSynth|moduleId === ''synth''|SYNTH_MACHINES' -Quiet | ForEach-Object { if ($_) { throw 'Retired Synth code survived the release transform.' } }
+          Select-String -Path src/App.tsx,src/components/effects/RailCModules.tsx -Pattern 'motionPadProps|<MotionPad' -Quiet | ForEach-Object { if ($_) { throw 'Removed Stack XY input panel survived the release transform.' } }
           Select-String -Path src/App.tsx -Pattern 'commandLine\(`param \$\{moduleId\} \$\{parameterId\}' -Quiet | ForEach-Object { if (-not $_) { throw 'Native XY parameter routing missing.' } }
+          Select-String -Path native/START-CALCOTONE-NATIVE.bat -Pattern 'CALCOTONE_AUDIO_MODE=exclusive' -Quiet | ForEach-Object { if (-not $_) { throw 'Exclusive-mode launcher default missing.' } }
 
       - name: Restore WebView2 SDK
         shell: pwsh
@@ -117,13 +120,14 @@ jobs:
             builtAtUtc = (Get-Date).ToUniversalTime().ToString('o')
             frontend = 'TypeScript + Vite production build passed'
             native = 'CMake Release build passed'
-            tests = 'CTest passed'
+            tests = 'CTest and latency audit passed'
             parityModules = @('Ember', 'Drift', 'Halo', 'Atmos', 'Artifact', 'Stomp', 'Stack', 'Pressure')
             uiParity = [ordered]@{
               nativeSpectrum = 'post-rack FFT endpoint active'
-              stack = 'model, cabinet, input, bypass, drive, tone, sag, mix synchronized'
-              xy = 'core module modulation routed to native DSP'
+              stack = 'amp readout only; embedded XY input panel removed'
+              xy = 'global core-module modulation routed to native DSP'
               retiredSynth = 'removed from packaged App and Rail C source'
+              launcher = 'exclusive WASAPI requested by default with safe fallback'
               controls = 'native command/state synchronization audited'
             }
             artifactMatrix = [ordered]@{
