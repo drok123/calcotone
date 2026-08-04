@@ -8,7 +8,6 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
-#include <cstdlib>
 
 namespace calcotone {
 namespace {
@@ -28,22 +27,26 @@ void publish_peak(std::atomic<float>& destination, float value) noexcept {
   while (value > previous && !destination.compare_exchange_weak(
       previous, value, std::memory_order_relaxed, std::memory_order_relaxed)) {}
 }
-
-bool raw_diagnostic_requested() noexcept {
-  const char* value = std::getenv("CALCOTONE_RAW_DIAGNOSTIC");
-  return value && (value[0] == '1' || value[0] == 'y' || value[0] == 'Y' || value[0] == 't' || value[0] == 'T');
-}
 }
 
 struct NativeProcessor::Impl {
   explicit Impl(float sample_rate)
       : rate(std::clamp(sample_rate, 8'000.F, 384'000.F)), tuner(rate),
         stack_one(rate), stack_two(rate), rack_one(rate), rack_two(rate),
-        pressure_one(rate), pressure_two(rate), dream_one(rate), dream_two(rate),
-        raw_passthrough(raw_diagnostic_requested()) {
+        pressure_one(rate), pressure_two(rate), dream_one(rate), dream_two(rate) {
     std::array<unsigned, kOrderSlots> initial{};
     for (unsigned slot = 0; slot < kOrderSlots; ++slot) initial[slot] = slot;
     packed_order.store(pack_order(initial));
+
+    // The host starts before the embedded faceplate can publish its complete
+    // preset. Keep every nonlinear/stateful stage bypassed and the final output
+    // muted until the UI explicitly sends its synchronized engine state.
+    for (unsigned module = 0; module < kStackToken; ++module) {
+      rack_one.set_bypassed(static_cast<RackModule>(module), true);
+      rack_two.set_bypassed(static_cast<RackModule>(module), true);
+    }
+    pressure_one.set_bypassed(true);
+    pressure_two.set_bypassed(true);
     apply_stomp_route();
   }
 
@@ -56,16 +59,6 @@ struct NativeProcessor::Impl {
 
   void process_block(const float* input, float* output, std::size_t frames) noexcept {
     for (std::size_t frame = 0; frame < frames; ++frame) tuner.push(input[frame * 2 + 1]);
-    if (raw_passthrough) {
-      const float gain = output_gain.load(std::memory_order_relaxed);
-      float peak = 0.F;
-      for (std::size_t sample = 0; sample < frames * 2U; ++sample) {
-        output[sample] = input[sample] * gain;
-        peak = std::max(peak, std::abs(output[sample]));
-      }
-      publish_peak(pre_limiter_peak, peak);
-      return;
-    }
     split_dual_mono(input, lane_one_input.data(), lane_two_input.data(), frames,
                     input_gain.load(std::memory_order_relaxed));
     std::copy_n(lane_one_input.data(), frames * 2, lane_one_output.data());
@@ -107,12 +100,11 @@ struct NativeProcessor::Impl {
   std::array<float, kBlockFrames * 2> lane_one_input{}, lane_two_input{};
   std::array<float, kBlockFrames * 2> lane_one_output{}, lane_two_output{};
   std::atomic<std::uint64_t> packed_order{};
-  std::atomic<bool> active{true}, stack_bypassed{false}, stomp_bypassed{true};
+  std::atomic<bool> active{false}, stack_bypassed{true}, stomp_bypassed{true};
   std::atomic<unsigned> stack_input{1}, stomp_input{1};
   std::atomic<float> input_gain{1.F}, output_gain{.72F};
   std::atomic<std::uint64_t> output_limited_samples{};
   std::atomic<float> pre_limiter_peak{};
-  bool raw_passthrough{};
 };
 
 NativeProcessor::NativeProcessor(float rate) : impl_(std::make_unique<Impl>(rate)) {}
