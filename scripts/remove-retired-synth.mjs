@@ -23,6 +23,7 @@ app = replaceIfPresent(
   /import type \{\n  SynthArchetype,\n  SynthMachine,\n  SynthSequencerState,\n  SynthSequencerStep,\n\} from '\.\/audio\/SynthEngine';\n/,
   '',
 );
+app = replaceIfPresent(app, /\s*type PointerEvent as ReactPointerEvent,\n/, '\n');
 
 app = replaceIfPresent(
   app,
@@ -54,6 +55,11 @@ app = replaceIfPresent(
 app = replaceIfPresent(app, /\n  const \[xyDragging, setXyDragging\] = useState\(false\);/, '');
 app = replaceIfPresent(
   app,
+  /const \[xyPosition, setXyPosition\] = useState\(\{ x: 50, y: 50 \}\);/,
+  'const [xyPosition] = useState({ x: 50, y: 50 });',
+);
+app = replaceIfPresent(
+  app,
   /\n  function handleXYPad\([\s\S]*?\n  \}\n\n  function applyXYAssignments/,
   '\n  function applyXYAssignments',
 );
@@ -65,6 +71,7 @@ app = replaceIfPresent(
 
 assertAbsent(app, [
   "from './audio/SynthEngine'",
+  'ReactPointerEvent',
   'onSynthEnabledChange=',
   'onSynthMachineChange=',
   'onSynthArchetypeChange=',
@@ -74,6 +81,7 @@ assertAbsent(app, [
   'onSynthSequencerStepListenerChange=',
   'motionPadProps={{',
   'xyDragging, setXyDragging',
+  'setXyPosition',
   'function handleXYPad(',
   'function updateMotionRoute(',
 ], 'App retired UI');
