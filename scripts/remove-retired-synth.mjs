@@ -52,6 +52,12 @@ app = replaceIfPresent(
   '\n                            {...routingProps}',
 );
 
+app = replaceIfPresent(
+  app,
+  /\n  function updateMotionRoute\([\s\S]*?\n  \}\n\n  function refreshPersistentPatchLines/,
+  '\n  function refreshPersistentPatchLines',
+);
+
 assertAbsent(app, [
   "from './audio/SynthEngine'",
   'onSynthEnabledChange=',
@@ -62,6 +68,7 @@ assertAbsent(app, [
   'onSynthSequencerChange=',
   'onSynthSequencerStepListenerChange=',
   'motionPadProps={{',
+  'function updateMotionRoute(',
 ], 'App retired UI');
 write(appPath, app);
 
@@ -75,6 +82,8 @@ rail = replaceIfPresent(
 );
 rail = replaceIfPresent(rail, /import type \{ MotionPadProps \} from '\.\.\/motion\/MotionPad';\n/, '');
 rail = replaceIfPresent(rail, /import \{ MotionPad \} from '\.\.\/motion\/MotionPad';\n/, '');
+rail = replaceIfPresent(rail, /\s*type WheelEvent as ReactWheelEvent,\n/, '\n');
+rail = replaceIfPresent(rail, /\s*RANDOM_MORPH_SECONDS,\n/, '\n');
 
 rail = replaceIfPresent(
   rail,
@@ -128,6 +137,8 @@ assertAbsent(rail, [
   'onSynthSequencerStepListenerChange',
   'motionPadProps',
   '<MotionPad',
+  'ReactWheelEvent',
+  'RANDOM_MORPH_SECONDS',
 ], 'Rail C retired UI');
 write(railPath, rail);
 
