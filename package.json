@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/apply-artifact-matrix-ui.mjs",
     "dev": "vite",
     "audit": "node scripts/audit.mjs",
     "audit:visual": "node scripts/visual-audit.mjs",
@@ -25,6 +26,7 @@
     "audit:synth:performance": "node scripts/synth-performance-audit.mjs",
     "audit:synth:phase4": "npm run audit:synth:hybrid && npm run audit:synth:performance",
     "audit:bcm10": "node scripts/bcm10-hybrid-audit.mjs",
+    "audit:artifact-matrix": "node scripts/apply-artifact-matrix-ui.mjs && node scripts/artifact-matrix-ui-audit.mjs",
     "build:synth-captures": "node scripts/build-synth-captures.mjs",
     "audit:spice": "node scripts/model-d-spice-calibration.mjs",
     "audit:spice:strict": "node scripts/model-d-spice-calibration.mjs --require-ngspice",
@@ -32,9 +34,10 @@
     "audit:hardware-spice:strict": "node scripts/hardware-spice-calibration.mjs --require-ngspice",
     "audit:dream": "node scripts/dream-buffer-audit.mjs",
     "audit:ascii-world": "node scripts/ascii-landscape-audit.mjs",
+    "prebuild": "node scripts/apply-artifact-matrix-ui.mjs",
     "build": "tsc -b && vite build",
     "lint": "oxlint src scripts public vite.config.ts",
-    "check": "npm run audit && npm run audit:visual && npm run audit:visual-ring && npm run audit:runtime && npm run audit:latency && npm run audit:stack && npm run audit:gpu && npm run audit:native && npm run audit:knobs && npm run audit:dropdowns && npm run audit:presets && npm run audit:grain-hardware && npm run audit:dsp-worklets && npm run audit:routing && npm run audit:signal && npm run audit:synth && npm run audit:synth:phase4 && npm run audit:bcm10 && npm run audit:spice && npm run audit:hardware-spice && npm run audit:dream && npm run audit:ascii-world && npm run lint && npm run build",
+    "check": "npm run audit && npm run audit:visual && npm run audit:visual-ring && npm run audit:runtime && npm run audit:latency && npm run audit:stack && npm run audit:gpu && npm run audit:native && npm run audit:knobs && npm run audit:dropdowns && npm run audit:presets && npm run audit:grain-hardware && npm run audit:dsp-worklets && npm run audit:routing && npm run audit:signal && npm run audit:synth && npm run audit:synth:phase4 && npm run audit:bcm10 && npm run audit:artifact-matrix && npm run audit:spice && npm run audit:hardware-spice && npm run audit:dream && npm run audit:ascii-world && npm run lint && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {
