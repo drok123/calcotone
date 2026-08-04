@@ -16,7 +16,7 @@ execute_process(
   ERROR_VARIABLE CALCOTONE_ATMOS_PATCH_ERROR
 )
 if(NOT CALCOTONE_ATMOS_PATCH_RESULT EQUAL 0)
-  message(FATAL_ERROR "Failed to generate live Atmos parity rack: ${CALCOTONE_ATMOS_PATCH_ERROR}")
+  message(FATAL_ERROR "Failed to generate live parity rack: ${CALCOTONE_ATMOS_PATCH_ERROR}")
 endif()
 message(STATUS "${CALCOTONE_ATMOS_PATCH_OUTPUT}")
 
@@ -53,6 +53,8 @@ add_executable(ember_parity_profile_test tests/ember_parity_profile_test.cpp)
 target_link_libraries(ember_parity_profile_test PRIVATE calcotone_dsp)
 add_executable(ember_parity_processor_test tests/ember_parity_processor_test.cpp)
 target_link_libraries(ember_parity_processor_test PRIVATE calcotone_dsp)
+add_executable(native_ember_live_parity_test tests/native_ember_live_parity_test.cpp)
+target_link_libraries(native_ember_live_parity_test PRIVATE calcotone_dsp)
 
 enable_testing()
 add_test(NAME stack_amp_test COMMAND stack_amp_test)
@@ -66,6 +68,7 @@ add_test(NAME atmos_parity_processor_test COMMAND atmos_parity_processor_test)
 add_test(NAME native_atmos_live_parity_test COMMAND native_atmos_live_parity_test)
 add_test(NAME ember_parity_profile_test COMMAND ember_parity_profile_test)
 add_test(NAME ember_parity_processor_test COMMAND ember_parity_processor_test)
+add_test(NAME native_ember_live_parity_test COMMAND native_ember_live_parity_test)
 
 if(WIN32)
   set(CALCOTONE_WEBVIEW2_ROOT "" CACHE PATH "Extracted Microsoft.Web.WebView2 NuGet package")
