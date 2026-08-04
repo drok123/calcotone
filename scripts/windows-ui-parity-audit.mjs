@@ -2,7 +2,6 @@ import fs from 'node:fs';
 
 const read = (path) => fs.readFileSync(path, 'utf8');
 const app = read('src/App.tsx');
-const bridge = read('src/audio/NativeAudioBridge.ts');
 const railC = read('src/components/effects/RailCModules.tsx');
 const spectrum = read('src/visual/NativeVisualSpectrum.ts');
 const host = read('native/src/wasapi_host.cpp');
@@ -27,7 +26,7 @@ check(app.includes('fetchRecording()'), 'recording', 'native WAV retrieval');
 check(host.includes('recordStart') && host.includes('recordStop') && host.includes('recordCancel'), 'recording', 'native recorder commands');
 
 check(spectrum.includes('class NativeVisualSpectrum'), 'visuals', 'native spectrum source');
-check(bridge.includes('fetchSpectrum'), 'visuals', 'native spectrum bridge request');
+check(spectrum.includes("127.0.0.1:48157/spectrum") && spectrum.includes('fetch(NATIVE_SPECTRUM_URL'), 'visuals', 'native spectrum request path');
 check(!app.includes("setAnalyser(null);\n        setEngineState('running')"), 'visuals', 'native startup does not null the analyser');
 
 const stackSurface = `${app}\n${railC}\n${host}\n${nativeProcessor}`;
