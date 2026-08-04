@@ -100,9 +100,11 @@ struct Atmos {'''
 struct Grain {'''
     source = replace_once(source, r"struct Atmos \{.*?\n\};\n\nstruct Grain \{", atmos_replacement, "Atmos")
 
+    # Ember is the only migrated processor whose legacy struct lacked a
+    # sample-rate constructor. Drift, Halo, and Atmos are already initialized.
     source = source.replace(
         "explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)), drift(sample_rate)",
-        "explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)), ember(sample_rate), drift(sample_rate), halo(sample_rate)",
+        "explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)), ember(sample_rate), drift(sample_rate)",
         1,
     )
 
