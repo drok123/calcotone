@@ -26,7 +26,7 @@ check(app.includes('fetchRecording()'), 'recording', 'native WAV retrieval');
 check(host.includes('recordStart') && host.includes('recordStop') && host.includes('recordCancel'), 'recording', 'native recorder commands');
 
 check(spectrum.includes('class NativeVisualSpectrum'), 'visuals', 'native spectrum source');
-check(spectrum.includes("127.0.0.1:48157/spectrum") && spectrum.includes('fetch(NATIVE_SPECTRUM_URL'), 'visuals', 'native spectrum request path');
+check(spectrum.includes('127.0.0.1:48157/spectrum') && spectrum.includes('fetch(NATIVE_SPECTRUM_URL'), 'visuals', 'native spectrum request path');
 check(!app.includes("setAnalyser(null);\n        setEngineState('running')"), 'visuals', 'native startup does not null the analyser');
 
 const stackSurface = `${app}\n${railC}\n${host}\n${nativeProcessor}`;
@@ -65,7 +65,7 @@ check(faceplate.includes('viewportHeight'), 'layout', 'viewport resizing persist
 
 for (const command of ['inputGain', 'outputGain', 'stackInput', 'stompInput']) {
   check(app.includes(command), 'device-controls', `${command} frontend command`);
-  check(host.includes(`name == \"${command}\"`), 'device-controls', `${command} native command`);
+  check(host.includes(`name == "${command}"`), 'device-controls', `${command} native command`);
 }
 check(launcher.includes('CALCOTONE_AUDIO_MODE=exclusive'), 'device-controls', 'launcher exclusive-mode default');
 check(launcher.includes('if exist "CALCOTONE-AUDIO-CONFIG.bat" call'), 'device-controls', 'launcher configuration override');
@@ -85,7 +85,7 @@ for (const parameter of ['console', 'tube', 'chainOrder']) {
 }
 
 const failed = checks.filter((item) => !item.ok && item.severity === 'error');
-for (const category of [...new Set(checks.map((item) => item.category))]) {
+for (const category of new Set(checks.map((item) => item.category))) {
   const group = checks.filter((item) => item.category === category);
   const passed = group.filter((item) => item.ok).length;
   console.log(`${category}: ${passed}/${group.length}`);
