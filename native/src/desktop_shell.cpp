@@ -38,7 +38,7 @@ class DesktopShell {
     window_class.style = CS_HREDRAW | CS_VREDRAW;
     window_class.lpfnWndProc = &DesktopShell::window_proc;
     window_class.hInstance = GetModuleHandleW(nullptr);
-    window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    window_class.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
     window_class.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     window_class.lpszClassName = kWindowClass;
     RegisterClassExW(&window_class);
