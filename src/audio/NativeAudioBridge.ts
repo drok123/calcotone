@@ -19,6 +19,7 @@ const NATIVE_ORIGIN = 'http://127.0.0.1:48157';
 export class NativeAudioBridge {
   private connected = false;
   private lastProbeFailure = 'Native host was not detected.';
+  private commandQueue: Promise<boolean> = Promise.resolve(true);
 
   public isConnected(): boolean { return this.connected; }
   public getLastProbeFailure(): string { return this.lastProbeFailure; }
@@ -84,6 +85,12 @@ export class NativeAudioBridge {
 
   public async commandLine(line: string): Promise<boolean> {
     if (!this.connected || !line.trim()) return false;
+    const operation = this.commandQueue.then(() => this.sendCommand(line));
+    this.commandQueue = operation.catch(() => false);
+    return operation;
+  }
+
+  private async sendCommand(line: string): Promise<boolean> {
     try {
       const response = await fetch(this.request(`${NATIVE_ORIGIN}/command`, {
         method: 'POST',
@@ -94,7 +101,6 @@ export class NativeAudioBridge {
       const result = await response.json() as { ok?: boolean };
       return result.ok === true;
     } catch {
-      this.connected = false;
       return false;
     }
   }

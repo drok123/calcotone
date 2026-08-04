@@ -5,6 +5,8 @@ const root = process.cwd();
 const engine = readFileSync(resolve(root, 'src/audio/AudioEngine.ts'), 'utf8');
 const app = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
 const nativeHost = readFileSync(resolve(root, 'native/src/wasapi_host.cpp'), 'utf8');
+const nativeBridge = readFileSync(resolve(root, 'src/audio/NativeAudioBridge.ts'), 'utf8');
+const controlServer = readFileSync(resolve(root, 'native/src/control_server.cpp'), 'utf8');
 const launcher = readFileSync(resolve(root, 'native/START-CALCOTONE-NATIVE.bat'), 'utf8');
 const failures = [];
 
@@ -29,6 +31,14 @@ requireText(nativeHost, 'AUDCLNT_SHAREMODE_EXCLUSIVE', 'Native exclusive-WASAPI 
 requireText(nativeHost, '64.0 * 10\'000\'000.0', 'Native 64-frame latency request');
 requireText(nativeHost, 'GetSharedModeEnginePeriod', 'Native minimum shared-period fallback');
 requireText(nativeHost, 'endpoint.client = activate()', 'Clean client reactivation after exclusive rejection');
+requireText(nativeHost, '2U * std::max(capture.period_frames, render.buffer_frames)', 'Native two-period FIFO safety target');
+requireText(nativeHost, 'while (ring->available() < fifo_target_frames', 'Capture-first FIFO priming');
+requireText(nativeHost, 'last_left *= .995F', 'Click-safe capture-underrun decay');
+requireText(nativeHost, 'ringFrames', 'Live native FIFO telemetry');
+requireText(nativeBridge, 'private commandQueue: Promise<boolean>', 'Serialized browser/native control commands');
+requireText(nativeBridge, 'this.commandQueue.then(() => this.sendCommand(line))', 'Native command queue sequencing');
+requireText(controlServer, 'listen(listener, SOMAXCONN)', 'Native control burst backlog');
+requireText(controlServer, 'request_content_length(request_storage)', 'Complete native HTTP request reads');
 requireText(launcher, 'CALCOTONE_AUDIO_MODE=exclusive', 'Launcher exclusive-mode request');
 
 const estimateMs = ({ input, base, output, frames, rate }) =>

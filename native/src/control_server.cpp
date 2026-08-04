@@ -112,6 +112,25 @@ std::string_view request_target(std::string_view request) noexcept {
   if (second_space == std::string_view::npos) return {};
   return request.substr(first_space + 1, second_space - first_space - 1);
 }
+
+std::size_t request_content_length(std::string_view request) noexcept {
+  auto cursor = request.find("\r\n");
+  while (cursor != std::string_view::npos) {
+    const auto start = cursor + 2, end = request.find("\r\n", start);
+    if (end == std::string_view::npos || end == start) break;
+    const auto line = request.substr(start, end - start), colon = line.find(':');
+    if (colon != std::string_view::npos && case_equal(line.substr(0, colon), "content-length")) {
+      std::size_t value = 0;
+      for (char character : trim(line.substr(colon + 1))) {
+        if (!std::isdigit(static_cast<unsigned char>(character))) return 0;
+        value = value * 10 + static_cast<unsigned>(character - '0');
+      }
+      return value;
+    }
+    cursor = end;
+  }
+  return 0;
+}
 }  // namespace
 
 ControlServer::ControlServer(Handler handler, unsigned short port, std::filesystem::path static_root)
@@ -172,7 +191,7 @@ void ControlServer::run() noexcept {
   address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
   address.sin_port = htons(port_);
   if (bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR ||
-      listen(listener, 4) == SOCKET_ERROR) {
+      listen(listener, SOMAXCONN) == SOCKET_ERROR) {
     closesocket(listener); listener_.store(~std::uintptr_t{}); running_.store(false);
     { std::lock_guard lock(startup_mutex_); startup_complete_ = true; startup_ok_ = false; }
     startup_condition_.notify_one();
@@ -184,10 +203,23 @@ void ControlServer::run() noexcept {
   while (running_.load()) {
     const SOCKET client = accept(listener, nullptr, nullptr);
     if (client == kInvalidSocket) continue;
-    std::array<char, 8192> bytes{};
-    const int size = recv(client, bytes.data(), static_cast<int>(bytes.size()), 0);
-    if (size <= 0) { closesocket(client); continue; }
-    const std::string_view request(bytes.data(), static_cast<std::size_t>(size));
+    DWORD timeout_ms = 1'000;
+    setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout_ms), sizeof(timeout_ms));
+    std::string request_storage;
+    request_storage.reserve(8'192);
+    std::array<char, 8'192> bytes{};
+    while (request_storage.size() < 65'536) {
+      const int size = recv(client, bytes.data(), static_cast<int>(bytes.size()), 0);
+      if (size <= 0) break;
+      request_storage.append(bytes.data(), static_cast<std::size_t>(size));
+      const auto separator = request_storage.find("\r\n\r\n");
+      if (separator != std::string::npos) {
+        const std::size_t expected = separator + 4 + request_content_length(request_storage);
+        if (request_storage.size() >= expected) break;
+      }
+    }
+    if (request_storage.empty()) { closesocket(client); continue; }
+    const std::string_view request(request_storage);
     const auto origin = request_origin(request);
     if (!safe_origin(origin)) {
       std::cerr << "CALCOTONE control bridge denied browser origin: " << origin << '\n';

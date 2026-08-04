@@ -71,6 +71,11 @@ struct StereoRing {
     read.store(r + 1, std::memory_order_release);
     return true;
   }
+  std::uint64_t available() const noexcept {
+    const auto w = write.load(std::memory_order_acquire);
+    const auto r = read.load(std::memory_order_acquire);
+    return w - r;
+  }
 };
 
 struct ProcessBuffers {
@@ -301,6 +306,8 @@ int main() {
     auto process = std::make_unique<ProcessBuffers>();
     std::atomic<bool> running{true};
     std::atomic<std::uint64_t> underruns{};
+    const auto fifo_target_frames = static_cast<std::uint64_t>(
+        2U * std::max(capture.period_frames, render.buffer_frames));
     std::atomic<bool> audible{true};
     std::atomic<bool> stack_bypassed{false};
     std::atomic<unsigned> stack_input{1};
@@ -323,8 +330,10 @@ int main() {
                << ",\"outputBufferFrames\":" << render.buffer_frames
                << ",\"inputChannels\":" << capture.format->nChannels
                << ",\"outputChannels\":" << render.format->nChannels
-               << ",\"estimatedPathMs\":" << (capture.period_frames + render.buffer_frames) / sample_rate * 1000.
+               << ",\"estimatedPathMs\":" << (capture.period_frames + render.buffer_frames + fifo_target_frames) / sample_rate * 1000.
                << ",\"underruns\":" << underruns.load() << ",\"overruns\":" << ring->overruns.load()
+               << ",\"ringFrames\":" << ring->available()
+               << ",\"fifoTargetFrames\":" << fifo_target_frames
                << ",\"tunerHz\":" << tuner.frequency()
                << ",\"tunerLevel\":" << tuner.level() << '}';
         return status.str();
@@ -414,6 +423,7 @@ int main() {
 
     std::thread render_thread([&] {
       set_realtime_thread();
+      float last_left = 0.F, last_right = 0.F;
       while (running.load(std::memory_order_relaxed)) {
         if (WaitForSingleObject(render.event, 1000) != WAIT_OBJECT_0) continue;
         UINT32 padding = 0;
@@ -425,7 +435,18 @@ int main() {
           if (FAILED(render_service->GetBuffer(block, &bytes))) break;
           for (UINT32 frame = 0; frame < block; ++frame) {
             float left = 0.F, right = 0.F;
-            if (!ring->pop(left, right)) underruns.fetch_add(1, std::memory_order_relaxed);
+            if (ring->pop(left, right)) {
+              last_left = left;
+              last_right = right;
+            } else {
+              underruns.fetch_add(1, std::memory_order_relaxed);
+              // Preserve waveform continuity when capture wakes late. A short
+              // decay is much less audible than injecting a hard digital zero.
+              last_left *= .995F;
+              last_right *= .995F;
+              left = last_left;
+              right = last_right;
+            }
             process->capture_input[frame * 2] = left; process->capture_input[frame * 2 + 1] = right;
           }
           calcotone::split_dual_mono(
@@ -449,6 +470,13 @@ int main() {
     });
 
     check(capture.client->Start(), "Start capture");
+    const auto prime_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(250);
+    while (ring->available() < fifo_target_frames && std::chrono::steady_clock::now() < prime_deadline) Sleep(1);
+    const auto primed_frames = ring->available();
+    std::ostringstream primed;
+    primed << "Primed native FIFO: " << primed_frames << " frames ("
+           << primed_frames / sample_rate * 1000. << " ms safety; target " << fifo_target_frames << "f)";
+    log_line(primed.str());
     check(render.client->Start(), "Start render");
     const std::wstring faceplate_url = L"http://127.0.0.1:" + std::to_wstring(control_server.port()) + L"/";
     log_line("Opening local native faceplate: http://127.0.0.1:" + std::to_string(control_server.port()) + "/");
@@ -457,7 +485,8 @@ int main() {
     const double output_ms = render.buffer_frames / sample_rate * 1000.;
     std::ostringstream startup;
     startup << "CALCOTONE native audio active | " << sample_rate << " Hz | input period " << capture.period_frames
-            << "f | output buffer " << render.buffer_frames << "f | estimated native path " << input_ms + output_ms << " ms";
+            << "f | output buffer " << render.buffer_frames << "f | FIFO safety " << primed_frames
+            << "f | estimated native path " << input_ms + output_ms + primed_frames / sample_rate * 1000. << " ms";
     log_line(startup.str());
     log_line("Control bridge: http://127.0.0.1:" + std::to_string(control_server.port()) + " | GET /health | POST /command");
     log_line("Commands: param/moduleBypass/order, active/bypass, stackInput, inputGain/outputGain, STACK controls, stats, quit");

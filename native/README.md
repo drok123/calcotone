@@ -16,7 +16,8 @@ audio capture, processing, and playback never enter the browser/webview.
 - exclusive format negotiation across float32, 24-in-32 PCM, packed PCM24, and
   PCM16 with allocation-free capture/render conversion and alignment retry;
 - MMCSS `Pro Audio` realtime threads;
-- lock-free stereo capture/render queue;
+- lock-free stereo capture/render queue with a two-period startup cushion and
+  click-safe underrun decay;
 - underrun/overrun and negotiated-buffer telemetry;
 - console control protocol for STACK parameters.
 - loopback-only HTTP control bridge for the React/native-shell UI (port 48157).
@@ -54,8 +55,11 @@ local-network access.
 
 Match the input and output device formats in Windows Sound settings (48 kHz is
 recommended for the first hardware run). Start with speakers/monitor volume low.
-The host prints the actual periods and estimated native path before accepting
-commands. Type `stats` to inspect dropouts and `quit` to stop cleanly.
+The host primes capture before render by two negotiated device periods so the
+independent WASAPI event threads do not race at startup. The printed and health-panel
+path estimate includes this cushion. Type `stats` after playing for 20 seconds to
+inspect `underruns`, `overruns`, `ringFrames`, and `fifoTargetFrames`; use `quit` to
+stop cleanly.
 
 The launcher requests exclusive mode first. When both endpoints accept it, the
 health panel reports `exclusive` and the path estimate uses the actual negotiated
@@ -67,9 +71,11 @@ Both endpoint log sections list every rejected exclusive format and its HRESULT,
 which distinguishes disabled/busy exclusive access from a driver format mismatch.
 
 The bridge never carries audio. `GET http://127.0.0.1:48157/health` returns the
-negotiated device periods and dropout counters. Send a plain-text command such as
-`drive 0.5` to `POST /command`. Browser origins are restricted to loopback hosts;
-the server itself binds only to `127.0.0.1`.
+negotiated device periods, FIFO depth, and dropout counters. Send a plain-text command
+such as `drive 0.5` to `POST /command`. Browser commands are serialized so the full
+rack state arrives intact during startup, while the native listener accepts the
+burst and reads each complete HTTP body. Browser origins are restricted to loopback
+hosts; the server itself binds only to `127.0.0.1`.
 
 Hosted Calcotone previews must be opened in their own browser tab; an embedded
 StackBlitz iframe cannot request loopback access under modern browser permissions.
@@ -91,6 +97,6 @@ and `stackInput 2` processes both lanes through independent STACK instances. A l
 not assigned to STACK remains dry, so a tablet can stay clean on Input 1 while a
 guitar uses STACK on Input 2. The faceplate exposes these choices directly.
 
-Shared low-period `IAudioClient3` is the default because it can approach exclusive
-latency without seizing the device. Exclusive WASAPI and ASIO remain backend options
-after the shared-period hardware measurements are known.
+The launcher requests exclusive WASAPI and retains the minimum-period shared path as
+its compatibility fallback. A dedicated ASIO backend remains the next interface-
+specific latency step after the WASAPI path is stable on hardware.
