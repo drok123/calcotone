@@ -3,8 +3,9 @@ cd /d "%~dp0"
 title CALCOTONE Desktop
 echo Starting CALCOTONE desktop...
 if exist "CALCOTONE-AUDIO-CONFIG.bat" call "CALCOTONE-AUDIO-CONFIG.bat"
-if not defined CALCOTONE_AUDIO_MODE set "CALCOTONE_AUDIO_MODE=exclusive"
-echo Requesting 64-frame exclusive WASAPI; unsupported or busy devices fall back automatically.
+if not defined CALCOTONE_AUDIO_MODE set "CALCOTONE_AUDIO_MODE=shared"
+echo Starting WASAPI compatibility path using the physical interface endpoints.
+echo Shared mode bypasses Revelator PCM24-in-32 packing while exclusive conversion is validated.
 echo The faceplate will open inside CALCOTONE; no browser or StackBlitz is required.
 echo.
 calcotone_host.exe
