@@ -1,0 +1,95 @@
+name: Windows Native Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "native/**"
+      - "src/**"
+      - "public/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "tsconfig*.json"
+      - ".github/workflows/windows-native-release.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-native:
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Build production faceplate
+        run: npm run build
+
+      - name: Restore WebView2 SDK
+        shell: pwsh
+        run: |
+          nuget install Microsoft.Web.WebView2 -OutputDirectory native/packages -NonInteractive
+          $package = Get-ChildItem native/packages -Directory -Filter 'Microsoft.Web.WebView2.*' |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+          if (-not $package) { throw 'WebView2 NuGet package was not restored.' }
+          "CALCOTONE_WEBVIEW2_ROOT=$($package.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure native host
+        run: >-
+          cmake -S native -B native/build -A x64
+          -DCALCOTONE_WEBVIEW2_ROOT="${{ env.CALCOTONE_WEBVIEW2_ROOT }}"
+
+      - name: Build native host
+        run: cmake --build native/build --config Release --parallel
+
+      - name: Run native tests
+        run: ctest --test-dir native/build -C Release --output-on-failure
+
+      - name: Assemble standalone package
+        shell: pwsh
+        run: |
+          $packageRoot = Join-Path $PWD 'artifact/CALCOTONE-Windows-Native'
+          New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $packageRoot 'web') | Out-Null
+
+          Copy-Item 'native/build/Release/calcotone_host.exe' $packageRoot
+          Copy-Item 'dist/*' (Join-Path $packageRoot 'web') -Recurse -Force
+          Copy-Item 'native/*.bat' $packageRoot -Force
+          Copy-Item 'native/README.md' (Join-Path $packageRoot 'NATIVE-README.md') -Force
+
+          @"
+          CALCOTONE Windows Native
+          ========================
+
+          1. Extract the entire ZIP.
+          2. Double-click START-CALCOTONE-NATIVE.bat.
+          3. Keep the web folder beside calcotone_host.exe.
+          4. Use LIST-CALCOTONE-DEVICES.bat and CALCOTONE-AUDIO-CONFIG.bat when changing interfaces or channels.
+
+          Build commit: $env:GITHUB_SHA
+          "@ | Set-Content (Join-Path $packageRoot 'INSTALL.txt')
+
+          Compress-Archive -Path $packageRoot -DestinationPath 'artifact/CALCOTONE-Windows-Native.zip' -Force
+
+      - name: Upload standalone ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: CALCOTONE-Windows-Native
+          path: artifact/CALCOTONE-Windows-Native.zip
+          if-no-files-found: error
+          retention-days: 90
