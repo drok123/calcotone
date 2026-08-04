@@ -40,11 +40,12 @@ jobs:
       - name: Install web dependencies
         run: npm ci
 
-      - name: Apply desktop UI parity
+      - name: Apply and audit desktop UI parity
         run: |
           node scripts/apply-artifact-matrix-ui.mjs
           node scripts/artifact-matrix-ui-audit.mjs
           node scripts/apply-native-desktop-ui-parity.mjs
+          node scripts/windows-ui-parity-audit.mjs
 
       - name: Build production faceplate
         run: npm run build
@@ -59,7 +60,7 @@ jobs:
           Select-String -Path native/src/wasapi_host.cpp -Pattern 'visual_spectrum.publish' -Quiet | ForEach-Object { if (-not $_) { throw 'Native spectrum publish path missing.' } }
           Select-String -Path native/src/control_server.cpp -Pattern 'GET /spectrum' -Quiet | ForEach-Object { if (-not $_) { throw 'Native spectrum route missing.' } }
           Select-String -Path src/App.tsx -Pattern 'new NativeVisualSpectrum' -Quiet | ForEach-Object { if (-not $_) { throw 'Native spectrum UI source missing.' } }
-          Select-String -Path src/components/effects/RailCModules.css -Pattern 'position: fixed !important' -Quiet | ForEach-Object { if (-not $_) { throw 'Synth fullscreen overlay parity missing.' } }
+          Select-String -Path src/App.tsx -Pattern "DEFAULT_RAIL_C_ORDER = \['stomp', 'chaos', 'pressure'\]" -Quiet | ForEach-Object { if (-not $_) { throw 'Stack Rail C placement missing.' } }
 
       - name: Restore WebView2 SDK
         shell: pwsh
@@ -114,11 +115,12 @@ jobs:
             frontend = 'TypeScript + Vite production build passed'
             native = 'CMake Release build passed'
             tests = 'CTest passed'
-            parityModules = @('Ember', 'Drift', 'Halo', 'Atmos', 'Artifact')
+            parityModules = @('Ember', 'Drift', 'Halo', 'Atmos', 'Artifact', 'Stomp', 'Stack', 'Pressure')
             uiParity = [ordered]@{
               nativeSpectrum = 'post-rack FFT endpoint active'
-              synthFullscreen = 'viewport fixed overlay active'
+              stack = 'model, cabinet, input, bypass, drive, tone, sag, mix synchronized'
               controls = 'native command/state synchronization audited'
+              synth = 'removed; Stack occupies the Rail C slot'
             }
             artifactMatrix = [ordered]@{
               consoles = 6
