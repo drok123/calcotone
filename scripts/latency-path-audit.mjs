@@ -9,6 +9,7 @@ const nativeRackHeader = readFileSync(resolve(root, 'native/include/calcotone/na
 const nativeRack = readFileSync(resolve(root, 'native/src/native_rack.cpp'), 'utf8');
 const nativeProcessor = readFileSync(resolve(root, 'native/src/native_processor.cpp'), 'utf8');
 const audioConfig = readFileSync(resolve(root, 'native/src/audio_device_config.cpp'), 'utf8');
+const elasticFifo = readFileSync(resolve(root, 'native/src/elastic_stereo_fifo.cpp'), 'utf8');
 const ksProbe = readFileSync(resolve(root, 'native/src/ks_wavert_probe.cpp'), 'utf8');
 const nativeBridge = readFileSync(resolve(root, 'src/audio/NativeAudioBridge.ts'), 'utf8');
 const controlServer = readFileSync(resolve(root, 'native/src/control_server.cpp'), 'utf8');
@@ -40,9 +41,10 @@ requireText(nativeHost, '2U * std::max(capture.period_frames, render.buffer_fram
 requireText(nativeHost, 'while (ring->available() < fifo_target_frames', 'Capture-first FIFO priming');
 requireText(nativeHost, 'last_left *= .995F', 'Click-safe capture-underrun decay');
 requireText(nativeHost, 'ringFrames', 'Live native FIFO telemetry');
-requireText(nativeHost, 'while (ring->available() > fifo_target_frames', 'Exact native FIFO startup trim');
-requireText(nativeHost, 'clock_corrections.fetch_add', 'Capture/render clock-drift correction');
-requireText(nativeHost, 'left = (left + next_left) * .5F', 'Click-safe adjacent-frame clock merge');
+requireText(nativeHost, 'ring->trim_to_target()', 'Exact native FIFO startup trim');
+requireText(elasticFifo, 'ratio_ += (desired - ratio_) * 0.001', 'Smooth capture/render clock-drift correction');
+requireText(elasticFifo, 'filtered_depth_ +=', 'Device-period FIFO ripple rejection');
+requireText(elasticFifo, 'hermite(prior_left', 'Four-point drift interpolation');
 requireText(nativeHost, 'renderDeadlineMisses', 'Native render deadline telemetry');
 requireText(nativeHost, 'maxRenderMicros', 'Native render workload telemetry');
 for (const module of ['Grain', 'Artifact']) requireText(nativeRackHeader, module, `Native ${module} rack ownership`);
@@ -50,7 +52,7 @@ requireText(nativeRackHeader, 'class NativePressure final', 'Native Pressure pro
 requireText(nativeRackHeader, 'class NativeDreamBuffer final', 'Native Dream Buffer processor');
 requireText(nativeRack, 'std::array<std::array<Voice, 8>, 2>', 'Native fixed Grain voices');
 requireText(nativeRack, 'mode == 13 ? .91F', 'Native BCM10 output trim');
-requireText(nativeProcessor, 'order[slot].store', 'Transport-independent STACK/rack atomic order');
+requireText(nativeProcessor, 'packed_order.store(pack_order(next)', 'Transport-independent atomic topology snapshot');
 requireText(nativeProcessor, 'pressure_one.process', 'Transport-independent post-STACK Pressure placement');
 requireText(nativeProcessor, 'mix_dual_mono', 'Transport-independent final stereo mix');
 requireText(nativeHost, 'processor.process(process->capture_input.data()', 'WASAPI transport uses shared native processor');

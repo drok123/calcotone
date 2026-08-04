@@ -4,6 +4,7 @@
 #include "calcotone/stack_amp.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -41,6 +42,8 @@ class NativeProcessor final {
   void set_stack_quality(unsigned quality) noexcept;
   float tuner_frequency() const noexcept;
   float tuner_level() const noexcept;
+  std::uint64_t output_limited_samples() const noexcept;
+  float pre_limiter_peak() const noexcept;
   float sample_rate() const noexcept;
 
  private:

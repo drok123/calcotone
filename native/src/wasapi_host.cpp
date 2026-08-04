@@ -13,6 +13,7 @@
 #include "calcotone/audio_device_config.hpp"
 #include "calcotone/control_server.hpp"
 #include "calcotone/desktop_shell.hpp"
+#include "calcotone/elastic_stereo_fifo.hpp"
 #include "calcotone/ks_wavert_probe.hpp"
 #include "calcotone/native_processor.hpp"
 
@@ -36,8 +37,6 @@
 
 using Microsoft::WRL::ComPtr;
 namespace {
-constexpr std::size_t kRingFrames = 1U << 17U;
-constexpr std::size_t kRingMask = kRingFrames - 1U;
 constexpr std::size_t kProcessFrames = 2048;
 std::ofstream native_log;
 
@@ -53,39 +52,12 @@ void log_line(std::string_view message) {
   if (native_log) native_log << message << std::endl;
 }
 
-struct StereoRing {
-  std::array<float, kRingFrames * 2> data{};
-  std::atomic<std::uint64_t> write{};
-  std::atomic<std::uint64_t> read{};
-  std::atomic<std::uint64_t> overruns{};
-  std::atomic<std::uint64_t> high_water{};
-  bool push(float left, float right) noexcept {
-    const auto w = write.load(std::memory_order_relaxed);
-    const auto r = read.load(std::memory_order_acquire);
-    if (w - r >= kRingFrames) { overruns.fetch_add(1, std::memory_order_relaxed); return false; }
-    const auto slot = static_cast<std::size_t>(w) & kRingMask;
-    data[slot * 2] = left; data[slot * 2 + 1] = right;
-    write.store(w + 1, std::memory_order_release);
-    const auto depth = w + 1 - r;
-    auto peak = high_water.load(std::memory_order_relaxed);
-    while (depth > peak && !high_water.compare_exchange_weak(
-        peak, depth, std::memory_order_relaxed, std::memory_order_relaxed)) {}
-    return true;
-  }
-  bool pop(float& left, float& right) noexcept {
-    const auto r = read.load(std::memory_order_relaxed);
-    if (r == write.load(std::memory_order_acquire)) return false;
-    const auto slot = static_cast<std::size_t>(r) & kRingMask;
-    left = data[slot * 2]; right = data[slot * 2 + 1];
-    read.store(r + 1, std::memory_order_release);
-    return true;
-  }
-  std::uint64_t available() const noexcept {
-    const auto w = write.load(std::memory_order_acquire);
-    const auto r = read.load(std::memory_order_acquire);
-    return w - r;
-  }
-};
+void publish_peak(std::atomic<float>& destination, float value) noexcept {
+  value = std::abs(value);
+  auto previous = destination.load(std::memory_order_relaxed);
+  while (value > previous && !destination.compare_exchange_weak(
+      previous, value, std::memory_order_relaxed, std::memory_order_relaxed)) {}
+}
 
 class NativeRecorder {
  public:
@@ -284,7 +256,7 @@ void check(HRESULT result, const char* operation) {
   }
 }
 
-enum class SampleEncoding { Float32, Pcm16, Pcm24, Pcm32, Unsupported };
+enum class SampleEncoding { Float32, Pcm16, Pcm24, Pcm24In32, Pcm32, Unsupported };
 
 SampleEncoding sample_encoding(const WAVEFORMATEX* format) noexcept {
   const bool extensible = format->wFormatTag == WAVE_FORMAT_EXTENSIBLE && format->cbSize >= 22;
@@ -295,7 +267,12 @@ SampleEncoding sample_encoding(const WAVEFORMATEX* format) noexcept {
   if (subtype != KSDATAFORMAT_SUBTYPE_PCM) return SampleEncoding::Unsupported;
   if (format->wBitsPerSample == 16) return SampleEncoding::Pcm16;
   if (format->wBitsPerSample == 24) return SampleEncoding::Pcm24;
-  if (format->wBitsPerSample == 32) return SampleEncoding::Pcm32;
+  if (format->wBitsPerSample == 32) {
+    const WORD valid_bits = extensible
+        ? reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(format)->Samples.wValidBitsPerSample
+        : 32;
+    return valid_bits > 0 && valid_bits <= 24 ? SampleEncoding::Pcm24In32 : SampleEncoding::Pcm32;
+  }
   return SampleEncoding::Unsupported;
 }
 
@@ -303,6 +280,7 @@ std::string format_description(const WAVEFORMATEX* format) {
   const char* encoding = sample_encoding(format) == SampleEncoding::Float32 ? "float"
       : sample_encoding(format) == SampleEncoding::Pcm16 ? "PCM16"
       : sample_encoding(format) == SampleEncoding::Pcm24 ? "PCM24"
+      : sample_encoding(format) == SampleEncoding::Pcm24In32 ? "PCM24-in-32"
       : sample_encoding(format) == SampleEncoding::Pcm32 ? "PCM32" : "unsupported";
   return std::to_string(format->nSamplesPerSec) + " Hz " + std::to_string(format->nChannels) + " ch " + encoding;
 }
@@ -315,7 +293,7 @@ float decode_sample(const BYTE* bytes, std::size_t sample, SampleEncoding encodi
     if (value & 0x800000) value |= ~0xFFFFFF;
     return static_cast<float>(value) / 8'388'608.F;
   }
-  if (encoding == SampleEncoding::Pcm32) { std::int32_t value{}; std::memcpy(&value, bytes + sample * 4, 4); return static_cast<float>(value) / 2'147'483'648.F; }
+  if (encoding == SampleEncoding::Pcm24In32 || encoding == SampleEncoding::Pcm32) { std::int32_t value{}; std::memcpy(&value, bytes + sample * 4, 4); return static_cast<float>(value) / 2'147'483'648.F; }
   return 0.F;
 }
 
@@ -324,6 +302,7 @@ void encode_sample(BYTE* bytes, std::size_t sample, SampleEncoding encoding, flo
   if (encoding == SampleEncoding::Float32) { std::memcpy(bytes + sample * 4, &value, 4); return; }
   if (encoding == SampleEncoding::Pcm16) { const auto pcm=static_cast<std::int16_t>(std::lrint(value*32767.F)); std::memcpy(bytes+sample*2,&pcm,2); return; }
   if (encoding == SampleEncoding::Pcm24) { const auto pcm=static_cast<std::int32_t>(std::lrint(value*8'388'607.F)); BYTE* p=bytes+sample*3; p[0]=pcm&255; p[1]=(pcm>>8)&255; p[2]=(pcm>>16)&255; return; }
+  if (encoding == SampleEncoding::Pcm24In32) { const auto pcm=static_cast<std::int32_t>(static_cast<std::int64_t>(std::lrint(value*8'388'607.F))*256); std::memcpy(bytes+sample*4,&pcm,4); return; }
   if (encoding == SampleEncoding::Pcm32) { const auto pcm=static_cast<std::int32_t>(std::llrint(static_cast<double>(value)*2'147'483'647.)); std::memcpy(bytes+sample*4,&pcm,4); }
 }
 
@@ -506,19 +485,24 @@ int main(int argc, char** argv) {
     const float sample_rate = static_cast<float>(render.format->nSamplesPerSec);
     calcotone::NativeProcessor processor(sample_rate);
     NativeRecorder recorder(sample_rate);
+    const auto fifo_target_frames = static_cast<std::uint64_t>(
+        2U * std::max(capture.period_frames, render.buffer_frames));
     // These blocks exceed Windows' default 1 MB stack when combined. Allocate
     // once during startup; the realtime threads never allocate or resize them.
-    auto ring = std::make_unique<StereoRing>();
+    auto ring = std::make_unique<calcotone::ElasticStereoFifo>(fifo_target_frames);
     auto process = std::make_unique<ProcessBuffers>();
     std::atomic<bool> running{true};
     std::atomic<std::uint64_t> underruns{};
-    std::atomic<std::uint64_t> clock_corrections{};
     std::atomic<std::uint64_t> render_deadline_misses{};
     std::atomic<std::uint64_t> max_render_micros{};
-    const auto fifo_target_frames = static_cast<std::uint64_t>(
-        2U * std::max(capture.period_frames, render.buffer_frames));
-    const auto fifo_guard_frames = static_cast<std::uint64_t>(
-        std::max(capture.period_frames, render.buffer_frames));
+    std::atomic<std::uint64_t> capture_discontinuities{};
+    std::atomic<std::uint64_t> capture_timestamp_errors{};
+    std::atomic<std::uint64_t> capture_silent_packets{};
+    std::atomic<std::uint64_t> capture_api_errors{};
+    std::atomic<std::uint64_t> render_api_errors{};
+    std::atomic<std::uint64_t> input_clips{};
+    std::atomic<float> input_peak{};
+    std::atomic<float> output_peak{};
     const auto apply_command = [&](std::string_view line) -> std::string {
       if (line == "health" || line == "stats") {
         std::ostringstream status;
@@ -535,11 +519,22 @@ int main(int argc, char** argv) {
                << ",\"inputChannels\":" << capture.format->nChannels
                << ",\"outputChannels\":" << render.format->nChannels
                << ",\"estimatedPathMs\":" << (capture.period_frames + render.buffer_frames + fifo_target_frames) / sample_rate * 1000.
-               << ",\"underruns\":" << underruns.load() << ",\"overruns\":" << ring->overruns.load()
+               << ",\"underruns\":" << underruns.load() << ",\"overruns\":" << ring->overruns()
                << ",\"ringFrames\":" << ring->available()
                << ",\"fifoTargetFrames\":" << fifo_target_frames
-               << ",\"ringHighWaterFrames\":" << ring->high_water.load()
-               << ",\"clockCorrections\":" << clock_corrections.load()
+               << ",\"ringHighWaterFrames\":" << ring->high_water_frames()
+               << ",\"clockCorrections\":" << ring->resampled_frames()
+               << ",\"fifoReadRatio\":" << ring->read_ratio()
+               << ",\"captureDiscontinuities\":" << capture_discontinuities.load()
+               << ",\"captureTimestampErrors\":" << capture_timestamp_errors.load()
+               << ",\"captureSilentPackets\":" << capture_silent_packets.load()
+               << ",\"captureApiErrors\":" << capture_api_errors.load()
+               << ",\"renderApiErrors\":" << render_api_errors.load()
+               << ",\"inputClips\":" << input_clips.load()
+               << ",\"outputClips\":" << processor.output_limited_samples()
+               << ",\"inputPeak\":" << input_peak.load()
+               << ",\"outputPeak\":" << output_peak.load()
+               << ",\"preLimiterPeak\":" << processor.pre_limiter_peak()
                << ",\"renderDeadlineMisses\":" << render_deadline_misses.load()
                << ",\"maxRenderMicros\":" << max_render_micros.load()
                << ",\"recording\":" << (recorder.active() ? "true" : "false")
@@ -626,16 +621,28 @@ int main(int argc, char** argv) {
         UINT32 packet = 0;
         while (SUCCEEDED(capture_service->GetNextPacketSize(&packet)) && packet) {
           BYTE* bytes = nullptr; UINT32 frames = 0; DWORD flags = 0;
-          if (FAILED(capture_service->GetBuffer(&bytes, &frames, &flags, nullptr, nullptr))) break;
+          if (FAILED(capture_service->GetBuffer(&bytes, &frames, &flags, nullptr, nullptr))) {
+            capture_api_errors.fetch_add(1, std::memory_order_relaxed);
+            break;
+          }
+          if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY)
+            capture_discontinuities.fetch_add(1, std::memory_order_relaxed);
+          if (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR)
+            capture_timestamp_errors.fetch_add(1, std::memory_order_relaxed);
+          if (flags & AUDCLNT_BUFFERFLAGS_SILENT)
+            capture_silent_packets.fetch_add(1, std::memory_order_relaxed);
           for (UINT32 frame = 0; frame < frames; ++frame) {
             const float left = flags & AUDCLNT_BUFFERFLAGS_SILENT ? 0.F
                 : decode_sample(bytes, frame * capture.format->nChannels + input_one_channel, capture_encoding);
             const float right = flags & AUDCLNT_BUFFERFLAGS_SILENT ? 0.F
                 : decode_sample(bytes, frame * capture.format->nChannels + input_two_channel, capture_encoding);
+            publish_peak(input_peak, std::max(std::abs(left), std::abs(right)));
+            if (std::abs(left) >= .999F) input_clips.fetch_add(1, std::memory_order_relaxed);
+            if (std::abs(right) >= .999F) input_clips.fetch_add(1, std::memory_order_relaxed);
             ring->push(left, right);
           }
-          capture_service->ReleaseBuffer(frames);
-          capture_service->GetNextPacketSize(&packet);
+          if (FAILED(capture_service->ReleaseBuffer(frames)))
+            capture_api_errors.fetch_add(1, std::memory_order_relaxed);
         }
       }
     });
@@ -643,41 +650,31 @@ int main(int argc, char** argv) {
     std::thread render_thread([&] {
       set_realtime_thread();
       float last_left = 0.F, last_right = 0.F;
-      unsigned correction_countdown = 0;
       const auto render_deadline_micros = static_cast<std::uint64_t>(
           render.period_frames / sample_rate * 1'000'000.);
       while (running.load(std::memory_order_relaxed)) {
         if (WaitForSingleObject(render.event, 1000) != WAIT_OBJECT_0) continue;
         const auto render_started = std::chrono::steady_clock::now();
         UINT32 padding = 0;
-        if (FAILED(render.client->GetCurrentPadding(&padding))) continue;
+        if (FAILED(render.client->GetCurrentPadding(&padding))) {
+          render_api_errors.fetch_add(1, std::memory_order_relaxed);
+          continue;
+        }
+        if (padding > render.buffer_frames) {
+          render_api_errors.fetch_add(1, std::memory_order_relaxed);
+          continue;
+        }
         UINT32 remaining = render.buffer_frames - padding;
         while (remaining) {
           const UINT32 block = std::min<UINT32>(remaining, kProcessFrames);
           BYTE* bytes = nullptr;
-          if (FAILED(render_service->GetBuffer(block, &bytes))) break;
+          if (FAILED(render_service->GetBuffer(block, &bytes))) {
+            render_api_errors.fetch_add(1, std::memory_order_relaxed);
+            break;
+          }
           for (UINT32 frame = 0; frame < block; ++frame) {
             float left = 0.F, right = 0.F;
-            if (ring->pop(left, right)) {
-              const auto excess = ring->available() > fifo_target_frames
-                  ? ring->available() - fifo_target_frames : 0;
-              if (excess > fifo_guard_frames) {
-                const unsigned correction_interval = excess > fifo_guard_frames * 8 ? 16U
-                    : excess > fifo_guard_frames * 4 ? 32U : 64U;
-                if (++correction_countdown >= correction_interval) {
-                  float next_left = 0.F, next_right = 0.F;
-                  if (ring->pop(next_left, next_right)) {
-                    // Merge adjacent input frames while consuming the tiny clock
-                    // surplus. This avoids a hard discontinuity during correction.
-                    left = (left + next_left) * .5F;
-                    right = (right + next_right) * .5F;
-                    clock_corrections.fetch_add(1, std::memory_order_relaxed);
-                  }
-                  correction_countdown = 0;
-                }
-              } else {
-                correction_countdown = 0;
-              }
+            if (ring->pull(left, right)) {
               last_left = left;
               last_right = right;
             } else {
@@ -694,6 +691,10 @@ int main(int argc, char** argv) {
           processor.process(process->capture_input.data(), process->mixed_output.data(), block);
           recorder.capture(process->mixed_output.data(), block);
           for (UINT32 frame = 0; frame < block; ++frame) {
+            const float frame_peak = std::max(
+                std::abs(process->mixed_output[frame * 2]),
+                std::abs(process->mixed_output[frame * 2 + 1]));
+            publish_peak(output_peak, frame_peak);
             for (WORD channel = 0; channel < render.format->nChannels; ++channel) {
               float value = 0.F;
               if (output_left_channel == output_right_channel && channel == output_left_channel)
@@ -703,7 +704,8 @@ int main(int argc, char** argv) {
               encode_sample(bytes, frame * render.format->nChannels + channel, render_encoding, value);
             }
           }
-          render_service->ReleaseBuffer(block, 0);
+          if (FAILED(render_service->ReleaseBuffer(block, 0)))
+            render_api_errors.fetch_add(1, std::memory_order_relaxed);
           remaining -= block;
         }
         const auto render_micros = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
@@ -719,8 +721,7 @@ int main(int argc, char** argv) {
     check(capture.client->Start(), "Start capture");
     const auto prime_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(250);
     while (ring->available() < fifo_target_frames && std::chrono::steady_clock::now() < prime_deadline) Sleep(1);
-    float discarded_left = 0.F, discarded_right = 0.F;
-    while (ring->available() > fifo_target_frames && ring->pop(discarded_left, discarded_right)) {}
+    ring->trim_to_target();
     const auto primed_frames = ring->available();
     std::ostringstream primed;
     primed << "Primed native FIFO: " << primed_frames << " frames ("

@@ -25,8 +25,9 @@ audio capture, processing, and playback never enter the browser/webview.
 - MMCSS `Pro Audio` realtime threads;
 - lock-free stereo capture/render queue with a two-period startup cushion and
   click-safe underrun decay;
-- bounded elastic FIFO correction for independent capture/render clock drift,
-  using averaged adjacent-frame merges instead of hard buffer jumps;
+- bounded elastic FIFO conversion for independent capture/render clock drift,
+  using a continuously ramped ratio and four-point Hermite interpolation instead
+  of periodic sample deletion;
 - underrun/overrun and negotiated-buffer telemetry;
 - console control protocol for STACK parameters.
 - embedded WebView2 desktop faceplate with a loopback-only internal control bus
@@ -38,6 +39,8 @@ audio capture, processing, and playback never enter the browser/webview.
   buffer, off-thread PCM24 WAV encoding, and RAW/CLEAN/LOUD faceplate exports.
 - runtime capture/render device selectors, physical channel mapping, requested
   sample rate and buffer size; no interface model is hardcoded;
+- valid 24-bit-in-32 PCM packing for interfaces such as the Revelator io24;
+- coherent atomic rack-order publication plus a soft-knee final safety limiter;
 - read-only Kernel Streaming/WaveRT filter and pin discovery with an explicit
   WASAPI fallback while experimental WaveRT streaming is being armed.
 
@@ -97,8 +100,10 @@ stop cleanly.
 
 `ringFrames` should remain close to `fifoTargetFrames` over long sessions. The host
 trims startup overshoot to the exact target and reports `clockCorrections`,
-`ringHighWaterFrames`, `renderDeadlineMisses`, and `maxRenderMicros` so hardware
-clock mismatch can be distinguished from DSP work that misses a device deadline.
+`fifoReadRatio`, `ringHighWaterFrames`, capture discontinuities/API errors,
+input/output peaks, limiter activity, `renderDeadlineMisses`, and
+`maxRenderMicros` so clock mismatch, gain clipping, driver discontinuities, and
+DSP work that misses a device deadline can be distinguished from one another.
 
 The launcher requests exclusive mode first. When both endpoints accept it, the
 health panel reports `exclusive` and the path estimate uses the actual negotiated

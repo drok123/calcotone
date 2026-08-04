@@ -18,7 +18,7 @@ import {
   type DspProfilerSnapshot,
 } from './audio/AudioEngine';
 import { DEFAULT_PRESET } from './audio/Preset';
-import { NativeAudioBridge } from './audio/NativeAudioBridge';
+import { NativeAudioBridge, type NativeAudioHealth } from './audio/NativeAudioBridge';
 import { nativeWaveToRecordedWav } from './audio/NativeRecording';
 import { SIGNAL_LAB_MODES, SIGNAL_LAB_STYLES, type SignalLabState } from './audio/SignalLab';
 import { getPressureState } from './components/signal/pressureStore';
@@ -627,6 +627,7 @@ export default function App() {
   const [latency, setLatency] = useState('—');
   const [sampleRate, setSampleRate] = useState('—');
   const [nativeTuner, setNativeTuner] = useState({ hz: 0, level: 0 });
+  const [nativeHealth, setNativeHealth] = useState<NativeAudioHealth | null>(null);
   const [xyPosition, setXyPosition] = useState({ x: 50, y: 50 });
   const [xyDragging, setXyDragging] = useState(false);
   const [analyser, setAnalyser] = useState<VisualSpectrumSource | null>(null);
@@ -649,12 +650,16 @@ export default function App() {
   useEffect(() => {
     if (engineState !== 'running' || audioBackend !== 'native') {
       setNativeTuner({ hz: 0, level: 0 });
+      setNativeHealth(null);
       return;
     }
     let cancelled = false;
     const refresh = async (): Promise<void> => {
       const health = await nativeBridgeRef.current.readHealth();
-      if (!cancelled && health) setNativeTuner({ hz: health.tunerHz || 0, level: health.tunerLevel || 0 });
+      if (!cancelled && health) {
+        setNativeTuner({ hz: health.tunerHz || 0, level: health.tunerLevel || 0 });
+        setNativeHealth(health);
+      }
     };
     void refresh();
     const timer = window.setInterval(() => void refresh(), 80);
@@ -2383,6 +2388,12 @@ export default function App() {
             <div>
               <span>CHANNELS</span>
               <strong>{channelInfo.input} → {channelInfo.output}</strong>
+            </div>
+            <div title={nativeHealth ? `FIFO ${nativeHealth.ringFrames}/${nativeHealth.fifoTargetFrames} · ratio ${nativeHealth.fifoReadRatio.toFixed(6)} · capture discontinuities ${nativeHealth.captureDiscontinuities} · capture/render API errors ${nativeHealth.captureApiErrors}/${nativeHealth.renderApiErrors} · deadline misses ${nativeHealth.renderDeadlineMisses} · input/output peak ${nativeHealth.inputPeak.toFixed(3)}/${nativeHealth.outputPeak.toFixed(3)} · limiter samples ${nativeHealth.outputClips}` : undefined}>
+              <span>NATIVE I/O</span>
+              <strong className={nativeHealth && (nativeHealth.underruns + nativeHealth.overruns + nativeHealth.captureDiscontinuities + nativeHealth.captureApiErrors + nativeHealth.renderApiErrors + nativeHealth.renderDeadlineMisses > 0) ? 'warn' : ''}>
+                {nativeHealth ? `FIFO ${nativeHealth.ringFrames}/${nativeHealth.fifoTargetFrames} · ${nativeHealth.fifoReadRatio.toFixed(4)}×` : '—'}
+              </strong>
             </div>
           </div>
           <div className="footer-actions">

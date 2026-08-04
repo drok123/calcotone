@@ -7,12 +7,26 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 
 namespace calcotone {
 namespace {
 constexpr std::size_t kBlockFrames = 2048;
 constexpr unsigned kStackToken = static_cast<unsigned>(RackModule::Count);
 constexpr unsigned kOrderSlots = kStackToken + 1U;
+
+std::uint64_t pack_order(const std::array<unsigned, kOrderSlots>& order) noexcept {
+  std::uint64_t packed = 0;
+  for (unsigned slot = 0; slot < kOrderSlots; ++slot)
+    packed |= static_cast<std::uint64_t>(order[slot] & 0xFU) << (slot * 4U);
+  return packed;
+}
+
+void publish_peak(std::atomic<float>& destination, float value) noexcept {
+  auto previous = destination.load(std::memory_order_relaxed);
+  while (value > previous && !destination.compare_exchange_weak(
+      previous, value, std::memory_order_relaxed, std::memory_order_relaxed)) {}
+}
 }
 
 struct NativeProcessor::Impl {
@@ -20,7 +34,9 @@ struct NativeProcessor::Impl {
       : rate(std::clamp(sample_rate, 8'000.F, 384'000.F)), tuner(rate),
         stack_one(rate), stack_two(rate), rack_one(rate), rack_two(rate),
         pressure_one(rate), pressure_two(rate), dream_one(rate), dream_two(rate) {
-    for (unsigned slot = 0; slot < kOrderSlots; ++slot) order[slot].store(slot);
+    std::array<unsigned, kOrderSlots> initial{};
+    for (unsigned slot = 0; slot < kOrderSlots; ++slot) initial[slot] = slot;
+    packed_order.store(pack_order(initial));
     apply_stomp_route();
   }
 
@@ -39,8 +55,9 @@ struct NativeProcessor::Impl {
     std::copy_n(lane_two_input.data(), frames * 2, lane_two_output.data());
     const bool stack_off = stack_bypassed.load(std::memory_order_relaxed);
     const auto stack_source = static_cast<StackInputSource>(stack_input.load(std::memory_order_relaxed));
+    const auto order_snapshot = packed_order.load(std::memory_order_acquire);
     for (unsigned slot = 0; slot < kOrderSlots; ++slot) {
-      const unsigned module = order[slot].load(std::memory_order_relaxed);
+      const unsigned module = static_cast<unsigned>((order_snapshot >> (slot * 4U)) & 0xFU);
       if (module == kStackToken) {
         if (!stack_off && stack_receives_lane(stack_source, 0))
           stack_one.process(lane_one_output.data(), lane_one_output.data(), frames);
@@ -57,7 +74,11 @@ struct NativeProcessor::Impl {
     dream_two.process(lane_two_output.data(), frames);
     const float gain = active.load(std::memory_order_relaxed)
         ? output_gain.load(std::memory_order_relaxed) : 0.F;
-    mix_dual_mono(lane_one_output.data(), lane_two_output.data(), output, frames, gain);
+    std::uint64_t limited = 0;
+    float peak = 0.F;
+    mix_dual_mono(lane_one_output.data(), lane_two_output.data(), output, frames, gain, &limited, &peak);
+    output_limited_samples.fetch_add(limited, std::memory_order_relaxed);
+    publish_peak(pre_limiter_peak, peak);
   }
 
   float rate;
@@ -68,10 +89,12 @@ struct NativeProcessor::Impl {
   NativeDreamBuffer dream_one, dream_two;
   std::array<float, kBlockFrames * 2> lane_one_input{}, lane_two_input{};
   std::array<float, kBlockFrames * 2> lane_one_output{}, lane_two_output{};
-  std::array<std::atomic<unsigned>, kOrderSlots> order{};
+  std::atomic<std::uint64_t> packed_order{};
   std::atomic<bool> active{true}, stack_bypassed{false}, stomp_bypassed{true};
   std::atomic<unsigned> stack_input{1}, stomp_input{1};
   std::atomic<float> input_gain{1.F}, output_gain{.72F};
+  std::atomic<std::uint64_t> output_limited_samples{};
+  std::atomic<float> pre_limiter_peak{};
 };
 
 NativeProcessor::NativeProcessor(float rate) : impl_(std::make_unique<Impl>(rate)) {}
@@ -113,7 +136,7 @@ bool NativeProcessor::set_serial_order(std::span<const std::string_view> stages)
   if (count == 0) return false;
   for (unsigned module = 0; module < kOrderSlots; ++module)
     if (!used[module]) next[count++] = module;
-  for (unsigned slot = 0; slot < kOrderSlots; ++slot) impl_->order[slot].store(next[slot]);
+  impl_->packed_order.store(pack_order(next), std::memory_order_release);
   return true;
 }
 void NativeProcessor::set_active(bool value) noexcept { impl_->active.store(value); }
@@ -131,6 +154,8 @@ void NativeProcessor::set_stack_cabinet(Cabinet value) noexcept { impl_->stack_o
 void NativeProcessor::set_stack_quality(unsigned value) noexcept { impl_->stack_one.set_quality(value); impl_->stack_two.set_quality(value); }
 float NativeProcessor::tuner_frequency() const noexcept { return impl_->tuner.frequency(); }
 float NativeProcessor::tuner_level() const noexcept { return impl_->tuner.level(); }
+std::uint64_t NativeProcessor::output_limited_samples() const noexcept { return impl_->output_limited_samples.load(std::memory_order_relaxed); }
+float NativeProcessor::pre_limiter_peak() const noexcept { return impl_->pre_limiter_peak.load(std::memory_order_relaxed); }
 float NativeProcessor::sample_rate() const noexcept { return impl_->rate; }
 
 }  // namespace calcotone
