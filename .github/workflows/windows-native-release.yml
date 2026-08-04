@@ -87,7 +87,7 @@ jobs:
           Compress-Archive -Path $packageRoot -DestinationPath 'artifact/CALCOTONE-Windows-Native.zip' -Force
 
       - name: Upload standalone ZIP
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: CALCOTONE-Windows-Native
           path: artifact/CALCOTONE-Windows-Native.zip
