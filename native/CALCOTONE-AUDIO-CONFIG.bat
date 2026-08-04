@@ -2,13 +2,16 @@
 rem CALCOTONE native audio configuration. Channel numbers are one-based.
 rem Backend: auto probes KS/WaveRT then uses the stable WASAPI stream.
 set "CALCOTONE_AUDIO_BACKEND=auto"
-set "CALCOTONE_AUDIO_MODE=exclusive"
+rem Revelator exclusive mode negotiates PCM24-in-32. Use shared mode by default
+rem so Windows supplies its native mix format and bypasses interface-specific
+rem 24-bit container packing while the exclusive converter is validated.
+set "CALCOTONE_AUDIO_MODE=shared"
 rem Use explicit physical Revelator endpoints. The Windows default render device
 rem may be Virtual Output A/B, which can route through Universal Control's
 rem loopback mixer and create feedback-like buzzing or recycled audio.
 set "CALCOTONE_CAPTURE_DEVICE=Mic/Inst 1/2"
 set "CALCOTONE_RENDER_DEVICE=Main Out"
-set "CALCOTONE_BUFFER_FRAMES=64"
+set "CALCOTONE_BUFFER_FRAMES=256"
 rem Leave sample rate empty to follow the interface's configured rate.
 set "CALCOTONE_SAMPLE_RATE="
 set "CALCOTONE_INPUT_1_CHANNEL=1"
