@@ -31,6 +31,8 @@ export interface ArtifactMatrixState {
   chainOrder: ArtifactChainOrderIndex;
 }
 
+type RawArtifactMatrixState = Partial<Record<keyof ArtifactMatrixState, unknown>>;
+
 export const DEFAULT_ARTIFACT_MATRIX: ArtifactMatrixState = {
   console: 0,
   tube: 0,
@@ -49,7 +51,7 @@ function clampDiscrete(value: unknown, maximum: number): number {
   return Math.max(0, Math.min(maximum, Math.round(numeric)));
 }
 
-export function normalizeArtifactMatrix(value: Partial<ArtifactMatrixState> | null | undefined): ArtifactMatrixState {
+export function normalizeArtifactMatrix(value: RawArtifactMatrixState | null | undefined): ArtifactMatrixState {
   return {
     console: clampDiscrete(value?.console, ARTIFACT_CONSOLE_OPTIONS.length - 1) as ArtifactConsoleIndex,
     tube: clampDiscrete(value?.tube, ARTIFACT_TUBE_OPTIONS.length - 1) as ArtifactTubeIndex,
@@ -72,9 +74,9 @@ export function restoreArtifactMatrix(
 
   if (hasMatrix) {
     return normalizeArtifactMatrix({
-      console: parameters.console as ArtifactConsoleIndex,
-      tube: parameters.tube as ArtifactTubeIndex,
-      chainOrder: (parameters.chainOrder ?? parameters.order) as ArtifactChainOrderIndex,
+      console: parameters.console,
+      tube: parameters.tube,
+      chainOrder: parameters.chainOrder ?? parameters.order,
     });
   }
 
