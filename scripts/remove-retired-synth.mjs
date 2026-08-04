@@ -4,6 +4,10 @@ function replaceIfPresent(source, pattern, replacement) {
   return source.replace(pattern, replacement);
 }
 
+function readNormalized(path) {
+  return fs.readFileSync(path, 'utf8').replace(/\r\n?/g, '\n');
+}
+
 function write(path, content) {
   fs.writeFileSync(path, content, 'utf8');
 }
@@ -16,7 +20,7 @@ function assertAbsent(source, needles, label) {
 }
 
 const appPath = 'src/App.tsx';
-let app = fs.readFileSync(appPath, 'utf8');
+let app = readNormalized(appPath);
 
 app = replaceIfPresent(
   app,
@@ -88,7 +92,7 @@ assertAbsent(app, [
 write(appPath, app);
 
 const railPath = 'src/components/effects/RailCModules.tsx';
-let rail = fs.readFileSync(railPath, 'utf8');
+let rail = readNormalized(railPath);
 
 rail = replaceIfPresent(
   rail,
