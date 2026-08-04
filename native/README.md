@@ -18,6 +18,8 @@ audio capture, processing, and playback never enter the browser/webview.
 - MMCSS `Pro Audio` realtime threads;
 - lock-free stereo capture/render queue with a two-period startup cushion and
   click-safe underrun decay;
+- bounded elastic FIFO correction for independent capture/render clock drift,
+  using averaged adjacent-frame merges instead of hard buffer jumps;
 - underrun/overrun and negotiated-buffer telemetry;
 - console control protocol for STACK parameters.
 - loopback-only HTTP control bridge for the React/native-shell UI (port 48157).
@@ -60,6 +62,11 @@ independent WASAPI event threads do not race at startup. The printed and health-
 path estimate includes this cushion. Type `stats` after playing for 20 seconds to
 inspect `underruns`, `overruns`, `ringFrames`, and `fifoTargetFrames`; use `quit` to
 stop cleanly.
+
+`ringFrames` should remain close to `fifoTargetFrames` over long sessions. The host
+trims startup overshoot to the exact target and reports `clockCorrections`,
+`ringHighWaterFrames`, `renderDeadlineMisses`, and `maxRenderMicros` so hardware
+clock mismatch can be distinguished from DSP work that misses a device deadline.
 
 The launcher requests exclusive mode first. When both endpoints accept it, the
 health panel reports `exclusive` and the path estimate uses the actual negotiated

@@ -54,6 +54,7 @@ struct StereoRing {
   std::atomic<std::uint64_t> write{};
   std::atomic<std::uint64_t> read{};
   std::atomic<std::uint64_t> overruns{};
+  std::atomic<std::uint64_t> high_water{};
   bool push(float left, float right) noexcept {
     const auto w = write.load(std::memory_order_relaxed);
     const auto r = read.load(std::memory_order_acquire);
@@ -61,6 +62,10 @@ struct StereoRing {
     const auto slot = static_cast<std::size_t>(w) & kRingMask;
     data[slot * 2] = left; data[slot * 2 + 1] = right;
     write.store(w + 1, std::memory_order_release);
+    const auto depth = w + 1 - r;
+    auto peak = high_water.load(std::memory_order_relaxed);
+    while (depth > peak && !high_water.compare_exchange_weak(
+        peak, depth, std::memory_order_relaxed, std::memory_order_relaxed)) {}
     return true;
   }
   bool pop(float& left, float& right) noexcept {
@@ -306,8 +311,13 @@ int main() {
     auto process = std::make_unique<ProcessBuffers>();
     std::atomic<bool> running{true};
     std::atomic<std::uint64_t> underruns{};
+    std::atomic<std::uint64_t> clock_corrections{};
+    std::atomic<std::uint64_t> render_deadline_misses{};
+    std::atomic<std::uint64_t> max_render_micros{};
     const auto fifo_target_frames = static_cast<std::uint64_t>(
         2U * std::max(capture.period_frames, render.buffer_frames));
+    const auto fifo_guard_frames = static_cast<std::uint64_t>(
+        std::max(capture.period_frames, render.buffer_frames));
     std::atomic<bool> audible{true};
     std::atomic<bool> stack_bypassed{false};
     std::atomic<unsigned> stack_input{1};
@@ -334,6 +344,10 @@ int main() {
                << ",\"underruns\":" << underruns.load() << ",\"overruns\":" << ring->overruns.load()
                << ",\"ringFrames\":" << ring->available()
                << ",\"fifoTargetFrames\":" << fifo_target_frames
+               << ",\"ringHighWaterFrames\":" << ring->high_water.load()
+               << ",\"clockCorrections\":" << clock_corrections.load()
+               << ",\"renderDeadlineMisses\":" << render_deadline_misses.load()
+               << ",\"maxRenderMicros\":" << max_render_micros.load()
                << ",\"tunerHz\":" << tuner.frequency()
                << ",\"tunerLevel\":" << tuner.level() << '}';
         return status.str();
@@ -424,8 +438,12 @@ int main() {
     std::thread render_thread([&] {
       set_realtime_thread();
       float last_left = 0.F, last_right = 0.F;
+      unsigned correction_countdown = 0;
+      const auto render_deadline_micros = static_cast<std::uint64_t>(
+          render.period_frames / sample_rate * 1'000'000.);
       while (running.load(std::memory_order_relaxed)) {
         if (WaitForSingleObject(render.event, 1000) != WAIT_OBJECT_0) continue;
+        const auto render_started = std::chrono::steady_clock::now();
         UINT32 padding = 0;
         if (FAILED(render.client->GetCurrentPadding(&padding))) continue;
         UINT32 remaining = render.buffer_frames - padding;
@@ -436,6 +454,25 @@ int main() {
           for (UINT32 frame = 0; frame < block; ++frame) {
             float left = 0.F, right = 0.F;
             if (ring->pop(left, right)) {
+              const auto excess = ring->available() > fifo_target_frames
+                  ? ring->available() - fifo_target_frames : 0;
+              if (excess > fifo_guard_frames) {
+                const unsigned correction_interval = excess > fifo_guard_frames * 8 ? 16U
+                    : excess > fifo_guard_frames * 4 ? 32U : 64U;
+                if (++correction_countdown >= correction_interval) {
+                  float next_left = 0.F, next_right = 0.F;
+                  if (ring->pop(next_left, next_right)) {
+                    // Merge adjacent input frames while consuming the tiny clock
+                    // surplus. This avoids a hard discontinuity during correction.
+                    left = (left + next_left) * .5F;
+                    right = (right + next_right) * .5F;
+                    clock_corrections.fetch_add(1, std::memory_order_relaxed);
+                  }
+                  correction_countdown = 0;
+                }
+              } else {
+                correction_countdown = 0;
+              }
               last_left = left;
               last_right = right;
             } else {
@@ -466,12 +503,21 @@ int main() {
           render_service->ReleaseBuffer(block, 0);
           remaining -= block;
         }
+        const auto render_micros = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - render_started).count());
+        auto previous_max = max_render_micros.load(std::memory_order_relaxed);
+        while (render_micros > previous_max && !max_render_micros.compare_exchange_weak(
+            previous_max, render_micros, std::memory_order_relaxed, std::memory_order_relaxed)) {}
+        if (render_micros >= render_deadline_micros)
+          render_deadline_misses.fetch_add(1, std::memory_order_relaxed);
       }
     });
 
     check(capture.client->Start(), "Start capture");
     const auto prime_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(250);
     while (ring->available() < fifo_target_frames && std::chrono::steady_clock::now() < prime_deadline) Sleep(1);
+    float discarded_left = 0.F, discarded_right = 0.F;
+    while (ring->available() > fifo_target_frames && ring->pop(discarded_left, discarded_right)) {}
     const auto primed_frames = ring->available();
     std::ostringstream primed;
     primed << "Primed native FIFO: " << primed_frames << " frames ("

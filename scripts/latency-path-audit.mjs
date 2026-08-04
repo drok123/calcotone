@@ -35,6 +35,11 @@ requireText(nativeHost, '2U * std::max(capture.period_frames, render.buffer_fram
 requireText(nativeHost, 'while (ring->available() < fifo_target_frames', 'Capture-first FIFO priming');
 requireText(nativeHost, 'last_left *= .995F', 'Click-safe capture-underrun decay');
 requireText(nativeHost, 'ringFrames', 'Live native FIFO telemetry');
+requireText(nativeHost, 'while (ring->available() > fifo_target_frames', 'Exact native FIFO startup trim');
+requireText(nativeHost, 'clock_corrections.fetch_add', 'Capture/render clock-drift correction');
+requireText(nativeHost, 'left = (left + next_left) * .5F', 'Click-safe adjacent-frame clock merge');
+requireText(nativeHost, 'renderDeadlineMisses', 'Native render deadline telemetry');
+requireText(nativeHost, 'maxRenderMicros', 'Native render workload telemetry');
 requireText(nativeBridge, 'private commandQueue: Promise<boolean>', 'Serialized browser/native control commands');
 requireText(nativeBridge, 'this.commandQueue.then(() => this.sendCommand(line))', 'Native command queue sequencing');
 requireText(controlServer, 'listen(listener, SOMAXCONN)', 'Native control burst backlog');
