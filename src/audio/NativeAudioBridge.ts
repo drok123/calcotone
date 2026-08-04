@@ -59,8 +59,8 @@ export class NativeAudioBridge {
     } catch (error) {
       this.connected = false;
       this.lastProbeFailure = error instanceof DOMException && error.name === 'AbortError'
-        ? 'Native bridge timed out. Allow loopback/local-network access if the browser asks.'
-        : 'Native bridge was blocked or unreachable. Allow loopback/local-network access in the browser.';
+        ? 'Native bridge timed out.'
+        : 'Native bridge was unreachable.';
       return null;
     } finally {
       window.clearTimeout(timeout);

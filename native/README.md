@@ -27,7 +27,8 @@ audio capture, processing, and playback never enter the browser/webview.
   using averaged adjacent-frame merges instead of hard buffer jumps;
 - underrun/overrun and negotiated-buffer telemetry;
 - console control protocol for STACK parameters.
-- loopback-only HTTP control bridge for the React/native-shell UI (port 48157).
+- embedded WebView2 desktop faceplate with a loopback-only internal control bus
+  (port 48157); Chrome and StackBlitz are not part of the normal runtime.
 - independent Input 1 / Input 2 mono-to-stereo lanes with per-STACK assignment;
 - equal-power guarded summing after the two lanes are processed.
 - allocation-free native guitar tuner on Input 2 with atomic note telemetry.
@@ -51,16 +52,17 @@ cmake --build native/build --config Release
 .\native\build\Release\calcotone_host.exe
 ```
 
-Release artifacts include `START-CALCOTONE-NATIVE.bat`. Double-click that launcher
-instead of opening the executable directly. It keeps the window visible on failure,
-while the host writes `calcotone-native.log` beside itself and shows a Windows popup
-for fatal startup errors.
+Release artifacts include `START-CALCOTONE-NATIVE.bat`. Double-click that launcher.
+The host writes `calcotone-native.log` beside itself and shows a Windows popup for
+fatal startup errors. CALCOTONE now opens its production faceplate in its own native
+desktop window using the Microsoft Edge WebView2 Runtime included with supported
+Windows installations.
 
 The release also contains the production faceplate under `web/`. Once WASAPI and
-the control bridge are active, the host opens its own `http://127.0.0.1:<port>/`
-faceplate automatically. Use that tab for native mode; it is same-origin with the
-bridge and does not depend on StackBlitz, CORS, iframe permissions, or hosted-page
-local-network access.
+the internal bridge are active, the host embeds that local faceplate automatically.
+It does not depend on Chrome, StackBlitz, browser device permissions, hosted-page
+local-network access, or Web Audio. The bridge carries controls and telemetry only;
+all audio remains in the C++ engine.
 
 Match the input and output device formats in Windows Sound settings (48 kHz is
 recommended for the first hardware run). Start with speakers/monitor volume low.
@@ -91,11 +93,9 @@ rack state arrives intact during startup, while the native listener accepts the
 burst and reads each complete HTTP body. Browser origins are restricted to loopback
 hosts; the server itself binds only to `127.0.0.1`.
 
-Hosted Calcotone previews must be opened in their own browser tab; an embedded
-StackBlitz iframe cannot request loopback access under modern browser permissions.
-Allow loopback/local-network access if the browser prompts. The bridge accepts
-Calcotone's StackBlitz/WebContainer preview origins and logs any denied origin in
-the native console so a fallback can no longer fail silently.
+The old browser faceplate remains available strictly for diagnostics. Launch
+`calcotone_host.exe --browser` or set `CALCOTONE_UI_MODE=browser` to use it. This
+fallback may require browser loopback permission; the standard desktop path does not.
 
 The faceplate sends rack controls through three text commands: `param <module>
 <parameter> <value>`, `moduleBypass <module> <0|1>`, and `order <modules...>`.

@@ -591,6 +591,7 @@ const MUSICAL_GRAIN_MODES: readonly GrainMode[] = [...GRAIN_MODE_ORDER];
 const MUSICAL_MEDIA_MODES: readonly MediaMode[] = [...MEDIA_MODE_ORDER];
 
 export default function App() {
+  const nativeShell = new URLSearchParams(window.location.search).has('native-shell');
   const diagnosticAudio = import.meta.env.DEV
     && new URLSearchParams(window.location.search).has('diagnostic-audio');
   const engineRef = useRef<AudioEngine | null>(null);
@@ -614,7 +615,9 @@ export default function App() {
   const [channelInfo, setChannelInfo] = useState({ input: '—', output: '—' });
   const [outputGain, setOutputGain] = useState(0.72);
   const [message, setMessage] = useState(
-    'Open the preview in a separate tab, then start the audio engine.'
+    nativeShell
+      ? 'CALCOTONE desktop is ready. Start the native audio engine.'
+      : 'Start the audio engine when your interface is ready.'
   );
   const [randomFlowProgress, setRandomFlowProgress] =
     useState<RandomFlowProgress | null>(null);
@@ -934,6 +937,10 @@ export default function App() {
         setEngineState('running');
         setMessage('Native WASAPI audio is active. The complete effects rack, STOMP, STACK, Pressure, Dream memory, and master controls are running in C++.');
         return;
+      }
+
+      if (nativeShell) {
+        throw new Error(`Native desktop connection failed: ${nativeBridgeRef.current.getLastProbeFailure()}`);
       }
 
       backendRef.current = 'web';

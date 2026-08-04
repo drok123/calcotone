@@ -6,6 +6,11 @@ on:
     branches: [main]
     paths:
       - 'native/**'
+      - 'src/**'
+      - 'public/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.ts'
       - '.github/workflows/native-windows.yml'
 
 jobs:
@@ -20,6 +25,8 @@ jobs:
           cache: npm
       - name: Build native faceplate
         run: npm ci && npm run build
+      - name: Restore WebView2 SDK
+        run: nuget install Microsoft.Web.WebView2 -Version 1.0.4129.50 -OutputDirectory native/packages -NonInteractive
       - name: Configure x64 Release
         run: cmake -S native -B native/build -A x64
       - name: Build native engine

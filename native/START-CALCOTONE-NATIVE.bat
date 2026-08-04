@@ -1,9 +1,10 @@
 @echo off
 cd /d "%~dp0"
-title CALCOTONE Native Audio
-echo Starting CALCOTONE native audio...
+title CALCOTONE Desktop
+echo Starting CALCOTONE desktop...
 set "CALCOTONE_AUDIO_MODE=exclusive"
 echo Requesting 64-frame exclusive WASAPI; unsupported or busy devices fall back automatically.
+echo The faceplate will open inside CALCOTONE; no browser or StackBlitz is required.
 echo.
 calcotone_host.exe
 set CALCOTONE_EXIT=%ERRORLEVEL%
