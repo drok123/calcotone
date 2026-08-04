@@ -31,13 +31,24 @@ check(host.includes('recordStart') && host.includes('recordStop') && host.includ
 check(spectrum.includes('class NativeVisualSpectrum'), 'visuals', 'native spectrum source');
 check(bridge.includes('fetchSpectrum'), 'visuals', 'native spectrum bridge request');
 check(host.includes('spectrum_json') || host.includes('/spectrum') || host.includes('spectrum'), 'visuals', 'native spectrum endpoint/provider');
-check(!app.includes('setAnalyser(null);\n        setEngineState(\'running\')'), 'visuals', 'native startup does not null the analyser');
+check(!app.includes("setAnalyser(null);\n        setEngineState('running')"), 'visuals', 'native startup does not null the analyser');
 
-// Fullscreen sequencer behavior.
-check(railC.includes('sequencerExpanded'), 'synth-ui', 'sequencer expanded state');
-check(railC.includes("event.key !== 'Escape'"), 'synth-ui', 'Escape restores compact view');
-check(railC.includes('document.body.classList'), 'synth-ui', 'fullscreen body state/scroll lock');
-check(railC.includes('sequencer-expand-button'), 'synth-ui', 'fullscreen control');
+// Stack replaced the removed Synth module. The Windows release must expose the
+// complete Stack surface and must not advertise or require native Synth parity.
+const stackSurface = `${app}\n${railC}\n${host}\n${nativeProcessor}`;
+check(railC.includes('name="Stack"') || railC.includes("name='Stack'"), 'stack', 'Stack module rendered');
+check(!app.includes("DEFAULT_RAIL_C_ORDER = ['synth'"), 'stack', 'Synth absent from default Rail C order');
+check(app.includes("DEFAULT_RAIL_C_ORDER = ['stomp', 'chaos', 'pressure']"), 'stack', 'Stack occupies chaos Rail C slot');
+for (const command of ['stackInput', 'model', 'cab', 'drive', 'tone', 'sag', 'mix']) {
+  check(stackSurface.includes(command), 'stack', `${command} Stack control path`);
+}
+check(app.includes('setStackEnabled'), 'stack', 'Stack enable/bypass callback');
+check(app.includes('setStackModel'), 'stack', 'Stack model callback');
+check(app.includes('setStackCabinet'), 'stack', 'Stack cabinet callback');
+check(app.includes('setStackInputSource'), 'stack', 'Stack input-source callback');
+check(app.includes('setStackParameters'), 'stack', 'Stack parameter callback');
+check(host.includes('set_stack_model') && host.includes('set_stack_cabinet'), 'stack', 'native Stack model/cabinet DSP route');
+check(nativeProcessor.includes('set_stack_drive') && nativeProcessor.includes('set_stack_tone') && nativeProcessor.includes('set_stack_sag') && nativeProcessor.includes('set_stack_mix'), 'stack', 'native Stack parameter DSP route');
 
 // Layout editor and persistent faceplate controls.
 check(faceplate.includes('localStorage'), 'layout', 'faceplate persistence');
@@ -55,20 +66,13 @@ for (const command of ['inputGain', 'outputGain', 'stackInput', 'stompInput']) {
 check(app.includes('randomizeActiveModules'), 'randomization', 'active-module randomization');
 check(app.includes('randomizeRailCModule'), 'randomization', 'rail-C randomization');
 check(app.includes('RANDOM_MUTATION_AMOUNT'), 'randomization', 'guarded mutate mode');
+check(railC.includes("registerRailCRandomController('chaos'") || railC.includes('registerRailCRandomController(moduleId'), 'randomization', 'Stack randomization registration');
 
 // Artifact matrix functionality.
 for (const parameter of ['console', 'tube', 'chainOrder']) {
   check(app.includes(`id: '${parameter}'`), 'artifact', `${parameter} state`);
   check(host.includes(parameter) || read('native/tools/apply_atmos_parity.py').includes(parameter), 'artifact', `${parameter} native route`);
 }
-
-// Native synth parity. These intentionally block release until the Windows host
-// can perform the same actions as the visible Synth UI rather than silently no-op.
-const nativeSynthSurface = `${host}\n${nativeProcessor}`;
-for (const command of ['synthEnabled', 'synthMachine', 'synthParameters', 'synthNote', 'synthSequencer']) {
-  check(nativeSynthSurface.includes(command), 'native-synth', `${command} native command/processor path`);
-}
-check(app.includes("backendRef.current === 'native'") && app.includes('setSynthMachine'), 'native-synth', 'Synth callbacks branch to native backend');
 
 const failed = checks.filter((item) => !item.ok && item.severity === 'error');
 for (const category of [...new Set(checks.map((item) => item.category))]) {
