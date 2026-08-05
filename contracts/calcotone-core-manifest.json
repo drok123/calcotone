@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "product": "CALCOTONE Windows Native",
+  "rails": {
+    "A": ["saturation", "chorus", "delay"],
+    "B": ["reverb", "bitcrusher", "media"],
+    "C": ["stomp", "chaos", "pressure"]
+  },
+  "modules": [
+    {
+      "id": "saturation",
+      "name": "Ember",
+      "rail": "A",
+      "defaultModel": "velvet",
+      "modelOrderSymbol": "EMBER_MODE_ORDER",
+      "models": ["velvet", "tube", "console", "transformer", "furnace", "exciter", "broken", "goldlion", "mullard", "telefunken", "bugleboy", "rcablack", "sp1200", "mpc60", "mirage", "s950", "emulator2", "fairlightiix"],
+      "controls": [
+        {"id":"drive","defaultUi":0.14},
+        {"id":"tone","defaultUi":0.522},
+        {"id":"heat","defaultUi":0.18},
+        {"id":"character","defaultUi":0.22},
+        {"id":"dynamics","defaultUi":0.38},
+        {"id":"mix","defaultUi":0.22}
+      ]
+    },
+    {
+      "id": "chorus",
+      "name": "Drift",
+      "rail": "A",
+      "defaultModel": "chorus",
+      "modelOrderSymbol": "DRIFT_MODE_ORDER",
+      "models": ["chorus", "ensemble", "dimension", "vibrato", "rotary", "doppler", "liquid", "orbit", "ce1", "dimensiond", "mxrflanger", "electricmistress", "adaflanger", "bf2", "biphase", "smallstone", "univibe", "leslie", "phase90", "instantphaser", "schulte", "pn2"],
+      "controls": [
+        {"id":"rate","defaultUi":0.094},
+        {"id":"depth","defaultUi":0.275},
+        {"id":"shape","defaultUi":0.35},
+        {"id":"spread","defaultUi":0.62},
+        {"id":"motion","defaultUi":0.32},
+        {"id":"mix","defaultUi":0.14}
+      ]
+    },
+    {
+      "id": "delay",
+      "name": "Halo",
+      "rail": "A",
+      "defaultModel": "tape",
+      "modelOrderSymbol": "DELAY_ALGORITHM_ORDER",
+      "models": ["clean", "tape", "bbd", "pingpong", "diffuse", "scatter", "constellation", "re201", "EP-3 Echoplex", "Binson Echorec", "Deluxe Memory Man", "AMS DMX 15-80 S"],
+      "controls": [
+        {"id":"time","defaultUi":0.1692},
+        {"id":"feedback","defaultUi":0.244},
+        {"id":"color","defaultUi":0.42},
+        {"id":"character","defaultUi":0.14},
+        {"id":"width","defaultUi":0.58},
+        {"id":"mix","defaultUi":0.14}
+      ]
+    },
+    {
+      "id": "reverb",
+      "name": "Atmos",
+      "rail": "B",
+      "defaultModel": "hall",
+      "modelOrderSymbol": "REVERB_ALGORITHM_ORDER",
+      "models": ["room", "plate", "hall", "cinema", "cloud", "freeze", "celestial", "aurora", "nebula", "abyss", "emt140", "lexicon224"],
+      "controls": [
+        {"id":"decay","defaultUi":0.504},
+        {"id":"size","defaultUi":0.52},
+        {"id":"color","defaultUi":0.42},
+        {"id":"diffusion","defaultUi":0.74},
+        {"id":"motion","defaultUi":0.18},
+        {"id":"mix","defaultUi":0.13}
+      ]
+    },
+    {
+      "id": "bitcrusher",
+      "name": "Grain",
+      "rail": "B",
+      "defaultModel": "smear",
+      "modelOrderSymbol": "GRAIN_MODE_ORDER",
+      "models": ["mosaic", "scatter", "smear", "prism", "slice", "freeze", "clouds", "beads", "morphagene", "arbhar", "particle2", "microcosm"],
+      "controls": [
+        {"id":"bits","defaultUi":0.75},
+        {"id":"density","defaultUi":0.42},
+        {"id":"pitch","defaultUi":0.38},
+        {"id":"chaos","defaultUi":0.16},
+        {"id":"bloom","defaultUi":0.36},
+        {"id":"mix","defaultUi":0.12}
+      ]
+    },
+    {
+      "id": "media",
+      "name": "Artifact",
+      "rail": "B",
+      "defaultModel": "cassette",
+      "modelOrderSymbol": "MEDIA_MODE_ORDER",
+      "models": ["cassette", "reel", "vinyl", "vhs", "radio", "wax", "broken", "archive", "tascam424", "Neve 1073", "SSL 4000E", "API 1608", "Ampex ATR-102", "Neve BCM10"],
+      "controls": [
+        {"id":"wear","defaultUi":0.162},
+        {"id":"wow","defaultUi":0.16},
+        {"id":"noise","defaultUi":0.1},
+        {"id":"tone","defaultUi":0.62},
+        {"id":"mix","defaultUi":0.26}
+      ]
+    }
+  ]
+}
