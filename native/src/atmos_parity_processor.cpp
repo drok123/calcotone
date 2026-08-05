@@ -1,5 +1,6 @@
 #include "calcotone/atmos_parity_processor.hpp"
 #include "calcotone/atmos_parity_profiles.hpp"
+#include "calcotone/atmos_lexicon224_converter.hpp"
 
 #include <algorithm>
 #include <array>
@@ -104,7 +105,10 @@ struct AtmosControls {
 class AtmosNetwork {
  public:
   AtmosNetwork(float rate, std::size_t model)
-      : rate_(rate), model_(std::min<std::size_t>(11U, model)) {
+      : rate_(rate),
+        model_(std::min<std::size_t>(11U, model)),
+        lexicon_input_(rate_, Lexicon224ConverterRole::Input),
+        lexicon_output_(rate_, Lexicon224ConverterRole::Output) {
     const auto line_capacity = static_cast<std::size_t>(rate_ * .90F) + 64U;
     for (auto& line : lines_) line.assign(line_capacity, 0.F);
     const auto predelay_capacity = static_cast<std::size_t>(rate_ * .075F) + 16U;
@@ -121,6 +125,8 @@ class AtmosNetwork {
     diffuser_state_.fill({}); damping_state_.fill(0.F); loop_hp_low_.fill(0.F); phase_.fill(0.F);
     input_hp_low_.fill(0.F); input_lp_state_.fill(0.F); early_filter_state_.fill(0.F);
     early_bus_state_.fill(0.F); late_converter_state_.fill(0.F); compressor_state_.fill({});
+    lexicon_input_.reset();
+    lexicon_output_.reset();
   }
 
   std::array<float, 2> process_frame(const std::array<float, 2>& input, const AtmosControls& controls) noexcept {
@@ -146,6 +152,7 @@ class AtmosNetwork {
     for (unsigned channel = 0; channel < 2; ++channel) {
       converted[channel] = converter_texture(input[channel] * profile.input_trim, profile.converter_bits);
     }
+    if (model_ == 11U) converted = lexicon_input_.process(converted[0], converted[1]);
 
     std::array<float, 2> predelayed{};
     const float input_lowpass_hz = profile.converter_lowpass > 0.F ? profile.converter_lowpass : 16'000.F;
@@ -265,6 +272,7 @@ class AtmosNetwork {
                                filter_coefficient(converter_cutoff, rate_));
       late[channel] = converter_texture(late[channel], profile.converter_bits);
     }
+    if (model_ == 11U) late = lexicon_output_.process(late[0], late[1]);
 
     const float early_presence = early_profile.early_level * (1.12F - size * .24F)
         * (1.08F - diffusion * .18F);
@@ -295,6 +303,8 @@ class AtmosNetwork {
   std::array<float, 2> early_bus_state_{};
   std::array<float, 2> late_converter_state_{};
   std::array<CompressorState, 2> compressor_state_{};
+  AtmosLexicon224Converter lexicon_input_;
+  AtmosLexicon224Converter lexicon_output_;
 };
 }  // namespace
 

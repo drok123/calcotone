@@ -71,6 +71,7 @@ add_library(calcotone_dsp STATIC
   src/stack_amp.cpp
   "${CALCOTONE_GENERATED_NATIVE_RACK}"
   src/atmos_parity_processor.cpp
+  src/atmos_lexicon224_converter.cpp
   src/ember_parity_processor.cpp
   src/ember_magnetic_core_processor.cpp
   src/ember_digital_capture_processor.cpp
@@ -107,6 +108,8 @@ add_executable(atmos_parity_profile_test tests/atmos_parity_profile_test.cpp)
 target_link_libraries(atmos_parity_profile_test PRIVATE calcotone_dsp)
 add_executable(atmos_parity_processor_test tests/atmos_parity_processor_test.cpp)
 target_link_libraries(atmos_parity_processor_test PRIVATE calcotone_dsp)
+add_executable(atmos_lexicon224_converter_test tests/atmos_lexicon224_converter_test.cpp)
+target_link_libraries(atmos_lexicon224_converter_test PRIVATE calcotone_dsp)
 add_executable(native_atmos_live_parity_test tests/native_atmos_live_parity_test.cpp)
 target_link_libraries(native_atmos_live_parity_test PRIVATE calcotone_dsp)
 add_executable(ember_parity_profile_test tests/ember_parity_profile_test.cpp)
@@ -142,6 +145,7 @@ add_test(NAME audio_device_config_test COMMAND audio_device_config_test)
 add_test(NAME elastic_stereo_fifo_test COMMAND elastic_stereo_fifo_test)
 add_test(NAME atmos_parity_profile_test COMMAND atmos_parity_profile_test)
 add_test(NAME atmos_parity_processor_test COMMAND atmos_parity_processor_test)
+add_test(NAME atmos_lexicon224_converter_test COMMAND atmos_lexicon224_converter_test)
 add_test(NAME native_atmos_live_parity_test COMMAND native_atmos_live_parity_test)
 add_test(NAME ember_parity_profile_test COMMAND ember_parity_profile_test)
 add_test(NAME ember_parity_processor_test COMMAND ember_parity_processor_test)
