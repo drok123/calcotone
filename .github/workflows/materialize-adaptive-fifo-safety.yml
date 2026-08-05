@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - scripts/materialize-adaptive-fifo-safety.py
+      - scripts/materialize-adaptive-fifo-audit.py
       - .github/workflows/materialize-adaptive-fifo-safety.yml
 
 permissions:
@@ -30,7 +31,9 @@ jobs:
         run: npm ci
 
       - name: Materialize adaptive FIFO policy
-        run: python scripts/materialize-adaptive-fifo-safety.py
+        run: |
+          python scripts/materialize-adaptive-fifo-safety.py
+          python scripts/materialize-adaptive-fifo-audit.py
 
       - name: Audit adaptive transport
         shell: pwsh
@@ -89,6 +92,7 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item scripts/materialize-adaptive-fifo-safety.py
+          Remove-Item scripts/materialize-adaptive-fifo-audit.py
           Remove-Item .github/workflows/materialize-adaptive-fifo-safety.yml
 
       - name: Commit canonical adaptive FIFO
