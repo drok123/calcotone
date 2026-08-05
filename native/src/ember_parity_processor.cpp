@@ -97,7 +97,8 @@ struct EmberParityProcessor::Impl {
   void process(float* data, std::size_t frames) noexcept {
     const float glide = 1.F - std::exp(-1.F / (rate * .045F));
     for (std::size_t frame = 0; frame < frames; ++frame) {
-      for (std::size_t i = 0; i < value.size(); ++i)
+      value[0] = target[0].load(std::memory_order_relaxed);
+      for (std::size_t i = 1; i < value.size(); ++i)
         value[i] += (target[i].load(std::memory_order_relaxed) - value[i]) * glide;
       const unsigned mode = std::min(17U, static_cast<unsigned>(std::round(value[0])));
       const auto& profile = ember_parity_profile(mode);
