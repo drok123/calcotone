@@ -16,12 +16,8 @@ patch = replace_required(
     "        '#include \"calcotone/grain_parity_processor.hpp\"\\n'\n",
     "Grain parity include",
 )
-anchor = """    source = replace_once(source, r\"struct Atmos \\\\{.*?\\\\n\\\\};\\\\n\\\\nstruct Grain \\\\{\", atmos_replacement, \"Atmos\")
-
-    artifact_replacement = r'''struct Artifact {"""
-grain_route = """    source = replace_once(source, r\"struct Atmos \\\\{.*?\\\\n\\\\};\\\\n\\\\nstruct Grain \\\\{\", atmos_replacement, \"Atmos\")
-
-    grain_replacement = r'''struct Grain {
+marker = "    artifact_replacement = r'''struct Artifact {"
+grain_route = """    grain_replacement = r'''struct Grain {
   Params p{2.F, 13.F, .42F, .38F, .16F, .36F, .12F};
   GrainParityProcessor processor;
   explicit Grain(float rate) : processor(rate) {}
@@ -38,10 +34,10 @@ grain_route = """    source = replace_once(source, r\"struct Atmos \\\\{.*?\\\\n
 };
 
 struct Artifact {'''
-    source = replace_once(source, r\"struct Grain \\\\{.*?\\\\n\\\\};\\\\n\\\\nstruct Artifact \\\\{\", grain_replacement, \"Grain\")
+    source = replace_once(source, r\"struct Grain \\{.*?\\n\\};\\n\\nstruct Artifact \\{\", grain_replacement, \"Grain\")
 
-    artifact_replacement = r'''struct Artifact {"""
-patch = replace_required(patch, anchor, grain_route, "Grain route insertion")
+"""
+patch = replace_required(patch, marker, grain_route + marker, "Grain route insertion")
 patch = patch.replace(
     "live Ember, Drift, Halo, Atmos, and Artifact matrix processing",
     "live Ember, Drift, Halo, Atmos, Grain, and Artifact processing",
