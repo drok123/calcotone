@@ -20,6 +20,8 @@ const atmosNative = read('native/src/atmos_parity_processor.cpp');
 const grainNative = read('native/src/grain_parity_processor.cpp');
 const artifactNative = read('native/src/artifact_parity_processor.cpp');
 const stompNative = read('native/src/stomp_parity_processor.cpp');
+const pressureNative = read('native/src/pressure_parity_processor.cpp');
+const pressureWeb = read('src/audio/SignalLab.ts');
 
 const checks = [];
 const check = (ok, category, label, severity = 'error') => checks.push({ ok, category, label, severity });
@@ -64,6 +66,21 @@ for (const needle of ['StompParityProcessor::set_parameter', 'process_wah', 'pro
   check(stompNative.includes(needle), 'stomp', `${needle} dedicated Stomp route`);
 }
 check(nativeRackPatch.includes('StompParityProcessor processor') && nativeRackPatch.includes('stomp(sample_rate)'), 'stomp', 'live rack constructs dedicated Stomp processor');
+
+check(pressureWeb.includes("export const SIGNAL_LAB_MODES: readonly SignalLabMode[] = ['fet', 'opto', 'varimu', 'vca'] as const;"), 'pressure', 'four stable Pressure mode indices');
+check(pressureWeb.includes("export const SIGNAL_LAB_STYLES: readonly SignalLabStyle[] = ['soft', 'punch', 'glue', 'crush'] as const;"), 'pressure', 'four stable Pressure style indices');
+for (const needle of [
+  'PressureParityProcessor::set_parameter', 'soft_knee_gain', 'detector[channel].highpass',
+  'tone_filter[channel].lowpass', 'constexpr float correlation = .42F',
+  'mode.threshold + style.threshold_offset - drive_control * 4.5F',
+  'mode.saturation * (.82F + drive_control * 1.9F)',
+]) {
+  check(pressureNative.includes(needle), 'pressure', `${needle} canonical Pressure topology`);
+}
+check(nativeRackTemplate.includes('PressureParityProcessor processor')
+  && nativeRackTemplate.includes('impl_->processor.set_bypassed(bypassed)')
+  && nativeRackTemplate.includes('impl_->processor.set_parameter(name, value)'),
+  'pressure', 'live NativePressure wrapper delegates to dedicated processor');
 
 for (const retired of [
   "moduleId === 'synth'",

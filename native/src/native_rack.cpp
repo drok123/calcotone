@@ -1,4 +1,5 @@
 #include "calcotone/native_rack.hpp"
+#include "calcotone/pressure_parity_processor.hpp"
 
 #include <algorithm>
 #include <array>
@@ -556,72 +557,22 @@ void NativeRack::set_order(std::span<const RackModule> requested) noexcept {
 }
 
 struct NativePressure::Impl {
-  float sample_rate;
-  Params p{0.F, 2.F, .42F, .46F, .38F, .72F};
-  std::array<float, 2> envelope{}, gain_state{1.F, 1.F};
-  explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)) {}
-  void process(float* data, std::size_t frames) noexcept {
-    const float glide = 1.F - std::exp(-1.F / (sample_rate * .06F));
-    for (std::size_t frame=0; frame<frames; ++frame) {
-      p.glide(glide);
-      const unsigned mode=std::min(3U,static_cast<unsigned>(std::round(p.value[0])));
-      const unsigned style=std::min(3U,static_cast<unsigned>(std::round(p.value[1])));
-      const float drive=clamp01(p.value[2]), time=clamp01(p.value[3]), character=clamp01(p.value[4]), mix=clamp01(p.value[5]);
-      const float style_drive=style==0?.72F:style==1?.95F:style==3?1.42F:.84F;
-      const float effective=clamp01(drive*style_drive);
-      const float threshold_db=-8.F-effective*(mode==0?30.F:mode==1?23.F:mode==2?20.F:26.F);
-      const float ratio_base=mode==0?4.F:mode==1?2.1F:mode==2?2.4F:3.2F;
-      const float ratio_style=style==0?.72F:style==1?1.18F:style==3?2.8F:.92F;
-      const float ratio=std::clamp(ratio_base*ratio_style+character*(mode==0?3.2F:1.4F),1.2F,20.F);
-      const float attack=mode==0?.00022F+time*.0065F:mode==1?.008F+time*.045F:mode==2?.004F+time*.032F:.0008F+time*.018F;
-      const float release=mode==1?.18F+time*1.05F+effective*.32F:mode==2?.10F+time*.72F+effective*.18F:mode==0?.035F+time*.34F:.045F+time*.46F;
-      const float attack_g=1.F-std::exp(-1.F/(sample_rate*std::max(.0001F,attack)));
-      const float release_g=1.F-std::exp(-1.F/(sample_rate*std::min(1.5F,release)));
-      const float reference_reduction=std::max(0.F,-18.F-threshold_db)*(1.F-1.F/ratio);
-      const float recovery=style==3?.32F:style==0?.42F:style==1?.52F:.48F;
-      const float trim_db=mode==0?-.5F:mode==2?.4F:mode==3?-.1F:0.F;
-      const float makeup=std::pow(10.F,std::clamp(reference_reduction*recovery+effective*.6F+trim_db,-.75F,2.5F)/20.F);
-      const float dry_mix=std::cos(mix*kPi*.5F), wet_mix=std::sin(mix*kPi*.5F);
-      const float normalization=std::max(1.F,dry_mix+wet_mix);
-      for(unsigned ch=0;ch<2;++ch){
-        const auto i=frame*2+ch; const float dry=data[i], magnitude=std::abs(dry);
-        envelope[ch]+=(magnitude-envelope[ch])*(magnitude>envelope[ch]?attack_g:release_g);
-        const float level_db=20.F*std::log10(std::max(envelope[ch],1e-7F));
-        const float reduction_db=level_db>threshold_db?-(level_db-threshold_db)*(1.F-1.F/ratio):0.F;
-        const float target_gain=std::pow(10.F,reduction_db/20.F);
-        gain_state[ch]+=(target_gain-gain_state[ch])*(target_gain<gain_state[ch]?attack_g:release_g);
-        float wet=dry*gain_state[ch]*makeup;
-        const float nonlinearity=mode==0?.16F+effective*.24F:mode==2?.12F+effective*.18F:mode==1?.08F+effective*.14F:.025F+character*.045F;
-        const float shaped=fast_shape((wet+(wet>0.F?wet:0.F)*(mode==2?.055F+character*.075F:.01F))* (1.F+effective*(mode==0?4.8F:mode==2?3.1F:mode==1?2.3F:1.8F)));
-        wet += (shaped-wet)*nonlinearity;
-        data[i]=std::clamp((dry*dry_mix+wet*wet_mix)/normalization,-1.2F,1.2F);
-      }
-    }
-  }
+  PressureParityProcessor processor;
+  explicit Impl(float sample_rate) : processor(sample_rate) {}
 };
 
-NativePressure::NativePressure(float rate):impl_(std::make_unique<Impl>(rate)){}
-NativePressure::~NativePressure()=default;
-void NativePressure::process(float* data,std::size_t frames) noexcept {
-  const float target=impl_->p.bypassed.load(std::memory_order_relaxed)?0.F:1.F;
-  if(target==0.F&&impl_->p.active<1e-5F){impl_->p.active=0.F;return;}
-  std::array<float,kRackBlockFrames*2> dry{};
-  for(std::size_t offset=0;offset<frames;offset+=kRackBlockFrames){
-    const auto block=std::min(kRackBlockFrames,frames-offset); float* current=data+offset*2;
-    std::copy_n(current,block*2,dry.data()); impl_->process(current,block);
-    const float fade=1.F-std::exp(-1.F/(impl_->sample_rate*.006F));
-    for(std::size_t i=0;i<block*2;i+=2){impl_->p.active+=(target-impl_->p.active)*fade;current[i]=dry[i]+(current[i]-dry[i])*impl_->p.active;current[i+1]=dry[i+1]+(current[i+1]-dry[i+1])*impl_->p.active;}
-  }
+NativePressure::NativePressure(float sample_rate)
+    : impl_(std::make_unique<Impl>(sample_rate)) {}
+NativePressure::~NativePressure() = default;
+void NativePressure::set_bypassed(bool bypassed) noexcept {
+  impl_->processor.set_bypassed(bypassed);
 }
-bool NativePressure::set_parameter(std::string_view name,float value) noexcept {
-  if(!std::isfinite(value)) return false;
-  std::size_t index=99;
-  if(name=="mode")index=0;else if(name=="style")index=1;else if(name=="drive")index=2;else if(name=="time")index=3;else if(name=="character")index=4;else if(name=="mix")index=5;
-  if(index>=7) return false;
-  impl_->p.target[index].store(value,std::memory_order_relaxed);
-  return true;
+bool NativePressure::set_parameter(std::string_view name, float value) noexcept {
+  return impl_->processor.set_parameter(name, value);
 }
-void NativePressure::set_bypassed(bool value) noexcept {impl_->p.bypassed.store(value,std::memory_order_relaxed);}
+void NativePressure::process(float* data, std::size_t frames) noexcept {
+  impl_->processor.process(data, frames);
+}
 
 struct NativeDreamBuffer::Impl {
   float sample_rate; std::array<std::vector<float>,2> memory; std::size_t write{},filled{};

@@ -9,6 +9,7 @@ const railC = read('src/components/effects/RailCModules.tsx');
 const stackSource = read('src/audio/effects/StackAmp.ts');
 const pressureSource = read('src/audio/SignalLab.ts');
 const stompNative = read('native/src/stomp_parity_processor.cpp');
+const pressureNative = read('native/src/pressure_parity_processor.cpp');
 const stompHeader = read('native/include/calcotone/stomp_parity_processor.hpp');
 const stackNative = read('native/src/stack_amp.cpp');
 
@@ -113,9 +114,11 @@ for (const module of manifest.modules) {
   } else if (module.id === 'pressure') {
     check(railC.includes('name="Pressure"'), 'Pressure product label');
     check(compact(pressureSource).includes("enabled:false,mode:'fet',style:'glue',drive:0.42,time:0.46,character:0.38,mix:0.72"), 'Pressure UI defaults');
-    check(nativeRack.includes('struct NativePressure::Impl'), 'Pressure native processor exists');
-    check(nativeRack.includes('Params p{0.F, 2.F, .42F, .46F, .38F, .72F}'), 'Pressure native defaults');
-    check(nativeRack.includes('std::min(3U') && nativeRack.includes('name=="style"'), 'Pressure native model/style ceilings');
+    check(pressureNative.includes('PressureParityProcessor::set_parameter'), 'Pressure dedicated native processor exists');
+    check(pressureNative.includes('target{0.F, 2.F, .42F, .46F, .38F, .72F}'), 'Pressure native defaults');
+    check(pressureNative.includes('std::clamp(std::round(value), 0.F, 3.F)'), 'Pressure native model/style ceilings');
+    check(nativeRack.includes('PressureParityProcessor processor')
+      && nativeRack.includes('impl_->processor.set_parameter(name, value)'), 'Pressure live wrapper delegates to dedicated processor');
   }
 }
 
