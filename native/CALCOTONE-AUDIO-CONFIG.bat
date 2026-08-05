@@ -6,8 +6,8 @@ rem Revelator exclusive mode negotiates PCM24-in-32. Use shared mode by default
 rem so Windows supplies its native mix format and bypasses interface-specific
 rem 24-bit container packing while the exclusive converter is validated.
 set "CALCOTONE_AUDIO_MODE=shared"
-rem Shared fallback tries Pro Audio RAW first, then retries Pro Audio without RAW.
-rem Set this to 0 only for an endpoint whose driver rejects RAW stream creation.
+rem Shared mode requests RAW processing first, then retries the complete stream
+rem with standard processing if the endpoint or driver rejects RAW.
 set "CALCOTONE_SHARED_RAW=1"
 rem Use explicit physical Revelator endpoints. The Windows default render device
 rem may be Virtual Output A/B, which can route through Universal Control's
