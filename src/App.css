@@ -3752,23 +3752,19 @@ body {
 
 .modules-section {
   position: relative;
-  padding-top: 42px;
 }
 
-.rack-random-actions {
-  position: absolute;
-  z-index: 20;
-  top: 4px;
-  right: 8px;
+.top-random-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+  margin-right: auto;
   white-space: nowrap;
 }
 
-.rack-random-actions .random-profile-selector select,
-.rack-random-actions .profiler-toggle {
+.top-random-actions .random-profile-selector select,
+.top-random-actions .profiler-toggle {
   height: 28px;
   min-height: 28px;
   padding-top: 3px;
@@ -3793,13 +3789,12 @@ body {
 }
 
 @media (max-width: 1500px) {
-  .rack-random-actions {
-    right: 4px;
+  .top-random-actions {
     gap: 4px;
   }
 
-  .rack-random-actions .random-profile-selector select,
-  .rack-random-actions .profiler-toggle {
+  .top-random-actions .random-profile-selector select,
+  .top-random-actions .profiler-toggle {
     padding-left: 6px;
     padding-right: 6px;
   }

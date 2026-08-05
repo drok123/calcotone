@@ -1979,6 +1979,31 @@ export default function App() {
           </div>
 
           <div className="control-strip-actions">
+            <div className="top-random-actions" aria-label="Rack randomization controls">
+              <label className="random-profile-selector">
+                <span className="sr-only">Randomization profile</span>
+                <select
+                  aria-label="Randomization profile"
+                  value={randomProfile}
+                  onChange={(event) => setRandomProfile(event.target.value as Exclude<RandomizationProfile, 'mutate'>)}
+                  title="Choose a coordinated effects randomization archetype"
+                >
+                  {RANDOMIZATION_PROFILE_OPTIONS.map((option) => (
+                    <option value={option.id} key={option.id}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <button type="button" className="profiler-toggle randomizer-toggle" onClick={() => randomizeActiveModules(randomProfile)} title="Morph active modules into the selected guarded profile">
+                RANDOM
+                {randomFlowProgress && (
+                  <span className="randomizer-flow-count" aria-hidden="true">
+                    {randomFlowProgress.current}/{randomFlowProgress.total}
+                  </span>
+                )}
+              </button>
+              <button type="button" className="profiler-toggle randomizer-toggle mutate-randomizer-toggle" onClick={() => randomizeActiveModules('mutate')} title="Drift every active control by at most 10% while preserving machines and patch identity">MUTATE 10%</button>
+              <button type="button" className="profiler-toggle signal-randomizer-toggle" onClick={randomizeSignalOrder} title="Randomize the order of both three-module signal rails">SIGNAL RANDOM</button>
+            </div>
             <span className={`audio-backend-badge ${audioBackend ?? 'detecting'}`} title="Active audio processing backend">
               <i aria-hidden="true" />
               {audioBackend === 'native' ? 'NATIVE WASAPI' : audioBackend === 'web' ? 'WEB AUDIO' : 'AUDIO AUTO'}
@@ -2159,31 +2184,6 @@ export default function App() {
           </aside>
 
           <section className="modules-section" aria-label="Effects modules">
-            <div className="rack-random-actions" aria-label="Rack randomization controls">
-              <label className="random-profile-selector">
-                <span className="sr-only">Randomization profile</span>
-                <select
-                  aria-label="Randomization profile"
-                  value={randomProfile}
-                  onChange={(event) => setRandomProfile(event.target.value as Exclude<RandomizationProfile, 'mutate'>)}
-                  title="Choose a coordinated effects randomization archetype"
-                >
-                  {RANDOMIZATION_PROFILE_OPTIONS.map((option) => (
-                    <option value={option.id} key={option.id}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-              <button type="button" className="profiler-toggle randomizer-toggle" onClick={() => randomizeActiveModules(randomProfile)} title="Morph active modules into the selected guarded profile">
-                RANDOM
-                {randomFlowProgress && (
-                  <span className="randomizer-flow-count" aria-hidden="true">
-                    {randomFlowProgress.current}/{randomFlowProgress.total}
-                  </span>
-                )}
-              </button>
-              <button type="button" className="profiler-toggle randomizer-toggle mutate-randomizer-toggle" onClick={() => randomizeActiveModules('mutate')} title="Drift every active control by at most 10% while preserving machines and patch identity">MUTATE 10%</button>
-              <button type="button" className="profiler-toggle signal-randomizer-toggle" onClick={randomizeSignalOrder} title="Randomize the order of both three-module signal rails">SIGNAL RANDOM</button>
-            </div>
             <div className="module-grid routing-grid">
               {([
                 ['A', railAOrder],
