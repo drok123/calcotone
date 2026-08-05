@@ -76,6 +76,7 @@ add_library(calcotone_dsp STATIC
   src/ember_digital_capture_processor.cpp
   src/drift_parity_processor.cpp
   src/drift_classic_processor.cpp
+  src/drift_standard_processor.cpp
   src/halo_parity_processor.cpp
   src/artifact_chain_processor.cpp
   src/native_processor.cpp
@@ -121,6 +122,8 @@ add_executable(drift_parity_processor_test tests/drift_parity_processor_test.cpp
 target_link_libraries(drift_parity_processor_test PRIVATE calcotone_dsp)
 add_executable(drift_classic_processor_test tests/drift_classic_processor_test.cpp)
 target_link_libraries(drift_classic_processor_test PRIVATE calcotone_dsp)
+add_executable(drift_standard_processor_test tests/drift_standard_processor_test.cpp)
+target_link_libraries(drift_standard_processor_test PRIVATE calcotone_dsp)
 add_executable(halo_parity_processor_test tests/halo_parity_processor_test.cpp)
 target_link_libraries(halo_parity_processor_test PRIVATE calcotone_dsp)
 add_executable(artifact_chain_profile_test tests/artifact_chain_profile_test.cpp)
@@ -148,6 +151,7 @@ add_test(NAME ember_digital_capture_processor_test COMMAND ember_digital_capture
 add_test(NAME native_ember_live_parity_test COMMAND native_ember_live_parity_test)
 add_test(NAME drift_parity_processor_test COMMAND drift_parity_processor_test)
 add_test(NAME drift_classic_processor_test COMMAND drift_classic_processor_test)
+add_test(NAME drift_standard_processor_test COMMAND drift_standard_processor_test)
 add_test(NAME halo_parity_processor_test COMMAND halo_parity_processor_test)
 add_test(NAME artifact_chain_profile_test COMMAND artifact_chain_profile_test)
 add_test(NAME artifact_chain_processor_test COMMAND artifact_chain_processor_test)
