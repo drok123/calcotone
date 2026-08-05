@@ -5,7 +5,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
   type ChangeEvent as ReactChangeEvent,
   type DragEvent as ReactDragEvent,
 } from 'react';
@@ -19,6 +18,7 @@ import {
 } from './audio/AudioEngine';
 import { DEFAULT_PRESET } from './audio/Preset';
 import { NativeAudioBridge, type NativeAudioHealth } from './audio/NativeAudioBridge';
+import { NativeVisualSpectrum } from './visual/NativeVisualSpectrum';
 import { nativeWaveToRecordedWav } from './audio/NativeRecording';
 import { SIGNAL_LAB_MODES, SIGNAL_LAB_STYLES, type SignalLabState } from './audio/SignalLab';
 import { getPressureState } from './components/signal/pressureStore';
@@ -47,12 +47,6 @@ import { useVisualEngine } from './visual/VisualEngine';
 import type { VisualSpectrumSource } from './visual/SharedVisualSpectrum';
 import { EffectModule } from './components/effects/EffectModule';
 import { RailCModule } from './components/effects/RailCModules';
-import type {
-  SynthArchetype,
-  SynthMachine,
-  SynthSequencerState,
-  SynthSequencerStep,
-} from './audio/SynthEngine';
 import {
   RANDOMIZATION_PROFILE_OPTIONS,
   RANDOM_MUTATION_AMOUNT,
@@ -240,6 +234,9 @@ const INITIAL_MODULES: ModuleState[] = [
       { id: 'noise', label: 'Noise', value: 0.1, display: '10%' },
       { id: 'tone', label: 'Tone', value: 0.62, display: '62%' },
       { id: 'mix', label: 'Mix', value: 0.26, display: '26%' },
+      { id: 'console', label: 'Console', value: 0, display: 'Bypass' },
+      { id: 'tube', label: 'Tube', value: 0, display: 'Bypass' },
+      { id: 'chainOrder', label: 'Order', value: 0, display: 'Console → Tube' },
     ],
   },
 ];
@@ -247,6 +244,12 @@ const INITIAL_MODULES: ModuleState[] = [
 
 type MusicalRange = readonly [number, number];
 
+
+const ARTIFACT_MATRIX_PARAMETER_IDS = new Set(['console', 'tube', 'chainOrder']);
+
+function isArtifactMatrixParameter(moduleId: string, parameterId: string): boolean {
+  return moduleId === 'media' && ARTIFACT_MATRIX_PARAMETER_IDS.has(parameterId);
+}
 
 function randomMusicalValue(range: MusicalRange, centerBias = 0.35): number {
   // Blend one uniform draw with the average of two draws. This still reaches extremes,
@@ -628,8 +631,7 @@ export default function App() {
   const [sampleRate, setSampleRate] = useState('—');
   const [nativeTuner, setNativeTuner] = useState({ hz: 0, level: 0 });
   const [nativeHealth, setNativeHealth] = useState<NativeAudioHealth | null>(null);
-  const [xyPosition, setXyPosition] = useState({ x: 50, y: 50 });
-  const [xyDragging, setXyDragging] = useState(false);
+  const [xyPosition] = useState({ x: 50, y: 50 });
   const [analyser, setAnalyser] = useState<VisualSpectrumSource | null>(null);
   const [performanceMode, setPerformanceMode] =
     useState<PerformanceMode>('live');
@@ -695,36 +697,6 @@ export default function App() {
   const randomUiPlanRef = useRef<RandomUiPlan | null>(null);
   const randomFlowActiveRef = useRef(false);
   const offlineRandomTimersRef = useRef<number[]>([]);
-
-  const setSynthEnabled = useCallback((enabled: boolean) => {
-    engineRef.current?.setSynthEnabled(enabled);
-  }, []);
-
-  const setSynthMachine = useCallback((machine: SynthMachine) => {
-    engineRef.current?.setSynthMachine(machine);
-  }, []);
-
-  const setSynthArchetype = useCallback((archetype: SynthArchetype) => {
-    engineRef.current?.setSynthArchetype(archetype);
-  }, []);
-
-  const setSynthParameters = useCallback((values: readonly number[], morphSeconds = 0.04) => {
-    engineRef.current?.setSynthParameters(values, morphSeconds);
-  }, []);
-
-  const triggerSynthNote = useCallback((midi: number, durationSeconds: number) => {
-    engineRef.current?.triggerSynthNote(midi, durationSeconds);
-  }, []);
-
-  const setSynthSequencerState = useCallback((state: SynthSequencerState) => {
-    engineRef.current?.setSynthSequencerState(state);
-  }, []);
-
-  const setSynthSequencerStepListener = useCallback((
-    listener: ((position: SynthSequencerStep) => void) | null
-  ) => {
-    engineRef.current?.setSynthSequencerStepListener(listener);
-  }, []);
 
   const setStompEnabled = useCallback((enabled: boolean) => {
     if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine(`moduleBypass stomp ${enabled ? 0 : 1}`);
@@ -940,7 +912,7 @@ export default function App() {
         setLatency(`${native.estimatedPathMs.toFixed(1)} ms ${native.transport ?? 'wasapi'} ${native.audioMode ?? 'shared'} path`);
         setSampleRate(`${native.sampleRate} Hz`);
         setChannelInfo({ input: `${native.inputChannels} ch native`, output: `${native.outputChannels} ch native` });
-        setAnalyser(null);
+        setAnalyser(new NativeVisualSpectrum());
         setEngineState('running');
         const fallback = native.requestedBackend === 'ks-wavert' && native.transport !== 'ks-wavert'
           ? ` · KS/WaveRT probe ${native.ksAvailable ? 'eligible' : 'unavailable'}; WASAPI fallback active`
@@ -1284,6 +1256,7 @@ export default function App() {
     parameterId: string,
     value: number
   ): void {
+    if (isArtifactMatrixParameter(moduleId, parameterId)) value = Math.round(value);
     setModules((currentModules) =>
       currentModules.map((module) =>
         module.id !== moduleId
@@ -1310,7 +1283,7 @@ export default function App() {
     if (engineState === 'running') {
       const dspValue = toDspParameterValue(moduleId, parameterId, value);
       if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine(`param ${moduleId} ${parameterId} ${dspValue}`);
-      else setEffectParameterIfLoaded(engineRef.current, moduleId, parameterId, dspValue);
+      else if (!isArtifactMatrixParameter(moduleId, parameterId)) setEffectParameterIfLoaded(engineRef.current, moduleId, parameterId, dspValue);
     }
   }
 
@@ -1401,6 +1374,13 @@ export default function App() {
 
       const genericRanges = MUSICAL_RANDOM_RANGES[modeModule.id] ?? {};
       const nextParameters = modeModule.parameters.map((parameter) => {
+        if (isArtifactMatrixParameter(modeModule.id, parameter.id)) {
+          const maximum = parameter.id === 'chainOrder' ? 1 : 5;
+          const next = profile === 'mutate'
+            ? Math.max(0, Math.min(maximum, Math.round(parameter.value + (Math.random() < 0.25 ? (Math.random() < 0.5 ? -1 : 1) : 0))))
+            : Math.floor(Math.random() * (maximum + 1));
+          return { ...parameter, value: next, display: formatParameterValue(modeModule.id, parameter.id, next) };
+        }
         const range = profileRecipe?.parameters[parameter.id]
           ?? sweetSpot?.parameters[parameter.id]
           ?? genericRanges[parameter.id];
@@ -1511,6 +1491,7 @@ export default function App() {
         }
 
         for (const parameter of module.parameters) {
+          if (isArtifactMatrixParameter(module.id, parameter.id)) continue;
           setEffectParameterIfLoaded(
             engine,
             module.id,
@@ -1559,22 +1540,6 @@ export default function App() {
     setMessage(`${module.name} ${nextEnabled ? 'enabled' : 'bypassed'}.`);
   }
 
-  function handleXYPad(event: ReactPointerEvent<HTMLDivElement>): void {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const x = clamp(
-      ((event.clientX - bounds.left) / bounds.width) * 100,
-      0,
-      100
-    );
-    const y = clamp(
-      100 - ((event.clientY - bounds.top) / bounds.height) * 100,
-      0,
-      100
-    );
-
-    setXyPosition({ x, y });
-  }
-
   function applyXYAssignments(
     x: number,
     y: number,
@@ -1616,12 +1581,12 @@ export default function App() {
       motionValueRef.current.set(assignment.target, modulatedValue);
 
       if (engineState === 'running') {
-        setEffectParameterIfLoaded(
-          engineRef.current,
-          moduleId,
-          parameterId,
-          toDspParameterValue(moduleId, parameterId, modulatedValue)
-        );
+        const dspValue = toDspParameterValue(moduleId, parameterId, modulatedValue);
+        if (backendRef.current === 'native') {
+          void nativeBridgeRef.current.commandLine(`param ${moduleId} ${parameterId} ${dspValue}`);
+        } else {
+          setEffectParameterIfLoaded(engineRef.current, moduleId, parameterId, dspValue);
+        }
       }
     }
   }
@@ -1807,23 +1772,6 @@ export default function App() {
     setMessage('Patch removed.');
   }
 
-
-  function updateMotionRoute(
-    id: string,
-    patch: Partial<Omit<XYAssignment, 'id' | 'target'>>
-  ): void {
-    setXyAssignments((current) =>
-      current.map((assignment) => {
-        if (assignment.id !== id) return assignment;
-        const next = { ...assignment, ...patch };
-        if (next.min > next.max) {
-          if (patch.min !== undefined) next.max = next.min;
-          else next.min = next.max;
-        }
-        return next;
-      })
-    );
-  }
 
   function refreshPersistentPatchLines(): void {
     const pad = xyPadRef.current?.getBoundingClientRect();
@@ -2287,13 +2235,6 @@ export default function App() {
                             assignments={xyAssignments}
                             visualState={visualState}
                             running={isRunning}
-                            onSynthEnabledChange={setSynthEnabled}
-                            onSynthMachineChange={setSynthMachine}
-                            onSynthArchetypeChange={setSynthArchetype}
-                            onSynthParametersChange={setSynthParameters}
-                            onSynthTriggerNote={triggerSynthNote}
-                            onSynthSequencerChange={setSynthSequencerState}
-                            onSynthSequencerStepListenerChange={setSynthSequencerStepListener}
                             onStompEnabledChange={setStompEnabled}
                             onStompModeChange={setStompMode}
                             onStompInputSourceChange={setStompInputSource}
@@ -2306,19 +2247,6 @@ export default function App() {
                             nativeBackendActive={audioBackend === 'native'}
                             tunerHz={nativeTuner.hz}
                             tunerLevel={nativeTuner.level}
-                            motionPadProps={{
-                              padRef: xyPadRef,
-                              modules,
-                              assignments: xyAssignments,
-                              position: xyPosition,
-                              dragging: xyDragging,
-                              patchActive: Boolean(patchDraft),
-                              hoverAxis: patchDraft?.hoverAxis ?? null,
-                              onDraggingChange: setXyDragging,
-                              onPadPointer: handleXYPad,
-                              onDisconnect: disconnectPatch,
-                              onRouteChange: updateMotionRoute,
-                            }}
                             {...routingProps}
                           />
                         );

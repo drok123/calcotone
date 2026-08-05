@@ -92,9 +92,10 @@ export function EffectModule({
   onRoutingNudge: (direction: -1 | 1) => void;
 }) {
   const faceplateEditor = useFaceplateLayoutEditor();
-  const customFaceplate = faceplateEditor.layout.custom;
+  const customFaceplate = true;
   const faceplateModuleId = module.id as CoreFaceplateId;
   const faceplateLayout = faceplateEditor.layout.core[faceplateModuleId];
+  const visibleParameters = module.parameters.filter((parameter) => !['console', 'tube', 'chainOrder'].includes(parameter.id));
   const moduleStyle = {
     '--module-activity': module.enabled ? 1 : 0,
     '--module-low': visualState.low,
@@ -354,7 +355,7 @@ export function EffectModule({
             {faceplateEditor.editing && faceplateEditor.guides.y !== null && (
               <span className="faceplate-guide faceplate-guide-y" style={{ top: `${faceplateEditor.guides.y}px` }} aria-hidden="true" />
             )}
-            {module.parameters.map((parameter, index) => {
+            {visibleParameters.map((parameter, index) => {
               const point = faceplateLayout.knobs[index] ?? { x: ((index % 3) + 0.5) / 3, y: index < 3 ? 364 : 468 };
               return (
                 <div
@@ -374,7 +375,7 @@ export function EffectModule({
         <>
           <ModuleViewport module={module} visualState={visualState} />
           <div className="knob-row">
-            {module.parameters.map((parameter) => renderKnob(parameter))}
+            {visibleParameters.map((parameter) => renderKnob(parameter))}
           </div>
         </>
       )}
