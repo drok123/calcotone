@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 
-const read = (path) => fs.readFileSync(path, 'utf8');
+const read = (path) => fs.readFileSync(path, 'utf8').replace(/\r\n?/g, '\n');
 const app = read('src/App.tsx');
+const css = read('src/App.css');
+const effectModule = read('src/components/effects/EffectModule.tsx');
 const railC = read('src/components/effects/RailCModules.tsx');
 const spectrum = read('src/visual/NativeVisualSpectrum.ts');
 const host = read('native/src/wasapi_host.cpp');
@@ -12,6 +14,7 @@ const launcher = read('native/START-CALCOTONE-NATIVE.bat');
 
 const checks = [];
 const check = (ok, category, label, severity = 'error') => checks.push({ ok, category, label, severity });
+const count = (source, token) => source.split(token).length - 1;
 
 check(app.includes("nativeBridgeRef.current.command('active', 1)"), 'engine', 'native engine activation');
 check(app.includes('moduleBypass ${module.id}'), 'engine', 'module bypass startup sync');
@@ -62,6 +65,17 @@ check(faceplate.includes('localStorage'), 'layout', 'faceplate persistence');
 check(faceplate.includes('setFaceplateKnob'), 'layout', 'independent core knob movement');
 check(faceplate.includes('setRailCFaceplateControl'), 'layout', 'independent rail-C controls');
 check(faceplate.includes('viewportHeight'), 'layout', 'viewport resizing persistence');
+check(effectModule.includes('const customFaceplate = true;'), 'layout', 'native core faceplate is enforced');
+check(effectModule.includes('faceplate-layout-stage'), 'layout', 'core faceplate stage markup');
+check(effectModule.includes('faceplate-viewport-shell'), 'layout', 'core viewport shell markup');
+check(effectModule.includes('faceplate-control-surface'), 'layout', 'core control surface markup');
+check(effectModule.includes('faceplate-knob-slot'), 'layout', 'core absolute control slot markup');
+check(css.includes('.faceplate-layout-stage {') && css.includes('position: relative;'), 'layout', 'faceplate stage establishes containing block');
+check(css.includes('.faceplate-viewport-shell {') && css.includes('width: 100%;'), 'layout', 'faceplate viewport remains full width');
+check(css.includes('.faceplate-viewport-shell > .dsp-viewport {') && css.includes('height: 100% !important;'), 'layout', 'ASCII viewport fills saved shell');
+check(css.includes('.faceplate-control-surface {') && css.includes('position: absolute !important;'), 'layout', 'control surface is absolute');
+check(css.includes('.faceplate-knob-slot {') && css.includes('left: var(--faceplate-x);') && css.includes('top: var(--faceplate-y);'), 'layout', 'knobs use saved coordinates');
+check(!css.includes('.faceplate-viewport-shell {\n  position: relative;'), 'layout', 'viewport shell cannot collapse into normal flow');
 
 for (const command of ['inputGain', 'outputGain', 'stackInput', 'stompInput']) {
   check(app.includes(command), 'device-controls', `${command} frontend command`);
@@ -80,8 +94,25 @@ check(app.includes("backendRef.current === 'native'") && app.includes('modulated
 check(app.includes('commandLine(`param ${moduleId} ${parameterId}'), 'xy', 'global XY native parameter command');
 
 for (const parameter of ['console', 'tube', 'chainOrder']) {
-  check(app.includes(`id: '${parameter}'`), 'artifact', `${parameter} state`);
+  check(app.includes(`id: '${parameter}'`), 'artifact', `${parameter} compatibility state`);
   check(host.includes(parameter) || read('native/tools/apply_atmos_parity.py').includes(parameter), 'artifact', `${parameter} native route`);
+}
+check(count(effectModule, 'aria-label="Artifact format"') === 1, 'artifact', 'exactly one visible Artifact dropdown');
+check(!effectModule.includes('<ArtifactMatrixSelectors'), 'artifact', 'Artifact matrix selectors hidden from faceplate');
+check(effectModule.includes("!['console', 'tube', 'chainOrder'].includes(parameter.id)"), 'artifact', 'internal Artifact matrix state excluded from knobs');
+
+const moduleContracts = [
+  ['saturation', 'Ember'],
+  ['chorus', 'Drift'],
+  ['delay', 'Halo'],
+  ['reverb', 'Atmos'],
+  ['bitcrusher', 'Grain'],
+  ['media', 'Artifact'],
+];
+for (const [id, name] of moduleContracts) {
+  check(app.includes(`id: '${id}'`), 'module-state', `${name} canonical state exists`);
+  check(effectModule.includes(`module.id === '${id}'`) || id === 'media', 'module-ui', `${name} module-specific UI route`);
+  check(host.includes(id) || nativeProcessor.includes(id), 'module-native', `${name} native route surface`);
 }
 
 const failed = checks.filter((item) => !item.ok && item.severity === 'error');
