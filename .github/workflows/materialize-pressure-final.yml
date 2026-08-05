@@ -1,0 +1,58 @@
+name: Finalize Pressure Native Parity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/pressure-final-trigger.txt
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Materialize Pressure parity
+        run: python3 scripts/materialize-pressure-native-parity.py
+
+      - name: Audit full rack contract
+        run: node scripts/core-contract-parity-audit.mjs
+
+      - name: Audit Windows routes
+        run: node scripts/windows-ui-parity-audit.mjs
+
+      - name: Configure native DSP
+        run: cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build native DSP
+        run: cmake --build native/build --config Release --parallel 2
+
+      - name: Run native tests
+        run: ctest --test-dir native/build -C Release --output-on-failure
+
+      - name: Remove temporary parity machinery
+        shell: bash
+        run: |
+          rm -f \
+            scripts/materialize-pressure-native-parity.py \
+            scripts/pressure-final-trigger.txt \
+            pressure-parity-diagnostics.txt \
+            .github/workflows/materialize-pressure-native-parity.yml \
+            .github/workflows/pressure-parity-diagnostic.yml \
+            .github/workflows/materialize-pressure-final.yml
+
+      - name: Commit canonical Pressure parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Replace embedded Pressure with the canonical dynamics station"
+          git push origin HEAD:main
