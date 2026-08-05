@@ -78,6 +78,9 @@ void test_idle_raw_does_not_fill_memory() {
   assert(profile.history_seconds == 8.F);
   assert(profile.input_peak == 0.F);
   assert(profile.captures == 0U);
+  assert(profile.memory_intent[0] == .18F);
+  assert(profile.memory_intent[1] == .16F);
+  assert(profile.memory_intent[2] == .08F);
   assert(std::all_of(lane_one.begin(), lane_one.end(), [](float value) { return value == 0.F; }));
   assert(std::all_of(lane_two.begin(), lane_two.end(), [](float value) { return value == 0.F; }));
 }
