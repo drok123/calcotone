@@ -79,6 +79,7 @@ add_library(calcotone_dsp STATIC
   src/drift_standard_processor.cpp
   src/halo_parity_processor.cpp
   src/halo_space_echo_processor.cpp
+  src/halo_dual_grain_pitch_processor.cpp
   src/native_processor.cpp
   src/audio_device_config.cpp
   src/elastic_stereo_fifo.cpp
@@ -128,6 +129,8 @@ add_executable(halo_parity_processor_test tests/halo_parity_processor_test.cpp)
 target_link_libraries(halo_parity_processor_test PRIVATE calcotone_dsp)
 add_executable(halo_space_echo_processor_test tests/halo_space_echo_processor_test.cpp)
 target_link_libraries(halo_space_echo_processor_test PRIVATE calcotone_dsp)
+add_executable(halo_dual_grain_pitch_processor_test tests/halo_dual_grain_pitch_processor_test.cpp)
+target_link_libraries(halo_dual_grain_pitch_processor_test PRIVATE calcotone_dsp)
 
 enable_testing()
 add_test(NAME core_contract_test COMMAND core_contract_test)
@@ -150,6 +153,7 @@ add_test(NAME drift_classic_processor_test COMMAND drift_classic_processor_test)
 add_test(NAME drift_standard_processor_test COMMAND drift_standard_processor_test)
 add_test(NAME halo_parity_processor_test COMMAND halo_parity_processor_test)
 add_test(NAME halo_space_echo_processor_test COMMAND halo_space_echo_processor_test)
+add_test(NAME halo_dual_grain_pitch_processor_test COMMAND halo_dual_grain_pitch_processor_test)
 
 if(WIN32)
   set(CALCOTONE_WEBVIEW2_ROOT "" CACHE PATH "Extracted Microsoft.Web.WebView2 NuGet package")
