@@ -1,0 +1,56 @@
+name: Materialize canonical source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/materialize-source.yml'
+      - 'scripts/remove-retired-synth.mjs'
+      - 'scripts/apply-artifact-matrix-ui.mjs'
+      - 'scripts/apply-native-desktop-ui-parity.mjs'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: calcotone-materialize-source
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Apply canonical source transforms once
+        run: |
+          node scripts/remove-retired-synth.mjs
+          node scripts/apply-artifact-matrix-ui.mjs
+          node scripts/apply-native-desktop-ui-parity.mjs
+
+      - name: Commit materialized source
+        shell: bash
+        run: |
+          git add \
+            src/App.tsx \
+            src/App.css \
+            src/components/effects/EffectModule.tsx \
+            src/components/effects/RailCModules.tsx \
+            src/ui/faceplateLayout.ts
+
+          if git diff --cached --quiet; then
+            echo 'Canonical source is already materialized.'
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Materialize canonical Windows source'
+          git push origin HEAD:main
