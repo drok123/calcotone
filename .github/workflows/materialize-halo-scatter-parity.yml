@@ -1,5 +1,6 @@
 name: Materialize Halo Scatter Parity
 
+# Indexed workflow trigger.
 on:
   push:
     branches: [main]
