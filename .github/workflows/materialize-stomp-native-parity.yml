@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - scripts/materialize-stomp-native-parity.py
+      - scripts/fix-stomp-ui-label-audit.mjs
       - .github/workflows/materialize-stomp-native-parity.yml
 
 permissions:
@@ -20,7 +21,9 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Materialize Stomp parity
-        run: python3 scripts/materialize-stomp-native-parity.py
+        run: |
+          python3 scripts/materialize-stomp-native-parity.py
+          node scripts/fix-stomp-ui-label-audit.mjs
 
       - name: Audit core and Windows routes
         run: |
@@ -37,7 +40,7 @@ jobs:
         run: ctest --test-dir native/build -C Release --output-on-failure
 
       - name: Remove one-time materializer
-        run: rm scripts/materialize-stomp-native-parity.py .github/workflows/materialize-stomp-native-parity.yml
+        run: rm scripts/materialize-stomp-native-parity.py scripts/fix-stomp-ui-label-audit.mjs .github/workflows/materialize-stomp-native-parity.yml
 
       - name: Commit canonical Stomp parity
         shell: bash
