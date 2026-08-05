@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - scripts/remove-artifact-matrix-controls.mjs
+      - scripts/remove-artifact-matrix-leftovers.mjs
       - .github/workflows/materialize-artifact-control-removal.yml
 
 permissions:
@@ -26,14 +27,16 @@ jobs:
           cache: npm
 
       - name: Remove ghost controls
-        run: node scripts/remove-artifact-matrix-controls.mjs
+        run: |
+          node scripts/remove-artifact-matrix-controls.mjs
+          node scripts/remove-artifact-matrix-leftovers.mjs
 
       - name: Verify stale control plumbing is gone
         shell: bash
         run: |
           set -euo pipefail
-          if git grep -n -E "chainOrder|ARTIFACT_MATRIX_PARAMETER_IDS|isArtifactMatrixParameter|ArtifactChainProcessor|artifact_chain_" -- src native scripts ':!scripts/remove-artifact-matrix-controls.mjs' ':!scripts/artifact-matrix-ui-audit.mjs'; then
-            echo "Stale Artifact matrix plumbing remains."
+          if git grep -n -E "chainOrder|ARTIFACT_MATRIX_PARAMETER_IDS|isArtifactMatrixParameter|ArtifactChainProcessor|artifact_chain_" -- src native; then
+            echo "Stale Artifact matrix plumbing remains in product source."
             exit 1
           fi
 
@@ -44,7 +47,7 @@ jobs:
         run: npm run check
 
       - name: Remove one-time materializer
-        run: rm scripts/remove-artifact-matrix-controls.mjs .github/workflows/materialize-artifact-control-removal.yml
+        run: rm scripts/remove-artifact-matrix-controls.mjs scripts/remove-artifact-matrix-leftovers.mjs .github/workflows/materialize-artifact-control-removal.yml
 
       - name: Commit canonical cleanup
         shell: bash
