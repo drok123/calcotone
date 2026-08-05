@@ -9,6 +9,7 @@ const nativeRackHeader = readFileSync(resolve(root, 'native/include/calcotone/na
 const nativeRack = readFileSync(resolve(root, 'native/src/native_rack.cpp'), 'utf8');
 const nativeProcessor = readFileSync(resolve(root, 'native/src/native_processor.cpp'), 'utf8');
 const nativeDreamHeader = readFileSync(resolve(root, 'native/include/calcotone/native_dream_engine.hpp'), 'utf8');
+const nativeDreamCoreHeader = readFileSync(resolve(root, 'native/include/calcotone/dream_buffer_parity_processor.hpp'), 'utf8');
 const nativeDream = readFileSync(resolve(root, 'native/src/native_dream_engine.cpp'), 'utf8');
 const nativeDreamCore = readFileSync(resolve(root, 'native/src/dream_buffer_parity_processor.cpp'), 'utf8');
 const audioConfig = readFileSync(resolve(root, 'native/src/audio_device_config.cpp'), 'utf8');
@@ -56,7 +57,7 @@ requireText(nativeHost, 'maxRenderMicros', 'Native render workload telemetry');
 for (const module of ['Grain', 'Artifact']) requireText(nativeRackHeader, module, `Native ${module} rack ownership`);
 requireText(nativeRackHeader, 'class NativePressure final', 'Native Pressure processor');
 requireText(nativeDreamHeader, 'class NativeDreamEngine final', 'Shared native Dream engine');
-requireText(nativeDreamHeader, 'DreamBufferParityProcessor', 'Native Dream tagged-memory ownership');
+requireText(nativeDreamCoreHeader, 'class DreamBufferParityProcessor final', 'Native Dream tagged-memory ownership');
 requireText(nativeDreamCore, 'kHistorySeconds = 8.F', 'Native Dream bounded history');
 requireText(nativeDream, 'std::array<std::vector<float>, 3> raw_heads', 'Native Dream preallocated moving heads');
 requireText(nativeDream, 'send_smoothing = 1.F - std::exp', 'Native Dream smoothed capture sends');
