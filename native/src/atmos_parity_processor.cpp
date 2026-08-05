@@ -37,8 +37,6 @@ float quantize(float input, int bits) noexcept {
 
 struct AtmosParityProcessor::Impl {
   explicit Impl(float requested_rate) : rate(std::clamp(requested_rate, 8'000.F, 384'000.F)) {
-    // The largest canonical line is 253.1 ms and size can reach 3x. Add room for
-    // predelay, modulation, and channel decorrelation without reallocating.
     const auto capacity = static_cast<std::size_t>(rate * .90F) + 64U;
     for (auto& channel : lines)
       for (auto& line : channel) line.assign(capacity, 0.F);
@@ -58,7 +56,8 @@ struct AtmosParityProcessor::Impl {
   void process(float* data, std::size_t frames) noexcept {
     const float glide = 1.F - std::exp(-1.F / (rate * .06F));
     for (std::size_t frame = 0; frame < frames; ++frame) {
-      for (std::size_t i = 0; i < smooth.size(); ++i)
+      smooth[0] = target[0].load(std::memory_order_relaxed);
+      for (std::size_t i = 1; i < smooth.size(); ++i)
         smooth[i] += (target[i].load(std::memory_order_relaxed) - smooth[i]) * glide;
 
       const auto model = std::min<std::size_t>(11U, static_cast<std::size_t>(std::max(0.F, std::round(smooth[0]))));
