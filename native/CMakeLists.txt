@@ -91,6 +91,7 @@ add_library(calcotone_dsp STATIC
   src/audio_device_config.cpp
   src/elastic_stereo_fifo.cpp
   src/stream_recovery.cpp
+  src/adaptive_fifo_safety.cpp
 )
 target_include_directories(calcotone_dsp PUBLIC
   "${CALCOTONE_GENERATED_CONTRACT_DIR}"
@@ -115,6 +116,8 @@ add_executable(elastic_stereo_fifo_discontinuity_test tests/elastic_stereo_fifo_
 target_link_libraries(elastic_stereo_fifo_discontinuity_test PRIVATE calcotone_dsp)
 add_executable(stream_recovery_test tests/stream_recovery_test.cpp)
 target_link_libraries(stream_recovery_test PRIVATE calcotone_dsp)
+add_executable(adaptive_fifo_safety_test tests/adaptive_fifo_safety_test.cpp)
+target_link_libraries(adaptive_fifo_safety_test PRIVATE calcotone_dsp)
 add_executable(atmos_parity_profile_test tests/atmos_parity_profile_test.cpp)
 target_link_libraries(atmos_parity_profile_test PRIVATE calcotone_dsp)
 add_executable(atmos_parity_processor_test tests/atmos_parity_processor_test.cpp)
@@ -178,6 +181,7 @@ add_test(NAME audio_device_config_test COMMAND audio_device_config_test)
 add_test(NAME elastic_stereo_fifo_test COMMAND elastic_stereo_fifo_test)
 add_test(NAME elastic_stereo_fifo_discontinuity_test COMMAND elastic_stereo_fifo_discontinuity_test)
 add_test(NAME stream_recovery_test COMMAND stream_recovery_test)
+add_test(NAME adaptive_fifo_safety_test COMMAND adaptive_fifo_safety_test)
 add_test(NAME atmos_parity_profile_test COMMAND atmos_parity_profile_test)
 add_test(NAME atmos_parity_processor_test COMMAND atmos_parity_processor_test)
 add_test(NAME atmos_lexicon224_converter_test COMMAND atmos_lexicon224_converter_test)

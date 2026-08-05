@@ -16,6 +16,7 @@ float hermite(float y0, float y1, float y2, float y3, float mu) noexcept {
 
 ElasticStereoFifo::ElasticStereoFifo(std::uint64_t target_frames) noexcept
     : target_frames_(std::clamp<std::uint64_t>(target_frames, 16U, capacity_frames / 4U)),
+      published_target_frames_(target_frames_),
       filtered_depth_(static_cast<double>(target_frames_)) {}
 
 bool ElasticStereoFifo::push(float left, float right, bool discontinuity) noexcept {
@@ -113,6 +114,11 @@ bool ElasticStereoFifo::pull(float& left, float& right, bool* discontinuity) noe
   }
   read_.store(read + advance, std::memory_order_release);
   return true;
+}
+
+void ElasticStereoFifo::set_target_frames(std::uint64_t target_frames) noexcept {
+  target_frames_ = std::clamp<std::uint64_t>(target_frames, 16U, capacity_frames / 4U);
+  published_target_frames_.store(target_frames_, std::memory_order_release);
 }
 
 void ElasticStereoFifo::trim_to_target() noexcept {

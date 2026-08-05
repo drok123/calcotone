@@ -10,6 +10,7 @@
 #include <propvarutil.h>
 #include <wrl/client.h>
 
+#include "calcotone/adaptive_fifo_safety.hpp"
 #include "calcotone/audio_device_config.hpp"
 #include "calcotone/control_server.hpp"
 #include "calcotone/desktop_shell.hpp"
@@ -502,11 +503,14 @@ int main(int argc, char** argv) {
     const float sample_rate = static_cast<float>(render.format->nSamplesPerSec);
     calcotone::NativeProcessor processor(sample_rate);
     NativeRecorder recorder(sample_rate);
-    const auto fifo_target_frames = static_cast<std::uint64_t>(
-        2U * std::max(capture.period_frames, render.buffer_frames));
+    const auto fifo_period_frames = static_cast<std::uint64_t>(
+        std::max(capture.period_frames, render.buffer_frames));
+    const auto fifo_target_frames = 2U * fifo_period_frames;
     // These blocks exceed Windows' default 1 MB stack when combined. Allocate
     // once during startup; the realtime threads never allocate or resize them.
     auto ring = std::make_unique<calcotone::ElasticStereoFifo>(fifo_target_frames);
+    calcotone::AdaptiveFifoSafety fifo_safety(
+        fifo_target_frames, fifo_period_frames, sample_rate);
     auto process = std::make_unique<ProcessBuffers>();
     std::atomic<bool> running{true};
     std::atomic<std::uint64_t> underruns{};
@@ -524,6 +528,12 @@ int main(int argc, char** argv) {
     std::atomic<float> output_peak{};
     std::atomic<bool> capture_mmcss{};
     std::atomic<bool> render_mmcss{};
+    std::atomic<std::uint64_t> adaptive_fifo_target{fifo_target_frames};
+    std::atomic<std::uint64_t> adaptive_fifo_maximum{fifo_safety.maximum_target_frames()};
+    std::atomic<std::uint64_t> adaptive_fifo_raises{};
+    std::atomic<std::uint64_t> adaptive_fifo_relaxations{};
+    std::atomic<std::uint64_t> adaptive_fifo_instability{};
+    std::atomic<double> adaptive_fifo_stable_seconds{};
     const auto apply_command = [&](std::string_view line) -> std::string {
       if (line == "health" || line == "stats") {
         std::ostringstream status;
@@ -539,7 +549,7 @@ int main(int argc, char** argv) {
                << ",\"outputBufferFrames\":" << render.buffer_frames
                << ",\"inputChannels\":" << capture.format->nChannels
                << ",\"outputChannels\":" << render.format->nChannels
-               << ",\"estimatedPathMs\":" << (capture.period_frames + render.buffer_frames + fifo_target_frames) / sample_rate * 1000.
+               << ",\"estimatedPathMs\":" << (capture.period_frames + render.buffer_frames + adaptive_fifo_target.load()) / sample_rate * 1000.
                << ",\"underruns\":" << underruns.load()
                << ",\"underrunEvents\":" << underrun_events.load()
                << ",\"streamRecoveryEvents\":" << stream_recovery_events.load()
@@ -547,7 +557,13 @@ int main(int argc, char** argv) {
                << ",\"renderMmcss\":" << (render_mmcss.load() ? "true" : "false")
                << ",\"overruns\":" << ring->overruns()
                << ",\"ringFrames\":" << ring->available()
-               << ",\"fifoTargetFrames\":" << fifo_target_frames
+               << ",\"fifoBaseTargetFrames\":" << fifo_target_frames
+               << ",\"fifoTargetFrames\":" << adaptive_fifo_target.load()
+               << ",\"fifoMaximumTargetFrames\":" << adaptive_fifo_maximum.load()
+               << ",\"fifoSafetyRaises\":" << adaptive_fifo_raises.load()
+               << ",\"fifoSafetyRelaxations\":" << adaptive_fifo_relaxations.load()
+               << ",\"fifoInstabilityEvents\":" << adaptive_fifo_instability.load()
+               << ",\"fifoStableSeconds\":" << adaptive_fifo_stable_seconds.load()
                << ",\"ringHighWaterFrames\":" << ring->high_water_frames()
                << ",\"clockCorrections\":" << ring->resampled_frames()
                << ",\"fifoReadRatio\":" << ring->read_ratio()
@@ -695,6 +711,17 @@ int main(int argc, char** argv) {
       RealtimeThreadScope realtime;
       render_mmcss.store(realtime.mmcss(), std::memory_order_relaxed);
       calcotone::StreamRecovery recovery(sample_rate);
+      std::uint64_t observed_overruns = ring->overruns();
+      const auto publish_fifo_safety = [&] {
+        const auto state = fifo_safety.state();
+        adaptive_fifo_target.store(state.target_frames, std::memory_order_relaxed);
+        adaptive_fifo_maximum.store(state.maximum_target_frames, std::memory_order_relaxed);
+        adaptive_fifo_raises.store(state.raises, std::memory_order_relaxed);
+        adaptive_fifo_relaxations.store(state.relaxations, std::memory_order_relaxed);
+        adaptive_fifo_instability.store(state.instability_events, std::memory_order_relaxed);
+        adaptive_fifo_stable_seconds.store(state.stable_seconds, std::memory_order_relaxed);
+      };
+      publish_fifo_safety();
       const auto render_deadline_micros = static_cast<std::uint64_t>(
           render.period_frames / sample_rate * 1'000'000.);
       while (running.load(std::memory_order_relaxed)) {
@@ -742,6 +769,12 @@ int main(int argc, char** argv) {
             underrun_events.fetch_add(block_underrun_events, std::memory_order_relaxed);
           if (block_stream_recoveries != 0U)
             stream_recovery_events.fetch_add(block_stream_recoveries, std::memory_order_relaxed);
+          const auto current_overruns = ring->overruns();
+          const auto block_overruns = current_overruns - observed_overruns;
+          observed_overruns = current_overruns;
+          if (fifo_safety.observe_block(block, block_underrun_events,
+                  block_stream_recoveries, block_overruns))
+            ring->set_target_frames(fifo_safety.target_frames());
           processor.process(process->capture_input.data(), process->mixed_output.data(), block);
           recorder.capture(process->mixed_output.data(), block);
           float block_output_peak = 0.F;
@@ -768,8 +801,12 @@ int main(int argc, char** argv) {
         auto previous_max = max_render_micros.load(std::memory_order_relaxed);
         while (render_micros > previous_max && !max_render_micros.compare_exchange_weak(
             previous_max, render_micros, std::memory_order_relaxed, std::memory_order_relaxed)) {}
-        if (render_micros >= render_deadline_micros)
+        if (render_micros >= render_deadline_micros) {
           render_deadline_misses.fetch_add(1, std::memory_order_relaxed);
+          if (fifo_safety.observe_deadline_miss())
+            ring->set_target_frames(fifo_safety.target_frames());
+        }
+        publish_fifo_safety();
       }
     });
 

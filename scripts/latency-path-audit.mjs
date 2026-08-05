@@ -14,6 +14,8 @@ const nativeDream = readFileSync(resolve(root, 'native/src/native_dream_engine.c
 const nativeDreamCore = readFileSync(resolve(root, 'native/src/dream_buffer_parity_processor.cpp'), 'utf8');
 const streamRecoveryHeader = readFileSync(resolve(root, 'native/include/calcotone/stream_recovery.hpp'), 'utf8');
 const streamRecovery = readFileSync(resolve(root, 'native/src/stream_recovery.cpp'), 'utf8');
+const adaptiveFifoHeader = readFileSync(resolve(root, 'native/include/calcotone/adaptive_fifo_safety.hpp'), 'utf8');
+const adaptiveFifo = readFileSync(resolve(root, 'native/src/adaptive_fifo_safety.cpp'), 'utf8');
 const audioConfig = readFileSync(resolve(root, 'native/src/audio_device_config.cpp'), 'utf8');
 const elasticFifoHeader = readFileSync(resolve(root, 'native/include/calcotone/elastic_stereo_fifo.hpp'), 'utf8');
 const elasticFifo = readFileSync(resolve(root, 'native/src/elastic_stereo_fifo.cpp'), 'utf8');
@@ -47,7 +49,8 @@ requireText(nativeHost, 'AUDCLNT_SHAREMODE_EXCLUSIVE', 'Native exclusive-WASAPI 
 requireText(nativeHost, "requested_frames * 10'000'000.0", 'Runtime native buffer-frame request');
 requireText(nativeHost, 'GetSharedModeEnginePeriod', 'Native minimum shared-period fallback');
 requireText(nativeHost, 'endpoint.client = activate()', 'Clean client reactivation after exclusive rejection');
-requireText(nativeHost, '2U * std::max(capture.period_frames, render.buffer_frames)', 'Native two-period FIFO safety target');
+requireText(nativeHost, 'const auto fifo_period_frames = static_cast<std::uint64_t>', 'Native device-period FIFO baseline');
+requireText(nativeHost, 'const auto fifo_target_frames = 2U * fifo_period_frames', 'Native two-period FIFO safety baseline');
 requireText(nativeHost, 'while (ring->available() < fifo_target_frames', 'Capture-first FIFO priming');
 requireText(streamRecoveryHeader, 'class StreamRecovery final', 'Click-safe stream recovery component');
 requireText(streamRecoveryHeader, 'recovery_seconds = .002F', 'Two-millisecond capture resume bridge');
@@ -73,6 +76,17 @@ requireText(elasticFifo, 'const bool next_crosses = markers_[next] != 0U', 'No i
 requireText(nativeHost, 'pending_stream_discontinuity = true', 'WASAPI packet and overrun marker propagation');
 requireText(nativeHost, 'recovery.mark_discontinuity()', 'Exact-frame discontinuity recovery');
 requireText(nativeHost, 'streamRecoveryEvents', 'Discontinuity recovery telemetry');
+requireText(adaptiveFifoHeader, 'class AdaptiveFifoSafety final', 'Bounded adaptive FIFO policy');
+requireText(adaptiveFifo, 'sample_rate_) * .020', 'Twenty-millisecond adaptive latency ceiling');
+requireText(adaptiveFifo, 'sample_rate_) * 30.0', 'Thirty-second stable relaxation window');
+requireText(adaptiveFifo, 'target_frames_ = next', 'Adaptive target step control');
+requireText(elasticFifoHeader, 'void set_target_frames', 'Consumer-thread FIFO target setter');
+requireText(nativeHost, 'fifo_safety.observe_block', 'Realtime FIFO stability observation');
+requireText(nativeHost, 'fifo_safety.observe_deadline_miss()', 'Deadline preemption safety raise');
+requireText(nativeHost, 'fifoBaseTargetFrames', 'User-requested FIFO baseline telemetry');
+requireText(nativeHost, 'fifoMaximumTargetFrames', 'Adaptive FIFO ceiling telemetry');
+requireText(nativeHost, 'fifoSafetyRaises', 'Adaptive FIFO raise telemetry');
+requireText(nativeHost, 'fifoSafetyRelaxations', 'Adaptive FIFO relaxation telemetry');
 requireText(nativeHost, 'renderDeadlineMisses', 'Native render deadline telemetry');
 requireText(nativeHost, 'maxRenderMicros', 'Native render workload telemetry');
 for (const module of ['Grain', 'Artifact']) requireText(nativeRackHeader, module, `Native ${module} rack ownership`);
