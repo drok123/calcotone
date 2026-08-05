@@ -41,7 +41,11 @@ struct HaloParityProcessor::Impl {
     delay[0].assign(size,0.F); delay[1].assign(size,0.F);
   }
   float noise() noexcept { rng^=rng<<13; rng^=rng>>17; rng^=rng<<5; return static_cast<float>(rng&0xffffU)/32767.5F-1.F; }
-  void glide() noexcept { const float g=1.F-std::exp(-1.F/(rate*.055F)); for(std::size_t i=0;i<7;++i)value[i]+=(target[i].load(std::memory_order_relaxed)-value[i])*g; }
+  void glide() noexcept {
+    value[0]=target[0].load(std::memory_order_relaxed);
+    const float g=1.F-std::exp(-1.F/(rate*.055F));
+    for(std::size_t i=1;i<7;++i)value[i]+=(target[i].load(std::memory_order_relaxed)-value[i])*g;
+  }
 
   void process(float* data,std::size_t frames) noexcept {
     for(std::size_t f=0;f<frames;++f){
