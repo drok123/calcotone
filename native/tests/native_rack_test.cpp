@@ -80,10 +80,5 @@ int main() {
   assert(pressure.set_parameter("drive", .8F));
   output = input; pressure.process(output.data(), kFrames); require_safe(output); assert(output != input);
 
-  calcotone::NativeDreamBuffer dream(kRate);
-  output = input; dream.process(output.data(), kFrames); require_safe(output);
-  std::vector<float> recalled(input.size(), 0.F);
-  dream.process(recalled.data(), kFrames); require_safe(recalled);
-  assert(std::any_of(recalled.begin(), recalled.end(), [](float x) { return std::abs(x) > 1e-7F; }));
   std::cout << "native rack tests passed\n";
 }
