@@ -189,6 +189,18 @@ class DesktopShell {
                           settings->put_AreDefaultContextMenusEnabled(FALSE);
                           settings->put_IsStatusBarEnabled(FALSE);
                         }
+                        EventRegistrationToken fullscreen_token{};
+                        webview_->add_ContainsFullScreenElementChanged(
+                            Callback<ICoreWebView2ContainsFullScreenElementChangedEventHandler>(
+                                [this](ICoreWebView2* sender, IUnknown*) -> HRESULT {
+                                  BOOL contains_fullscreen = FALSE;
+                                  if (sender && SUCCEEDED(sender->get_ContainsFullScreenElement(&contains_fullscreen))) {
+                                    set_native_fullscreen(contains_fullscreen == TRUE);
+                                  }
+                                  return S_OK;
+                                }).Get(),
+                            &fullscreen_token);
+
                         EventRegistrationToken navigation_token{};
                         webview_->add_NavigationStarting(
                             Callback<ICoreWebView2NavigationStartingEventHandler>(
@@ -214,6 +226,45 @@ class DesktopShell {
     if (FAILED(started)) fail("The WebView2 environment could not be started.");
   }
 
+  void set_native_fullscreen(bool enabled) {
+    if (!hwnd_ || native_fullscreen_ == enabled) return;
+    native_fullscreen_ = enabled;
+
+    if (enabled) {
+      saved_style_ = static_cast<DWORD>(GetWindowLongPtrW(hwnd_, GWL_STYLE));
+      saved_ex_style_ = static_cast<DWORD>(GetWindowLongPtrW(hwnd_, GWL_EXSTYLE));
+      GetWindowRect(hwnd_, &saved_window_rect_);
+
+      MONITORINFO monitor_info{};
+      monitor_info.cbSize = sizeof(monitor_info);
+      const HMONITOR monitor = MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST);
+      if (!GetMonitorInfoW(monitor, &monitor_info)) return;
+
+      SetWindowLongPtrW(
+          hwnd_, GWL_STYLE,
+          static_cast<LONG_PTR>(saved_style_ & ~(WS_CAPTION | WS_THICKFRAME)));
+      SetWindowLongPtrW(
+          hwnd_, GWL_EXSTYLE,
+          static_cast<LONG_PTR>(saved_ex_style_ & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE)));
+      SetWindowPos(
+          hwnd_, HWND_TOP,
+          monitor_info.rcMonitor.left, monitor_info.rcMonitor.top,
+          monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
+          monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
+          SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+    } else {
+      SetWindowLongPtrW(hwnd_, GWL_STYLE, static_cast<LONG_PTR>(saved_style_));
+      SetWindowLongPtrW(hwnd_, GWL_EXSTYLE, static_cast<LONG_PTR>(saved_ex_style_));
+      SetWindowPos(
+          hwnd_, nullptr,
+          saved_window_rect_.left, saved_window_rect_.top,
+          saved_window_rect_.right - saved_window_rect_.left,
+          saved_window_rect_.bottom - saved_window_rect_.top,
+          SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+    }
+    resize();
+  }
+
   void resize() {
     if (!controller_ || !hwnd_) return;
     RECT bounds{};
@@ -225,6 +276,10 @@ class DesktopShell {
   HWND hwnd_{};
   ComPtr<ICoreWebView2Controller> controller_;
   ComPtr<ICoreWebView2> webview_;
+  bool native_fullscreen_{};
+  DWORD saved_style_{};
+  DWORD saved_ex_style_{};
+  RECT saved_window_rect_{};
   std::atomic<bool> failed_{};
   std::string error_;
 };
