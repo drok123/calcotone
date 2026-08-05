@@ -6,6 +6,7 @@ on:
     paths:
       - scripts/materialize-pro-audio-shared.py
       - scripts/fix-pro-audio-materializer-anchor.py
+      - scripts/materialize-pro-audio-health.py
       - .github/workflows/materialize-pro-audio-shared.yml
 
 permissions:
@@ -34,6 +35,7 @@ jobs:
         run: |
           python scripts/fix-pro-audio-materializer-anchor.py
           python scripts/materialize-pro-audio-shared.py
+          python scripts/materialize-pro-audio-health.py
 
       - name: Audit canonical shared transport
         shell: pwsh
@@ -94,6 +96,7 @@ jobs:
         run: |
           Remove-Item scripts/materialize-pro-audio-shared.py
           Remove-Item scripts/fix-pro-audio-materializer-anchor.py
+          Remove-Item scripts/materialize-pro-audio-health.py
           Remove-Item .github/workflows/materialize-pro-audio-shared.yml
 
       - name: Commit canonical shared negotiation
