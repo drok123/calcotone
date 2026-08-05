@@ -20,18 +20,10 @@ if anchor not in source:
     raise RuntimeError("missing cpp_string helper")
 source = source.replace(anchor, replacement, 1)
 
-old = '''        control_rows = [
-            f"  {{{cpp_string(control['id'])}, {float(control['defaultUi']):.9g}F}},"
-            for control in controls
-        ]
-'''
-new = '''        control_rows = [
-            f"  {{{cpp_string(control['id'])}, {cpp_float(control['defaultUi'])}}},"
-            for control in controls
-        ]
-'''
-if old not in source:
-    raise RuntimeError("missing control literal generator")
-source = source.replace(old, new, 1)
+old_expression = "{float(control['defaultUi']):.9g}F"
+new_expression = "{cpp_float(control['defaultUi'])}"
+if old_expression not in source:
+    raise RuntimeError("missing control float expression")
+source = source.replace(old_expression, new_expression, 1)
 path.write_text(source, encoding="utf-8")
 print("Core contract generator now emits valid C++ float literals for integer defaults.")
