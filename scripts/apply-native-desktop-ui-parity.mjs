@@ -49,4 +49,14 @@ layout = replaceOnce(
 );
 fs.writeFileSync(layoutPath, layout, 'utf8');
 
-console.log('Native desktop spectrum, XY parity, and approved 1:1 faceplate layout applied.');
+const effectModulePath = 'src/components/effects/EffectModule.tsx';
+let effectModule = normalizeNewlines(fs.readFileSync(effectModulePath, 'utf8'));
+effectModule = replaceOnce(
+  effectModule,
+  '  const customFaceplate = faceplateEditor.layout.custom;',
+  '  const customFaceplate = true;',
+  'native core faceplate enforcement',
+);
+fs.writeFileSync(effectModulePath, effectModule, 'utf8');
+
+console.log('Native desktop spectrum, XY parity, and pinned core faceplate layout applied.');
