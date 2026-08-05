@@ -117,6 +117,16 @@ void test_particle_memory_extends_the_tail() {
   assert(high_tail > low_tail * 1.08 + 1e-7);
 }
 
+void test_silence_remains_silent_in_memory_and_hardware_modes() {
+  for (const unsigned mode : {2U, 5U, 6U, 8U, 10U, 11U}) {
+    calcotone::GrainParityProcessor processor(kRate);
+    configure(processor, mode, 16.F, 1.F, 1.F, 1.F, 1.F);
+    std::vector<float> silence(16'384U * 2U, 0.F);
+    process_blocks(processor, silence);
+    for (float sample : silence) assert(sample == 0.F);
+  }
+}
+
 void test_reset_is_deterministic() {
   calcotone::GrainParityProcessor processor(kRate);
   configure(processor, 11U, 10.F, .67F, .72F, .48F, .81F);
@@ -139,6 +149,7 @@ int main() {
   test_window_and_pitch_are_analysis_controls_not_bit_crushing();
   test_slice_and_freeze_capture_full_windows();
   test_particle_memory_extends_the_tail();
+  test_silence_remains_silent_in_memory_and_hardware_modes();
   test_reset_is_deterministic();
 
   calcotone::GrainParityProcessor processor(kRate);
