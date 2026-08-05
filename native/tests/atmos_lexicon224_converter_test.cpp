@@ -73,6 +73,17 @@ void test_input_and_output_roles_are_distinct() {
   assert(std::abs(input_signature - output_signature) > 1e-3);
 }
 
+void test_silence_remains_silent_in_both_roles() {
+  for (const auto role : {calcotone::Lexicon224ConverterRole::Input,
+                          calcotone::Lexicon224ConverterRole::Output}) {
+    calcotone::AtmosLexicon224Converter converter(kRate, role);
+    for (std::size_t sample = 0; sample < 4096U; ++sample) {
+      const auto output = converter.process(0.F, 0.F);
+      assert(output[0] == 0.F && output[1] == 0.F);
+    }
+  }
+}
+
 void test_reset_is_deterministic_and_nonfinite_input_is_safe() {
   calcotone::AtmosLexicon224Converter converter(
       kRate, calcotone::Lexicon224ConverterRole::Input);
@@ -97,5 +108,6 @@ int main() {
   test_low_level_gain_range_improves_resolution();
   test_gain_range_hysteresis_has_memory();
   test_input_and_output_roles_are_distinct();
+  test_silence_remains_silent_in_both_roles();
   test_reset_is_deterministic_and_nonfinite_input_is_safe();
 }
