@@ -6,7 +6,25 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(CALCOTONE_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 set(CALCOTONE_GENERATED_NATIVE_RACK "${CALCOTONE_GENERATED_DIR}/native_rack.cpp")
+set(CALCOTONE_GENERATED_CONTRACT_DIR "${CALCOTONE_GENERATED_DIR}/include")
+set(CALCOTONE_GENERATED_CONTRACT "${CALCOTONE_GENERATED_CONTRACT_DIR}/calcotone/core_contract.hpp")
+set(CALCOTONE_CORE_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/../contracts/calcotone-core-manifest.json")
 file(MAKE_DIRECTORY "${CALCOTONE_GENERATED_DIR}")
+file(MAKE_DIRECTORY "${CALCOTONE_GENERATED_CONTRACT_DIR}/calcotone")
+
+execute_process(
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_core_contract.py"
+          "${CALCOTONE_CORE_MANIFEST}"
+          "${CALCOTONE_GENERATED_CONTRACT}"
+  RESULT_VARIABLE CALCOTONE_CONTRACT_RESULT
+  OUTPUT_VARIABLE CALCOTONE_CONTRACT_OUTPUT
+  ERROR_VARIABLE CALCOTONE_CONTRACT_ERROR
+)
+if(NOT CALCOTONE_CONTRACT_RESULT EQUAL 0)
+  message(FATAL_ERROR "Failed to generate native core contract: ${CALCOTONE_CONTRACT_ERROR}")
+endif()
+message(STATUS "${CALCOTONE_CONTRACT_OUTPUT}")
+
 execute_process(
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/apply_atmos_parity.py"
           "${CMAKE_CURRENT_SOURCE_DIR}/src/native_rack.cpp"
@@ -32,7 +50,10 @@ add_library(calcotone_dsp STATIC
   src/audio_device_config.cpp
   src/elastic_stereo_fifo.cpp
 )
-target_include_directories(calcotone_dsp PUBLIC include)
+target_include_directories(calcotone_dsp PUBLIC
+  "${CALCOTONE_GENERATED_CONTRACT_DIR}"
+  include
+)
 
 add_executable(core_contract_test tests/core_contract_test.cpp)
 target_link_libraries(core_contract_test PRIVATE calcotone_dsp)
