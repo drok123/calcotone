@@ -16,6 +16,7 @@
 #include "calcotone/elastic_stereo_fifo.hpp"
 #include "calcotone/ks_wavert_probe.hpp"
 #include "calcotone/native_processor.hpp"
+#include "calcotone/stream_recovery.hpp"
 
 #include <algorithm>
 #include <array>
@@ -417,12 +418,28 @@ Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow, bool pre
 }
 
 
-void set_realtime_thread() noexcept {
-  DWORD task_index = 0;
-  if (HANDLE task = AvSetMmThreadCharacteristicsW(L"Pro Audio", &task_index)) {
-    AvSetMmThreadPriority(task, AVRT_PRIORITY_CRITICAL);
+class RealtimeThreadScope final {
+ public:
+  RealtimeThreadScope() noexcept {
+    task_ = AvSetMmThreadCharacteristicsW(L"Pro Audio", &task_index_);
+    if (task_) {
+      mmcss_ = true;
+      AvSetMmThreadPriority(task_, AVRT_PRIORITY_CRITICAL);
+    } else {
+      SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+    }
   }
-}
+  ~RealtimeThreadScope() {
+    if (task_) AvRevertMmThreadCharacteristics(task_);
+  }
+  RealtimeThreadScope(const RealtimeThreadScope&) = delete;
+  RealtimeThreadScope& operator=(const RealtimeThreadScope&) = delete;
+  [[nodiscard]] bool mmcss() const noexcept { return mmcss_; }
+ private:
+  HANDLE task_{};
+  DWORD task_index_{};
+  bool mmcss_{};
+};
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -493,6 +510,7 @@ int main(int argc, char** argv) {
     auto process = std::make_unique<ProcessBuffers>();
     std::atomic<bool> running{true};
     std::atomic<std::uint64_t> underruns{};
+    std::atomic<std::uint64_t> underrun_events{};
     std::atomic<std::uint64_t> render_deadline_misses{};
     std::atomic<std::uint64_t> max_render_micros{};
     std::atomic<std::uint64_t> capture_discontinuities{};
@@ -503,6 +521,8 @@ int main(int argc, char** argv) {
     std::atomic<std::uint64_t> input_clips{};
     std::atomic<float> input_peak{};
     std::atomic<float> output_peak{};
+    std::atomic<bool> capture_mmcss{};
+    std::atomic<bool> render_mmcss{};
     const auto apply_command = [&](std::string_view line) -> std::string {
       if (line == "health" || line == "stats") {
         std::ostringstream status;
@@ -519,7 +539,11 @@ int main(int argc, char** argv) {
                << ",\"inputChannels\":" << capture.format->nChannels
                << ",\"outputChannels\":" << render.format->nChannels
                << ",\"estimatedPathMs\":" << (capture.period_frames + render.buffer_frames + fifo_target_frames) / sample_rate * 1000.
-               << ",\"underruns\":" << underruns.load() << ",\"overruns\":" << ring->overruns()
+               << ",\"underruns\":" << underruns.load()
+               << ",\"underrunEvents\":" << underrun_events.load()
+               << ",\"captureMmcss\":" << (capture_mmcss.load() ? "true" : "false")
+               << ",\"renderMmcss\":" << (render_mmcss.load() ? "true" : "false")
+               << ",\"overruns\":" << ring->overruns()
                << ",\"ringFrames\":" << ring->available()
                << ",\"fifoTargetFrames\":" << fifo_target_frames
                << ",\"ringHighWaterFrames\":" << ring->high_water_frames()
@@ -615,7 +639,8 @@ int main(int argc, char** argv) {
     log_line("Native control bridge is listening on 127.0.0.1:48157.");
 
     std::thread capture_thread([&] {
-      set_realtime_thread();
+      RealtimeThreadScope realtime;
+      capture_mmcss.store(realtime.mmcss(), std::memory_order_relaxed);
       while (running.load(std::memory_order_relaxed)) {
         if (WaitForSingleObject(capture.event, 1000) != WAIT_OBJECT_0) continue;
         UINT32 packet = 0;
@@ -631,16 +656,21 @@ int main(int argc, char** argv) {
             capture_timestamp_errors.fetch_add(1, std::memory_order_relaxed);
           if (flags & AUDCLNT_BUFFERFLAGS_SILENT)
             capture_silent_packets.fetch_add(1, std::memory_order_relaxed);
+          float packet_peak = 0.F;
+          std::uint64_t packet_clips = 0U;
           for (UINT32 frame = 0; frame < frames; ++frame) {
             const float left = flags & AUDCLNT_BUFFERFLAGS_SILENT ? 0.F
                 : decode_sample(bytes, frame * capture.format->nChannels + input_one_channel, capture_encoding);
             const float right = flags & AUDCLNT_BUFFERFLAGS_SILENT ? 0.F
                 : decode_sample(bytes, frame * capture.format->nChannels + input_two_channel, capture_encoding);
-            publish_peak(input_peak, std::max(std::abs(left), std::abs(right)));
-            if (std::abs(left) >= .999F) input_clips.fetch_add(1, std::memory_order_relaxed);
-            if (std::abs(right) >= .999F) input_clips.fetch_add(1, std::memory_order_relaxed);
+            packet_peak = std::max({packet_peak, std::abs(left), std::abs(right)});
+            packet_clips += std::abs(left) >= .999F ? 1U : 0U;
+            packet_clips += std::abs(right) >= .999F ? 1U : 0U;
             ring->push(left, right);
           }
+          publish_peak(input_peak, packet_peak);
+          if (packet_clips != 0U)
+            input_clips.fetch_add(packet_clips, std::memory_order_relaxed);
           if (FAILED(capture_service->ReleaseBuffer(frames)))
             capture_api_errors.fetch_add(1, std::memory_order_relaxed);
         }
@@ -648,8 +678,9 @@ int main(int argc, char** argv) {
     });
 
     std::thread render_thread([&] {
-      set_realtime_thread();
-      float last_left = 0.F, last_right = 0.F;
+      RealtimeThreadScope realtime;
+      render_mmcss.store(realtime.mmcss(), std::memory_order_relaxed);
+      calcotone::StreamRecovery recovery(sample_rate);
       const auto render_deadline_micros = static_cast<std::uint64_t>(
           render.period_frames / sample_rate * 1'000'000.);
       while (running.load(std::memory_order_relaxed)) {
@@ -672,29 +703,30 @@ int main(int argc, char** argv) {
             render_api_errors.fetch_add(1, std::memory_order_relaxed);
             break;
           }
+          std::uint64_t block_underrun_frames = 0U;
+          std::uint64_t block_underrun_events = 0U;
           for (UINT32 frame = 0; frame < block; ++frame) {
+            float captured_left = 0.F, captured_right = 0.F;
+            const bool pulled = ring->pull(captured_left, captured_right);
+            const bool valid = pulled && std::isfinite(captured_left) && std::isfinite(captured_right);
             float left = 0.F, right = 0.F;
-            if (ring->pull(left, right)) {
-              last_left = left;
-              last_right = right;
-            } else {
-              underruns.fetch_add(1, std::memory_order_relaxed);
-              // Preserve waveform continuity when capture wakes late. A short
-              // decay is much less audible than injecting a hard digital zero.
-              last_left *= .995F;
-              last_right *= .995F;
-              left = last_left;
-              right = last_right;
-            }
-            process->capture_input[frame * 2] = left; process->capture_input[frame * 2 + 1] = right;
+            if (recovery.process(valid, captured_left, captured_right, left, right))
+              ++block_underrun_events;
+            if (!valid) ++block_underrun_frames;
+            process->capture_input[frame * 2] = left;
+            process->capture_input[frame * 2 + 1] = right;
           }
+          if (block_underrun_frames != 0U)
+            underruns.fetch_add(block_underrun_frames, std::memory_order_relaxed);
+          if (block_underrun_events != 0U)
+            underrun_events.fetch_add(block_underrun_events, std::memory_order_relaxed);
           processor.process(process->capture_input.data(), process->mixed_output.data(), block);
           recorder.capture(process->mixed_output.data(), block);
+          float block_output_peak = 0.F;
           for (UINT32 frame = 0; frame < block; ++frame) {
-            const float frame_peak = std::max(
+            block_output_peak = std::max({block_output_peak,
                 std::abs(process->mixed_output[frame * 2]),
-                std::abs(process->mixed_output[frame * 2 + 1]));
-            publish_peak(output_peak, frame_peak);
+                std::abs(process->mixed_output[frame * 2 + 1])});
             for (WORD channel = 0; channel < render.format->nChannels; ++channel) {
               float value = 0.F;
               if (output_left_channel == output_right_channel && channel == output_left_channel)
@@ -704,6 +736,7 @@ int main(int argc, char** argv) {
               encode_sample(bytes, frame * render.format->nChannels + channel, render_encoding, value);
             }
           }
+          publish_peak(output_peak, block_output_peak);
           if (FAILED(render_service->ReleaseBuffer(block, 0)))
             render_api_errors.fetch_add(1, std::memory_order_relaxed);
           remaining -= block;

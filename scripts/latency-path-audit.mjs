@@ -12,6 +12,8 @@ const nativeDreamHeader = readFileSync(resolve(root, 'native/include/calcotone/n
 const nativeDreamCoreHeader = readFileSync(resolve(root, 'native/include/calcotone/dream_buffer_parity_processor.hpp'), 'utf8');
 const nativeDream = readFileSync(resolve(root, 'native/src/native_dream_engine.cpp'), 'utf8');
 const nativeDreamCore = readFileSync(resolve(root, 'native/src/dream_buffer_parity_processor.cpp'), 'utf8');
+const streamRecoveryHeader = readFileSync(resolve(root, 'native/include/calcotone/stream_recovery.hpp'), 'utf8');
+const streamRecovery = readFileSync(resolve(root, 'native/src/stream_recovery.cpp'), 'utf8');
 const audioConfig = readFileSync(resolve(root, 'native/src/audio_device_config.cpp'), 'utf8');
 const elasticFifo = readFileSync(resolve(root, 'native/src/elastic_stereo_fifo.cpp'), 'utf8');
 const ksProbe = readFileSync(resolve(root, 'native/src/ks_wavert_probe.cpp'), 'utf8');
@@ -46,7 +48,18 @@ requireText(nativeHost, 'GetSharedModeEnginePeriod', 'Native minimum shared-peri
 requireText(nativeHost, 'endpoint.client = activate()', 'Clean client reactivation after exclusive rejection');
 requireText(nativeHost, '2U * std::max(capture.period_frames, render.buffer_frames)', 'Native two-period FIFO safety target');
 requireText(nativeHost, 'while (ring->available() < fifo_target_frames', 'Capture-first FIFO priming');
-requireText(nativeHost, 'last_left *= .995F', 'Click-safe capture-underrun decay');
+requireText(streamRecoveryHeader, 'class StreamRecovery final', 'Click-safe stream recovery component');
+requireText(streamRecoveryHeader, 'recovery_seconds = .002F', 'Two-millisecond capture resume bridge');
+requireText(streamRecovery, 'decay_ = std::exp(std::log(.001F) / (sample_rate * .03F))', 'Sample-rate-independent starvation decay');
+requireText(streamRecovery, 'const float blend = smoothstep(position)', 'Smoothstep capture resume crossfade');
+requireText(nativeHost, 'calcotone::StreamRecovery recovery(sample_rate)', 'WASAPI render continuity bridge');
+requireText(nativeHost, 'underrunEvents', 'WASAPI starvation episode telemetry');
+requireText(nativeHost, 'class RealtimeThreadScope final', 'RAII MMCSS realtime scope');
+requireText(nativeHost, 'AvRevertMmThreadCharacteristics(task_)', 'MMCSS cleanup');
+requireText(nativeHost, 'publish_peak(input_peak, packet_peak)', 'Packet-batched capture telemetry');
+requireText(nativeHost, 'publish_peak(output_peak, block_output_peak)', 'Block-batched render telemetry');
+forbidText(nativeHost, 'last_left *= .995F', 'Retired hardcoded underrun decay');
+forbidText(nativeHost, 'void set_realtime_thread()', 'Retired non-RAII realtime helper');
 requireText(nativeHost, 'ringFrames', 'Live native FIFO telemetry');
 requireText(nativeHost, 'ring->trim_to_target()', 'Exact native FIFO startup trim');
 requireText(elasticFifo, 'ratio_ += (desired - ratio_) * 0.001', 'Smooth capture/render clock-drift correction');
