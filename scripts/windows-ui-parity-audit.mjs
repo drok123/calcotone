@@ -11,6 +11,12 @@ const nativeProcessor = read('native/include/calcotone/native_processor.hpp');
 const routing = read('src/routing/serialRouting.ts');
 const faceplate = read('src/ui/faceplateLayout.ts');
 const launcher = read('native/START-CALCOTONE-NATIVE.bat');
+const nativeRackPatch = read('native/tools/apply_atmos_parity.py');
+const nativeRackTemplate = read('native/src/native_rack.cpp');
+const emberNative = `${read('native/src/ember_parity_processor.cpp')}\n${read('native/src/ember_magnetic_core_processor.cpp')}\n${read('native/src/ember_digital_capture_processor.cpp')}`;
+const driftNative = `${read('native/src/drift_parity_processor.cpp')}\n${read('native/src/drift_standard_processor.cpp')}\n${read('native/src/drift_classic_processor.cpp')}`;
+const haloNative = read('native/src/halo_parity_processor.cpp');
+const atmosNative = read('native/src/atmos_parity_processor.cpp');
 
 const checks = [];
 const check = (ok, category, label, severity = 'error') => checks.push({ ok, category, label, severity });
@@ -96,23 +102,23 @@ check(app.includes('commandLine(`param ${moduleId} ${parameterId}'), 'xy', 'glob
 for (const parameter of ['console', 'tube', 'chainOrder']) {
   check(!app.includes(`id: '${parameter}'`), 'artifact', `${parameter} UI state removed`);
 }
-check(!read('native/tools/apply_atmos_parity.py').includes('ArtifactChainProcessor'), 'artifact', 'hidden native Artifact chain removed');
+check(!nativeRackPatch.includes('ArtifactChainProcessor'), 'artifact', 'hidden native Artifact chain removed');
 check(count(effectModule, 'aria-label="Artifact format"') === 1, 'artifact', 'exactly one visible Artifact dropdown');
 check(!effectModule.includes('<ArtifactMatrixSelectors'), 'artifact', 'Artifact matrix selectors removed');
 check(effectModule.includes('const visibleParameters = module.parameters;'), 'artifact', 'all canonical Artifact knobs render directly');
 
 const moduleContracts = [
-  ['saturation', 'Ember'],
-  ['chorus', 'Drift'],
-  ['delay', 'Halo'],
-  ['reverb', 'Atmos'],
-  ['bitcrusher', 'Grain'],
-  ['media', 'Artifact'],
+  { id: 'saturation', name: 'Ember', native: `${nativeRackPatch}\n${emberNative}`, needles: ['EmberParityProcessor', 'processor.set_parameter("mode"'] },
+  { id: 'chorus', name: 'Drift', native: `${nativeRackPatch}\n${driftNative}`, needles: ['DriftParityProcessor', 'DriftStandardProcessor', 'DriftClassicProcessor'] },
+  { id: 'delay', name: 'Halo', native: `${nativeRackPatch}\n${haloNative}`, needles: ['HaloParityProcessor', 'processor.set_parameter("algorithm"'] },
+  { id: 'reverb', name: 'Atmos', native: `${nativeRackPatch}\n${atmosNative}`, needles: ['AtmosParityProcessor', 'processor.set_parameter("algorithm"'] },
+  { id: 'bitcrusher', name: 'Grain', native: `${nativeRackTemplate}\n${nativeRackPatch}`, needles: ['struct Grain', 'RackModule::Grain'] },
+  { id: 'media', name: 'Artifact', native: `${nativeRackTemplate}\n${nativeRackPatch}`, needles: ['struct Artifact', 'RackModule::Artifact'] },
 ];
-for (const [id, name] of moduleContracts) {
-  check(app.includes(`id: '${id}'`), 'module-state', `${name} canonical state exists`);
-  check(effectModule.includes(`module.id === '${id}'`) || id === 'media', 'module-ui', `${name} module-specific UI route`);
-  check(host.includes(id) || nativeProcessor.includes(id), 'module-native', `${name} native route surface`);
+for (const contract of moduleContracts) {
+  check(app.includes(`id: '${contract.id}'`), 'module-state', `${contract.name} canonical state exists`);
+  check(effectModule.includes(`module.id === '${contract.id}'`) || contract.id === 'media', 'module-ui', `${contract.name} module-specific UI route`);
+  check(contract.needles.every((needle) => contract.native.includes(needle)), 'module-native', `${contract.name} dedicated native route surface`);
 }
 
 const failed = checks.filter((item) => !item.ok && item.severity === 'error');
