@@ -32,6 +32,7 @@ def main() -> int:
         '#include "calcotone/halo_parity_processor.hpp"\n'
         '#include "calcotone/grain_parity_processor.hpp"\n'
         '#include "calcotone/artifact_parity_processor.hpp"\n'
+        '#include "calcotone/stomp_parity_processor.hpp"\n'
     )
     if '#include "calcotone/atmos_parity_processor.hpp"' not in source:
         if include_anchor not in source:
@@ -156,6 +157,24 @@ struct Artifact {'''
 struct Stomp {'''
     source = replace_once(source, r"struct Artifact \{.*?\n\};\n\nstruct Stomp \{", artifact_replacement, "Artifact")
 
+    stomp_replacement = r'''struct Stomp {
+  Params p{0.F, .38F, .54F, .68F, .42F, .52F, 1.F};
+  StompParityProcessor processor;
+  explicit Stomp(float rate) : processor(rate) {}
+  void process(float* data, std::size_t frames, float) noexcept {
+    processor.set_parameter("mode", p.target[0].load(std::memory_order_relaxed));
+    processor.set_parameter("drive", p.target[1].load(std::memory_order_relaxed));
+    processor.set_parameter("tone", p.target[2].load(std::memory_order_relaxed));
+    processor.set_parameter("level", p.target[3].load(std::memory_order_relaxed));
+    processor.set_parameter("character", p.target[4].load(std::memory_order_relaxed));
+    processor.set_parameter("body", p.target[5].load(std::memory_order_relaxed));
+    processor.set_parameter("mix", p.target[6].load(std::memory_order_relaxed));
+    processor.process(data, frames);
+  }
+};'''
+    source = replace_once(source, r"struct Stomp \{.*?\n\};\n\}  // namespace", stomp_replacement + "\n}  // namespace", "Stomp")
+    source = source.replace("artifact(sample_rate) {", "artifact(sample_rate), stomp(sample_rate) {", 1)
+
 
     source = source.replace(
         "explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)), drift(sample_rate)",
@@ -165,7 +184,7 @@ struct Stomp {'''
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(source, encoding="utf-8", newline="\n")
-    print(f"generated {output_path} with live Ember, Drift, Halo, Atmos, Grain, and dedicated Artifact processing")
+    print(f"generated {output_path} with live Ember, Drift, Halo, Atmos, Grain, and dedicated Artifact and Stomp processing")
     return 0
 
 

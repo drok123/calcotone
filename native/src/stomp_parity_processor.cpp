@@ -113,9 +113,9 @@ struct StompParityProcessor::Impl {
     auto& buffer = pitch_buffer[channel];
     buffer[pitch_write] = dry;
     const float grain_samples = rate * (.024F + tone * .030F);
-    pitch_phase += 1.F / std::max(32.F, grain_samples);
-    if (pitch_phase >= 1.F) pitch_phase -= 1.F;
-    const float phase_a = pitch_phase;
+    pitch_phase[channel] += 1.F / std::max(32.F, grain_samples);
+    if (pitch_phase[channel] >= 1.F) pitch_phase[channel] -= 1.F;
+    const float phase_a = pitch_phase[channel];
     float phase_b = phase_a + .5F;
     if (phase_b >= 1.F) phase_b -= 1.F;
     const float delay_a = 4.F + (1.F - phase_a) * grain_samples;
@@ -162,7 +162,7 @@ struct StompParityProcessor::Impl {
     dc_in.fill(0.F); dc_out.fill(0.F); previous.fill(0.F); device_memory.fill(0.F);
     supply.fill(1.F); wah.fill({}); compressor.fill({});
     for (auto& buffer : pitch_buffer) std::fill(buffer.begin(), buffer.end(), 0.F);
-    pitch_write = 0U; pitch_phase = 0.F;
+    pitch_write = 0U; pitch_phase.fill(0.F);
   }
 
   void process(float* data, std::size_t frames) noexcept {
@@ -231,7 +231,7 @@ struct StompParityProcessor::Impl {
   std::array<CompressorState, 2> compressor{};
   std::array<std::vector<float>, 2> pitch_buffer;
   std::size_t pitch_write{};
-  float pitch_phase{};
+  std::array<float, 2> pitch_phase{};
   std::array<std::atomic<float>, 7> target{0.F,.38F,.54F,.68F,.42F,.52F,1.F};
   std::array<float, 7> smooth{0.F,.38F,.54F,.68F,.42F,.52F,1.F};
 };

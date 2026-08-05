@@ -19,6 +19,7 @@ const haloNative = read('native/src/halo_parity_processor.cpp');
 const atmosNative = read('native/src/atmos_parity_processor.cpp');
 const grainNative = read('native/src/grain_parity_processor.cpp');
 const artifactNative = read('native/src/artifact_parity_processor.cpp');
+const stompNative = read('native/src/stomp_parity_processor.cpp');
 
 const checks = [];
 const check = (ok, category, label, severity = 'error') => checks.push({ ok, category, label, severity });
@@ -56,6 +57,13 @@ check(nativeProcessor.includes('set_stack_drive') && nativeProcessor.includes('s
 check(!railC.includes('<MotionPad {...motionPadProps} />'), 'stack', 'Stack XY input panel removed');
 check(!railC.includes('motionPadProps: MotionPadProps'), 'stack', 'Stack MotionPad prop contract removed');
 check(!app.includes('motionPadProps={{'), 'stack', 'Stack MotionPad App wiring removed');
+
+check(railC.includes("export const STOMP_MODE_LABELS = [\n  '808 Overdrive', 'RAT Distortion', 'Big Muff', 'Fuzz Face', 'DS-1 Distortion',\n  'Blues Driver', 'Gold Horse', 'Swedish Chainsaw', 'Metal Zone', 'Octavia',\n  'Rangemaster', 'Cry Baby Wah', 'Whammy Octave', 'Dyna Comp',\n] as const;"), 'stomp', 'fourteen stable ordered Stomp UI labels');
+check(stompNative.includes('kStompModeCount = 14U') || read('native/include/calcotone/stomp_parity_processor.hpp').includes('kStompModeCount = 14U'), 'stomp', 'fourteen stable native Stomp indices');
+for (const needle of ['StompParityProcessor::set_parameter', 'process_wah', 'process_whammy', 'process_compressor']) {
+  check(stompNative.includes(needle), 'stomp', `${needle} dedicated Stomp route`);
+}
+check(nativeRackPatch.includes('StompParityProcessor processor') && nativeRackPatch.includes('stomp(sample_rate)'), 'stomp', 'live rack constructs dedicated Stomp processor');
 
 for (const retired of [
   "moduleId === 'synth'",
