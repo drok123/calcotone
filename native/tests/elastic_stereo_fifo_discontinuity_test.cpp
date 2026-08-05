@@ -10,7 +10,9 @@
 namespace {
 void fill_step(calcotone::ElasticStereoFifo& fifo) {
   for (std::uint64_t frame = 0U; frame < 96U; ++frame) {
-    const bool discontinuity = frame == 64U;
+    // The marker at 16 belongs to history that startup trim discards. The marker
+    // at 64 remains inside the retained 64-frame live timeline and must survive.
+    const bool discontinuity = frame == 16U || frame == 64U;
     const float sample = frame < 64U ? .8F : -.8F;
     assert(fifo.push(sample, -sample, discontinuity));
   }
