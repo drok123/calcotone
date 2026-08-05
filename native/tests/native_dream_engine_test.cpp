@@ -65,6 +65,19 @@ std::vector<float> render_tail(calcotone::NativeDreamEngine& dream,
   return output;
 }
 
+void test_idle_raw_does_not_fill_memory() {
+  calcotone::NativeDreamEngine dream(kRate, kBlock);
+  std::vector<float> lane_one(kBlock * 2U, 0.F);
+  std::vector<float> lane_two(kBlock * 2U, 0.F);
+  for (unsigned block = 0U; block < 3000U; ++block) {
+    dream.begin_block(kBlock);
+    dream.finish_block(lane_one.data(), lane_two.data(), kBlock, false);
+  }
+  assert(dream.profile().fill_ratio == 0.F);
+  assert(std::all_of(lane_one.begin(), lane_one.end(), [](float value) { return value == 0.F; }));
+  assert(std::all_of(lane_two.begin(), lane_two.end(), [](float value) { return value == 0.F; }));
+}
+
 void test_master_return_is_parallel_and_bounded() {
   calcotone::NativeDreamEngine dream(kRate, kBlock);
   warm(dream, calcotone::RackModule::Halo, 96'000U);
@@ -149,6 +162,7 @@ void test_reset_is_deterministic() {
 }  // namespace
 
 int main() {
+  test_idle_raw_does_not_fill_memory();
   test_master_return_is_parallel_and_bounded();
   test_module_send_laws_are_distinct();
   test_now_echo_and_ghost_routes_are_distinct();
