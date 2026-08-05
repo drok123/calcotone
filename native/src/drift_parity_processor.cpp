@@ -61,8 +61,9 @@ struct DriftParityProcessor::Impl {
   }
 
   void glide() noexcept {
+    value[0] = target[0].load(std::memory_order_relaxed);
     const float amount = 1.F - std::exp(-1.F / (sample_rate * .035F));
-    for (std::size_t i = 0; i < value.size(); ++i)
+    for (std::size_t i = 1; i < value.size(); ++i)
       value[i] += (target[i].load(std::memory_order_relaxed) - value[i]) * amount;
   }
 
@@ -76,12 +77,12 @@ struct DriftParityProcessor::Impl {
     const float stereo_phase = channel ? kPi * (.18F + spread * .82F) : 0.F;
     const float lfo = std::sin(phase[channel] + stereo_phase);
 
-    if (model == 4) { // Leslie: rotor amplitude plus short Doppler delay.
+    if (model == 4) {
       const float delay_frames = (.0012F + depth * (8.F + motion * 18.F)) * sample_rate;
       const float delayed = read_delay(delay[channel], write, std::max(1.F, delay_frames * (.72F + .28F * lfo)));
       return delayed * (.68F + .32F * lfo);
     }
-    if (model == 8) { // PN-2: stereo tremolo/pan.
+    if (model == 8) {
       return input * (.58F + .42F * std::sin(phase[channel] + (channel ? kPi : 0.F)));
     }
 
