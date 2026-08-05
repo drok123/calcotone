@@ -8,6 +8,9 @@ const nativeHost = readFileSync(resolve(root, 'native/src/wasapi_host.cpp'), 'ut
 const nativeRackHeader = readFileSync(resolve(root, 'native/include/calcotone/native_rack.hpp'), 'utf8');
 const nativeRack = readFileSync(resolve(root, 'native/src/native_rack.cpp'), 'utf8');
 const nativeProcessor = readFileSync(resolve(root, 'native/src/native_processor.cpp'), 'utf8');
+const nativeDreamHeader = readFileSync(resolve(root, 'native/include/calcotone/native_dream_engine.hpp'), 'utf8');
+const nativeDream = readFileSync(resolve(root, 'native/src/native_dream_engine.cpp'), 'utf8');
+const nativeDreamCore = readFileSync(resolve(root, 'native/src/dream_buffer_parity_processor.cpp'), 'utf8');
 const audioConfig = readFileSync(resolve(root, 'native/src/audio_device_config.cpp'), 'utf8');
 const elasticFifo = readFileSync(resolve(root, 'native/src/elastic_stereo_fifo.cpp'), 'utf8');
 const ksProbe = readFileSync(resolve(root, 'native/src/ks_wavert_probe.cpp'), 'utf8');
@@ -18,6 +21,9 @@ const failures = [];
 
 const requireText = (source, needle, label) => {
   if (!source.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
+};
+const forbidText = (source, needle, label) => {
+  if (source.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`);
 };
 
 requireText(engine, "return 128;", 'Live 128-frame render request');
@@ -49,7 +55,21 @@ requireText(nativeHost, 'renderDeadlineMisses', 'Native render deadline telemetr
 requireText(nativeHost, 'maxRenderMicros', 'Native render workload telemetry');
 for (const module of ['Grain', 'Artifact']) requireText(nativeRackHeader, module, `Native ${module} rack ownership`);
 requireText(nativeRackHeader, 'class NativePressure final', 'Native Pressure processor');
-requireText(nativeRackHeader, 'class NativeDreamBuffer final', 'Native Dream Buffer processor');
+requireText(nativeDreamHeader, 'class NativeDreamEngine final', 'Shared native Dream engine');
+requireText(nativeDreamHeader, 'DreamBufferParityProcessor', 'Native Dream tagged-memory ownership');
+requireText(nativeDreamCore, 'kHistorySeconds = 8.F', 'Native Dream bounded history');
+requireText(nativeDream, 'std::array<std::vector<float>, 3> raw_heads', 'Native Dream preallocated moving heads');
+requireText(nativeDream, 'send_smoothing = 1.F - std::exp', 'Native Dream smoothed capture sends');
+requireText(nativeDream, 'route_smoothing = 1.F - std::exp', 'Native Dream smoothed feedback routes');
+requireText(nativeDream, 'master_smoothing = 1.F - std::exp', 'Native Dream click-safe master return');
+requireText(nativeProcessor, 'NativeDreamEngine dream;', 'Transport-independent shared Dream instance');
+requireText(nativeProcessor, 'dream.begin_block(frames)', 'Transport-independent Dream block render');
+requireText(nativeProcessor, 'dream.inject_route(rack_module', 'Transport-independent Dream route injection');
+requireText(nativeProcessor, 'dream.capture_module(rack_module', 'Transport-independent Dream capture send');
+requireText(nativeProcessor, 'any_rack_active || !stack_off || pressure_active', 'Native true-RAW Dream isolation gate');
+forbidText(nativeRackHeader, 'class NativeDreamBuffer final', 'Retired fixed-tap Dream declaration');
+forbidText(nativeProcessor, 'dream_one', 'Retired lane-one Dream insert');
+forbidText(nativeProcessor, 'dream_two', 'Retired lane-two Dream insert');
 requireText(nativeRack, 'std::array<std::array<Voice, 8>, 2>', 'Native fixed Grain voices');
 requireText(nativeRack, 'mode == 13 ? .91F', 'Native BCM10 output trim');
 requireText(nativeProcessor, 'packed_order.store(pack_order(next)', 'Transport-independent atomic topology snapshot');
