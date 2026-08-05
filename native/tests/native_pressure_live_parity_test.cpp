@@ -21,6 +21,12 @@ std::vector<float> source(std::size_t frames) {
   return audio;
 }
 
+void process_blocks(calcotone::NativePressure& pressure, std::vector<float>& audio) {
+  const std::size_t frames = audio.size() / 2U;
+  for (std::size_t offset = 0U; offset < frames; offset += 128U)
+    pressure.process(audio.data() + offset * 2U, std::min<std::size_t>(128U, frames - offset));
+}
+
 double signature(const std::vector<float>& audio) {
   double result = 0.0;
   for (std::size_t index = 0; index < audio.size(); ++index) {
@@ -35,6 +41,26 @@ double signature(const std::vector<float>& audio) {
 
 int main() {
   constexpr std::size_t frames = 72'000U;
+
+  // The standalone wrapper must boot with the same defaults exposed by the UI
+  // and canonical full-rack manifest: FET, Glue, .42/.46/.38/.72.
+  {
+    calcotone::NativePressure defaults(kRate);
+    calcotone::NativePressure explicit_defaults(kRate);
+    explicit_defaults.set_bypassed(false);
+    assert(explicit_defaults.set_parameter("mode", 0.F));
+    assert(explicit_defaults.set_parameter("style", 2.F));
+    assert(explicit_defaults.set_parameter("drive", .42F));
+    assert(explicit_defaults.set_parameter("time", .46F));
+    assert(explicit_defaults.set_parameter("character", .38F));
+    assert(explicit_defaults.set_parameter("mix", .72F));
+    auto default_audio = source(frames);
+    auto explicit_audio = default_audio;
+    process_blocks(defaults, default_audio);
+    process_blocks(explicit_defaults, explicit_audio);
+    assert(default_audio == explicit_audio);
+  }
+
   std::array<double, 16> signatures{};
   std::size_t signature_index = 0U;
   for (unsigned mode = 0U; mode < 4U; ++mode) {
@@ -48,8 +74,7 @@ int main() {
       assert(pressure.set_parameter("character", .38F));
       assert(pressure.set_parameter("mix", .72F));
       auto audio = source(frames);
-      for (std::size_t offset = 0U; offset < frames; offset += 128U)
-        pressure.process(audio.data() + offset * 2U, std::min<std::size_t>(128U, frames - offset));
+      process_blocks(pressure, audio);
       signatures[signature_index++] = signature(audio);
     }
   }
