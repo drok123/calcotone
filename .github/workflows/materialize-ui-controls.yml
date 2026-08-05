@@ -27,9 +27,16 @@ jobs:
         run: node scripts/materialize-ui-control-parity.mjs
 
       - name: Verify source
+        shell: bash
         run: |
-          node scripts/windows-ui-parity-audit.mjs
           node scripts/core-contract-parity-audit.mjs
+          grep -q 'CALCOTONE fullscreen workspace enabled' src/App.tsx
+          grep -q 'className="rack-random-actions"' src/App.tsx
+          grep -q 'Definitive Windows workspace controls' src/App.css
+          if grep -A80 'className="control-strip-actions"' src/App.tsx | grep -q 'SIGNAL RANDOM'; then
+            echo 'Random controls still exist in the top control strip.'
+            exit 1
+          fi
 
       - name: Commit materialized UI
         shell: bash
