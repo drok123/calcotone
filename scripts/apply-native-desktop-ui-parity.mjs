@@ -59,4 +59,68 @@ effectModule = replaceOnce(
 );
 fs.writeFileSync(effectModulePath, effectModule, 'utf8');
 
-console.log('Native desktop spectrum, XY parity, and pinned core faceplate layout applied.');
+const cssPath = 'src/App.css';
+let css = normalizeNewlines(fs.readFileSync(cssPath, 'utf8'));
+const nativeFaceplateCss = `
+
+/* Native faceplate geometry contract: viewport and controls share one full-width stage. */
+.faceplate-layout-stage {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+.faceplate-viewport-shell {
+  position: absolute;
+  inset: 0 0 auto 0;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.faceplate-viewport-shell > .dsp-viewport {
+  width: 100%;
+  height: 100% !important;
+  min-width: 0;
+  margin: 0 !important;
+  flex: none !important;
+}
+
+.faceplate-control-surface {
+  position: absolute !important;
+  inset: 0;
+  display: block !important;
+  width: 100%;
+  min-width: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: none;
+}
+
+.faceplate-knob-slot {
+  position: absolute;
+  left: var(--faceplate-x);
+  top: var(--faceplate-y);
+  width: max-content;
+  min-width: 0;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+.faceplate-knob-slot > .knob-control {
+  width: 92px;
+}
+
+.faceplate-layout-editing .faceplate-control-surface,
+.faceplate-layout-editing .faceplate-knob-slot {
+  pointer-events: auto;
+}
+`;
+if (!css.includes('Native faceplate geometry contract')) css += nativeFaceplateCss;
+fs.writeFileSync(cssPath, css, 'utf8');
+
+console.log('Native desktop spectrum, XY parity, pinned faceplate layout, and geometry CSS applied.');
