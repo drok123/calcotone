@@ -84,6 +84,8 @@ add_library(calcotone_dsp STATIC
   src/artifact_parity_processor.cpp
   src/stomp_parity_processor.cpp
   src/pressure_parity_processor.cpp
+  src/dream_buffer_parity_processor.cpp
+  src/native_dream_engine.cpp
   src/halo_dual_grain_pitch_processor.cpp
   src/native_processor.cpp
   src/audio_device_config.cpp
@@ -152,6 +154,12 @@ add_executable(pressure_parity_processor_test tests/pressure_parity_processor_te
 target_link_libraries(pressure_parity_processor_test PRIVATE calcotone_dsp)
 add_executable(native_pressure_live_parity_test tests/native_pressure_live_parity_test.cpp)
 target_link_libraries(native_pressure_live_parity_test PRIVATE calcotone_dsp)
+add_executable(dream_buffer_parity_processor_test tests/dream_buffer_parity_processor_test.cpp)
+target_link_libraries(dream_buffer_parity_processor_test PRIVATE calcotone_dsp)
+add_executable(native_dream_engine_test tests/native_dream_engine_test.cpp)
+target_link_libraries(native_dream_engine_test PRIVATE calcotone_dsp)
+add_executable(native_dream_live_parity_test tests/native_dream_live_parity_test.cpp)
+target_link_libraries(native_dream_live_parity_test PRIVATE calcotone_dsp)
 add_executable(halo_dual_grain_pitch_processor_test tests/halo_dual_grain_pitch_processor_test.cpp)
 target_link_libraries(halo_dual_grain_pitch_processor_test PRIVATE calcotone_dsp)
 
@@ -185,6 +193,9 @@ add_test(NAME stomp_parity_processor_test COMMAND stomp_parity_processor_test)
 add_test(NAME native_stomp_live_parity_test COMMAND native_stomp_live_parity_test)
 add_test(NAME pressure_parity_processor_test COMMAND pressure_parity_processor_test)
 add_test(NAME native_pressure_live_parity_test COMMAND native_pressure_live_parity_test)
+add_test(NAME dream_buffer_parity_processor_test COMMAND dream_buffer_parity_processor_test)
+add_test(NAME native_dream_engine_test COMMAND native_dream_engine_test)
+add_test(NAME native_dream_live_parity_test COMMAND native_dream_live_parity_test)
 add_test(NAME halo_dual_grain_pitch_processor_test COMMAND halo_dual_grain_pitch_processor_test)
 
 if(WIN32)

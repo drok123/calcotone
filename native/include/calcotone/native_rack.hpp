@@ -48,18 +48,4 @@ class NativePressure final {
   std::unique_ptr<Impl> impl_;
 };
 
-// Always-on, very-low-level acoustic memory return corresponding to the WebAudio
-// Dream Buffer. All eight seconds of history are allocated during startup.
-class NativeDreamBuffer final {
- public:
-  explicit NativeDreamBuffer(float sample_rate = 48'000.F);
-  ~NativeDreamBuffer();
-  NativeDreamBuffer(const NativeDreamBuffer&) = delete;
-  NativeDreamBuffer& operator=(const NativeDreamBuffer&) = delete;
-  void process(float* data, std::size_t frames) noexcept;
- private:
-  struct Impl;
-  std::unique_ptr<Impl> impl_;
-};
-
 }  // namespace calcotone

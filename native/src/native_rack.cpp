@@ -574,28 +574,4 @@ void NativePressure::process(float* data, std::size_t frames) noexcept {
   impl_->processor.process(data, frames);
 }
 
-struct NativeDreamBuffer::Impl {
-  float sample_rate; std::array<std::vector<float>,2> memory; std::size_t write{},filled{};
-  std::array<std::array<float,3>,2> low{};
-  explicit Impl(float rate):sample_rate(std::clamp(rate,8000.F,384000.F)){
-    const auto size=static_cast<std::size_t>(sample_rate*8.F);memory[0].assign(size,0.F);memory[1].assign(size,0.F);
-  }
-  void process(float* data,std::size_t frames) noexcept {
-    constexpr std::array<float,3> ages{.07F,.48F,4.2F};constexpr std::array<float,3> gains{.013F,.008F,.0045F};
-    constexpr std::array<float,3> cutoffs{4300.F,2450.F,1120.F};
-    for(std::size_t frame=0;frame<frames;++frame){
-      for(unsigned ch=0;ch<2;++ch){
-        const auto i=frame*2+ch;const float dry=data[i];float recall=0.F;
-        for(unsigned head=0;head<3;++head){const auto delay=static_cast<std::size_t>(ages[head]*sample_rate);if(filled>delay){const auto read=(write+memory[ch].size()-delay)%memory[ch].size();const float g=filter_coefficient(cutoffs[head],sample_rate);recall+=one_pole(memory[ch][read],low[ch][head],g)*gains[head];}}
-        memory[ch][write]=dry;
-        const float recalled=dry+recall*.58F;
-        data[i]=std::clamp(std::abs(recalled)<=1.F?recalled:fast_shape(recalled),-1.2F,1.2F);
-      }
-      write=(write+1)%memory[0].size();filled=std::min(filled+1,memory[0].size());
-    }
-  }
-};
-NativeDreamBuffer::NativeDreamBuffer(float rate):impl_(std::make_unique<Impl>(rate)){}
-NativeDreamBuffer::~NativeDreamBuffer()=default;
-void NativeDreamBuffer::process(float* data,std::size_t frames) noexcept {impl_->process(data,frames);}
 }  // namespace calcotone
