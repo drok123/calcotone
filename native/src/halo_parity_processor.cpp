@@ -1,5 +1,6 @@
 #include "calcotone/halo_parity_processor.hpp"
 #include "calcotone/halo_parity_profiles.hpp"
+#include "calcotone/halo_space_echo_processor.hpp"
 
 #include <algorithm>
 #include <array>
@@ -42,13 +43,13 @@ float triangle_wave(float phase) noexcept {
 
 float feedback_ceiling(unsigned mode) noexcept {
   switch (mode) {
-    case 0: return .86F;  // clean
-    case 3: return .82F;  // pingpong
-    case 6: return .68F;  // constellation
-    case 8: return .88F;  // EP-3 Echoplex
-    case 9: return .86F;  // Binson Echorec
-    case 10: return .82F; // Deluxe Memory Man
-    case 11: return .80F; // AMS DMX 15-80 S
+    case 0: return .86F;
+    case 3: return .82F;
+    case 6: return .68F;
+    case 8: return .88F;
+    case 9: return .86F;
+    case 10: return .82F;
+    case 11: return .80F;
     default: return .79F;
   }
 }
@@ -102,6 +103,7 @@ float biquad_allpass(float input, float frequency, float q, float sample_rate, A
 
 struct HaloParityProcessor::Impl {
   float sample_rate;
+  HaloSpaceEchoProcessor space_echo;
   std::array<std::atomic<float>, 7> target{};
   std::array<float, 7> value{1.F, .36F, .22F, .42F, .14F, .58F, .14F};
   std::array<std::vector<float>, 2> delay;
@@ -112,8 +114,10 @@ struct HaloParityProcessor::Impl {
   std::array<float, 2> scatter_state{};
   std::size_t write{};
   std::uint32_t rng{0x48414c4fU};
+  int active_mode{-1};
 
-  explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)) {
+  explicit Impl(float rate)
+      : sample_rate(std::clamp(rate, 8000.F, 384000.F)), space_echo(sample_rate) {
     for (std::size_t index = 0; index < value.size(); ++index) {
       target[index].store(value[index], std::memory_order_relaxed);
     }
@@ -137,7 +141,7 @@ struct HaloParityProcessor::Impl {
     }
   }
 
-  void clear_state() noexcept {
+  void clear_general_state() noexcept {
     for (auto& channel : delay) std::fill(channel.begin(), channel.end(), 0.F);
     highpass_low.fill(0.F);
     lowpass_low.fill(0.F);
@@ -149,6 +153,31 @@ struct HaloParityProcessor::Impl {
   }
 
   void process(float* data, std::size_t frames) noexcept {
+    const int requested_mode = std::clamp(
+        static_cast<int>(std::lround(target[0].load(std::memory_order_relaxed))), 0, 11);
+    if (requested_mode != active_mode) {
+      if (requested_mode == 7) {
+        space_echo.reset();
+      } else if (active_mode == 7) {
+        clear_general_state();
+        for (std::size_t index = 1; index < value.size(); ++index) {
+          value[index] = target[index].load(std::memory_order_relaxed);
+        }
+      }
+      active_mode = requested_mode;
+    }
+
+    if (requested_mode == 7) {
+      space_echo.set_parameter("time", target[1].load(std::memory_order_relaxed));
+      space_echo.set_parameter("feedback", target[2].load(std::memory_order_relaxed));
+      space_echo.set_parameter("color", target[3].load(std::memory_order_relaxed));
+      space_echo.set_parameter("character", target[4].load(std::memory_order_relaxed));
+      space_echo.set_parameter("width", target[5].load(std::memory_order_relaxed));
+      space_echo.set_parameter("mix", target[6].load(std::memory_order_relaxed));
+      space_echo.process(data, frames);
+      return;
+    }
+
     for (std::size_t frame = 0; frame < frames; ++frame) {
       glide();
       const unsigned mode = std::min(11U, static_cast<unsigned>(std::lround(value[0])));
@@ -183,15 +212,6 @@ struct HaloParityProcessor::Impl {
         const float delay_samples = std::max(1.F, (seconds * profile.time_ratios[channel] + modulation_seconds) * sample_rate);
         float wet = read_delay(delay[channel], write, delay_samples);
 
-        // The dedicated Space Echo topology is restored in the next Halo batch;
-        // retain its three playback-head timing here rather than collapsing it
-        // to the single generic tap used by the earlier native approximation.
-        if (profile.re201) {
-          wet = wet * .48F
-              + read_delay(delay[channel], write, std::max(1.F, delay_samples * .49F)) * .31F
-              + read_delay(delay[channel], write, std::max(1.F, delay_samples * .73F)) * .21F;
-        }
-
         const float high = wet - one_pole(wet, highpass_low[channel], highpass_coefficient);
         const float channel_lowpass_hz = base_lowpass_hz * (channel == 0 ? 1.F : .94F);
         wet = one_pole(high, lowpass_low[channel], one_pole_coefficient(channel_lowpass_hz, sample_rate));
@@ -213,8 +233,6 @@ struct HaloParityProcessor::Impl {
         const unsigned other = 1U - channel;
         float feedback_sample = loop * (
             tap[channel] * profile.same_feedback + tap[other] * profile.cross_feedback);
-        // Constellation and AMS still use the lightweight scatter placeholder
-        // until the dedicated dual-grain pitch stage lands in the next batch.
         if (profile.pitch_scatter > 0.F) {
           feedback_sample += std::sin(phase[channel] * .37F) * tap[channel]
               * profile.pitch_scatter * character * .035F;
@@ -265,7 +283,8 @@ bool HaloParityProcessor::set_parameter(std::string_view name, float value) noex
 }
 
 void HaloParityProcessor::reset() noexcept {
-  impl_->clear_state();
+  impl_->clear_general_state();
+  impl_->space_echo.reset();
 }
 
 }  // namespace calcotone
