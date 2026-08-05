@@ -94,12 +94,12 @@ check(app.includes("backendRef.current === 'native'") && app.includes('modulated
 check(app.includes('commandLine(`param ${moduleId} ${parameterId}'), 'xy', 'global XY native parameter command');
 
 for (const parameter of ['console', 'tube', 'chainOrder']) {
-  check(app.includes(`id: '${parameter}'`), 'artifact', `${parameter} compatibility state`);
-  check(host.includes(parameter) || read('native/tools/apply_atmos_parity.py').includes(parameter), 'artifact', `${parameter} native route`);
+  check(!app.includes(`id: '${parameter}'`), 'artifact', `${parameter} UI state removed`);
 }
+check(!read('native/tools/apply_atmos_parity.py').includes('ArtifactChainProcessor'), 'artifact', 'hidden native Artifact chain removed');
 check(count(effectModule, 'aria-label="Artifact format"') === 1, 'artifact', 'exactly one visible Artifact dropdown');
-check(!effectModule.includes('<ArtifactMatrixSelectors'), 'artifact', 'Artifact matrix selectors hidden from faceplate');
-check(effectModule.includes("!['console', 'tube', 'chainOrder'].includes(parameter.id)"), 'artifact', 'internal Artifact matrix state excluded from knobs');
+check(!effectModule.includes('<ArtifactMatrixSelectors'), 'artifact', 'Artifact matrix selectors removed');
+check(effectModule.includes('const visibleParameters = module.parameters;'), 'artifact', 'all canonical Artifact knobs render directly');
 
 const moduleContracts = [
   ['saturation', 'Ember'],

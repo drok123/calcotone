@@ -234,9 +234,6 @@ const INITIAL_MODULES: ModuleState[] = [
       { id: 'noise', label: 'Noise', value: 0.1, display: '10%' },
       { id: 'tone', label: 'Tone', value: 0.62, display: '62%' },
       { id: 'mix', label: 'Mix', value: 0.26, display: '26%' },
-      { id: 'console', label: 'Console', value: 0, display: 'Bypass' },
-      { id: 'tube', label: 'Tube', value: 0, display: 'Bypass' },
-      { id: 'chainOrder', label: 'Order', value: 0, display: 'Console → Tube' },
     ],
   },
 ];
@@ -245,11 +242,6 @@ const INITIAL_MODULES: ModuleState[] = [
 type MusicalRange = readonly [number, number];
 
 
-const ARTIFACT_MATRIX_PARAMETER_IDS = new Set(['console', 'tube', 'chainOrder']);
-
-function isArtifactMatrixParameter(moduleId: string, parameterId: string): boolean {
-  return moduleId === 'media' && ARTIFACT_MATRIX_PARAMETER_IDS.has(parameterId);
-}
 
 function randomMusicalValue(range: MusicalRange, centerBias = 0.35): number {
   // Blend one uniform draw with the average of two draws. This still reaches extremes,
@@ -1257,7 +1249,6 @@ export default function App() {
     parameterId: string,
     value: number
   ): void {
-    if (isArtifactMatrixParameter(moduleId, parameterId)) value = Math.round(value);
     setModules((currentModules) =>
       currentModules.map((module) =>
         module.id !== moduleId
@@ -1284,7 +1275,7 @@ export default function App() {
     if (engineState === 'running') {
       const dspValue = toDspParameterValue(moduleId, parameterId, value);
       if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine(`param ${moduleId} ${parameterId} ${dspValue}`);
-      else if (!isArtifactMatrixParameter(moduleId, parameterId)) setEffectParameterIfLoaded(engineRef.current, moduleId, parameterId, dspValue);
+      else setEffectParameterIfLoaded(engineRef.current, moduleId, parameterId, dspValue);
     }
   }
 
@@ -1375,13 +1366,6 @@ export default function App() {
 
       const genericRanges = MUSICAL_RANDOM_RANGES[modeModule.id] ?? {};
       const nextParameters = modeModule.parameters.map((parameter) => {
-        if (isArtifactMatrixParameter(modeModule.id, parameter.id)) {
-          const maximum = parameter.id === 'chainOrder' ? 1 : 5;
-          const next = profile === 'mutate'
-            ? Math.max(0, Math.min(maximum, Math.round(parameter.value + (Math.random() < 0.25 ? (Math.random() < 0.5 ? -1 : 1) : 0))))
-            : Math.floor(Math.random() * (maximum + 1));
-          return { ...parameter, value: next, display: formatParameterValue(modeModule.id, parameter.id, next) };
-        }
         const range = profileRecipe?.parameters[parameter.id]
           ?? sweetSpot?.parameters[parameter.id]
           ?? genericRanges[parameter.id];
@@ -1492,7 +1476,6 @@ export default function App() {
         }
 
         for (const parameter of module.parameters) {
-          if (isArtifactMatrixParameter(module.id, parameter.id)) continue;
           setEffectParameterIfLoaded(
             engine,
             module.id,

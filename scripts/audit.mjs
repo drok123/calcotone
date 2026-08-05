@@ -236,6 +236,11 @@ const controlContracts = [
   ['bitcrusher', grainEffect, ['bits','density','pitch','chaos','bloom','mix']],
   ['media', mediaEffect, ['wear','wow','noise','tone','mix']],
 ];
+forbidText(app, "{ id: 'console', label: 'Console'", 'Artifact ghost console control');
+forbidText(app, "{ id: 'tube', label: 'Tube'", 'Artifact ghost tube control');
+forbidText(app, "{ id: 'chainOrder', label: 'Order'", 'Artifact ghost chain-order control');
+forbidText(app, 'isArtifactMatrixParameter', 'Artifact ghost parameter plumbing');
+
 for (const [moduleId, source, expected] of controlContracts) {
   const uiParameters = extractUiParameters(app, moduleId);
   if (uiParameters.join('|') !== expected.join('|')) failures.push(`${moduleId}: UI control contract changed (${uiParameters.join(', ')})`);

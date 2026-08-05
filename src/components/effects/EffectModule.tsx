@@ -95,7 +95,7 @@ export function EffectModule({
   const customFaceplate = true;
   const faceplateModuleId = module.id as CoreFaceplateId;
   const faceplateLayout = faceplateEditor.layout.core[faceplateModuleId];
-  const visibleParameters = module.parameters.filter((parameter) => !['console', 'tube', 'chainOrder'].includes(parameter.id));
+  const visibleParameters = module.parameters;
   const moduleStyle = {
     '--module-activity': module.enabled ? 1 : 0,
     '--module-low': visualState.low,
