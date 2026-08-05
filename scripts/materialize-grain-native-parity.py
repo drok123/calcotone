@@ -16,31 +16,31 @@ patch = replace_required(
     "        '#include \"calcotone/grain_parity_processor.hpp\"\\n'\n",
     "Grain parity include",
 )
-anchor = '''    source = replace_once(source, r"struct Atmos \\{.*?\\n\\};\\n\\nstruct Grain \\{", atmos_replacement, "Atmos")
+anchor = """    source = replace_once(source, r\"struct Atmos \\\\{.*?\\\\n\\\\};\\\\n\\\\nstruct Grain \\\\{\", atmos_replacement, \"Atmos\")
 
-    artifact_replacement = r'''struct Artifact {'''
-grain_route = '''    source = replace_once(source, r"struct Atmos \\{.*?\\n\\};\\n\\nstruct Grain \\{", atmos_replacement, "Atmos")
+    artifact_replacement = r'''struct Artifact {"""
+grain_route = """    source = replace_once(source, r\"struct Atmos \\\\{.*?\\\\n\\\\};\\\\n\\\\nstruct Grain \\\\{\", atmos_replacement, \"Atmos\")
 
     grain_replacement = r'''struct Grain {
   Params p{2.F, 13.F, .42F, .38F, .16F, .36F, .12F};
   GrainParityProcessor processor;
   explicit Grain(float rate) : processor(rate) {}
   void process(float* data, std::size_t frames, float) noexcept {
-    processor.set_parameter("mode", p.target[0].load(std::memory_order_relaxed));
-    processor.set_parameter("bits", p.target[1].load(std::memory_order_relaxed));
-    processor.set_parameter("density", p.target[2].load(std::memory_order_relaxed));
-    processor.set_parameter("pitch", p.target[3].load(std::memory_order_relaxed));
-    processor.set_parameter("chaos", p.target[4].load(std::memory_order_relaxed));
-    processor.set_parameter("bloom", p.target[5].load(std::memory_order_relaxed));
-    processor.set_parameter("mix", p.target[6].load(std::memory_order_relaxed));
+    processor.set_parameter(\"mode\", p.target[0].load(std::memory_order_relaxed));
+    processor.set_parameter(\"bits\", p.target[1].load(std::memory_order_relaxed));
+    processor.set_parameter(\"density\", p.target[2].load(std::memory_order_relaxed));
+    processor.set_parameter(\"pitch\", p.target[3].load(std::memory_order_relaxed));
+    processor.set_parameter(\"chaos\", p.target[4].load(std::memory_order_relaxed));
+    processor.set_parameter(\"bloom\", p.target[5].load(std::memory_order_relaxed));
+    processor.set_parameter(\"mix\", p.target[6].load(std::memory_order_relaxed));
     processor.process(data, frames);
   }
 };
 
 struct Artifact {'''
-    source = replace_once(source, r"struct Grain \\{.*?\\n\\};\\n\\nstruct Artifact \\{", grain_replacement, "Grain")
+    source = replace_once(source, r\"struct Grain \\\\{.*?\\\\n\\\\};\\\\n\\\\nstruct Artifact \\\\{\", grain_replacement, \"Grain\")
 
-    artifact_replacement = r'''struct Artifact {'''
+    artifact_replacement = r'''struct Artifact {"""
 patch = replace_required(patch, anchor, grain_route, "Grain route insertion")
 patch = patch.replace(
     "live Ember, Drift, Halo, Atmos, and Artifact matrix processing",
