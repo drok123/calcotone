@@ -1,5 +1,6 @@
 name: Materialize Atmos FDN Parity
 
+# Indexed workflow trigger.
 on:
   push:
     branches: [main]
