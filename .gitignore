@@ -1,3 +1,5 @@
 node_modules/
 dist/
 native/build/
+
+native/packages/
