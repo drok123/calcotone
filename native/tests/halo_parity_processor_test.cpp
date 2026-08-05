@@ -114,6 +114,39 @@ void test_width_cross_output_law() {
   assert(mono_width > full_width * 4.0 + 1e-7);
 }
 
+void test_scatter_clock_applies_fragment_drop() {
+  calcotone::HaloParityProcessor processor(kSampleRate);
+  processor.set_parameter("algorithm", 5.F);
+  processor.set_parameter("time", .03F);
+  processor.set_parameter("feedback", 0.F);
+  processor.set_parameter("color", .7F);
+  processor.set_parameter("character", 1.F);
+  processor.set_parameter("width", 1.F);
+  processor.set_parameter("mix", 1.F);
+  settle(processor);
+  std::vector<float> audio(42000 * 2, 0.F);
+  for (std::size_t frame = 0; frame < audio.size() / 2; frame += 1024) {
+    audio[frame * 2] = .42F;
+    audio[frame * 2 + 1] = .42F;
+  }
+  process_blocks(processor, audio);
+  auto channel_energy = [&audio](std::size_t first, std::size_t last, unsigned channel) {
+    double energy = 0.0;
+    for (std::size_t frame = first; frame < last; ++frame) {
+      energy += std::abs(static_cast<double>(audio[frame * 2 + channel]));
+    }
+    return energy;
+  };
+  const double pre_left = channel_energy(10000, 19000, 0);
+  const double pre_right = channel_energy(10000, 19000, 1);
+  const double post_left = channel_energy(27000, 39000, 0);
+  const double post_right = channel_energy(27000, 39000, 1);
+  assert(pre_left > 1e-5 && pre_right > 1e-5 && post_left > 1e-5);
+  const double pre_ratio = pre_right / pre_left;
+  const double post_ratio = post_right / post_left;
+  assert(post_ratio < pre_ratio * .72);
+}
+
 void test_reset_is_deterministic() {
   calcotone::HaloParityProcessor processor(kSampleRate);
   processor.set_parameter("algorithm", 5.F);
@@ -126,7 +159,7 @@ void test_reset_is_deterministic() {
   settle(processor);
 
   auto render = [&processor]() {
-    std::vector<float> audio(16384 * 2, 0.F);
+    std::vector<float> audio(65536 * 2, 0.F);
     audio[0] = .91F;
     audio[1] = -.37F;
     process_blocks(processor, audio);
@@ -147,5 +180,6 @@ int main() {
   test_model_identities();
   test_feedback_extends_tail();
   test_width_cross_output_law();
+  test_scatter_clock_applies_fragment_drop();
   test_reset_is_deterministic();
 }

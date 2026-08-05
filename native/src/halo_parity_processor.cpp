@@ -42,6 +42,11 @@ float triangle_wave(float phase) noexcept {
   return (2.F / kPi) * std::asin(std::sin(phase));
 }
 
+float seeded_noise(double seed) noexcept {
+  const double value = std::sin(seed * 12.9898) * 43758.5453;
+  return static_cast<float>(value - std::floor(value));
+}
+
 float feedback_ceiling(unsigned mode) noexcept {
   switch (mode) {
     case 0: return .86F;
@@ -123,12 +128,16 @@ struct HaloParityProcessor::Impl {
   std::array<float, 2> lowpass_low{};
   std::array<std::array<AllpassState, 4>, 2> diffusion{};
   std::array<float, 2> phase{};
-  std::array<float, 2> scatter_state{};
+  std::array<float, 2> jitter_target{1.F, 1.F};
+  std::array<float, 2> jitter_value{1.F, 1.F};
+  std::array<float, 2> fragment_target{1.F, 1.F};
+  std::array<float, 2> orbit_target{};
+  std::array<float, 2> direct_gain{};
+  std::array<float, 2> cross_gain{};
   std::array<float, 2> pitch_semitones{};
   std::size_t write{};
-  std::size_t pitch_scatter_countdown{};
-  std::uint32_t rng{0x48414c4fU};
-  std::uint32_t pitch_rng{0x50495443U};
+  std::size_t scatter_countdown{};
+  std::uint64_t sample_clock{};
   int active_mode{-1};
   bool pitch_scattered{};
 
@@ -142,21 +151,51 @@ struct HaloParityProcessor::Impl {
     const auto size = static_cast<std::size_t>(sample_rate * 6.6F) + 32;
     delay[0].assign(size, 0.F);
     delay[1].assign(size, 0.F);
-    pitch_scatter_countdown = static_cast<std::size_t>(std::lround(sample_rate * .42F));
+    scatter_countdown = std::max<std::size_t>(1, static_cast<std::size_t>(std::lround(sample_rate * .42F))) - 1;
+    reset_scatter_mode(1);
   }
 
-  float noise() noexcept {
-    rng ^= rng << 13;
-    rng ^= rng >> 17;
-    rng ^= rng << 5;
-    return static_cast<float>(rng & 0xffffU) / 32767.5F - 1.F;
+  void reset_scatter_mode(unsigned mode) noexcept {
+    const auto& profile = halo_parity_profile(std::min(11U, mode));
+    const float width = clamp01(target[5].load(std::memory_order_relaxed));
+    jitter_target.fill(1.F);
+    jitter_value.fill(1.F);
+    fragment_target.fill(1.F);
+    orbit_target.fill(0.F);
+    direct_gain.fill(profile.output_trim * (.52F + width * .46F));
+    cross_gain.fill(profile.output_trim * ((1.F - width) * .34F));
+    scatter_countdown = std::max<std::size_t>(1, static_cast<std::size_t>(std::lround(sample_rate * .42F))) - 1;
   }
 
-  float pitch_random() noexcept {
-    pitch_rng ^= pitch_rng << 13;
-    pitch_rng ^= pitch_rng >> 17;
-    pitch_rng ^= pitch_rng << 5;
-    return static_cast<float>(pitch_rng & 0xffffU) / 65535.F;
+  void run_scatter_tick(
+      unsigned mode,
+      const HaloParityProfile& profile,
+      float seconds,
+      float character) noexcept {
+    if (profile.scatter <= 0.F || character < .02F) {
+      jitter_target.fill(1.F);
+      fragment_target.fill(1.F);
+      orbit_target.fill(0.F);
+      return;
+    }
+    const double now = static_cast<double>(sample_clock) / static_cast<double>(sample_rate);
+    const float amount = profile.scatter * character;
+    for (unsigned channel = 0; channel < 2; ++channel) {
+      const double channel_offset = static_cast<double>(channel);
+      const float jitter = 1.F + (seeded_noise(now * 2.7 + channel_offset * 31.7) - .5F) * amount;
+      const float dropout = seeded_noise(now * .91 + channel_offset * 17.3);
+      jitter_target[channel] = std::clamp(jitter, .25F, 1.75F);
+      fragment_target[channel] = dropout < amount * (.16F + profile.reverse_chance * .22F) ? .16F : 1.F;
+      orbit_target[channel] = profile.orbit_depth * character
+          * std::sin(static_cast<float>(now * .73 + channel_offset * static_cast<double>(kPi)));
+      if (mode == 6 || mode == 11) {
+        const float choice = choose_constellation_pitch(
+            seeded_noise(now * 1.37 + channel_offset * 43.1), character);
+        pitch_semitones[channel] = channel == 0 ? choice : -choice * .72F;
+        pitch_scattered = true;
+      }
+    }
+    (void)seconds;
   }
 
   void glide() noexcept {
@@ -171,8 +210,6 @@ struct HaloParityProcessor::Impl {
     pitch.reset();
     pitch_semitones[0] = mode == 11 ? 5.F : 7.F;
     pitch_semitones[1] = -5.F;
-    pitch_scatter_countdown = static_cast<std::size_t>(std::lround(sample_rate * .42F));
-    pitch_rng = 0x50495443U;
     pitch_scattered = false;
   }
 
@@ -182,12 +219,16 @@ struct HaloParityProcessor::Impl {
     lowpass_low.fill(0.F);
     for (auto& channel : diffusion) channel.fill({});
     phase.fill(0.F);
-    scatter_state.fill(0.F);
+    jitter_target.fill(1.F);
+    jitter_value.fill(1.F);
+    fragment_target.fill(1.F);
+    orbit_target.fill(0.F);
+    direct_gain.fill(0.F);
+    cross_gain.fill(0.F);
     write = 0;
-    rng = 0x48414c4fU;
+    sample_clock = 0;
     pitch.reset();
-    pitch_scatter_countdown = static_cast<std::size_t>(std::lround(sample_rate * .42F));
-    pitch_rng = 0x50495443U;
+    scatter_countdown = std::max<std::size_t>(1, static_cast<std::size_t>(std::lround(sample_rate * .42F))) - 1;
     pitch_scattered = false;
   }
 
@@ -203,8 +244,14 @@ struct HaloParityProcessor::Impl {
           value[index] = target[index].load(std::memory_order_relaxed);
         }
       }
-      if (requested_mode == 6 || requested_mode == 11) {
-        reset_pitch_mode(static_cast<unsigned>(requested_mode));
+      if (requested_mode != 7) {
+        reset_scatter_mode(static_cast<unsigned>(requested_mode));
+        if (requested_mode == 6 || requested_mode == 11) {
+          reset_pitch_mode(static_cast<unsigned>(requested_mode));
+        } else {
+          pitch.reset();
+          pitch_scattered = false;
+        }
       }
       active_mode = requested_mode;
     }
@@ -241,6 +288,36 @@ struct HaloParityProcessor::Impl {
       const float modulation_character = std::pow(character, 1.55F);
       const float hardware_modulation = mode == 10 ? .35F + width * .95F : 1.F;
 
+      if (profile.scatter > 0.F) {
+        if (scatter_countdown == 0) {
+          run_scatter_tick(mode, profile, seconds, character);
+          scatter_countdown = std::max<std::size_t>(1, static_cast<std::size_t>(std::lround(sample_rate * .42F))) - 1;
+        } else {
+          --scatter_countdown;
+        }
+      } else {
+        jitter_target.fill(1.F);
+        fragment_target.fill(1.F);
+        orbit_target.fill(0.F);
+      }
+      if (character < .02F) {
+        jitter_target.fill(1.F);
+        fragment_target.fill(1.F);
+        orbit_target.fill(0.F);
+      }
+      const float jitter_smoothing = 1.F - std::exp(-1.F / (sample_rate * .12F));
+      const float direct_smoothing = 1.F - std::exp(-1.F / (sample_rate * .08F));
+      const float cross_smoothing = 1.F - std::exp(-1.F / (sample_rate * .10F));
+      for (unsigned channel = 0; channel < 2; ++channel) {
+        jitter_value[channel] += (jitter_target[channel] - jitter_value[channel]) * jitter_smoothing;
+        const float positive_orbit = std::max(0.F, orbit_target[channel]);
+        const float desired_direct = profile.output_trim * direct_width * fragment_target[channel]
+            * (1.F - positive_orbit * .36F);
+        const float desired_cross = profile.output_trim * (cross_width + positive_orbit * .31F);
+        direct_gain[channel] += (desired_direct - direct_gain[channel]) * direct_smoothing;
+        cross_gain[channel] += (desired_cross - cross_gain[channel]) * cross_smoothing;
+      }
+
       const std::array<float, 2> dry{data[frame * 2], data[frame * 2 + 1]};
       std::array<float, 2> precolor{};
       std::array<float, 2> tap{};
@@ -252,30 +329,24 @@ struct HaloParityProcessor::Impl {
         const float polarity = channel == 0 ? 1.F : -.82F;
         const float modulation_seconds = waveform * profile.flutter_depth * hardware_modulation
             * modulation_character * polarity;
-        const float delay_samples = std::max(1.F, (seconds * profile.time_ratios[channel] + modulation_seconds) * sample_rate);
+        const float delay_seconds = std::clamp(
+            seconds * profile.time_ratios[channel] * jitter_value[channel] + modulation_seconds, .015F, 6.35F);
+        const float delay_samples = delay_seconds * sample_rate;
         float wet = read_delay(delay[channel], write, delay_samples);
 
         const float high = wet - one_pole(wet, highpass_low[channel], highpass_coefficient);
         const float channel_lowpass_hz = base_lowpass_hz * (channel == 0 ? 1.F : .94F);
         wet = one_pole(high, lowpass_low[channel], one_pole_coefficient(channel_lowpass_hz, sample_rate));
         for (unsigned stage = 0; stage < profile.diffusion_stages && stage < 4; ++stage) {
-          const float frequency = profile.diffusion_base + static_cast<float>(stage) * 430.F
-              + static_cast<float>(channel) * 97.F;
-          wet = biquad_allpass(wet, frequency, .65F, sample_rate, diffusion[channel][stage]);
+          const float frequency = profile.diffusion_base + static_cast<float>(stage) * 390.F
+              + character * 1450.F + static_cast<float>(channel) * 83.F;
+          const float q = .45F + character * (.8F + static_cast<float>(stage) * .13F);
+          wet = biquad_allpass(wet, frequency, q, sample_rate, diffusion[channel][stage]);
         }
         precolor[channel] = wet;
       }
 
       if (mode == 6 || mode == 11) {
-        if (pitch_scatter_countdown == 0) {
-          const float choice = choose_constellation_pitch(pitch_random(), character);
-          pitch_semitones[0] = choice;
-          pitch_semitones[1] = -choice * .72F;
-          pitch_scatter_countdown = static_cast<std::size_t>(std::lround(sample_rate * .42F));
-          pitch_scattered = true;
-        } else {
-          --pitch_scatter_countdown;
-        }
         const float exponent = pitch_scattered ? 1.28F : 1.35F;
         const float pitch_amount = profile.pitch_scatter * std::pow(character, exponent);
         pitch.set_pitch(0, pitch_semitones[0], pitch_amount);
@@ -284,12 +355,7 @@ struct HaloParityProcessor::Impl {
       }
 
       for (unsigned channel = 0; channel < 2; ++channel) {
-        float wet = character_curve(precolor[channel], character, profile, mode);
-        if (profile.scatter > 0.F) {
-          scatter_state[channel] += (noise() - scatter_state[channel]) * .003F;
-          wet += scatter_state[channel] * profile.scatter * character * .035F;
-        }
-        tap[channel] = wet;
+        tap[channel] = character_curve(precolor[channel], character, profile, mode);
       }
 
       for (unsigned channel = 0; channel < 2; ++channel) {
@@ -299,21 +365,15 @@ struct HaloParityProcessor::Impl {
         delay[channel][write] = std::clamp(dry[channel] * profile.input_trim + feedback_sample, -1.25F, 1.25F);
       }
 
-      float wet_left = (tap[0] * direct_width + tap[1] * cross_width) * profile.output_trim;
-      float wet_right = (tap[1] * direct_width + tap[0] * cross_width) * profile.output_trim;
-      if (profile.orbit_depth > 0.F) {
-        const float orbit = std::sin((phase[0] + phase[1]) * .5F) * profile.orbit_depth * width;
-        const float left = wet_left * (1.F - orbit * .32F) + wet_right * std::max(0.F, -orbit) * .22F;
-        const float right = wet_right * (1.F + orbit * .32F) + wet_left * std::max(0.F, orbit) * .22F;
-        wet_left = left;
-        wet_right = right;
-      }
+      const float wet_left = tap[0] * direct_gain[0] + tap[1] * cross_gain[1];
+      const float wet_right = tap[1] * direct_gain[1] + tap[0] * cross_gain[0];
 
       const float dry_gain = std::cos(mix * kPi * .5F);
       const float wet_gain = std::sin(mix * kPi * .5F);
       data[frame * 2] = std::clamp(dry[0] * dry_gain + wet_left * wet_gain, -1.2F, 1.2F);
       data[frame * 2 + 1] = std::clamp(dry[1] * dry_gain + wet_right * wet_gain, -1.2F, 1.2F);
       write = (write + 1) % delay[0].size();
+      ++sample_clock;
     }
   }
 };
