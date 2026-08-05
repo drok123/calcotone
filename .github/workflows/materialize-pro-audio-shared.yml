@@ -1,4 +1,4 @@
-name: Materialize Pro Audio Shared
+name: Materialize Shared RAW Fallback
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
       - scripts/materialize-pro-audio-shared.py
       - scripts/fix-pro-audio-materializer-anchor.py
       - scripts/materialize-pro-audio-health.py
+      - scripts/materialize-valid-shared-category.py
       - .github/workflows/materialize-pro-audio-shared.yml
 
 permissions:
@@ -31,11 +32,12 @@ jobs:
       - name: Install web dependencies
         run: npm ci
 
-      - name: Materialize Pro Audio shared negotiation
+      - name: Materialize shared RAW negotiation
         run: |
           python scripts/fix-pro-audio-materializer-anchor.py
           python scripts/materialize-pro-audio-shared.py
           python scripts/materialize-pro-audio-health.py
+          python scripts/materialize-valid-shared-category.py
 
       - name: Audit canonical shared transport
         shell: pwsh
@@ -43,11 +45,12 @@ jobs:
           npm run audit:core-contract
           npm run audit:windows-ui-parity
           npm run audit:latency
-          Select-String -Path native/src/wasapi_host.cpp -Pattern 'AudioCategory_ProAudio' -Quiet | ForEach-Object { if (-not $_) { throw 'Pro Audio category missing.' } }
+          Select-String -Path native/src/wasapi_host.cpp -Pattern 'flow == eRender \? AudioCategory_Media : AudioCategory_Other' -Quiet | ForEach-Object { if (-not $_) { throw 'Valid flow-specific stream categories missing.' } }
           Select-String -Path native/src/wasapi_host.cpp -Pattern 'AUDCLNT_STREAMOPTIONS_RAW' -Quiet | ForEach-Object { if (-not $_) { throw 'RAW shared request missing.' } }
-          Select-String -Path native/src/wasapi_host.cpp -Pattern 'retrying Pro Audio without RAW' -Quiet | ForEach-Object { if (-not $_) { throw 'Whole-stream RAW fallback missing.' } }
-          Select-String -Path native/src/wasapi_host.cpp -Pattern 'captureProAudio' -Quiet | ForEach-Object { if (-not $_) { throw 'Shared property telemetry missing.' } }
-          if (Select-String -Path native/src/wasapi_host.cpp -Pattern 'AudioCategory_Media' -Quiet) { throw 'Retired Media category remains.' }
+          Select-String -Path native/src/wasapi_host.cpp -Pattern 'retrying shared stream without RAW' -Quiet | ForEach-Object { if (-not $_) { throw 'Whole-stream RAW fallback missing.' } }
+          Select-String -Path native/src/wasapi_host.cpp -Pattern 'captureRaw' -Quiet | ForEach-Object { if (-not $_) { throw 'Capture RAW telemetry missing.' } }
+          Select-String -Path native/src/wasapi_host.cpp -Pattern 'AvSetMmThreadCharacteristicsW\(L"Pro Audio"' -Quiet | ForEach-Object { if (-not $_) { throw 'Pro Audio MMCSS scheduling missing.' } }
+          if (Select-String -Path native/src/wasapi_host.cpp -Pattern 'AudioCategory_ProAudio|captureProAudio|renderProAudio' -Quiet) { throw 'Invalid Pro Audio stream-category state remains.' }
 
       - name: Preserve canonical host source
         shell: pwsh
@@ -97,6 +100,7 @@ jobs:
           Remove-Item scripts/materialize-pro-audio-shared.py
           Remove-Item scripts/fix-pro-audio-materializer-anchor.py
           Remove-Item scripts/materialize-pro-audio-health.py
+          Remove-Item scripts/materialize-valid-shared-category.py
           Remove-Item .github/workflows/materialize-pro-audio-shared.yml
 
       - name: Commit canonical shared negotiation
@@ -107,5 +111,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Negotiate Pro Audio RAW shared streams"
+          git commit -m "Negotiate RAW shared streams with valid categories"
           git push origin HEAD:main
