@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - scripts/materialize-dream-native-parity.py
+      - native/tests/native_rack_test.cpp
       - .github/workflows/materialize-dream-native-parity.yml
 
 permissions:
