@@ -110,6 +110,17 @@ void test_insert_mix_is_linear_not_equal_power() {
   }
 }
 
+void test_media_mix_uses_equal_power_routing() {
+  const auto dry = render(0U, .38F, .16F, 0.F, .68F, 0.F, 24'000U);
+  const auto wet = render(0U, .38F, .16F, 0.F, .68F, 1.F, 24'000U);
+  const auto half = render(0U, .38F, .16F, 0.F, .68F, .5F, 24'000U);
+  constexpr float equal_power = .7071067811865475F;
+  for (std::size_t index = 0; index < half.size(); ++index) {
+    const float expected = (dry[index] + wet[index]) * equal_power;
+    assert(std::abs(half[index] - expected) < 2e-5F);
+  }
+}
+
 void test_atr_speed_selects_distinct_transport_operating_points() {
   const auto slow = render(12U, .72F, .04F, .22F, .57F, 1.F, 96'000U);
   const auto fast = render(12U, .72F, .86F, .22F, .57F, 1.F, 96'000U);
@@ -159,6 +170,7 @@ int main() {
   test_all_fourteen_models_have_distinct_signatures();
   test_console_paths_disable_transport_while_media_paths_keep_it();
   test_insert_mix_is_linear_not_equal_power();
+  test_media_mix_uses_equal_power_routing();
   test_atr_speed_selects_distinct_transport_operating_points();
   test_noise_controls_actual_media_noise_without_polluting_console_paths();
   test_bcm10_capture_and_1073_summing_remain_distinct();
