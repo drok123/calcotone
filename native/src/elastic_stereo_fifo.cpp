@@ -18,7 +18,7 @@ ElasticStereoFifo::ElasticStereoFifo(std::uint64_t target_frames) noexcept
     : target_frames_(std::clamp<std::uint64_t>(target_frames, 16U, capacity_frames / 4U)),
       filtered_depth_(static_cast<double>(target_frames_)) {}
 
-bool ElasticStereoFifo::push(float left, float right) noexcept {
+bool ElasticStereoFifo::push(float left, float right, bool discontinuity) noexcept {
   const auto write = write_.load(std::memory_order_relaxed);
   const auto read = read_.load(std::memory_order_acquire);
   if (write - read >= capacity_frames) {
@@ -28,6 +28,7 @@ bool ElasticStereoFifo::push(float left, float right) noexcept {
   const auto slot = static_cast<std::size_t>(write) & mask_;
   data_[slot * 2U] = left;
   data_[slot * 2U + 1U] = right;
+  markers_[slot] = discontinuity ? 1U : 0U;
   write_.store(write + 1U, std::memory_order_release);
   const auto depth = write + 1U - read;
   auto peak = high_water_.load(std::memory_order_relaxed);
@@ -36,7 +37,8 @@ bool ElasticStereoFifo::push(float left, float right) noexcept {
   return true;
 }
 
-bool ElasticStereoFifo::pull(float& left, float& right) noexcept {
+bool ElasticStereoFifo::pull(float& left, float& right, bool* discontinuity) noexcept {
+  if (discontinuity) *discontinuity = false;
   const auto read = read_.load(std::memory_order_relaxed);
   const auto write = write_.load(std::memory_order_acquire);
   const auto depth = write - read;
@@ -61,13 +63,33 @@ bool ElasticStereoFifo::pull(float& left, float& right) noexcept {
   const auto current = static_cast<std::size_t>(read) & mask_;
   const auto next = static_cast<std::size_t>(read + 1U) & mask_;
   const auto next_two = static_cast<std::size_t>(read + 2U) & mask_;
-  const float mu = static_cast<float>(phase_);
+  const bool current_crosses = markers_[current] != 0U;
+  const bool next_crosses = markers_[next] != 0U;
+  const bool next_two_crosses = markers_[next_two] != 0U;
+  if (current_crosses) {
+    // A new capture timeline cannot inherit interpolation phase or history from
+    // the packet before the gap.
+    phase_ = 0.0;
+    history_valid_ = false;
+  }
+  const bool report_discontinuity = pending_discontinuity_ || current_crosses;
+  pending_discontinuity_ = false;
+  if (discontinuity) *discontinuity = report_discontinuity;
+  markers_[current] = 0U;  // report exactly once, even when ratio_ advances by zero.
+
   const float current_left = data_[current * 2U];
   const float current_right = data_[current * 2U + 1U];
+  const float next_left = next_crosses ? current_left : data_[next * 2U];
+  const float next_right = next_crosses ? current_right : data_[next * 2U + 1U];
+  const float next_two_left = next_crosses || next_two_crosses
+      ? next_left : data_[next_two * 2U];
+  const float next_two_right = next_crosses || next_two_crosses
+      ? next_right : data_[next_two * 2U + 1U];
+  const float mu = static_cast<float>(phase_);
   const float prior_left = history_valid_ ? previous_left_ : current_left;
   const float prior_right = history_valid_ ? previous_right_ : current_right;
-  left = hermite(prior_left, current_left, data_[next * 2U], data_[next_two * 2U], mu);
-  right = hermite(prior_right, current_right, data_[next * 2U + 1U], data_[next_two * 2U + 1U], mu);
+  left = hermite(prior_left, current_left, next_left, next_two_left, mu);
+  right = hermite(prior_right, current_right, next_right, next_two_right, mu);
 
   const double next_phase = phase_ + ratio_;
   auto advance = static_cast<std::uint64_t>(next_phase);
@@ -75,6 +97,13 @@ bool ElasticStereoFifo::pull(float& left, float& right) noexcept {
   if (advance + 2U > depth) {
     advance = depth - 2U;
     phase_ = 0.0;
+  }
+  // A ratio slightly above one can skip one source frame. Preserve any marker
+  // from that skipped frame and report it on the very next rendered sample.
+  for (std::uint64_t skipped = 1U; skipped < advance; ++skipped) {
+    const auto slot = static_cast<std::size_t>(read + skipped) & mask_;
+    if (markers_[slot] != 0U) pending_discontinuity_ = true;
+    markers_[slot] = 0U;
   }
   if (advance > 0U) {
     const auto previous = static_cast<std::size_t>(read + advance - 1U) & mask_;
@@ -95,6 +124,7 @@ void ElasticStereoFifo::trim_to_target() noexcept {
   ratio_ = 1.0;
   filtered_depth_ = static_cast<double>(target_frames_);
   history_valid_ = false;
+  pending_discontinuity_ = false;
   published_ratio_.store(1.F, std::memory_order_relaxed);
   high_water_.store(target_frames_, std::memory_order_relaxed);
 }

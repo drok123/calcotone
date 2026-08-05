@@ -15,8 +15,8 @@ class ElasticStereoFifo final {
   static constexpr std::size_t capacity_frames = 1U << 17U;
 
   explicit ElasticStereoFifo(std::uint64_t target_frames) noexcept;
-  bool push(float left, float right) noexcept;
-  bool pull(float& left, float& right) noexcept;
+  bool push(float left, float right, bool discontinuity = false) noexcept;
+  bool pull(float& left, float& right, bool* discontinuity = nullptr) noexcept;
   void trim_to_target() noexcept;
 
   std::uint64_t available() const noexcept;
@@ -29,6 +29,7 @@ class ElasticStereoFifo final {
  private:
   static constexpr std::size_t mask_ = capacity_frames - 1U;
   std::array<float, capacity_frames * 2U> data_{};
+  std::array<std::uint8_t, capacity_frames> markers_{};
   std::atomic<std::uint64_t> write_{};
   std::atomic<std::uint64_t> read_{};
   std::atomic<std::uint64_t> overruns_{};
@@ -42,6 +43,7 @@ class ElasticStereoFifo final {
   float previous_left_{};
   float previous_right_{};
   bool history_valid_{};
+  bool pending_discontinuity_{};
 };
 
 }  // namespace calcotone

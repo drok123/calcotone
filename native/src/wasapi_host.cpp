@@ -511,6 +511,7 @@ int main(int argc, char** argv) {
     std::atomic<bool> running{true};
     std::atomic<std::uint64_t> underruns{};
     std::atomic<std::uint64_t> underrun_events{};
+    std::atomic<std::uint64_t> stream_recovery_events{};
     std::atomic<std::uint64_t> render_deadline_misses{};
     std::atomic<std::uint64_t> max_render_micros{};
     std::atomic<std::uint64_t> capture_discontinuities{};
@@ -541,6 +542,7 @@ int main(int argc, char** argv) {
                << ",\"estimatedPathMs\":" << (capture.period_frames + render.buffer_frames + fifo_target_frames) / sample_rate * 1000.
                << ",\"underruns\":" << underruns.load()
                << ",\"underrunEvents\":" << underrun_events.load()
+               << ",\"streamRecoveryEvents\":" << stream_recovery_events.load()
                << ",\"captureMmcss\":" << (capture_mmcss.load() ? "true" : "false")
                << ",\"renderMmcss\":" << (render_mmcss.load() ? "true" : "false")
                << ",\"overruns\":" << ring->overruns()
@@ -641,6 +643,7 @@ int main(int argc, char** argv) {
     std::thread capture_thread([&] {
       RealtimeThreadScope realtime;
       capture_mmcss.store(realtime.mmcss(), std::memory_order_relaxed);
+      bool pending_stream_discontinuity = false;
       while (running.load(std::memory_order_relaxed)) {
         if (WaitForSingleObject(capture.event, 1000) != WAIT_OBJECT_0) continue;
         UINT32 packet = 0;
@@ -650,10 +653,14 @@ int main(int argc, char** argv) {
             capture_api_errors.fetch_add(1, std::memory_order_relaxed);
             break;
           }
-          if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY)
+          if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) {
             capture_discontinuities.fetch_add(1, std::memory_order_relaxed);
-          if (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR)
+            pending_stream_discontinuity = true;
+          }
+          if (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) {
             capture_timestamp_errors.fetch_add(1, std::memory_order_relaxed);
+            pending_stream_discontinuity = true;
+          }
           if (flags & AUDCLNT_BUFFERFLAGS_SILENT)
             capture_silent_packets.fetch_add(1, std::memory_order_relaxed);
           float packet_peak = 0.F;
@@ -666,7 +673,14 @@ int main(int argc, char** argv) {
             packet_peak = std::max({packet_peak, std::abs(left), std::abs(right)});
             packet_clips += std::abs(left) >= .999F ? 1U : 0U;
             packet_clips += std::abs(right) >= .999F ? 1U : 0U;
-            ring->push(left, right);
+            const bool mark_discontinuity = pending_stream_discontinuity;
+            if (ring->push(left, right, mark_discontinuity)) {
+              if (mark_discontinuity) pending_stream_discontinuity = false;
+            } else {
+              // Carry an overrun boundary to the first sample that is
+              // successfully accepted after the full ring recovers.
+              pending_stream_discontinuity = true;
+            }
           }
           publish_peak(input_peak, packet_peak);
           if (packet_clips != 0U)
@@ -705,10 +719,16 @@ int main(int argc, char** argv) {
           }
           std::uint64_t block_underrun_frames = 0U;
           std::uint64_t block_underrun_events = 0U;
+          std::uint64_t block_stream_recoveries = 0U;
           for (UINT32 frame = 0; frame < block; ++frame) {
             float captured_left = 0.F, captured_right = 0.F;
-            const bool pulled = ring->pull(captured_left, captured_right);
+            bool stream_discontinuity = false;
+            const bool pulled = ring->pull(captured_left, captured_right, &stream_discontinuity);
             const bool valid = pulled && std::isfinite(captured_left) && std::isfinite(captured_right);
+            if (stream_discontinuity) {
+              recovery.mark_discontinuity();
+              ++block_stream_recoveries;
+            }
             float left = 0.F, right = 0.F;
             if (recovery.process(valid, captured_left, captured_right, left, right))
               ++block_underrun_events;
@@ -720,6 +740,8 @@ int main(int argc, char** argv) {
             underruns.fetch_add(block_underrun_frames, std::memory_order_relaxed);
           if (block_underrun_events != 0U)
             underrun_events.fetch_add(block_underrun_events, std::memory_order_relaxed);
+          if (block_stream_recoveries != 0U)
+            stream_recovery_events.fetch_add(block_stream_recoveries, std::memory_order_relaxed);
           processor.process(process->capture_input.data(), process->mixed_output.data(), block);
           recorder.capture(process->mixed_output.data(), block);
           float block_output_peak = 0.F;

@@ -15,6 +15,7 @@ const nativeDreamCore = readFileSync(resolve(root, 'native/src/dream_buffer_pari
 const streamRecoveryHeader = readFileSync(resolve(root, 'native/include/calcotone/stream_recovery.hpp'), 'utf8');
 const streamRecovery = readFileSync(resolve(root, 'native/src/stream_recovery.cpp'), 'utf8');
 const audioConfig = readFileSync(resolve(root, 'native/src/audio_device_config.cpp'), 'utf8');
+const elasticFifoHeader = readFileSync(resolve(root, 'native/include/calcotone/elastic_stereo_fifo.hpp'), 'utf8');
 const elasticFifo = readFileSync(resolve(root, 'native/src/elastic_stereo_fifo.cpp'), 'utf8');
 const ksProbe = readFileSync(resolve(root, 'native/src/ks_wavert_probe.cpp'), 'utf8');
 const nativeBridge = readFileSync(resolve(root, 'src/audio/NativeAudioBridge.ts'), 'utf8');
@@ -65,6 +66,13 @@ requireText(nativeHost, 'ring->trim_to_target()', 'Exact native FIFO startup tri
 requireText(elasticFifo, 'ratio_ += (desired - ratio_) * 0.001', 'Smooth capture/render clock-drift correction');
 requireText(elasticFifo, 'filtered_depth_ +=', 'Device-period FIFO ripple rejection');
 requireText(elasticFifo, 'hermite(prior_left', 'Four-point drift interpolation');
+requireText(elasticFifoHeader, 'bool discontinuity = false', 'In-band FIFO discontinuity push API');
+requireText(elasticFifoHeader, 'bool* discontinuity = nullptr', 'In-band FIFO discontinuity pull API');
+requireText(elasticFifo, 'markers_[slot] = discontinuity ? 1U : 0U', 'FIFO discontinuity marker storage');
+requireText(elasticFifo, 'const bool next_crosses = markers_[next] != 0U', 'No interpolation across future discontinuity');
+requireText(nativeHost, 'pending_stream_discontinuity = true', 'WASAPI packet and overrun marker propagation');
+requireText(nativeHost, 'recovery.mark_discontinuity()', 'Exact-frame discontinuity recovery');
+requireText(nativeHost, 'streamRecoveryEvents', 'Discontinuity recovery telemetry');
 requireText(nativeHost, 'renderDeadlineMisses', 'Native render deadline telemetry');
 requireText(nativeHost, 'maxRenderMicros', 'Native render workload telemetry');
 for (const module of ['Grain', 'Artifact']) requireText(nativeRackHeader, module, `Native ${module} rack ownership`);
