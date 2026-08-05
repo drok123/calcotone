@@ -1,0 +1,61 @@
+name: Materialize Native Dream Parity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/materialize-dream-native-parity.py
+      - .github/workflows/materialize-dream-native-parity.yml
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out canonical source
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Materialize shared Dream engine
+        run: python3 scripts/materialize-dream-native-parity.py
+
+      - name: Audit Dream and native routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/dream-buffer-audit.mjs
+          node scripts/core-contract-parity-audit.mjs
+          node scripts/windows-ui-parity-audit.mjs
+          grep -q 'NativeDreamEngine dream;' native/src/native_processor.cpp
+          grep -q 'dream.begin_block(frames)' native/src/native_processor.cpp
+          grep -q 'dream.inject_route(rack_module' native/src/native_processor.cpp
+          grep -q 'dream.capture_module(rack_module' native/src/native_processor.cpp
+          grep -q 'any_rack_active || !stack_off || pressure_active' native/src/native_processor.cpp
+          ! grep -q 'dream_one' native/src/native_processor.cpp
+          ! grep -q 'dream_two' native/src/native_processor.cpp
+          ! grep -q 'NativeDreamBuffer' native/src/native_rack.cpp
+
+      - name: Configure native DSP
+        run: cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build native DSP
+        run: cmake --build native/build --config Release --parallel 2
+
+      - name: Run complete native suite
+        run: ctest --test-dir native/build -C Release --output-on-failure
+
+      - name: Remove one-time materializer
+        run: rm scripts/materialize-dream-native-parity.py .github/workflows/materialize-dream-native-parity.yml
+
+      - name: Commit canonical Dream engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Replace fixed Dream taps with shared tagged memory"
+          git push origin HEAD:main
