@@ -20,6 +20,38 @@ namespace calcotone {
 namespace {
 
 constexpr wchar_t kWindowClass[] = L"CalcotoneDesktopShell";
+constexpr int kInitialClientWidth = 1500;
+constexpr int kInitialClientHeight = 940;
+
+void enable_per_monitor_dpi_awareness() {
+  using SetProcessDpiAwarenessContextFn = BOOL(WINAPI*)(DPI_AWARENESS_CONTEXT);
+  const HMODULE user32 = GetModuleHandleW(L"user32.dll");
+  if (!user32) return;
+  const auto set_awareness = reinterpret_cast<SetProcessDpiAwarenessContextFn>(
+      GetProcAddress(user32, "SetProcessDpiAwarenessContext"));
+  if (set_awareness) {
+    set_awareness(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+  }
+}
+
+RECT window_rect_for_client(HWND hwnd, int client_width, int client_height) {
+  RECT rect{0, 0, client_width, client_height};
+  const DWORD style = static_cast<DWORD>(GetWindowLongPtrW(hwnd, GWL_STYLE));
+  const DWORD ex_style = static_cast<DWORD>(GetWindowLongPtrW(hwnd, GWL_EXSTYLE));
+
+  using AdjustWindowRectExForDpiFn = BOOL(WINAPI*)(LPRECT, DWORD, BOOL, DWORD, UINT);
+  const HMODULE user32 = GetModuleHandleW(L"user32.dll");
+  const auto adjust_for_dpi = user32
+      ? reinterpret_cast<AdjustWindowRectExForDpiFn>(
+            GetProcAddress(user32, "AdjustWindowRectExForDpi"))
+      : nullptr;
+  if (adjust_for_dpi) {
+    adjust_for_dpi(&rect, style, FALSE, ex_style, GetDpiForWindow(hwnd));
+  } else {
+    AdjustWindowRectEx(&rect, style, FALSE, ex_style);
+  }
+  return rect;
+}
 
 class DesktopShell {
  public:
@@ -27,6 +59,8 @@ class DesktopShell {
       : faceplate_url_(std::move(faceplate_url)) {}
 
   int run(std::string& error) {
+    enable_per_monitor_dpi_awareness();
+
     const HRESULT apartment = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     if (FAILED(apartment)) {
       error = "Could not initialize the desktop UI apartment.";
@@ -45,13 +79,21 @@ class DesktopShell {
 
     hwnd_ = CreateWindowExW(
         0, kWindowClass, L"CALCOTONE", WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, 1500, 940, nullptr, nullptr,
-        GetModuleHandleW(nullptr), this);
+        CW_USEDEFAULT, CW_USEDEFAULT, kInitialClientWidth, kInitialClientHeight,
+        nullptr, nullptr, GetModuleHandleW(nullptr), this);
     if (!hwnd_) {
       error = "Could not create the CALCOTONE desktop window.";
       CoUninitialize();
       return -1;
     }
+
+    const RECT initial_window = window_rect_for_client(
+        hwnd_, kInitialClientWidth, kInitialClientHeight);
+    SetWindowPos(
+        hwnd_, nullptr, 0, 0,
+        initial_window.right - initial_window.left,
+        initial_window.bottom - initial_window.top,
+        SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
     ShowWindow(hwnd_, SW_SHOWDEFAULT);
     UpdateWindow(hwnd_);
@@ -83,6 +125,17 @@ class DesktopShell {
       case WM_SIZE:
         shell->resize();
         return 0;
+      case WM_DPICHANGED: {
+        const auto* suggested = reinterpret_cast<const RECT*>(lparam);
+        SetWindowPos(
+            hwnd, nullptr,
+            suggested->left, suggested->top,
+            suggested->right - suggested->left,
+            suggested->bottom - suggested->top,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+        shell->resize();
+        return 0;
+      }
       case WM_CLOSE:
         DestroyWindow(hwnd);
         return 0;
@@ -122,6 +175,7 @@ class DesktopShell {
                           return S_OK;
                         }
                         controller_ = controller;
+                        controller_->put_ZoomFactor(1.0);
                         if (FAILED(controller_->get_CoreWebView2(&webview_)) || !webview_) {
                           fail("The embedded faceplate did not expose a WebView2 instance.");
                           return S_OK;
