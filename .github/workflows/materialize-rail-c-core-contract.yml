@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - scripts/materialize-rail-c-core-contract.py
+      - scripts/fix-core-contract-float-literals.py
       - .github/workflows/materialize-rail-c-core-contract.yml
 
 permissions:
@@ -20,7 +21,9 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Materialize full rack contract
-        run: python3 scripts/materialize-rail-c-core-contract.py
+        run: |
+          python3 scripts/materialize-rail-c-core-contract.py
+          python3 scripts/fix-core-contract-float-literals.py
 
       - name: Audit full rack contract
         run: |
@@ -37,7 +40,7 @@ jobs:
         run: ctest --test-dir native/build -C Release --output-on-failure
 
       - name: Remove one-time materializer
-        run: rm scripts/materialize-rail-c-core-contract.py .github/workflows/materialize-rail-c-core-contract.yml
+        run: rm scripts/materialize-rail-c-core-contract.py scripts/fix-core-contract-float-literals.py .github/workflows/materialize-rail-c-core-contract.yml
 
       - name: Commit canonical full rack contract
         shell: bash
