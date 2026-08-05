@@ -64,6 +64,22 @@ std::vector<float> render(unsigned mode, float drive = .38F, float tone = .54F,
   return audio;
 }
 
+std::vector<float> render_raw(float mode, float drive, float tone, float level,
+                              float character, float body, float mix) {
+  calcotone::StompParityProcessor processor(kRate);
+  assert(processor.set_parameter("mode", mode));
+  assert(processor.set_parameter("drive", drive));
+  assert(processor.set_parameter("tone", tone));
+  assert(processor.set_parameter("level", level));
+  assert(processor.set_parameter("character", character));
+  assert(processor.set_parameter("body", body));
+  assert(processor.set_parameter("mix", mix));
+  processor.reset();
+  auto audio = source(24'000U);
+  process_blocks(processor, audio);
+  return audio;
+}
+
 void test_all_fourteen_models_have_distinct_signatures() {
   std::array<double, calcotone::kStompModeCount> signatures{};
   for (unsigned mode = 0; mode < signatures.size(); ++mode)
@@ -84,6 +100,16 @@ void test_constructor_defaults_match_the_ui_contract() {
   auto explicit_audio = source(24'000U);
   process_blocks(explicit_defaults, explicit_audio);
   assert(default_audio == explicit_audio);
+}
+
+void test_parameter_domains_clamp_to_the_ui_contract() {
+  const auto low_clamped = render_raw(-20.F, -.5F, -.25F, -1.F, -.2F, -.8F, -.4F);
+  const auto low_explicit = render_raw(0.F, 0.F, 0.F, 0.F, 0.F, 0.F, 0.F);
+  assert(low_clamped == low_explicit);
+
+  const auto high_clamped = render_raw(99.F, 4.F, 2.F, 8.F, 3.F, 9.F, 7.F);
+  const auto high_explicit = render_raw(13.F, 1.F, 1.F, 1.F, 1.F, 1.F, 1.F);
+  assert(high_clamped == high_explicit);
 }
 
 void test_linear_mix_contract() {
@@ -148,6 +174,7 @@ void test_silence_remains_silent_and_reset_is_deterministic() {
 int main() {
   test_all_fourteen_models_have_distinct_signatures();
   test_constructor_defaults_match_the_ui_contract();
+  test_parameter_domains_clamp_to_the_ui_contract();
   test_linear_mix_contract();
   test_whammy_is_an_actual_octave_shifter();
   test_cry_baby_q_control_changes_resonance();
