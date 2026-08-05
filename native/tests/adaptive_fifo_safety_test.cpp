@@ -1,8 +1,10 @@
 #include "calcotone/adaptive_fifo_safety.hpp"
+#include "calcotone/elastic_stereo_fifo.hpp"
 
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 namespace {
 constexpr float kRate = 48'000.F;
@@ -108,6 +110,27 @@ void test_large_period_keeps_added_latency_bounded_to_one_period() {
   assert(policy.target_frames() == period * 3U);
 }
 
+void test_policy_target_reaches_live_fifo_and_trim() {
+  calcotone::AdaptiveFifoSafety policy(kBase, kPeriod, kRate);
+  auto fifo = std::make_unique<calcotone::ElasticStereoFifo>(kBase);
+  assert(fifo->target_frames() == kBase);
+
+  assert(policy.observe_block(128U, 1U, 0U, 0U));
+  fifo->set_target_frames(policy.target_frames());
+  assert(fifo->target_frames() == kBase + kPeriod);
+
+  for (unsigned frame = 0U; frame < 512U; ++frame)
+    assert(fifo->push(.1F, -.1F));
+  fifo->trim_to_target();
+  assert(fifo->available() == fifo->target_frames());
+
+  advance(policy, 31.0);
+  fifo->set_target_frames(policy.target_frames());
+  assert(fifo->target_frames() == kBase);
+  fifo->trim_to_target();
+  assert(fifo->available() == kBase);
+}
+
 void test_reset_restores_baseline_and_telemetry() {
   calcotone::AdaptiveFifoSafety policy(kBase, kPeriod, kRate);
   policy.observe_block(128U, 1U, 1U, 0U);
@@ -130,5 +153,6 @@ int main() {
   test_overrun_drains_an_elevated_target();
   test_deadline_miss_preemptively_adds_safety();
   test_large_period_keeps_added_latency_bounded_to_one_period();
+  test_policy_target_reaches_live_fifo_and_trim();
   test_reset_restores_baseline_and_telemetry();
 }
