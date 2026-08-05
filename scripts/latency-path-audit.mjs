@@ -17,6 +17,7 @@ const streamRecovery = readFileSync(resolve(root, 'native/src/stream_recovery.cp
 const adaptiveFifoHeader = readFileSync(resolve(root, 'native/include/calcotone/adaptive_fifo_safety.hpp'), 'utf8');
 const adaptiveFifo = readFileSync(resolve(root, 'native/src/adaptive_fifo_safety.cpp'), 'utf8');
 const audioConfig = readFileSync(resolve(root, 'native/src/audio_device_config.cpp'), 'utf8');
+const audioClientPropertyPlan = readFileSync(resolve(root, 'native/src/audio_client_property_plan.cpp'), 'utf8');
 const elasticFifoHeader = readFileSync(resolve(root, 'native/include/calcotone/elastic_stereo_fifo.hpp'), 'utf8');
 const elasticFifo = readFileSync(resolve(root, 'native/src/elastic_stereo_fifo.cpp'), 'utf8');
 const ksProbe = readFileSync(resolve(root, 'native/src/ks_wavert_probe.cpp'), 'utf8');
@@ -48,7 +49,8 @@ requireText(app, "Restart audio to apply its device-buffer policy.", 'Runtime mo
 requireText(nativeHost, 'AUDCLNT_SHAREMODE_EXCLUSIVE', 'Native exclusive-WASAPI fast path');
 requireText(nativeHost, "requested_frames * 10'000'000.0", 'Runtime native buffer-frame request');
 requireText(nativeHost, 'GetSharedModeEnginePeriod', 'Native minimum shared-period fallback');
-requireText(nativeHost, 'endpoint.client = activate()', 'Clean client reactivation after exclusive rejection');
+requireText(nativeHost, 'endpoint.client = activate(true, false)', 'Clean exclusive client reactivation after rejection');
+requireText(nativeHost, 'endpoint.client = activate(false, allow_raw)', 'Clean shared client reactivation for selected RAW policy');
 requireText(nativeHost, 'const auto fifo_period_frames = static_cast<std::uint64_t>', 'Native device-period FIFO baseline');
 requireText(nativeHost, 'const auto fifo_target_frames = 2U * fifo_period_frames', 'Native two-period FIFO safety baseline');
 requireText(nativeHost, 'while (ring->available() < fifo_target_frames', 'Capture-first FIFO priming');
@@ -114,6 +116,18 @@ requireText(nativeProcessor, 'mix_dual_mono', 'Transport-independent final stere
 requireText(nativeHost, 'processor.process(process->capture_input.data()', 'WASAPI transport uses shared native processor');
 requireText(audioConfig, 'CALCOTONE_CAPTURE_DEVICE', 'Runtime capture-device selection');
 requireText(audioConfig, 'CALCOTONE_BUFFER_FRAMES', 'Runtime buffer selection');
+requireText(audioConfig, 'CALCOTONE_SHARED_RAW', 'Runtime shared RAW opt-out');
+requireText(audioClientPropertyPlan, 'AudioClientPropertyAttempt::Raw', 'Shared RAW first attempt');
+requireText(audioClientPropertyPlan, 'AudioClientPropertyAttempt::Standard', 'Shared standard fallback');
+requireText(nativeHost, 'flow == eRender ? AudioCategory_Media : AudioCategory_Other', 'Valid flow-specific stream categories');
+requireText(nativeHost, 'AUDCLNT_STREAMOPTIONS_RAW', 'WASAPI RAW shared request');
+requireText(nativeHost, 'retrying shared stream without RAW', 'Whole-stream RAW initialization fallback');
+requireText(nativeHost, 'captureRaw', 'Capture RAW telemetry');
+requireText(nativeHost, 'renderRaw', 'Render RAW telemetry');
+requireText(nativeHost, 'AvSetMmThreadCharacteristicsW(L"Pro Audio"', 'Pro Audio MMCSS scheduling remains separate');
+forbidText(nativeHost, 'AudioCategory_ProAudio', 'Nonexistent Pro Audio stream category');
+forbidText(nativeHost, 'captureProAudio', 'Misleading capture Pro Audio category telemetry');
+forbidText(nativeHost, 'renderProAudio', 'Misleading render Pro Audio category telemetry');
 requireText(audioConfig, 'CALCOTONE_INPUT_1_CHANNEL', 'Runtime input-channel selection');
 requireText(ksProbe, 'KSPROPERTY_PIN_CTYPES', 'Read-only KS/WaveRT capability probe');
 requireText(nativeHost, 'class NativeRecorder', 'Native final-output recorder');

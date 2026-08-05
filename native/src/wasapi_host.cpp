@@ -11,6 +11,7 @@
 #include <wrl/client.h>
 
 #include "calcotone/adaptive_fifo_safety.hpp"
+#include "calcotone/audio_client_property_plan.hpp"
 #include "calcotone/audio_device_config.hpp"
 #include "calcotone/control_server.hpp"
 #include "calcotone/desktop_shell.hpp"
@@ -138,6 +139,7 @@ struct Endpoint {
   UINT32 period_frames{};
   UINT32 buffer_frames{};
   bool exclusive{};
+  bool raw{};
   std::string name;
   std::string id;
   Endpoint() = default;
@@ -145,7 +147,8 @@ struct Endpoint {
   Endpoint& operator=(const Endpoint&) = delete;
   Endpoint(Endpoint&& other) noexcept
       : client(std::move(other.client)), format(std::exchange(other.format, nullptr)),
-        event(std::exchange(other.event, nullptr)), period_frames(other.period_frames), buffer_frames(other.buffer_frames), exclusive(other.exclusive),
+        event(std::exchange(other.event, nullptr)), period_frames(other.period_frames), buffer_frames(other.buffer_frames),
+        exclusive(other.exclusive), raw(other.raw),
         name(std::move(other.name)), id(std::move(other.id)) {}
   Endpoint& operator=(Endpoint&&) = delete;
   ~Endpoint() { if (event) CloseHandle(event); if (format) CoTaskMemFree(format); }
@@ -326,19 +329,34 @@ WAVEFORMATEXTENSIBLE pcm_candidate(const WAVEFORMATEX* basis, WORD container_bit
 
 Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow, bool prefer_exclusive,
                        std::string_view selector, std::uint32_t requested_frames,
-                       std::uint32_t requested_rate) {
+                       std::uint32_t requested_rate, bool allow_shared_raw) {
   Endpoint endpoint;
   ComPtr<IMMDevice> device = select_device(enumerator, flow, selector);
   describe_device(device.Get(), endpoint.id, endpoint.name);
-  const auto activate = [&]() {
+  const auto activate = [&](bool exclusive, bool allow_raw) {
     ComPtr<IAudioClient3> client;
     check(device->Activate(__uuidof(IAudioClient3), CLSCTX_ALL, nullptr, &client), "Activate IAudioClient3");
-    AudioClientProperties properties{};
-    properties.cbSize = sizeof(properties); properties.eCategory = AudioCategory_Media; properties.Options = AUDCLNT_STREAMOPTIONS_RAW;
-    if (FAILED(client->SetClientProperties(&properties))) { properties.Options = AUDCLNT_STREAMOPTIONS_NONE; check(client->SetClientProperties(&properties), "SetClientProperties"); }
+    endpoint.raw = false;
+    HRESULT last_result = E_FAIL;
+    const auto plan = calcotone::audio_client_property_plan(exclusive, allow_raw);
+    for (std::size_t attempt_index = 0; attempt_index < plan.count; ++attempt_index) {
+      const auto attempt = plan.attempts[attempt_index];
+      AudioClientProperties properties{};
+      properties.cbSize = sizeof(properties);
+      properties.bIsOffload = FALSE;
+      properties.eCategory = flow == eRender ? AudioCategory_Media : AudioCategory_Other;
+      properties.Options = attempt == calcotone::AudioClientPropertyAttempt::Raw
+          ? AUDCLNT_STREAMOPTIONS_RAW : AUDCLNT_STREAMOPTIONS_NONE;
+      last_result = client->SetClientProperties(&properties);
+      if (SUCCEEDED(last_result)) {
+        endpoint.raw = properties.Options == AUDCLNT_STREAMOPTIONS_RAW;
+        return client;
+      }
+    }
+    check(last_result, "SetClientProperties");
     return client;
   };
-  endpoint.client = activate();
+  endpoint.client = activate(prefer_exclusive, allow_shared_raw);
   check(endpoint.client->GetMixFormat(&endpoint.format), "GetMixFormat");
   const std::string endpoint_name = flow == eCapture ? "Capture" : "Render";
   HRESULT initialize = E_FAIL;
@@ -367,7 +385,7 @@ Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow, bool pre
       if (initialize == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED) {
         UINT32 aligned_frames{};
         if (SUCCEEDED(endpoint.client->GetBufferSize(&aligned_frames)) && aligned_frames > 0) {
-          endpoint.client = activate();
+          endpoint.client = activate(true, false);
           const auto aligned_hns = static_cast<REFERENCE_TIME>(
               std::ceil(10'000'000.0 * aligned_frames / candidate->nSamplesPerSec));
           initialize = endpoint.client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
@@ -387,24 +405,38 @@ Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow, bool pre
       }
       std::ostringstream reason; reason << endpoint_name << " exclusive initialization failed for " << format_description(candidate)
           << " (HRESULT 0x" << std::hex << static_cast<unsigned long>(initialize) << ')'; log_line(reason.str());
-      endpoint.client = activate();
+      endpoint.client = activate(true, false);
     }
   }
   if (!endpoint.exclusive) {
     // A failed exclusive Initialize can leave a driver-specific client in an
     // indeterminate state. Reactivate before the guaranteed shared fallback.
-    endpoint.client = activate();
-    UINT32 default_period{}, fundamental{}, minimum{}, maximum{};
-    check(endpoint.client->GetSharedModeEnginePeriod(endpoint.format, &default_period, &fundamental, &minimum, &maximum), "GetSharedModeEnginePeriod");
-    const UINT32 clamped = std::clamp<UINT32>(requested_frames, minimum, maximum);
-    endpoint.period_frames = fundamental > 0
-        ? minimum + ((clamped - minimum + fundamental - 1U) / fundamental) * fundamental
-        : clamped;
-    endpoint.period_frames = std::min(endpoint.period_frames, maximum);
-    initialize = endpoint.client->InitializeSharedAudioStream(AUDCLNT_STREAMFLAGS_EVENTCALLBACK, endpoint.period_frames, endpoint.format, nullptr);
-    if (FAILED(initialize) && default_period != endpoint.period_frames) {
-      endpoint.period_frames = default_period;
-      initialize = endpoint.client->InitializeSharedAudioStream(AUDCLNT_STREAMFLAGS_EVENTCALLBACK, endpoint.period_frames, endpoint.format, nullptr);
+    const auto initialize_shared = [&](bool allow_raw) {
+      endpoint.client = activate(false, allow_raw);
+      UINT32 default_period{}, fundamental{}, minimum{}, maximum{};
+      check(endpoint.client->GetSharedModeEnginePeriod(endpoint.format, &default_period, &fundamental, &minimum, &maximum), "GetSharedModeEnginePeriod");
+      const UINT32 clamped = std::clamp<UINT32>(requested_frames, minimum, maximum);
+      endpoint.period_frames = fundamental > 0
+          ? minimum + ((clamped - minimum + fundamental - 1U) / fundamental) * fundamental
+          : clamped;
+      endpoint.period_frames = std::min(endpoint.period_frames, maximum);
+      HRESULT shared_result = endpoint.client->InitializeSharedAudioStream(
+          AUDCLNT_STREAMFLAGS_EVENTCALLBACK, endpoint.period_frames, endpoint.format, nullptr);
+      if (FAILED(shared_result) && default_period != endpoint.period_frames) {
+        endpoint.period_frames = default_period;
+        shared_result = endpoint.client->InitializeSharedAudioStream(
+            AUDCLNT_STREAMFLAGS_EVENTCALLBACK, endpoint.period_frames, endpoint.format, nullptr);
+      }
+      return shared_result;
+    };
+    initialize = initialize_shared(allow_shared_raw);
+    if (FAILED(initialize) && endpoint.raw && allow_shared_raw) {
+      std::ostringstream reason;
+      reason << endpoint_name << " RAW shared initialization failed (HRESULT 0x"
+             << std::hex << static_cast<unsigned long>(initialize)
+             << "); retrying shared stream without RAW.";
+      log_line(reason.str());
+      initialize = initialize_shared(false);
     }
     check(initialize, "InitializeSharedAudioStream");
   }
@@ -475,16 +507,20 @@ int main(int argc, char** argv) {
       log_line("KS/WaveRT streaming is experimental and not armed in this build; continuing with safe WASAPI fallback.");
     log_line("Opening Windows capture endpoint...");
     Endpoint capture = open_endpoint(enumerator.Get(), eCapture, audio_config.prefer_exclusive,
-        audio_config.capture_device, audio_config.buffer_frames, audio_config.sample_rate);
+        audio_config.capture_device, audio_config.buffer_frames, audio_config.sample_rate,
+        audio_config.allow_shared_raw);
     log_line("Capture endpoint ready: " + capture.name + " | " + std::to_string(capture.format->nSamplesPerSec) + " Hz, " +
              std::to_string(capture.format->nChannels) + " channels, " + std::to_string(capture.period_frames) +
-             " frame period, " + (capture.exclusive ? "exclusive" : "shared") + " mode");
+             " frame period, " + (capture.exclusive ? "exclusive" : "shared") + " mode, " +
+             "category Other" + (capture.raw ? " RAW" : ""));
     log_line("Opening Windows render endpoint...");
     Endpoint render = open_endpoint(enumerator.Get(), eRender, audio_config.prefer_exclusive,
-        audio_config.render_device, audio_config.buffer_frames, audio_config.sample_rate);
+        audio_config.render_device, audio_config.buffer_frames, audio_config.sample_rate,
+        audio_config.allow_shared_raw);
     log_line("Render endpoint ready: " + render.name + " | " + std::to_string(render.format->nSamplesPerSec) + " Hz, " +
              std::to_string(render.format->nChannels) + " channels, " + std::to_string(render.period_frames) +
-             " frame period, " + (render.exclusive ? "exclusive" : "shared") + " mode");
+             " frame period, " + (render.exclusive ? "exclusive" : "shared") + " mode, " +
+             "category Media" + (render.raw ? " RAW" : ""));
     if (capture.format->nSamplesPerSec != render.format->nSamplesPerSec) throw std::runtime_error("Input/output sample rates differ; select matching Windows device formats first.");
     ComPtr<IAudioCaptureClient> capture_service;
     ComPtr<IAudioRenderClient> render_service;
@@ -542,6 +578,9 @@ int main(int argc, char** argv) {
                << ",\"ksAvailable\":" << (ks_probe.kernel_streaming_available ? "true" : "false")
                << ",\"ksFilterCount\":" << ks_probe.filter_count << ",\"ksPinCount\":" << ks_probe.pin_count
                << ",\"audioMode\":\"" << (capture.exclusive && render.exclusive ? "exclusive" : capture.exclusive || render.exclusive ? "mixed" : "shared") << '"'
+               << ",\"sharedRawRequested\":" << (audio_config.allow_shared_raw ? "true" : "false")
+               << ",\"captureRaw\":" << (capture.raw ? "true" : "false")
+               << ",\"renderRaw\":" << (render.raw ? "true" : "false")
                << ",\"captureDevice\":\"" << json_escape(capture.name) << '"'
                << ",\"renderDevice\":\"" << json_escape(render.name) << '"'
                << ",\"requestedBufferFrames\":" << audio_config.buffer_frames

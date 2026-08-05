@@ -92,6 +92,7 @@ add_library(calcotone_dsp STATIC
   src/elastic_stereo_fifo.cpp
   src/stream_recovery.cpp
   src/adaptive_fifo_safety.cpp
+  src/audio_client_property_plan.cpp
 )
 target_include_directories(calcotone_dsp PUBLIC
   "${CALCOTONE_GENERATED_CONTRACT_DIR}"
@@ -110,6 +111,8 @@ add_executable(native_processor_test tests/native_processor_test.cpp)
 target_link_libraries(native_processor_test PRIVATE calcotone_dsp)
 add_executable(audio_device_config_test tests/audio_device_config_test.cpp)
 target_link_libraries(audio_device_config_test PRIVATE calcotone_dsp)
+add_executable(audio_client_property_plan_test tests/audio_client_property_plan_test.cpp)
+target_link_libraries(audio_client_property_plan_test PRIVATE calcotone_dsp)
 add_executable(elastic_stereo_fifo_test tests/elastic_stereo_fifo_test.cpp)
 target_link_libraries(elastic_stereo_fifo_test PRIVATE calcotone_dsp)
 add_executable(elastic_stereo_fifo_discontinuity_test tests/elastic_stereo_fifo_discontinuity_test.cpp)
@@ -178,6 +181,7 @@ add_test(NAME native_rack_test COMMAND native_rack_test)
 add_test(NAME pitch_tracker_test COMMAND pitch_tracker_test)
 add_test(NAME native_processor_test COMMAND native_processor_test)
 add_test(NAME audio_device_config_test COMMAND audio_device_config_test)
+add_test(NAME audio_client_property_plan_test COMMAND audio_client_property_plan_test)
 add_test(NAME elastic_stereo_fifo_test COMMAND elastic_stereo_fifo_test)
 add_test(NAME elastic_stereo_fifo_discontinuity_test COMMAND elastic_stereo_fifo_discontinuity_test)
 add_test(NAME stream_recovery_test COMMAND stream_recovery_test)

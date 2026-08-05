@@ -22,6 +22,12 @@ std::uint32_t environment_number(const char* name, std::uint32_t fallback,
   return std::clamp(value, minimum, maximum);
 }
 
+bool environment_flag(const char* name, bool fallback) noexcept {
+  const auto value = environment_string(name);
+  if (value.empty()) return fallback;
+  return value != "0" && value != "false" && value != "off" && value != "no";
+}
+
 unsigned channel_index(const char* name, unsigned fallback) noexcept {
   // User-facing channel numbers are one-based. Internally they are zero-based.
   const auto value = environment_number(name, fallback + 1U, 1U, 256U);
@@ -45,6 +51,7 @@ AudioDeviceConfig audio_device_config_from_environment() noexcept {
   config.output_right_channel = channel_index("CALCOTONE_OUTPUT_RIGHT_CHANNEL", 1);
   const auto mode = environment_string("CALCOTONE_AUDIO_MODE");
   config.prefer_exclusive = mode != "shared";
+  config.allow_shared_raw = environment_flag("CALCOTONE_SHARED_RAW", true);
   return config;
 }
 
