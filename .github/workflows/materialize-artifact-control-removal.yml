@@ -43,8 +43,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run full diagnostics
-        run: npm run check
+      - name: Validate canonical cleanup
+        run: |
+          npm run audit:core-contract
+          npm run audit
+          npm run audit:artifact-matrix
+          npm run audit:windows-ui-parity
+          npm run audit:native
+          npm run lint
+          npm run build
 
       - name: Remove one-time materializer
         run: rm scripts/remove-artifact-matrix-controls.mjs scripts/remove-artifact-matrix-leftovers.mjs .github/workflows/materialize-artifact-control-removal.yml
