@@ -1,10 +1,22 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "product": "CALCOTONE Windows Native",
   "rails": {
-    "A": ["saturation", "chorus", "delay"],
-    "B": ["reverb", "bitcrusher", "media"],
-    "C": ["stomp", "chaos", "pressure"]
+    "A": [
+      "saturation",
+      "chorus",
+      "delay"
+    ],
+    "B": [
+      "reverb",
+      "bitcrusher",
+      "media"
+    ],
+    "C": [
+      "stomp",
+      "chaos",
+      "pressure"
+    ]
   },
   "modules": [
     {
@@ -13,14 +25,51 @@
       "rail": "A",
       "defaultModel": "velvet",
       "modelOrderSymbol": "EMBER_MODE_ORDER",
-      "models": ["velvet", "tube", "console", "transformer", "furnace", "exciter", "broken", "goldlion", "mullard", "telefunken", "bugleboy", "rcablack", "sp1200", "mpc60", "mirage", "s950", "emulator2", "fairlightiix"],
+      "models": [
+        "velvet",
+        "tube",
+        "console",
+        "transformer",
+        "furnace",
+        "exciter",
+        "broken",
+        "goldlion",
+        "mullard",
+        "telefunken",
+        "bugleboy",
+        "rcablack",
+        "sp1200",
+        "mpc60",
+        "mirage",
+        "s950",
+        "emulator2",
+        "fairlightiix"
+      ],
       "controls": [
-        {"id":"drive","defaultUi":0.14},
-        {"id":"tone","defaultUi":0.522},
-        {"id":"heat","defaultUi":0.18},
-        {"id":"character","defaultUi":0.22},
-        {"id":"dynamics","defaultUi":0.38},
-        {"id":"mix","defaultUi":0.22}
+        {
+          "id": "drive",
+          "defaultUi": 0.14
+        },
+        {
+          "id": "tone",
+          "defaultUi": 0.522
+        },
+        {
+          "id": "heat",
+          "defaultUi": 0.18
+        },
+        {
+          "id": "character",
+          "defaultUi": 0.22
+        },
+        {
+          "id": "dynamics",
+          "defaultUi": 0.38
+        },
+        {
+          "id": "mix",
+          "defaultUi": 0.22
+        }
       ]
     },
     {
@@ -29,14 +78,55 @@
       "rail": "A",
       "defaultModel": "chorus",
       "modelOrderSymbol": "DRIFT_MODE_ORDER",
-      "models": ["chorus", "ensemble", "dimension", "vibrato", "rotary", "doppler", "liquid", "orbit", "ce1", "dimensiond", "mxrflanger", "electricmistress", "adaflanger", "bf2", "biphase", "smallstone", "univibe", "leslie", "phase90", "instantphaser", "schulte", "pn2"],
+      "models": [
+        "chorus",
+        "ensemble",
+        "dimension",
+        "vibrato",
+        "rotary",
+        "doppler",
+        "liquid",
+        "orbit",
+        "ce1",
+        "dimensiond",
+        "mxrflanger",
+        "electricmistress",
+        "adaflanger",
+        "bf2",
+        "biphase",
+        "smallstone",
+        "univibe",
+        "leslie",
+        "phase90",
+        "instantphaser",
+        "schulte",
+        "pn2"
+      ],
       "controls": [
-        {"id":"rate","defaultUi":0.094},
-        {"id":"depth","defaultUi":0.275},
-        {"id":"shape","defaultUi":0.35},
-        {"id":"spread","defaultUi":0.62},
-        {"id":"motion","defaultUi":0.32},
-        {"id":"mix","defaultUi":0.14}
+        {
+          "id": "rate",
+          "defaultUi": 0.094
+        },
+        {
+          "id": "depth",
+          "defaultUi": 0.275
+        },
+        {
+          "id": "shape",
+          "defaultUi": 0.35
+        },
+        {
+          "id": "spread",
+          "defaultUi": 0.62
+        },
+        {
+          "id": "motion",
+          "defaultUi": 0.32
+        },
+        {
+          "id": "mix",
+          "defaultUi": 0.14
+        }
       ]
     },
     {
@@ -45,14 +135,45 @@
       "rail": "A",
       "defaultModel": "tape",
       "modelOrderSymbol": "DELAY_ALGORITHM_ORDER",
-      "models": ["clean", "tape", "bbd", "pingpong", "diffuse", "scatter", "constellation", "re201", "EP-3 Echoplex", "Binson Echorec", "Deluxe Memory Man", "AMS DMX 15-80 S"],
+      "models": [
+        "clean",
+        "tape",
+        "bbd",
+        "pingpong",
+        "diffuse",
+        "scatter",
+        "constellation",
+        "re201",
+        "EP-3 Echoplex",
+        "Binson Echorec",
+        "Deluxe Memory Man",
+        "AMS DMX 15-80 S"
+      ],
       "controls": [
-        {"id":"time","defaultUi":0.1692},
-        {"id":"feedback","defaultUi":0.244},
-        {"id":"color","defaultUi":0.42},
-        {"id":"character","defaultUi":0.14},
-        {"id":"width","defaultUi":0.58},
-        {"id":"mix","defaultUi":0.14}
+        {
+          "id": "time",
+          "defaultUi": 0.1692
+        },
+        {
+          "id": "feedback",
+          "defaultUi": 0.244
+        },
+        {
+          "id": "color",
+          "defaultUi": 0.42
+        },
+        {
+          "id": "character",
+          "defaultUi": 0.14
+        },
+        {
+          "id": "width",
+          "defaultUi": 0.58
+        },
+        {
+          "id": "mix",
+          "defaultUi": 0.14
+        }
       ]
     },
     {
@@ -61,14 +182,45 @@
       "rail": "B",
       "defaultModel": "hall",
       "modelOrderSymbol": "REVERB_ALGORITHM_ORDER",
-      "models": ["room", "plate", "hall", "cinema", "cloud", "freeze", "celestial", "aurora", "nebula", "abyss", "emt140", "lexicon224"],
+      "models": [
+        "room",
+        "plate",
+        "hall",
+        "cinema",
+        "cloud",
+        "freeze",
+        "celestial",
+        "aurora",
+        "nebula",
+        "abyss",
+        "emt140",
+        "lexicon224"
+      ],
       "controls": [
-        {"id":"decay","defaultUi":0.504},
-        {"id":"size","defaultUi":0.52},
-        {"id":"color","defaultUi":0.42},
-        {"id":"diffusion","defaultUi":0.74},
-        {"id":"motion","defaultUi":0.18},
-        {"id":"mix","defaultUi":0.13}
+        {
+          "id": "decay",
+          "defaultUi": 0.504
+        },
+        {
+          "id": "size",
+          "defaultUi": 0.52
+        },
+        {
+          "id": "color",
+          "defaultUi": 0.42
+        },
+        {
+          "id": "diffusion",
+          "defaultUi": 0.74
+        },
+        {
+          "id": "motion",
+          "defaultUi": 0.18
+        },
+        {
+          "id": "mix",
+          "defaultUi": 0.13
+        }
       ]
     },
     {
@@ -77,14 +229,45 @@
       "rail": "B",
       "defaultModel": "smear",
       "modelOrderSymbol": "GRAIN_MODE_ORDER",
-      "models": ["mosaic", "scatter", "smear", "prism", "slice", "freeze", "clouds", "beads", "morphagene", "arbhar", "particle2", "microcosm"],
+      "models": [
+        "mosaic",
+        "scatter",
+        "smear",
+        "prism",
+        "slice",
+        "freeze",
+        "clouds",
+        "beads",
+        "morphagene",
+        "arbhar",
+        "particle2",
+        "microcosm"
+      ],
       "controls": [
-        {"id":"bits","defaultUi":0.75},
-        {"id":"density","defaultUi":0.42},
-        {"id":"pitch","defaultUi":0.38},
-        {"id":"chaos","defaultUi":0.16},
-        {"id":"bloom","defaultUi":0.36},
-        {"id":"mix","defaultUi":0.12}
+        {
+          "id": "bits",
+          "defaultUi": 0.75
+        },
+        {
+          "id": "density",
+          "defaultUi": 0.42
+        },
+        {
+          "id": "pitch",
+          "defaultUi": 0.38
+        },
+        {
+          "id": "chaos",
+          "defaultUi": 0.16
+        },
+        {
+          "id": "bloom",
+          "defaultUi": 0.36
+        },
+        {
+          "id": "mix",
+          "defaultUi": 0.12
+        }
       ]
     },
     {
@@ -93,13 +276,164 @@
       "rail": "B",
       "defaultModel": "cassette",
       "modelOrderSymbol": "MEDIA_MODE_ORDER",
-      "models": ["cassette", "reel", "vinyl", "vhs", "radio", "wax", "broken", "archive", "tascam424", "Neve 1073", "SSL 4000E", "API 1608", "Ampex ATR-102", "Neve BCM10"],
+      "models": [
+        "cassette",
+        "reel",
+        "vinyl",
+        "vhs",
+        "radio",
+        "wax",
+        "broken",
+        "archive",
+        "tascam424",
+        "Neve 1073",
+        "SSL 4000E",
+        "API 1608",
+        "Ampex ATR-102",
+        "Neve BCM10"
+      ],
       "controls": [
-        {"id":"wear","defaultUi":0.162},
-        {"id":"wow","defaultUi":0.16},
-        {"id":"noise","defaultUi":0.1},
-        {"id":"tone","defaultUi":0.62},
-        {"id":"mix","defaultUi":0.26}
+        {
+          "id": "wear",
+          "defaultUi": 0.162
+        },
+        {
+          "id": "wow",
+          "defaultUi": 0.16
+        },
+        {
+          "id": "noise",
+          "defaultUi": 0.1
+        },
+        {
+          "id": "tone",
+          "defaultUi": 0.62
+        },
+        {
+          "id": "mix",
+          "defaultUi": 0.26
+        }
+      ]
+    },
+    {
+      "id": "stomp",
+      "name": "Stomp",
+      "rail": "C",
+      "defaultModel": "808 Overdrive",
+      "modelOrderSymbol": "STOMP_MODE_LABELS",
+      "models": [
+        "808 Overdrive",
+        "RAT Distortion",
+        "Big Muff",
+        "Fuzz Face",
+        "DS-1 Distortion",
+        "Blues Driver",
+        "Gold Horse",
+        "Swedish Chainsaw",
+        "Metal Zone",
+        "Octavia",
+        "Rangemaster",
+        "Cry Baby Wah",
+        "Whammy Octave",
+        "Dyna Comp"
+      ],
+      "controls": [
+        {
+          "id": "drive",
+          "defaultUi": 0.38
+        },
+        {
+          "id": "tone",
+          "defaultUi": 0.54
+        },
+        {
+          "id": "level",
+          "defaultUi": 0.68
+        },
+        {
+          "id": "character",
+          "defaultUi": 0.42
+        },
+        {
+          "id": "body",
+          "defaultUi": 0.52
+        },
+        {
+          "id": "mix",
+          "defaultUi": 1.0
+        }
+      ]
+    },
+    {
+      "id": "chaos",
+      "name": "Stack",
+      "rail": "C",
+      "defaultModel": "calcotone",
+      "modelOrderSymbol": "STACK_AMP_MODELS",
+      "models": [
+        "blackface",
+        "ac30",
+        "plexi",
+        "svt",
+        "model-t",
+        "calcotone"
+      ],
+      "controls": [
+        {
+          "id": "cabinet",
+          "defaultUi": 2.0
+        },
+        {
+          "id": "drive",
+          "defaultUi": 0.36
+        },
+        {
+          "id": "tone",
+          "defaultUi": 0.52
+        },
+        {
+          "id": "sag",
+          "defaultUi": 0.34
+        },
+        {
+          "id": "mix",
+          "defaultUi": 0.62
+        }
+      ]
+    },
+    {
+      "id": "pressure",
+      "name": "Pressure",
+      "rail": "C",
+      "defaultModel": "fet",
+      "modelOrderSymbol": "SIGNAL_LAB_MODES",
+      "models": [
+        "fet",
+        "opto",
+        "varimu",
+        "vca"
+      ],
+      "controls": [
+        {
+          "id": "style",
+          "defaultUi": 2.0
+        },
+        {
+          "id": "drive",
+          "defaultUi": 0.42
+        },
+        {
+          "id": "time",
+          "defaultUi": 0.46
+        },
+        {
+          "id": "character",
+          "defaultUi": 0.38
+        },
+        {
+          "id": "mix",
+          "defaultUi": 0.72
+        }
       ]
     }
   ]

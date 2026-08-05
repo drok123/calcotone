@@ -12,6 +12,13 @@ def cpp_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+def cpp_float(value: object) -> str:
+    literal = f"{float(value):.9g}"
+    if "." not in literal and "e" not in literal.lower():
+        literal += ".0"
+    return literal + "F"
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         print("usage: generate_core_contract.py <manifest.json> <output.hpp>", file=sys.stderr)
@@ -27,6 +34,7 @@ def main() -> int:
         raise ValueError("manifest must contain modules[] and rails{}")
 
     seen_ids: set[str] = set()
+    module_rail_by_id: dict[str, str] = {}
     module_rows: list[str] = []
     model_arrays: list[str] = []
     control_arrays: list[str] = []
@@ -36,6 +44,7 @@ def main() -> int:
         if module_id in seen_ids:
             raise ValueError(f"duplicate module id: {module_id}")
         seen_ids.add(module_id)
+        module_rail_by_id[module_id] = module["rail"]
 
         models = module["models"]
         controls = module["controls"]
@@ -53,7 +62,7 @@ def main() -> int:
         control_arrays.append(
             f"inline constexpr std::array<ControlContract, {len(controls)}> {symbol}Controls{{{{\n"
             + "\n".join(
-                f"  {{{cpp_string(control['id'])}, {float(control['defaultUi']):.9g}F}},"
+                f"  {{{cpp_string(control['id'])}, {cpp_float(control['defaultUi'])}}},"
                 for control in controls
             )
             + "\n}};"
@@ -66,15 +75,30 @@ def main() -> int:
         )
 
     rail_arrays: list[str] = []
+    rail_module_ids: list[str] = []
     for rail_name in ("A", "B", "C"):
         values = rails.get(rail_name)
         if not isinstance(values, list):
             raise ValueError(f"missing rail {rail_name}")
+        for module_id in values:
+            if module_id not in seen_ids:
+                raise ValueError(f"rail {rail_name} references undefined module: {module_id}")
+            if module_rail_by_id[module_id] != rail_name:
+                raise ValueError(
+                    f"rail {rail_name} contains {module_id}, declared for rail {module_rail_by_id[module_id]}"
+                )
+            rail_module_ids.append(module_id)
         rail_arrays.append(
             f"inline constexpr std::array<std::string_view, {len(values)}> kRail{rail_name}{{{{\n"
             + "\n".join(f"  {cpp_string(value)}," for value in values)
             + "\n}};"
         )
+
+    if len(rail_module_ids) != len(set(rail_module_ids)):
+        raise ValueError("a module appears in more than one rail slot")
+    missing_from_rails = seen_ids.difference(rail_module_ids)
+    if missing_from_rails:
+        raise ValueError(f"modules missing from rails: {sorted(missing_from_rails)}")
 
     contract_version = f"manifest-v{manifest.get('schemaVersion', 0)}"
     source = f'''#pragma once
