@@ -1,0 +1,44 @@
+name: Materialize native fullscreen
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'native/tools/materialize_native_fullscreen.py'
+      - '.github/workflows/materialize-native-fullscreen.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Apply native fullscreen support
+        run: python native/tools/materialize_native_fullscreen.py
+
+      - name: Verify native fullscreen source
+        shell: bash
+        run: |
+          grep -q 'add_ContainsFullScreenElementChanged' native/src/desktop_shell.cpp
+          grep -q 'void set_native_fullscreen(bool enabled)' native/src/desktop_shell.cpp
+          grep -q 'WS_CAPTION | WS_THICKFRAME' native/src/desktop_shell.cpp
+          grep -q 'saved_window_rect_' native/src/desktop_shell.cpp
+
+      - name: Commit native fullscreen
+        shell: bash
+        run: |
+          git add native/src/desktop_shell.cpp
+          if git diff --cached --quiet; then
+            echo 'Native fullscreen already materialized.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Implement true native fullscreen'
+          git push origin HEAD:main
