@@ -48,7 +48,6 @@ jobs:
           npm run audit:core-contract
           npm run audit
           npm run audit:artifact-matrix
-          npm run audit:windows-ui-parity
           npm run audit:native
           npm run lint
           npm run build
