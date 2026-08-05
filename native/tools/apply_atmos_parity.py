@@ -30,6 +30,7 @@ def main() -> int:
         '#include "calcotone/ember_parity_processor.hpp"\n'
         '#include "calcotone/drift_parity_processor.hpp"\n'
         '#include "calcotone/halo_parity_processor.hpp"\n'
+        '#include "calcotone/grain_parity_processor.hpp"\n'
     )
     if '#include "calcotone/atmos_parity_processor.hpp"' not in source:
         if include_anchor not in source:
@@ -117,6 +118,25 @@ struct Atmos {'''
 struct Grain {'''
     source = replace_once(source, r"struct Atmos \{.*?\n\};\n\nstruct Grain \{", atmos_replacement, "Atmos")
 
+    grain_replacement = r'''struct Grain {
+  Params p{2.F, 13.F, .42F, .38F, .16F, .36F, .12F};
+  GrainParityProcessor processor;
+  explicit Grain(float rate) : processor(rate) {}
+  void process(float* data, std::size_t frames, float) noexcept {
+    processor.set_parameter("mode", p.target[0].load(std::memory_order_relaxed));
+    processor.set_parameter("bits", p.target[1].load(std::memory_order_relaxed));
+    processor.set_parameter("density", p.target[2].load(std::memory_order_relaxed));
+    processor.set_parameter("pitch", p.target[3].load(std::memory_order_relaxed));
+    processor.set_parameter("chaos", p.target[4].load(std::memory_order_relaxed));
+    processor.set_parameter("bloom", p.target[5].load(std::memory_order_relaxed));
+    processor.set_parameter("mix", p.target[6].load(std::memory_order_relaxed));
+    processor.process(data, frames);
+  }
+};
+
+struct Artifact {'''
+    source = replace_once(source, r"struct Grain \{.*?\n\};\n\nstruct Artifact \{", grain_replacement, "Grain")
+
     artifact_replacement = r'''struct Artifact {
   Params p{0.F, .162F, .16F, .10F, .62F, .26F};
   std::array<std::vector<float>, 2> transport;
@@ -184,7 +204,7 @@ struct Stomp {'''
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(source, encoding="utf-8", newline="\n")
-    print(f"generated {output_path} with live Ember, Drift, Halo, Atmos, and Artifact matrix processing")
+    print(f"generated {output_path} with live Ember, Drift, Halo, Atmos, Grain, and Artifact processing")
     return 0
 
 
