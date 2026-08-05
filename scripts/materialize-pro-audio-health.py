@@ -6,9 +6,7 @@ old = '''               << ",\\\"audioMode\\\":\\\"" << (capture.exclusive && re
 '''
 new = '''               << ",\\\"audioMode\\\":\\\"" << (capture.exclusive && render.exclusive ? "exclusive" : capture.exclusive || render.exclusive ? "mixed" : "shared") << '"'
                << ",\\\"sharedRawRequested\\\":" << (audio_config.allow_shared_raw ? "true" : "false")
-               << ",\\\"captureProAudio\\\":" << (capture.pro_audio ? "true" : "false")
                << ",\\\"captureRaw\\\":" << (capture.raw ? "true" : "false")
-               << ",\\\"renderProAudio\\\":" << (render.pro_audio ? "true" : "false")
                << ",\\\"renderRaw\\\":" << (render.raw ? "true" : "false")
 '''
 if old not in host:
@@ -25,4 +23,4 @@ current = (
 if stale not in latency:
     raise RuntimeError("missing stale client reactivation audit")
 latency_path.write_text(latency.replace(stale, current, 1), encoding="utf-8")
-print("Added Pro Audio endpoint telemetry and migrated client-reactivation audit.")
+print("Added shared RAW endpoint telemetry and migrated client-reactivation audit.")
