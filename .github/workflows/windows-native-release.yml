@@ -5,6 +5,7 @@ on:
   push:
     branches: [main]
     paths:
+      - "contracts/**"
       - "native/**"
       - "src/**"
       - "public/**"
@@ -28,7 +29,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Check out source
+      - name: Check out canonical source
         uses: actions/checkout@v6
 
       - name: Set up Node.js
@@ -40,13 +41,11 @@ jobs:
       - name: Install web dependencies
         run: npm ci
 
-      - name: Apply and audit desktop UI parity
+      - name: Audit canonical desktop source
         run: |
-          node scripts/remove-retired-synth.mjs
-          node scripts/apply-artifact-matrix-ui.mjs
-          node scripts/artifact-matrix-ui-audit.mjs
-          node scripts/apply-native-desktop-ui-parity.mjs
-          node scripts/windows-ui-parity-audit.mjs
+          npm run audit:core-contract
+          npm run audit:artifact-matrix
+          npm run audit:windows-ui-parity
           npm run audit:latency
 
       - name: Build production faceplate
@@ -63,8 +62,8 @@ jobs:
           Select-String -Path native/src/control_server.cpp -Pattern 'GET /spectrum' -Quiet | ForEach-Object { if (-not $_) { throw 'Native spectrum route missing.' } }
           Select-String -Path src/App.tsx -Pattern 'new NativeVisualSpectrum' -Quiet | ForEach-Object { if (-not $_) { throw 'Native spectrum UI source missing.' } }
           Select-String -Path src/App.tsx -Pattern "DEFAULT_RAIL_C_ORDER = \['stomp', 'chaos', 'pressure'\]" -Quiet | ForEach-Object { if (-not $_) { throw 'Stack Rail C placement missing.' } }
-          Select-String -Path src/App.tsx,src/components/effects/RailCModules.tsx -Pattern 'SynthModule|onSynth|moduleId === ''synth''|SYNTH_MACHINES' -Quiet | ForEach-Object { if ($_) { throw 'Retired Synth code survived the release transform.' } }
-          Select-String -Path src/App.tsx,src/components/effects/RailCModules.tsx -Pattern 'motionPadProps|<MotionPad' -Quiet | ForEach-Object { if ($_) { throw 'Removed Stack XY input panel survived the release transform.' } }
+          Select-String -Path src/App.tsx,src/components/effects/RailCModules.tsx -Pattern 'SynthModule|onSynth|moduleId === ''synth''|SYNTH_MACHINES' -Quiet | ForEach-Object { if ($_) { throw 'Retired Synth code exists in canonical source.' } }
+          Select-String -Path src/App.tsx,src/components/effects/RailCModules.tsx -Pattern 'motionPadProps|<MotionPad' -Quiet | ForEach-Object { if ($_) { throw 'Removed Stack XY input panel exists in canonical source.' } }
           Select-String -Path src/App.tsx -Pattern 'commandLine\(`param \$\{moduleId\} \$\{parameterId\}' -Quiet | ForEach-Object { if (-not $_) { throw 'Native XY parameter routing missing.' } }
           Select-String -Path native/START-CALCOTONE-NATIVE.bat -Pattern 'CALCOTONE_AUDIO_MODE=exclusive' -Quiet | ForEach-Object { if (-not $_) { throw 'Exclusive-mode launcher default missing.' } }
 
@@ -100,6 +99,7 @@ jobs:
           Copy-Item 'dist/*' (Join-Path $packageRoot 'web') -Recurse -Force
           Copy-Item 'native/*.bat' $packageRoot -Force
           Copy-Item 'native/README.md' (Join-Path $packageRoot 'NATIVE-README.md') -Force
+          Copy-Item 'contracts/calcotone-core-manifest.json' (Join-Path $packageRoot 'CALCOTONE-CONTRACT.json') -Force
 
           @"
           CALCOTONE Windows Native
@@ -118,23 +118,19 @@ jobs:
             commit = $env:GITHUB_SHA
             workflowRun = $env:GITHUB_RUN_ID
             builtAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+            source = 'Canonical checked-in React and C++ source; no release-time UI mutation'
             frontend = 'TypeScript + Vite production build passed'
-            native = 'CMake Release build passed'
-            tests = 'CTest and latency audit passed'
-            parityModules = @('Ember', 'Drift', 'Halo', 'Atmos', 'Artifact', 'Stomp', 'Stack', 'Pressure')
+            native = 'CMake Release build passed against generated core contract'
+            tests = 'Core contract, CTest, UI parity, and latency audits passed'
+            parityModules = @('Ember', 'Drift', 'Halo', 'Atmos', 'Grain', 'Artifact', 'Stomp', 'Stack', 'Pressure')
             uiParity = [ordered]@{
               nativeSpectrum = 'post-rack FFT endpoint active'
               stack = 'amp readout only; embedded XY input panel removed'
               xy = 'global core-module modulation routed to native DSP'
-              retiredSynth = 'removed from packaged App and Rail C source'
+              retiredSynth = 'absent from canonical source'
               launcher = 'exclusive WASAPI requested by default with safe fallback'
               controls = 'native command/state synchronization audited'
-            }
-            artifactMatrix = [ordered]@{
-              consoles = 6
-              tubes = 6
-              orders = 2
-              combinations = 72
+              artifact = 'single Format dropdown'
             }
           }
           $manifest | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $packageRoot 'BUILD-MANIFEST.json')
