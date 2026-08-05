@@ -37,16 +37,24 @@ def main() -> int:
             raise RuntimeError("native rack include anchor was not found")
         source = source.replace(include_anchor, include_anchor + parity_includes, 1)
 
+    # Params owns the UI-facing atomics, while each parity processor owns its own
+    # sample-rate smoothing. Feed the atomic targets directly. The former wrapper
+    # called Params::glide only once per host block, then smoothed a second time in
+    # the processor; model changes could take seconds and rounded indices appeared
+    # unresponsive at normal callback sizes.
     ember_replacement = r'''struct Ember {
   Params p{0.F, .14F, 9500.F, .18F, .22F, .38F, .22F};
   EmberParityProcessor processor;
   explicit Ember(float rate) : processor(rate) {}
-  void process(float* data, std::size_t frames, float rate) noexcept {
-    const float glide = 1.F - std::exp(-1.F / (rate * .045F)); p.glide(glide);
-    processor.set_parameter("mode", p.value[0]); processor.set_parameter("drive", p.value[1]);
-    processor.set_parameter("tone", p.value[2]); processor.set_parameter("heat", p.value[3]);
-    processor.set_parameter("character", p.value[4]); processor.set_parameter("dynamics", p.value[5]);
-    processor.set_parameter("mix", p.value[6]); processor.process(data, frames);
+  void process(float* data, std::size_t frames, float) noexcept {
+    processor.set_parameter("mode", p.target[0].load(std::memory_order_relaxed));
+    processor.set_parameter("drive", p.target[1].load(std::memory_order_relaxed));
+    processor.set_parameter("tone", p.target[2].load(std::memory_order_relaxed));
+    processor.set_parameter("heat", p.target[3].load(std::memory_order_relaxed));
+    processor.set_parameter("character", p.target[4].load(std::memory_order_relaxed));
+    processor.set_parameter("dynamics", p.target[5].load(std::memory_order_relaxed));
+    processor.set_parameter("mix", p.target[6].load(std::memory_order_relaxed));
+    processor.process(data, frames);
   }
 };
 
@@ -57,12 +65,15 @@ float read_delay'''
   Params p{0.F, .28F, .0022F, .35F, .62F, .32F, .14F};
   DriftParityProcessor processor;
   explicit Drift(float rate) : processor(rate) {}
-  void process(float* data, std::size_t frames, float rate) noexcept {
-    const float glide = 1.F - std::exp(-1.F / (rate * .04F)); p.glide(glide);
-    processor.set_parameter("mode", p.value[0]); processor.set_parameter("rate", p.value[1]);
-    processor.set_parameter("depth", p.value[2]); processor.set_parameter("shape", p.value[3]);
-    processor.set_parameter("spread", p.value[4]); processor.set_parameter("motion", p.value[5]);
-    processor.set_parameter("mix", p.value[6]); processor.process(data, frames);
+  void process(float* data, std::size_t frames, float) noexcept {
+    processor.set_parameter("mode", p.target[0].load(std::memory_order_relaxed));
+    processor.set_parameter("rate", p.target[1].load(std::memory_order_relaxed));
+    processor.set_parameter("depth", p.target[2].load(std::memory_order_relaxed));
+    processor.set_parameter("shape", p.target[3].load(std::memory_order_relaxed));
+    processor.set_parameter("spread", p.target[4].load(std::memory_order_relaxed));
+    processor.set_parameter("motion", p.target[5].load(std::memory_order_relaxed));
+    processor.set_parameter("mix", p.target[6].load(std::memory_order_relaxed));
+    processor.process(data, frames);
   }
 };
 
@@ -73,12 +84,15 @@ struct Halo {'''
   Params p{1.F, .36F, .22F, .42F, .14F, .58F, .14F};
   HaloParityProcessor processor;
   explicit Halo(float rate) : processor(rate) {}
-  void process(float* data, std::size_t frames, float rate) noexcept {
-    const float glide = 1.F - std::exp(-1.F / (rate * .12F)); p.glide(glide);
-    processor.set_parameter("algorithm", p.value[0]); processor.set_parameter("time", p.value[1]);
-    processor.set_parameter("feedback", p.value[2]); processor.set_parameter("color", p.value[3]);
-    processor.set_parameter("character", p.value[4]); processor.set_parameter("width", p.value[5]);
-    processor.set_parameter("mix", p.value[6]); processor.process(data, frames);
+  void process(float* data, std::size_t frames, float) noexcept {
+    processor.set_parameter("algorithm", p.target[0].load(std::memory_order_relaxed));
+    processor.set_parameter("time", p.target[1].load(std::memory_order_relaxed));
+    processor.set_parameter("feedback", p.target[2].load(std::memory_order_relaxed));
+    processor.set_parameter("color", p.target[3].load(std::memory_order_relaxed));
+    processor.set_parameter("character", p.target[4].load(std::memory_order_relaxed));
+    processor.set_parameter("width", p.target[5].load(std::memory_order_relaxed));
+    processor.set_parameter("mix", p.target[6].load(std::memory_order_relaxed));
+    processor.process(data, frames);
   }
 };
 
@@ -89,12 +103,15 @@ struct Atmos {'''
   Params p{2.F, 2.4F, .52F, .42F, .74F, .18F, .13F};
   AtmosParityProcessor processor;
   explicit Atmos(float rate) : processor(rate) {}
-  void process(float* data, std::size_t frames, float rate) noexcept {
-    const float glide = 1.F - std::exp(-1.F / (rate * .16F)); p.glide(glide);
-    processor.set_parameter("algorithm", p.value[0]); processor.set_parameter("decay", p.value[1]);
-    processor.set_parameter("size", p.value[2]); processor.set_parameter("color", p.value[3]);
-    processor.set_parameter("diffusion", p.value[4]); processor.set_parameter("motion", p.value[5]);
-    processor.set_parameter("mix", p.value[6]); processor.process(data, frames);
+  void process(float* data, std::size_t frames, float) noexcept {
+    processor.set_parameter("algorithm", p.target[0].load(std::memory_order_relaxed));
+    processor.set_parameter("decay", p.target[1].load(std::memory_order_relaxed));
+    processor.set_parameter("size", p.target[2].load(std::memory_order_relaxed));
+    processor.set_parameter("color", p.target[3].load(std::memory_order_relaxed));
+    processor.set_parameter("diffusion", p.target[4].load(std::memory_order_relaxed));
+    processor.set_parameter("motion", p.target[5].load(std::memory_order_relaxed));
+    processor.set_parameter("mix", p.target[6].load(std::memory_order_relaxed));
+    processor.process(data, frames);
   }
 };
 
