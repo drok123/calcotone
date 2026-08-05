@@ -1,0 +1,50 @@
+name: Materialize Full Rack Core Contract
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/materialize-rail-c-core-contract.py
+      - .github/workflows/materialize-rail-c-core-contract.yml
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Materialize full rack contract
+        run: python3 scripts/materialize-rail-c-core-contract.py
+
+      - name: Audit full rack contract
+        run: |
+          node scripts/core-contract-parity-audit.mjs
+          node scripts/windows-ui-parity-audit.mjs
+
+      - name: Configure native DSP
+        run: cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build generated contract and native DSP
+        run: cmake --build native/build --config Release --parallel 2
+
+      - name: Run native tests
+        run: ctest --test-dir native/build -C Release --output-on-failure
+
+      - name: Remove one-time materializer
+        run: rm scripts/materialize-rail-c-core-contract.py .github/workflows/materialize-rail-c-core-contract.yml
+
+      - name: Commit canonical full rack contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Generate one core contract for all nine rack modules"
+          git push origin HEAD:main
