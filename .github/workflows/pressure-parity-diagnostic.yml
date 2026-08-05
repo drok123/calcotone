@@ -1,0 +1,43 @@
+name: Pressure Parity Diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/pressure-parity-diagnostic.yml
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Materialize Pressure parity
+        run: python3 scripts/materialize-pressure-native-parity.py
+      - name: Capture audits
+        shell: bash
+        run: |
+          set +e
+          npm run audit:stack > stack-audit.log 2>&1
+          echo $? > stack-status.txt
+          node scripts/core-contract-parity-audit.mjs > core-audit.log 2>&1
+          echo $? > core-status.txt
+          node scripts/windows-ui-parity-audit.mjs > windows-audit.log 2>&1
+          echo $? > windows-status.txt
+          {
+            printf 'stack='; cat stack-status.txt
+            cat stack-audit.log
+            printf '\ncore='; cat core-status.txt
+            cat core-audit.log
+            printf '\nwindows='; cat windows-status.txt
+            cat windows-audit.log
+          } > pressure-parity-diagnostics.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pressure-parity-diagnostics.txt
+          git commit -m "Record Pressure parity audit diagnostics"
+          git push origin HEAD:main
