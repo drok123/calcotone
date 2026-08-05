@@ -1,0 +1,45 @@
+name: Materialize UI control parity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/materialize-ui-control-parity.mjs'
+      - '.github/workflows/materialize-ui-controls.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Apply UI control parity
+        run: node scripts/materialize-ui-control-parity.mjs
+
+      - name: Verify source
+        run: |
+          node scripts/windows-ui-parity-audit.mjs
+          node scripts/core-contract-parity-audit.mjs
+
+      - name: Commit materialized UI
+        shell: bash
+        run: |
+          git add src/App.tsx src/App.css
+          if git diff --cached --quiet; then
+            echo 'UI controls already materialized.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Fix fullscreen and rack control layout'
+          git push origin HEAD:main
