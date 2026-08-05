@@ -73,7 +73,11 @@ void test_idle_raw_does_not_fill_memory() {
     dream.begin_block(kBlock);
     dream.finish_block(lane_one.data(), lane_two.data(), kBlock, false);
   }
-  assert(dream.profile().fill_ratio == 0.F);
+  const auto profile = dream.profile();
+  assert(profile.fill_ratio == 0.F);
+  assert(profile.history_seconds == 8.F);
+  assert(profile.input_peak == 0.F);
+  assert(profile.captures == 0U);
   assert(std::all_of(lane_one.begin(), lane_one.end(), [](float value) { return value == 0.F; }));
   assert(std::all_of(lane_two.begin(), lane_two.end(), [](float value) { return value == 0.F; }));
 }
