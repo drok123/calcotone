@@ -7,6 +7,7 @@
 #include <vector>
 
 namespace {
+constexpr float kPi = 3.14159265358979323846F;
 constexpr float kSampleRate = 48'000.F;
 constexpr std::size_t kBlock = 128;
 
@@ -40,8 +41,16 @@ std::vector<float> impulse_render(
   processor.set_parameter("mix", 1.F);
   settle(processor);
   std::vector<float> audio(frames * 2, 0.F);
-  audio[0] = 1.F;
-  audio[1] = .73F;
+  if (mode == 6 || mode == 11) {
+    const std::size_t excitation_frames = std::min<std::size_t>(frames, 12'000);
+    for (std::size_t frame = 0; frame < excitation_frames; ++frame) {
+      audio[frame * 2] = std::sin(2.F * kPi * 220.F * static_cast<float>(frame) / kSampleRate) * .28F;
+      audio[frame * 2 + 1] = std::sin(2.F * kPi * 337.F * static_cast<float>(frame) / kSampleRate) * .22F;
+    }
+  } else {
+    audio[0] = 1.F;
+    audio[1] = .73F;
+  }
   process_blocks(processor, audio);
   for (float sample : audio) assert(std::isfinite(sample));
   return audio;
