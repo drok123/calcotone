@@ -14,6 +14,10 @@ const forbidText = (source, needle, label) => { if (source.includes(needle)) fai
 const worklet = read('public/dream-buffer-processor.js');
 const owner = read('src/audio/DreamBuffer.ts');
 const engine = read('src/audio/AudioEngine.ts');
+const nativeCore = read('native/src/dream_buffer_parity_processor.cpp');
+const nativeDream = read('native/src/native_dream_engine.cpp');
+const nativeProcessor = read('native/src/native_processor.cpp');
+const nativeRack = read('native/src/native_rack.cpp');
 
 // V12 is one bounded shared stereo memory, not per-module buffers.
 requireText(worklet, 'this.historySeconds = 8', 'Dream V12 bounded history');
@@ -80,6 +84,34 @@ requireText(engine, 'if (!this.hasActiveProcessing())', 'Dream RAW isolation bra
 requireText(engine, 'this.graph.output.connect(this.analyser)', 'Dream RAW direct graph route');
 requireText(engine, 'this.dreamBuffer.connectReturn(this.dcBlock)', 'Dream return stays processed-only');
 
+// The Windows engine must implement the same architecture, not the retired fixed
+// per-lane tap approximation.
+requireText(nativeCore, 'kHistorySeconds = 8.F', 'native Dream bounded history');
+requireText(nativeCore, 'intent_now(length, 0U)', 'native Dream compact NOW tags');
+requireText(nativeCore, 'intent_echo(length, 0U)', 'native Dream compact ECHO tags');
+requireText(nativeCore, 'intent_ghost(length, 0U)', 'native Dream compact GHOST tags');
+requireText(nativeCore, '{.061F, .079F, .014F, .017F, .071F', 'native Dream NOW moving head');
+requireText(nativeCore, '{.43F, .53F, .085F, .105F, .031F', 'native Dream ECHO moving head');
+requireText(nativeCore, '{3.85F, 4.55F, 1.10F, 1.28F, .009F', 'native Dream GHOST moving head');
+requireText(nativeCore, 'read_audio(left, timeline_index, offset_left)', 'native Dream fractional audio recall');
+requireText(nativeCore, 'read_intent(tag_buffer, timeline_index, intent_offset)', 'native Dream tagged recall');
+requireText(nativeCore, 'now_intent_state += (now_target - now_intent_state) * .0045F', 'native Dream NOW capture intelligence');
+requireText(nativeCore, 'echo_intent_state += (echo_target - echo_intent_state) * .0022F', 'native Dream ECHO capture intelligence');
+requireText(nativeCore, 'ghost_intent_state += (ghost_target - ghost_intent_state) * .0009F', 'native Dream GHOST capture intelligence');
+requireText(nativeCore, '.28F + remembered_intent * .72F', 'native Dream GHOST recall floor');
+requireText(nativeDream, 'kSendAmounts', 'native Dream weighted module sends');
+requireText(nativeDream, 'kRouteAmounts', 'native Dream guarded routes');
+requireText(nativeDream, 'kRouteHeads{1U, 0U, 2U, 0U, 1U, 2U}', 'native Dream route/head map');
+requireText(nativeDream, 'master_return[sample]', 'native Dream parallel master return');
+requireText(nativeProcessor, 'NativeDreamEngine dream;', 'native Dream one shared engine');
+requireText(nativeProcessor, 'dream.begin_block(frames)', 'native Dream block preparation');
+requireText(nativeProcessor, 'dream.inject_route(rack_module', 'native Dream route injection');
+requireText(nativeProcessor, 'dream.capture_module(rack_module', 'native Dream weighted capture');
+requireText(nativeProcessor, 'any_rack_active || !stack_off || pressure_active', 'native Dream RAW isolation gate');
+forbidText(nativeProcessor, 'dream_one', 'native Dream retired lane-one insert');
+forbidText(nativeProcessor, 'dream_two', 'native Dream retired lane-two insert');
+forbidText(nativeRack, 'NativeDreamBuffer', 'native Dream retired fixed-tap processor');
+
 if (failures.length) {
   console.error('\nCALCOTONE Dream Buffer V12 audit failed:\n');
   for (const failure of failures) console.error(` - ${failure}`);
@@ -87,4 +119,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE Dream Buffer V12 audit passed.');
+console.log('CALCOTONE Dream Buffer V12 web/native audit passed.');
