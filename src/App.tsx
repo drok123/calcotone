@@ -605,6 +605,7 @@ export default function App() {
   const [nativeTransport, setNativeTransport] = useState<'wasapi' | 'ks-wavert' | 'asio' | null>(null);
   const [canvasScale, setCanvasScale] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [appFullscreen, setAppFullscreen] = useState(false);
   const [modules, setModules] = useState<ModuleState[]>(INITIAL_MODULES);
   const [railAOrder, setRailAOrder] = useState<string[]>([...DEFAULT_RAIL_A_ORDER]);
   const [railBOrder, setRailBOrder] = useState<string[]>([...DEFAULT_RAIL_B_ORDER]);
@@ -1883,17 +1884,28 @@ export default function App() {
   }, []);
 
   async function toggleFullscreen(): Promise<void> {
+    if (appFullscreen) {
+      setAppFullscreen(false);
+      return;
+    }
     try {
       if (document.fullscreenElement) {
         await document.exitFullscreen();
-      } else {
+        return;
+      }
+      if (document.fullscreenEnabled && document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
+        return;
       }
     } catch {
-      setMessage('Fullscreen was blocked by the browser. Use the preview in its own tab.');
+      // WebView2 may reject the browser Fullscreen API. Fall through to the
+      // native-safe viewport mode so the hardware control always works.
     }
+    setAppFullscreen(true);
+    setMessage('CALCOTONE fullscreen workspace enabled.');
   }
 
+  const fullscreenActive = isFullscreen || appFullscreen;
   const isRunning = engineState === 'running';
   const visualState = useVisualEngine(
     analyser,
@@ -1917,7 +1929,7 @@ export default function App() {
   }, [isRunning, profilerOpen]);
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${appFullscreen ? 'app-fullscreen' : ''}`}>
       <div
         className="canvas-stage"
         style={{ '--canvas-scale': canvasScale } as CSSProperties}
@@ -1971,29 +1983,6 @@ export default function App() {
               <i aria-hidden="true" />
               {audioBackend === 'native' ? 'NATIVE WASAPI' : audioBackend === 'web' ? 'WEB AUDIO' : 'AUDIO AUTO'}
             </span>
-            <label className="random-profile-selector">
-              <span className="sr-only">Randomization profile</span>
-              <select
-                aria-label="Randomization profile"
-                value={randomProfile}
-                onChange={(event) => setRandomProfile(event.target.value as Exclude<RandomizationProfile, 'mutate'>)}
-                title="Choose a coordinated Synth / effects randomization archetype"
-              >
-                {RANDOMIZATION_PROFILE_OPTIONS.map((option) => (
-                  <option value={option.id} key={option.id}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-            <button type="button" className="profiler-toggle randomizer-toggle" onClick={() => randomizeActiveModules(randomProfile)} title="Morph active modules into the selected guarded profile">
-              RANDOM
-              {randomFlowProgress && (
-                <span className="randomizer-flow-count" aria-hidden="true">
-                  {randomFlowProgress.current}/{randomFlowProgress.total}
-                </span>
-              )}
-            </button>
-            <button type="button" className="profiler-toggle randomizer-toggle mutate-randomizer-toggle" onClick={() => randomizeActiveModules('mutate')} title="Drift every active control by at most 10% while preserving machines and patch identity">MUTATE 10%</button>
-            <button type="button" className="profiler-toggle signal-randomizer-toggle" onClick={randomizeSignalOrder} title="Randomize the order of both three-module signal rails">SIGNAL RANDOM</button>
             <button type="button" className={`profiler-toggle ${explainMode ? 'active' : ''}`} aria-pressed={explainMode} onClick={() => setExplainMode((value) => !value)}>EXPLAIN</button>
             <FaceplateLayoutEditor />
             <button type="button" className={`profiler-toggle ${profilerOpen ? 'active' : ''}`} aria-pressed={profilerOpen} onClick={() => setProfilerOpen((open) => !open)}>DSP</button>
@@ -2170,6 +2159,31 @@ export default function App() {
           </aside>
 
           <section className="modules-section" aria-label="Effects modules">
+            <div className="rack-random-actions" aria-label="Rack randomization controls">
+              <label className="random-profile-selector">
+                <span className="sr-only">Randomization profile</span>
+                <select
+                  aria-label="Randomization profile"
+                  value={randomProfile}
+                  onChange={(event) => setRandomProfile(event.target.value as Exclude<RandomizationProfile, 'mutate'>)}
+                  title="Choose a coordinated effects randomization archetype"
+                >
+                  {RANDOMIZATION_PROFILE_OPTIONS.map((option) => (
+                    <option value={option.id} key={option.id}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <button type="button" className="profiler-toggle randomizer-toggle" onClick={() => randomizeActiveModules(randomProfile)} title="Morph active modules into the selected guarded profile">
+                RANDOM
+                {randomFlowProgress && (
+                  <span className="randomizer-flow-count" aria-hidden="true">
+                    {randomFlowProgress.current}/{randomFlowProgress.total}
+                  </span>
+                )}
+              </button>
+              <button type="button" className="profiler-toggle randomizer-toggle mutate-randomizer-toggle" onClick={() => randomizeActiveModules('mutate')} title="Drift every active control by at most 10% while preserving machines and patch identity">MUTATE 10%</button>
+              <button type="button" className="profiler-toggle signal-randomizer-toggle" onClick={randomizeSignalOrder} title="Randomize the order of both three-module signal rails">SIGNAL RANDOM</button>
+            </div>
             <div className="module-grid routing-grid">
               {([
                 ['A', railAOrder],
@@ -2340,10 +2354,10 @@ export default function App() {
             </button>
             <button
               type="button"
-              className={`footer-safe-toggle footer-fullscreen-toggle ${isFullscreen ? 'active' : ''}`}
+              className={`footer-safe-toggle footer-fullscreen-toggle ${fullscreenActive ? 'active' : ''}`}
               onClick={() => void toggleFullscreen()}
-              aria-pressed={isFullscreen}
-              title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+              aria-pressed={fullscreenActive}
+              title={fullscreenActive ? 'Exit fullscreen' : 'Enter fullscreen'}
             >
               <i aria-hidden="true" />
               FULLSCREEN
