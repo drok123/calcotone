@@ -1,0 +1,45 @@
+name: Materialize Atmos Lexicon 224 Route
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/materialize-atmos-lexicon224-route.py
+      - .github/workflows/materialize-atmos-lexicon224-route.yml
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Route Lexicon converters
+        run: python3 scripts/materialize-atmos-lexicon224-route.py
+
+      - name: Configure native DSP
+        run: cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build native DSP
+        run: cmake --build native/build --config Release --parallel 2
+
+      - name: Run native tests
+        run: ctest --test-dir native/build -C Release --output-on-failure
+
+      - name: Remove one-time materializer
+        run: rm scripts/materialize-atmos-lexicon224-route.py .github/workflows/materialize-atmos-lexicon224-route.yml
+
+      - name: Commit canonical Lexicon route
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Port the Lexicon 224 converter memory into Atmos"
+          git push origin HEAD:main
