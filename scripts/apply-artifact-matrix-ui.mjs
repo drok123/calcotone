@@ -72,40 +72,67 @@ writeIfChanged(appPath, app);
 const modulePath = 'src/components/effects/EffectModule.tsx';
 let effectModule = readNormalized(modulePath);
 
-effectModule = replaceOnce(
-  effectModule,
-  "import { ModuleViewport } from './ModuleViewport';",
-  "import { ModuleViewport } from './ModuleViewport';\nimport { ArtifactMatrixSelectors } from './ArtifactMatrixSelectors';\nimport { normalizeArtifactMatrix } from '../../features/artifact/artifactMatrix';",
-  'Artifact selector imports',
-);
+effectModule = effectModule
+  .replace("\nimport { ArtifactMatrixSelectors } from './ArtifactMatrixSelectors';", '')
+  .replace("\nimport { normalizeArtifactMatrix } from '../../features/artifact/artifactMatrix';", '');
 
-effectModule = replaceOnce(
-  effectModule,
-  "  const moduleStyle = {",
-  "  const visibleParameters = module.parameters.filter((parameter) => !['console', 'tube', 'chainOrder'].includes(parameter.id));\n  const moduleStyle = {",
-  'Artifact discrete knob filtering',
-);
+if (!effectModule.includes("const visibleParameters = module.parameters.filter((parameter) => !['console', 'tube', 'chainOrder'].includes(parameter.id));")) {
+  effectModule = replaceOnce(
+    effectModule,
+    "  const moduleStyle = {",
+    "  const visibleParameters = module.parameters.filter((parameter) => !['console', 'tube', 'chainOrder'].includes(parameter.id));\n  const moduleStyle = {",
+    'Artifact discrete knob filtering',
+  );
+}
 
-effectModule = replaceOnce(
-  effectModule,
-  "          {module.id === 'media' && (\n            <label className=\"algorithm-selector media-mode-selector\">\n              <span className=\"sr-only\">Format</span>\n              <select aria-label=\"Artifact format\" value={module.mediaMode ?? 'cassette'} onChange={(event: ReactChangeEvent<HTMLSelectElement>) => onMediaModeChange(event.target.value as MediaMode)}>\n                {MEDIA_MODE_GROUPS.map((group) => (\n                  <optgroup key={group.label} label={group.label}>\n                    {group.modes.map((mode) => <option key={mode} value={mode}>{formatMediaMode(mode)}</option>)}\n                  </optgroup>\n                ))}\n              </select>\n            </label>\n          )}",
-  "          {module.id === 'media' && (\n            <>\n              <label className=\"algorithm-selector media-mode-selector\">\n                <span className=\"sr-only\">Format</span>\n                <select aria-label=\"Artifact format\" value={module.mediaMode ?? 'cassette'} onChange={(event: ReactChangeEvent<HTMLSelectElement>) => onMediaModeChange(event.target.value as MediaMode)}>\n                  {MEDIA_MODE_GROUPS.map((group) => (\n                    <optgroup key={group.label} label={group.label}>\n                      {group.modes.map((mode) => <option key={mode} value={mode}>{formatMediaMode(mode)}</option>)}\n                    </optgroup>\n                  ))}\n                </select>\n              </label>\n              <ArtifactMatrixSelectors\n                value={normalizeArtifactMatrix({\n                  console: module.parameters.find((parameter) => parameter.id === 'console')?.value,\n                  tube: module.parameters.find((parameter) => parameter.id === 'tube')?.value,\n                  chainOrder: module.parameters.find((parameter) => parameter.id === 'chainOrder')?.value,\n                })}\n                disabled={!module.available}\n                onChange={(next) => {\n                  onParameterChange('console', next.console);\n                  onParameterChange('tube', next.tube);\n                  onParameterChange('chainOrder', next.chainOrder);\n                }}\n              />\n            </>\n          )}",
-  'Artifact selector rendering',
-);
+const expandedArtifactSelector = `          {module.id === 'media' && (
+            <>
+              <label className="algorithm-selector media-mode-selector">
+                <span className="sr-only">Format</span>
+                <select aria-label="Artifact format" value={module.mediaMode ?? 'cassette'} onChange={(event: ReactChangeEvent<HTMLSelectElement>) => onMediaModeChange(event.target.value as MediaMode)}>
+                  {MEDIA_MODE_GROUPS.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.modes.map((mode) => <option key={mode} value={mode}>{formatMediaMode(mode)}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
+              <ArtifactMatrixSelectors
+                value={normalizeArtifactMatrix({
+                  console: module.parameters.find((parameter) => parameter.id === 'console')?.value,
+                  tube: module.parameters.find((parameter) => parameter.id === 'tube')?.value,
+                  chainOrder: module.parameters.find((parameter) => parameter.id === 'chainOrder')?.value,
+                })}
+                disabled={!module.available}
+                onChange={(next) => {
+                  onParameterChange('console', next.console);
+                  onParameterChange('tube', next.tube);
+                  onParameterChange('chainOrder', next.chainOrder);
+                }}
+              />
+            </>
+          )}`;
 
-effectModule = replaceOnce(
-  effectModule,
-  '{module.parameters.map((parameter, index) => {',
-  '{visibleParameters.map((parameter, index) => {',
-  'Artifact custom faceplate knob filtering',
-);
+const singleArtifactSelector = `          {module.id === 'media' && (
+            <label className="algorithm-selector media-mode-selector">
+              <span className="sr-only">Format</span>
+              <select aria-label="Artifact format" value={module.mediaMode ?? 'cassette'} onChange={(event: ReactChangeEvent<HTMLSelectElement>) => onMediaModeChange(event.target.value as MediaMode)}>
+                {MEDIA_MODE_GROUPS.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.modes.map((mode) => <option key={mode} value={mode}>{formatMediaMode(mode)}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
+          )}`;
 
-effectModule = replaceOnce(
-  effectModule,
-  '{module.parameters.map((parameter) => renderKnob(parameter))}',
-  '{visibleParameters.map((parameter) => renderKnob(parameter))}',
-  'Artifact standard knob filtering',
-);
+effectModule = effectModule.replace(expandedArtifactSelector, singleArtifactSelector);
+effectModule = effectModule.replaceAll('{module.parameters.map((parameter, index) => {', '{visibleParameters.map((parameter, index) => {');
+effectModule = effectModule.replaceAll('{module.parameters.map((parameter) => renderKnob(parameter))}', '{visibleParameters.map((parameter) => renderKnob(parameter))}');
+
+if (effectModule.includes('ArtifactMatrixSelectors') || effectModule.includes('normalizeArtifactMatrix')) {
+  throw new Error('Artifact selector cleanup incomplete.');
+}
 
 writeIfChanged(modulePath, effectModule);
-console.log('Artifact matrix UI wiring applied.');
+console.log('Artifact state wiring retained with one visible format selector.');
