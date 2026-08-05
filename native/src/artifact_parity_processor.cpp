@@ -409,7 +409,7 @@ struct ArtifactParityProcessor::Impl {
     }
     value = filters[channel][0].process(value);
     value = filters[channel][1].process(value);
-    value *= point.model_output;
+    if (!point.tascam) value *= point.model_output;
     value = filters[channel][2].process(value);
     value = filters[channel][3].process(value);
     if (point.tascam) {

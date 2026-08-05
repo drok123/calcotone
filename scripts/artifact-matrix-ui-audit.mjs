@@ -5,6 +5,7 @@ const moduleSource = fs.readFileSync('src/components/effects/EffectModule.tsx', 
 const media = fs.readFileSync('src/audio/effects/Media.ts', 'utf8');
 const nativePatch = fs.readFileSync('native/tools/apply_atmos_parity.py', 'utf8');
 const cmake = fs.readFileSync('native/CMakeLists.txt', 'utf8');
+const artifactNative = fs.readFileSync('native/src/artifact_parity_processor.cpp', 'utf8');
 
 const checks = [
   [!app.includes("id: 'console'"), 'Artifact console UI state removed'],
@@ -18,6 +19,9 @@ const checks = [
   [!nativePatch.includes('ArtifactChainProcessor'), 'hidden native Artifact chain removed'],
   [!nativePatch.includes('set_extra'), 'hidden native Artifact parameter router removed'],
   [!cmake.includes('artifact_chain_'), 'hidden Artifact chain targets removed'],
+  [artifactNative.includes('ArtifactParityProcessor::set_parameter'), 'dedicated Artifact processor is live'],
+  [artifactNative.includes('std::clamp(std::round(value), 0.F, 13.F)'), 'fourteen stable Artifact model indices'],
+  [artifactNative.includes('else if (name == "mix")') && !artifactNative.includes('name == "console"') && !artifactNative.includes('name == "tube"') && !artifactNative.includes('name == "chainOrder"'), 'native Artifact exposes only canonical controls'],
 ];
 
 const failed = checks.filter(([ok]) => !ok);

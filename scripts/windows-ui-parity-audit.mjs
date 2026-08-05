@@ -18,6 +18,7 @@ const driftNative = `${read('native/src/drift_parity_processor.cpp')}\n${read('n
 const haloNative = read('native/src/halo_parity_processor.cpp');
 const atmosNative = read('native/src/atmos_parity_processor.cpp');
 const grainNative = read('native/src/grain_parity_processor.cpp');
+const artifactNative = read('native/src/artifact_parity_processor.cpp');
 
 const checks = [];
 const check = (ok, category, label, severity = 'error') => checks.push({ ok, category, label, severity });
@@ -114,7 +115,7 @@ const moduleContracts = [
   { id: 'delay', name: 'Halo', native: `${nativeRackPatch}\n${haloNative}`, needles: ['HaloParityProcessor', 'processor.set_parameter("algorithm"'] },
   { id: 'reverb', name: 'Atmos', native: `${nativeRackPatch}\n${atmosNative}`, needles: ['AtmosParityProcessor', 'processor.set_parameter("algorithm"'] },
   { id: 'bitcrusher', name: 'Grain', native: `${nativeRackPatch}\n${grainNative}`, needles: ['GrainParityProcessor', 'processor.set_parameter("mode"', 'capture_freeze', 'spawn_voice'] },
-  { id: 'media', name: 'Artifact', native: `${nativeRackTemplate}\n${nativeRackPatch}`, needles: ['struct Artifact', 'RackModule::Artifact'] },
+  { id: 'media', name: 'Artifact', native: `${nativeRackPatch}\n${artifactNative}`, needles: ['ArtifactParityProcessor', 'processor.set_parameter("mode"', 'bcm_capture', 'atr_tape_transfer', 'point.insert'] },
 ];
 for (const contract of moduleContracts) {
   check(app.includes(`id: '${contract.id}'`), 'module-state', `${contract.name} canonical state exists`);

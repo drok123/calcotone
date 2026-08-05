@@ -81,6 +81,7 @@ add_library(calcotone_dsp STATIC
   src/halo_parity_processor.cpp
   src/halo_space_echo_processor.cpp
   src/grain_parity_processor.cpp
+  src/artifact_parity_processor.cpp
   src/halo_dual_grain_pitch_processor.cpp
   src/native_processor.cpp
   src/audio_device_config.cpp
@@ -137,6 +138,10 @@ add_executable(grain_parity_processor_test tests/grain_parity_processor_test.cpp
 target_link_libraries(grain_parity_processor_test PRIVATE calcotone_dsp)
 add_executable(native_grain_live_parity_test tests/native_grain_live_parity_test.cpp)
 target_link_libraries(native_grain_live_parity_test PRIVATE calcotone_dsp)
+add_executable(artifact_parity_processor_test tests/artifact_parity_processor_test.cpp)
+target_link_libraries(artifact_parity_processor_test PRIVATE calcotone_dsp)
+add_executable(native_artifact_live_parity_test tests/native_artifact_live_parity_test.cpp)
+target_link_libraries(native_artifact_live_parity_test PRIVATE calcotone_dsp)
 add_executable(halo_dual_grain_pitch_processor_test tests/halo_dual_grain_pitch_processor_test.cpp)
 target_link_libraries(halo_dual_grain_pitch_processor_test PRIVATE calcotone_dsp)
 
@@ -164,6 +169,8 @@ add_test(NAME halo_parity_processor_test COMMAND halo_parity_processor_test)
 add_test(NAME halo_space_echo_processor_test COMMAND halo_space_echo_processor_test)
 add_test(NAME grain_parity_processor_test COMMAND grain_parity_processor_test)
 add_test(NAME native_grain_live_parity_test COMMAND native_grain_live_parity_test)
+add_test(NAME artifact_parity_processor_test COMMAND artifact_parity_processor_test)
+add_test(NAME native_artifact_live_parity_test COMMAND native_artifact_live_parity_test)
 add_test(NAME halo_dual_grain_pitch_processor_test COMMAND halo_dual_grain_pitch_processor_test)
 
 if(WIN32)
