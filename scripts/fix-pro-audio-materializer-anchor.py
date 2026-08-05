@@ -24,18 +24,5 @@ if end >= len(lines):
     raise RuntimeError("missing Pro Audio health telemetry block end")
 end += 1
 
-replacement = '''host = replace_once(
-    host,
-    "               << \",\\\"audioMode\\\":\\\"\" << (capture.exclusive && render.exclusive ? \"exclusive\" : capture.exclusive || render.exclusive ? \"mixed\" : \"shared\") << '\"'\\n",
-    "               << \",\\\"audioMode\\\":\\\"\" << (capture.exclusive && render.exclusive ? \"exclusive\" : capture.exclusive || render.exclusive ? \"mixed\" : \"shared\") << '\"'\\n"
-    "               << \",\\\"sharedRawRequested\\\":\" << (audio_config.allow_shared_raw ? \"true\" : \"false\")\\n"
-    "               << \",\\\"captureProAudio\\\":\" << (capture.pro_audio ? \"true\" : \"false\")\\n"
-    "               << \",\\\"captureRaw\\\":\" << (capture.raw ? \"true\" : \"false\")\\n"
-    "               << \",\\\"renderProAudio\\\":\" << (render.pro_audio ? \"true\" : \"false\")\\n"
-    "               << \",\\\"renderRaw\\\":\" << (render.raw ? \"true\" : \"false\")\\n",
-    "Pro Audio health telemetry",
-)
-'''.splitlines(keepends=True)
-
-path.write_text("".join(lines[:start] + replacement + lines[end:]), encoding="utf-8")
-print("Updated Pro Audio telemetry insertion using its semantic label.")
+path.write_text("".join(lines[:start] + lines[end:]), encoding="utf-8")
+print("Removed nested Pro Audio health generation; direct host patch follows.")
