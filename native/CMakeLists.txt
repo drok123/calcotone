@@ -34,6 +34,8 @@ add_library(calcotone_dsp STATIC
 )
 target_include_directories(calcotone_dsp PUBLIC include)
 
+add_executable(core_contract_test tests/core_contract_test.cpp)
+target_link_libraries(core_contract_test PRIVATE calcotone_dsp)
 add_executable(stack_amp_test tests/stack_amp_test.cpp)
 target_link_libraries(stack_amp_test PRIVATE calcotone_dsp)
 add_executable(native_rack_test tests/native_rack_test.cpp)
@@ -70,6 +72,7 @@ add_executable(native_artifact_chain_live_test tests/native_artifact_chain_live_
 target_link_libraries(native_artifact_chain_live_test PRIVATE calcotone_dsp)
 
 enable_testing()
+add_test(NAME core_contract_test COMMAND core_contract_test)
 add_test(NAME stack_amp_test COMMAND stack_amp_test)
 add_test(NAME native_rack_test COMMAND native_rack_test)
 add_test(NAME pitch_tracker_test COMMAND pitch_tracker_test)
