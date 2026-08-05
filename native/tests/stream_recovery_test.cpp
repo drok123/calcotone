@@ -87,6 +87,23 @@ void test_marked_discontinuity_uses_recovery_without_false_underrun() {
   assert(left == -.6F && right == -.6F);
 }
 
+void test_reset_restores_exact_pass_through() {
+  calcotone::StreamRecovery recovery(kRate);
+  float left = 0.F, right = 0.F;
+  recovery.process(true, .55F, -.41F, left, right);
+  for (unsigned frame = 0U; frame < 240U; ++frame)
+    recovery.process(false, 0.F, 0.F, left, right);
+  assert(recovery.starving());
+
+  recovery.mark_discontinuity();
+  recovery.reset();
+  assert(!recovery.starving());
+  assert(!recovery.recovering());
+  assert(!recovery.process(true, -.2375F, .4125F, left, right));
+  assert(left == -.2375F);
+  assert(right == .4125F);
+}
+
 void test_sample_rate_scales_recovery_window() {
   calcotone::StreamRecovery low(48'000.F);
   calcotone::StreamRecovery high(96'000.F);
@@ -100,5 +117,6 @@ int main() {
   test_resume_edge_is_smoothed();
   test_nonfinite_input_enters_safe_starvation();
   test_marked_discontinuity_uses_recovery_without_false_underrun();
+  test_reset_restores_exact_pass_through();
   test_sample_rate_scales_recovery_window();
 }
