@@ -99,10 +99,10 @@ std::vector<float> render_raw(float mode, float style, float drive, float time,
 }
 
 void test_all_mode_style_combinations_are_distinct() {
-  std::array<double, kPressureModeCount * kPressureStyleCount> signatures{};
+  std::array<double, calcotone::kPressureModeCount * calcotone::kPressureStyleCount> signatures{};
   std::size_t index = 0U;
-  for (unsigned mode = 0U; mode < kPressureModeCount; ++mode) {
-    for (unsigned style = 0U; style < kPressureStyleCount; ++style) {
+  for (unsigned mode = 0U; mode < calcotone::kPressureModeCount; ++mode) {
+    for (unsigned style = 0U; style < calcotone::kPressureStyleCount; ++style) {
       const auto audio = render(mode, style);
       assert(rms(audio, 4096U) > .001F);
       signatures[index++] = signature(audio);
@@ -179,7 +179,7 @@ void test_bypass_fade_and_silence() {
   }
   assert(ending_error < 1e-3);
 
-  for (unsigned mode = 0U; mode < kPressureModeCount; ++mode) {
+  for (unsigned mode = 0U; mode < calcotone::kPressureModeCount; ++mode) {
     calcotone::PressureParityProcessor silent(kRate);
     configure(silent, mode, 3U, 1.F, 1.F, 1.F, 1.F);
     std::vector<float> silence(8192U * 2U, 0.F);
