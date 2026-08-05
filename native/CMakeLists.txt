@@ -63,7 +63,7 @@ execute_process(
   ERROR_VARIABLE CALCOTONE_MAGNETIC_ROUTE_ERROR
 )
 if(NOT CALCOTONE_MAGNETIC_ROUTE_RESULT EQUAL 0)
-  message(FATAL_ERROR "Failed to route Ember magnetic-core processor: ${CALCOTONE_MAGNETIC_ROUTE_ERROR}")
+  message(FATAL_ERROR "Failed to route Ember specialty processors: ${CALCOTONE_MAGNETIC_ROUTE_ERROR}")
 endif()
 message(STATUS "${CALCOTONE_MAGNETIC_ROUTE_OUTPUT}")
 
@@ -73,6 +73,7 @@ add_library(calcotone_dsp STATIC
   src/atmos_parity_processor.cpp
   src/ember_parity_processor.cpp
   src/ember_magnetic_core_processor.cpp
+  src/ember_digital_capture_processor.cpp
   src/drift_parity_processor.cpp
   src/halo_parity_processor.cpp
   src/artifact_chain_processor.cpp
@@ -111,6 +112,8 @@ add_executable(ember_parity_processor_test tests/ember_parity_processor_test.cpp
 target_link_libraries(ember_parity_processor_test PRIVATE calcotone_dsp)
 add_executable(ember_magnetic_core_processor_test tests/ember_magnetic_core_processor_test.cpp)
 target_link_libraries(ember_magnetic_core_processor_test PRIVATE calcotone_dsp)
+add_executable(ember_digital_capture_processor_test tests/ember_digital_capture_processor_test.cpp)
+target_link_libraries(ember_digital_capture_processor_test PRIVATE calcotone_dsp)
 add_executable(native_ember_live_parity_test tests/native_ember_live_parity_test.cpp)
 target_link_libraries(native_ember_live_parity_test PRIVATE calcotone_dsp)
 add_executable(drift_parity_processor_test tests/drift_parity_processor_test.cpp)
@@ -138,6 +141,7 @@ add_test(NAME native_atmos_live_parity_test COMMAND native_atmos_live_parity_tes
 add_test(NAME ember_parity_profile_test COMMAND ember_parity_profile_test)
 add_test(NAME ember_parity_processor_test COMMAND ember_parity_processor_test)
 add_test(NAME ember_magnetic_core_processor_test COMMAND ember_magnetic_core_processor_test)
+add_test(NAME ember_digital_capture_processor_test COMMAND ember_digital_capture_processor_test)
 add_test(NAME native_ember_live_parity_test COMMAND native_ember_live_parity_test)
 add_test(NAME drift_parity_processor_test COMMAND drift_parity_processor_test)
 add_test(NAME halo_parity_processor_test COMMAND halo_parity_processor_test)
