@@ -63,12 +63,27 @@ for (const [name, source, tokens] of [
 
 for (const token of [
   "html[data-display-profile='1440p']",
-  '@keyframes hd-optics-drift',
   'text-rendering: geometricPrecision',
-  '.ascii-art-engine.is-active',
   ':focus-visible',
+  'width: 64px !important',
+  'height: 64px !important',
+  'width: 46px !important',
+  'height: 46px !important',
+  'grid-template-rows: 66px 18px !important',
+  ".faceplate-layout-custom .faceplate-viewport-shell > .dsp-viewport",
+  'transform: none !important',
 ]) {
   if (!css.includes(token)) failures.push(`1440p stylesheet is missing ${token}`);
+}
+
+for (const token of [
+  '@keyframes hd-optics-drift',
+  'animation: hd-optics-drift',
+  'transform: translateZ(0)',
+  "html[data-display-profile='1440p'] :where(button, select, input)",
+  "html[data-display-profile='1440p'] :where(.knob-label, .knob-value)",
+]) {
+  if (css.includes(token)) failures.push(`1440p stylesheet must not mutate approved faceplate geometry via ${token}`);
 }
 
 if (failures.length) {
@@ -77,4 +92,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('1440p UI fidelity audit passed · adaptive DPI, 45/30 FPS scheduling, crisp typography, module/spectrum canvas contracts');
+console.log('1440p UI fidelity audit passed · adaptive DPI/FPS retained with approved 64/46px controls and fixed viewport boxes');
