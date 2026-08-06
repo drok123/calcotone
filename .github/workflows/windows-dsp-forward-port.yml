@@ -8,6 +8,7 @@ on:
       - .github/workflows/windows-dsp-forward-port.yml
       - circuits/modules/static-hardware-stage-template.cir
       - scripts/hardware-spice-calibration.mjs
+      - scripts/apply-hardware-spice-vector-fix.py
 
 permissions:
   contents: write
@@ -64,6 +65,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ngspice ninja-build
           npm ci
+
+      - name: Make hardware calibration sample-accurate
+        run: python scripts/apply-hardware-spice-vector-fix.py
 
       - name: Run strict hardware calibration
         run: |
