@@ -26,9 +26,20 @@ int main() {
   assert(!policy.observe(AudioRuntimeFault::BufferError).restart);
 
   policy.reset();
-  assert(!policy.observe(AudioRuntimeFault::Other).restart);
-  assert(policy.consecutive_buffer_errors() == 0U);
+  policy.observe(AudioRuntimeFault::BufferError);
+  policy.observe(AudioRuntimeFault::BufferError);
+  decision = policy.observe(AudioRuntimeFault::None);
+  assert(!decision.restart && decision.consecutive_buffer_errors == 0U);
+  assert(!policy.observe(AudioRuntimeFault::BufferError).restart);
+
+  policy.reset();
+  policy.observe(AudioRuntimeFault::BufferError);
+  policy.observe(AudioRuntimeFault::BufferError);
+  decision = policy.observe(AudioRuntimeFault::Other);
+  assert(!decision.restart && decision.consecutive_buffer_errors == 0U);
+  assert(!policy.observe(AudioRuntimeFault::BufferError).restart);
 
   AudioRestartPolicy immediate(0U);
-  assert(immediate.observe(AudioRuntimeFault::BufferError).restart);
+  decision = immediate.observe(AudioRuntimeFault::BufferError);
+  assert(decision.restart && decision.consecutive_buffer_errors == 1U);
 }
