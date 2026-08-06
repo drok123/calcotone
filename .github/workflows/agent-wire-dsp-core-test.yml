@@ -1,0 +1,31 @@
+name: Register DSP core test
+
+on:
+  push:
+    branches: [agent/native-dsp-core]
+    paths:
+      - 'scripts/agent-wire-dsp-core-test.py'
+      - '.github/workflows/agent-wire-dsp-core-test.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/native-dsp-core
+          fetch-depth: 0
+      - name: Register native test
+        run: python scripts/agent-wire-dsp-core-test.py
+      - name: Commit CMake update and remove temporary patch assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Register shared DSP core test"
+          git push origin HEAD:agent/native-dsp-core
