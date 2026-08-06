@@ -35,9 +35,9 @@ jobs:
         run: npm run check
 
   spice-calibration:
-    name: Model D ngspice calibration
+    name: Realtime DSP ngspice calibration
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -53,5 +53,8 @@ jobs:
           sudo apt-get install --yes --no-install-recommends ngspice
           ngspice -v
 
-      - name: Compare realtime ladder against ngspice
+      - name: Compare realtime Model D ladder against ngspice
         run: npm run audit:spice:strict
+
+      - name: Compare realtime hardware stages against ngspice
+        run: npm run audit:hardware-spice:strict
