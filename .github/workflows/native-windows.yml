@@ -12,6 +12,16 @@ on:
       - 'package-lock.json'
       - 'vite.config.ts'
       - '.github/workflows/native-windows.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'native/**'
+      - 'src/**'
+      - 'public/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.ts'
+      - '.github/workflows/native-windows.yml'
 
 jobs:
   build-wasapi-host:
