@@ -91,13 +91,13 @@ for (const field of approvedFaceplateGeometry) {
   }
   faceplateGeometryCursor = fieldPosition;
 }
-requireText(faceplate, "const FACTORY_LAYOUT_REVISION = '2026-08-05-approved-compact-native-1to1'", 'Approved layout revision');
+requireText(faceplate, "const FACTORY_LAYOUT_REVISION = '2026-08-05-web-ui-1to1-restoration'", 'Shared web layout revision');
 requireText(faceplate, 'window.localStorage.getItem(FACTORY_LAYOUT_REVISION_KEY) !== FACTORY_LAYOUT_REVISION', 'Stale saved-layout replacement');
 requireText(faceplate, 'return cloneLayout(FACTORY_FACEPLATE_LAYOUT)', 'Factory layout fallback');
 forbidText(faceplate, 'AUTO_FACEPLATE_LAYOUT', 'Automatic layout can override approved geometry');
 requireText(faceplate, 'Math.max(...knobs.map((point) => point.y)) + 46', 'Exact saved-layout floor preservation');
-requireText(faceplate, 'pressure: {\n      viewportHeight: 150', 'Pressure factory viewport integration');
-requireText(faceplate, '{ x: 0.14, y: 210 }', 'Pressure factory knob integration');
+requireText(faceplate, 'pressure: {\n      viewportHeight: 168', 'Pressure web-reference viewport integration');
+requireText(faceplate, '{ x: 0.14, y: 240 }', 'Pressure web-reference knob integration');
 forbidText(main, "import './approvedFaceplateLayoutPatch'", 'Retired startup layout mutation');
 
 requireText(hardwarePalette, '--calcotone-cream-ink: #101315', 'Patches-charcoal ink on cream');

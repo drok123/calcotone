@@ -57,7 +57,7 @@ export interface FaceplateEditorSnapshot {
 const STORAGE_KEY = 'calcotone.faceplate-layout.v2';
 const LEGACY_STORAGE_KEY = 'calcotone.faceplate-layout.v1';
 const FACTORY_LAYOUT_REVISION_KEY = 'calcotone.faceplate-layout.factory-revision';
-const FACTORY_LAYOUT_REVISION = '2026-08-05-approved-compact-native-1to1';
+const FACTORY_LAYOUT_REVISION = '2026-08-05-web-ui-1to1-restoration';
 const KNOB_COUNT = 6;
 const listeners = new Set<() => void>();
 const CORE_FACEPLATE_IDS: readonly CoreFaceplateId[] = ['saturation', 'chorus', 'delay', 'reverb', 'bitcrusher', 'media'];
@@ -114,13 +114,13 @@ export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
       buttons: [],
     },
     pressure: {
-      viewportHeight: 150,
+      viewportHeight: 168,
       stageHeight: 292,
       knobs: [
-        { x: 0.14, y: 210 },
-        { x: 0.38, y: 210 },
-        { x: 0.62, y: 210 },
-        { x: 0.86, y: 210 },
+        { x: 0.14, y: 240 },
+        { x: 0.38, y: 240 },
+        { x: 0.62, y: 240 },
+        { x: 0.86, y: 240 },
       ],
       buttons: [
         { x: 0.14, y: 278 },

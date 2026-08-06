@@ -92,7 +92,7 @@ export function EffectModule({
   onRoutingNudge: (direction: -1 | 1) => void;
 }) {
   const faceplateEditor = useFaceplateLayoutEditor();
-  const customFaceplate = true;
+  const customFaceplate = faceplateEditor.layout.custom;
   const faceplateModuleId = module.id as CoreFaceplateId;
   const faceplateLayout = faceplateEditor.layout.core[faceplateModuleId];
   const visibleParameters = module.parameters;

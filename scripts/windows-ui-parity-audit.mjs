@@ -98,17 +98,17 @@ check(faceplate.includes('localStorage'), 'layout', 'faceplate persistence');
 check(faceplate.includes('setFaceplateKnob'), 'layout', 'independent core knob movement');
 check(faceplate.includes('setRailCFaceplateControl'), 'layout', 'independent rail-C controls');
 check(faceplate.includes('viewportHeight'), 'layout', 'viewport resizing persistence');
-check(effectModule.includes('const customFaceplate = true;'), 'layout', 'native core faceplate is enforced');
+check(effectModule.includes('const customFaceplate = faceplateEditor.layout.custom;'), 'layout', 'Windows follows shared web faceplate state');
 check(effectModule.includes('faceplate-layout-stage'), 'layout', 'core faceplate stage markup');
 check(effectModule.includes('faceplate-viewport-shell'), 'layout', 'core viewport shell markup');
 check(effectModule.includes('faceplate-control-surface'), 'layout', 'core control surface markup');
-check(effectModule.includes('faceplate-knob-slot'), 'layout', 'core absolute control slot markup');
-check(css.includes('.faceplate-layout-stage {') && css.includes('position: relative;'), 'layout', 'faceplate stage establishes containing block');
-check(css.includes('.faceplate-viewport-shell {') && css.includes('width: 100%;'), 'layout', 'faceplate viewport remains full width');
-check(css.includes('.faceplate-viewport-shell > .dsp-viewport {') && css.includes('height: 100% !important;'), 'layout', 'ASCII viewport fills saved shell');
-check(css.includes('.faceplate-control-surface {') && css.includes('position: absolute !important;'), 'layout', 'control surface is absolute');
-check(css.includes('.faceplate-knob-slot {') && css.includes('left: var(--faceplate-x);') && css.includes('top: var(--faceplate-y);'), 'layout', 'knobs use saved coordinates');
-check(!css.includes('.faceplate-viewport-shell {\n  position: relative;'), 'layout', 'viewport shell cannot collapse into normal flow');
+check(effectModule.includes('faceplate-knob-slot'), 'layout', 'core control slot markup');
+check(effectModule.includes("'--faceplate-x': `${point.x * 100}%`") && effectModule.includes("'--faceplate-y': `${point.y}px`"), 'layout', 'saved coordinate metadata is preserved');
+check(!css.includes('Native faceplate geometry contract'), 'layout', 'native-only faceplate override is absent');
+check(!/\.faceplate-layout-stage\s*\{[^}]*overflow:\s*hidden/s.test(css), 'layout', 'faceplate stage does not clip labels');
+check(!/\.faceplate-control-surface\s*\{[^}]*position:\s*absolute/s.test(css), 'layout', 'controls remain in canonical web flow');
+check(!/\.faceplate-knob-slot\s*>\s*\.knob-control\s*\{[^}]*width:\s*92px/s.test(css), 'layout', 'core knobs inherit canonical web sizing');
+check(css.includes('.knob-control {') && css.includes('grid-template-rows:'), 'layout', 'web knob label/value rows remain present');
 
 for (const command of ['inputGain', 'outputGain', 'stackInput', 'stompInput']) {
   check(app.includes(command), 'device-controls', `${command} frontend command`);
