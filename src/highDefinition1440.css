@@ -1,0 +1,209 @@
+/* 2560x1440 is CALCOTONE's reference desktop surface. This pass increases
+   legibility and raster precision without changing the canonical faceplate geometry. */
+
+:root {
+  --ui-hairline: 1px;
+  --ui-text-edge: 0 1px 1px rgba(0, 0, 0, 0.78);
+  --ui-focus-ring: 0 0 0 2px rgba(247, 244, 230, 0.9), 0 0 0 4px rgba(10, 14, 12, 0.9);
+  font-kerning: normal;
+  font-optical-sizing: auto;
+  text-rendering: geometricPrecision;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+select,
+input,
+textarea {
+  font: inherit;
+  font-kerning: normal;
+  font-variant-numeric: tabular-nums lining-nums;
+  text-rendering: geometricPrecision;
+}
+
+svg {
+  shape-rendering: geometricPrecision;
+  text-rendering: geometricPrecision;
+}
+
+canvas,
+img {
+  image-rendering: auto;
+}
+
+:where(button, select, input, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring) !important;
+}
+
+/* Preserve one-device-pixel edges instead of letting translucent effects soften
+   the whole chassis. Individual screens may still use their intentional glow. */
+.effect-module,
+.module-card,
+.module-faceplate,
+.io-panel,
+.performance-panel,
+.spectrum-unit,
+.recorder-panel,
+.motion-pad,
+.xy-pad {
+  background-clip: padding-box;
+}
+
+.dsp-viewport canvas,
+.spectrum-screen canvas,
+.xy-visual-stack canvas {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* A smooth optical sweep gives active module windows continuous motion between
+   their more expensive content renders. It moves only a translucent scan layer. */
+.dsp-viewport.ascii-viewport::after,
+.xy-visual-stack.ascii-only::after {
+  background-size: 100% 4px, 100% 100%;
+  animation: hd-optics-drift 2.8s linear infinite;
+  will-change: background-position;
+}
+
+@keyframes hd-optics-drift {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 0 4px, 0 0; }
+}
+
+html[data-display-profile='1440p'] {
+  --ui-hairline: 1px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html[data-display-profile='1440p'] body {
+  min-width: 1180px;
+}
+
+html[data-display-profile='1440p'] :where(
+  button,
+  select,
+  input,
+  label,
+  small,
+  .knob-label,
+  .knob-value,
+  .module-number,
+  .module-route-cue,
+  .status-item,
+  .spectrum-header,
+  .recorder-status
+) {
+  line-height: 1.18;
+  text-shadow: var(--ui-text-edge);
+}
+
+html[data-display-profile='1440p'] :where(button, select, input) {
+  min-height: 30px;
+  font-size: 0.84rem;
+  font-weight: 750;
+  letter-spacing: 0.035em;
+}
+
+html[data-display-profile='1440p'] .brand small {
+  font-size: 0.79rem;
+  letter-spacing: 0.085em;
+}
+
+html[data-display-profile='1440p'] .status-item span:not(.status-dot) {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+}
+
+html[data-display-profile='1440p'] .status-item strong {
+  font-size: 0.84rem;
+}
+
+html[data-display-profile='1440p'] :where(.panel-heading h2, .section-header h2) {
+  font-size: 1.04rem;
+  letter-spacing: 0.105em;
+}
+
+html[data-display-profile='1440p'] .module-header h3 {
+  font-size: 1rem;
+  font-weight: 850;
+  letter-spacing: 0.075em;
+}
+
+html[data-display-profile='1440p'] :where(.knob-label, .knob-value) {
+  min-font-size: 12px;
+  font-size: 0.79rem;
+  font-weight: 850;
+  letter-spacing: 0.035em;
+}
+
+html[data-display-profile='1440p'] :where(
+  .module-number,
+  .module-route-cue,
+  .viewport-caption,
+  .spectrum-header,
+  .pressure-style-strip button,
+  .synth-header-controls
+) {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.055em;
+}
+
+html[data-display-profile='1440p'] :where(.effect-module select, .module-header-control) {
+  font-size: 0.82rem;
+  letter-spacing: 0.025em;
+}
+
+html[data-display-profile='1440p'] :where(
+  .effect-module,
+  .io-panel,
+  .performance-panel,
+  .spectrum-unit,
+  .recorder-panel
+) {
+  border-width: var(--ui-hairline);
+}
+
+html[data-display-profile='1440p'] .dsp-viewport canvas {
+  filter: saturate(1.045) brightness(1.025) contrast(1.075);
+}
+
+html[data-display-profile='1440p'] .ascii-art-engine.is-active {
+  opacity: 0.975;
+  filter: saturate(0.96) contrast(1.13) brightness(1.025);
+}
+
+html[data-display-profile='1440p'] .ascii-art-engine.is-standby {
+  opacity: 0.39;
+  filter: saturate(0.48) brightness(0.76) contrast(1.08);
+}
+
+html[data-display-profile='1440p'] .spectrum-screen canvas {
+  filter: contrast(1.09) brightness(1.025);
+}
+
+@media (min-width: 2200px) and (min-height: 1200px) {
+  .footer-bar,
+  .panel-heading,
+  .section-header,
+  .module-header {
+    text-rendering: geometricPrecision;
+  }
+
+  :where(.power-button, .transport-button, .performance-button) {
+    padding-inline: 0.9rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dsp-viewport.ascii-viewport::after,
+  .xy-visual-stack.ascii-only::after {
+    animation: none;
+    will-change: auto;
+  }
+}
