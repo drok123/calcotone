@@ -1,4 +1,5 @@
 name: Materialize Audio Restart Supervisor
+# One-time canonical Windows gate.
 
 on:
   push:
