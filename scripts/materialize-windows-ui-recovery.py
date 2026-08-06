@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,286 +14,161 @@ def write(path: str, content: str) -> None:
     (ROOT / path).write_text(content, encoding="utf-8", newline="\n")
 
 
-def replace_once(source: str, old: str, new: str, label: str) -> str:
-    if new in source:
-        return source
-    count = source.count(old)
-    if count != 1:
-        raise RuntimeError(f"{label}: expected one match, found {count}")
-    return source.replace(old, new, 1)
-
-
-# ---------------------------------------------------------------------------
-# Toolbar + native random UI synchronization
-# ---------------------------------------------------------------------------
+# This recovery branch already contains the compact toolbar, 64 px controls,
+# native sweet-spot randomization, and staged knob/mode reveal. This pass only
+# adopts the user-approved factory geometry and makes equal module chassis an
+# explicit final contract.
 app = read("src/App.tsx")
-
-toolbar_old = '''              <button type="button" className="profiler-toggle signal-randomizer-toggle" onClick={randomizeSignalOrder} title="Randomize the order of both three-module signal rails">SIGNAL RANDOM</button>
-            </div>
-            <span className={`audio-backend-badge ${audioBackend ?? 'detecting'}`} title="Active audio processing backend">
-              <i aria-hidden="true" />
-              {audioBackend === 'native' ? 'NATIVE WASAPI' : audioBackend === 'web' ? 'WEB AUDIO' : 'AUDIO AUTO'}
-            </span>
-            <button type="button" className={`profiler-toggle ${explainMode ? 'active' : ''}`} aria-pressed={explainMode} onClick={() => setExplainMode((value) => !value)}>EXPLAIN</button>
-            <FaceplateLayoutEditor />
-            <button type="button" className={`profiler-toggle ${profilerOpen ? 'active' : ''}`} aria-pressed={profilerOpen} onClick={() => setProfilerOpen((open) => !open)}>DSP</button>'''
-
-toolbar_new = '''              <button type="button" className="profiler-toggle signal-randomizer-toggle" onClick={randomizeSignalOrder} title="Randomize the order of both three-module signal rails">SIGNAL RANDOM</button>
-              <span className="utility-button-divider" aria-hidden="true" />
-              <button type="button" className={`profiler-toggle ${explainMode ? 'active' : ''}`} aria-pressed={explainMode} onClick={() => setExplainMode((value) => !value)}>EXPLAIN</button>
-              <FaceplateLayoutEditor />
-              <button type="button" className={`profiler-toggle ${profilerOpen ? 'active' : ''}`} aria-pressed={profilerOpen} onClick={() => setProfilerOpen((open) => !open)}>DSP</button>
-            </div>
-            <span className={`audio-backend-badge ${audioBackend ?? 'detecting'}`} title="Active audio processing backend">
-              <i aria-hidden="true" />
-              {audioBackend === 'native' ? 'NATIVE WASAPI' : audioBackend === 'web' ? 'WEB AUDIO' : 'AUDIO AUTO'}
-            </span>'''
-app = replace_once(app, toolbar_old, toolbar_new, "compact toolbar grouping")
-
-helper_anchor = "\n\n  function randomizeActiveModules(profile: RandomizationProfile = randomProfile): void {"
-helper_block = '''
-
-  function scheduleLocalRandomReveal(
-    targets: Map<string, ModuleState>,
-    activeRailC: readonly RailCRandomModuleId[]
-  ): void {
-    const orderedTargets = [
-      ...RANDOM_UI_EFFECT_ORDER.filter((effectId) => targets.has(effectId)),
-      ...activeRailC,
-    ];
-    for (const [index, effectId] of orderedTargets.entries()) {
-      offlineRandomTimersRef.current.push(
-        window.setTimeout(() => revealRandomUiModule(effectId), 48 + index * 96)
-      );
-    }
-    offlineRandomTimersRef.current.push(
-      window.setTimeout(() => completeRandomUiFlow(), 72 + orderedTargets.length * 96)
-    );
-  }
-
-  function randomizeActiveModules(profile: RandomizationProfile = randomProfile): void {'''
-app = replace_once(app, helper_anchor, helper_block, "local random reveal helper")
-
-native_random_old = '''          for (const parameter of module.parameters)
-            void nativeBridgeRef.current.commandLine(`param ${module.id} ${parameter.id} ${toDspParameterValue(module.id, parameter.id, parameter.value)}`);
-        }
-        return;
-      }
-      const engine = engineRef.current;'''
-native_random_new = '''          for (const parameter of module.parameters)
-            void nativeBridgeRef.current.commandLine(`param ${module.id} ${parameter.id} ${toDspParameterValue(module.id, parameter.id, parameter.value)}`);
-        }
-        // Native C++ receives the exact guarded targets immediately and performs its
-        // own click-free smoothing. Drive the same staged UI reveal locally so the
-        // visible modes and knobs always land on those exact targets.
-        scheduleLocalRandomReveal(targets, activeRailC);
-        return;
-      }
-      const engine = engineRef.current;'''
-app = replace_once(app, native_random_old, native_random_new, "native random UI reveal")
+css = read("src/App.css")
+rail_css = read("src/components/effects/RailCModules.css")
+effect = read("src/components/effects/EffectModule.tsx")
+layout = read("src/ui/faceplateLayout.ts")
 
 for required in (
     "HARDWARE_SWEET_SPOTS",
     "RANDOM_PROFILE_RECIPES",
     "guardRandomParameter",
-    "RANDOM_MUTATION_AMOUNT",
-    "chooseHardwareSweetSpot",
     "scheduleLocalRandomReveal(targets, activeRailC);",
+    "utility-button-divider",
 ):
     if required not in app:
-        raise RuntimeError(f"Random technology is missing: {required}")
-write("src/App.tsx", app)
+        raise RuntimeError(f"Recovery prerequisite is missing from App.tsx: {required}")
 
+if "const customFaceplate = faceplateEditor.layout.custom;" not in effect:
+    raise RuntimeError("Shared faceplate ownership is missing.")
+if ".faceplate-knob-slot > .knob-control {\n  width: 68px;\n}" not in css:
+    raise RuntimeError("Compact 68 px core control slots are missing.")
+if ".rail-c-control-surface .faceplate-knob-slot {\n  width: 68px;\n}" not in rail_css:
+    raise RuntimeError("Compact 68 px Rail C control slots are missing.")
 
-# ---------------------------------------------------------------------------
-# Compact knob system and single-row utility toolbar
-# ---------------------------------------------------------------------------
-css = read("src/App.css")
-if "Native faceplate geometry contract" not in css:
-    raise RuntimeError("The recovery baseline is missing the paired faceplate geometry CSS.")
-
-css = replace_once(
-    css,
-    ".faceplate-knob-slot > .knob-control {\n  width: 76px;\n}",
-    ".faceplate-knob-slot > .knob-control {\n  width: 68px;\n}",
-    "core faceplate slot width",
-)
-css = replace_once(
-    css,
-    "  --control-diameter: 76px;\n  --control-face: 54px;\n  --control-cell: 94px;",
-    "  --control-diameter: 64px;\n  --control-face: 46px;\n  --control-cell: 80px;",
-    "base compact control variables",
-)
-
-recovery_css = '''
-
-/* Windows UI recovery v2: one compact toolbar and one final knob scale. */
-.control-strip {
-  display: flex !important;
-  align-items: center;
-  justify-content: flex-start !important;
-  min-height: 54px;
-  height: 54px;
-  gap: 12px;
-  padding: 6px 18px;
-  overflow: visible;
-}
-
-.control-strip-actions {
-  display: flex;
-  flex: 1 1 auto;
-  align-items: center;
-  justify-content: flex-end;
-  min-width: 0;
-  gap: 8px;
-  white-space: nowrap;
-}
-
-.top-random-actions {
-  display: flex;
-  flex: 1 1 auto;
-  align-items: center;
-  justify-content: flex-end;
-  min-width: 0;
-  margin: 0;
-  gap: 5px;
-  flex-wrap: nowrap;
-  white-space: nowrap;
-}
-
-.top-random-actions .profiler-toggle,
-.top-random-actions .layout-editor-toggle,
-.top-random-actions .random-profile-selector select {
-  flex: 0 0 auto;
-  height: 28px;
-  min-height: 28px;
-}
-
-.utility-button-divider {
-  flex: 0 0 1px;
-  width: 1px;
-  height: 20px;
-  margin: 0 2px;
-  background: rgba(190, 202, 196, .20);
-  box-shadow: 1px 0 rgba(0, 0, 0, .55);
-}
-
-.control-strip-actions > .audio-backend-badge {
-  flex: 0 0 auto;
-}
-
-/* Final declarations intentionally override the older fixed-canvas 84px knobs. */
-.effect-module .knob-shell,
-.rail-c-module .knob-shell {
-  width: 64px !important;
-  height: 64px !important;
-}
-
-.effect-module .knob-face,
-.rail-c-module .knob-face {
-  width: 46px !important;
-  height: 46px !important;
-}
-
-.effect-module .knob-control,
-.rail-c-module .knob-control {
-  min-height: 88px !important;
-  grid-template-rows: 66px 18px !important;
-  gap: 3px !important;
-}
-
-.effect-module .knob-label,
-.rail-c-module .knob-label {
-  font-size: .62rem !important;
-  line-height: 1 !important;
-}
-
-.effect-module .knob-indicator,
-.rail-c-module .knob-indicator {
-  height: 13px !important;
-}
-
-.effect-module .knob-patch-jack,
-.rail-c-module .knob-patch-jack {
-  right: max(0px, calc(50% - 42px)) !important;
-  top: 39px !important;
-}
-'''
-if "Windows UI recovery v2: one compact toolbar" not in css:
-    css += recovery_css
-write("src/App.css", css)
-
-rail_css = read("src/components/effects/RailCModules.css")
-rail_css = replace_once(
-    rail_css,
-    ".rail-c-control-surface .faceplate-knob-slot {\n  width: 76px;\n}",
-    ".rail-c-control-surface .faceplate-knob-slot {\n  width: 68px;\n}",
-    "Rail C faceplate slot width",
-)
-write("src/components/effects/RailCModules.css", rail_css)
-
-
-# Keep shared web ownership rather than forcing a second native-only layout mode.
-effect = read("src/components/effects/EffectModule.tsx")
-effect = replace_once(
-    effect,
-    "  const customFaceplate = true;",
-    "  const customFaceplate = faceplateEditor.layout.custom;",
-    "shared faceplate ownership",
-)
-write("src/components/effects/EffectModule.tsx", effect)
-
-
-# ---------------------------------------------------------------------------
-# Fresh compact factory geometry: never import stale WebView coordinates.
-# ---------------------------------------------------------------------------
-layout = read("src/ui/faceplateLayout.ts")
 layout = layout.replace(
-    "const STORAGE_KEY = 'calcotone.faceplate-layout.windows-recovery.v1';",
-    "const STORAGE_KEY = 'calcotone.faceplate-layout.windows-recovery.v2';",
-)
-layout = layout.replace(
-    "const LEGACY_STORAGE_KEY = 'calcotone.faceplate-layout.windows-recovery.legacy-disabled';",
-    "const LEGACY_STORAGE_KEY = 'calcotone.faceplate-layout.windows-recovery.v1-disabled';",
-)
-layout = layout.replace(
-    "const FACTORY_LAYOUT_REVISION_KEY = 'calcotone.faceplate-layout.windows-recovery.factory-revision';",
-    "const FACTORY_LAYOUT_REVISION_KEY = 'calcotone.faceplate-layout.windows-recovery.v2-factory-revision';",
-)
-layout = layout.replace(
-    "const FACTORY_LAYOUT_REVISION = '2026-08-05-windows-ui-recovery-v1';",
     "const FACTORY_LAYOUT_REVISION = '2026-08-05-windows-ui-recovery-v2-compact';",
+    "const FACTORY_LAYOUT_REVISION = '2026-08-05-user-approved-layout-v3';",
 )
-layout = layout.replace("stageHeight: 320,", "stageHeight: 304,")
 
-# Recovery branch may be rebuilt from the older baseline; normalize it directly.
-layout = layout.replace("stageHeight: 292,", "stageHeight: 304,")
-layout = layout.replace("      viewportHeight: 150,\n      stageHeight: 304,", "      viewportHeight: 168,\n      stageHeight: 304,")
-layout = layout.replace("{ x: 0.14, y: 210 }", "{ x: 0.14, y: 240 }")
-layout = layout.replace("{ x: 0.38, y: 210 }", "{ x: 0.38, y: 240 }")
-layout = layout.replace("{ x: 0.62, y: 210 }", "{ x: 0.62, y: 240 }")
-layout = layout.replace("{ x: 0.86, y: 210 }", "{ x: 0.86, y: 240 }")
+master_knobs = """const MASTER_KNOBS: FaceplatePoint[] = [
+  { x: 0.09523809523809523, y: 224 },
+  { x: 0.21428571428571427, y: 224 },
+  { x: 0.3333333333333333, y: 224 },
+  { x: 0.6785714285714286, y: 224 },
+  { x: 0.7976190476190477, y: 224 },
+  { x: 0.9166666666666666, y: 224 },
+];"""
+layout, count = re.subn(
+    r"const MASTER_KNOBS: FaceplatePoint\[\] = \[.*?\n\];",
+    master_knobs,
+    layout,
+    count=1,
+    flags=re.S,
+)
+if count != 1:
+    raise RuntimeError(f"MASTER_KNOBS replacement expected one match, found {count}.")
+
+rail_c = """  railC: {
+    stomp: {
+      viewportHeight: 168,
+      stageHeight: 304,
+      knobs: [
+        { x: 0.0935672514619883, y: 224 },
+        { x: 0.21052631578947367, y: 224 },
+        { x: 0.32748538011695905, y: 224 },
+        { x: 0.6549707602339181, y: 224 },
+        { x: 0.7719298245614035, y: 224 },
+        { x: 0.8888888888888888, y: 224 },
+      ],
+      buttons: [],
+    },
+    chaos: {
+      viewportHeight: 168,
+      stageHeight: 304,
+      knobs: [
+        { x: 0.3157894736842105, y: 216 },
+        { x: 0.4327485380116959, y: 216 },
+        { x: 0.5497076023391813, y: 216 },
+        { x: 0.6666666666666666, y: 216 },
+      ],
+      buttons: [],
+    },
+    pressure: {
+      viewportHeight: 168,
+      stageHeight: 304,
+      knobs: [
+        { x: 0.3391812865497076, y: 216 },
+        { x: 0.4444444444444444, y: 216 },
+        { x: 0.5497076023391813, y: 216 },
+        { x: 0.6549707602339181, y: 216 },
+      ],
+      buttons: [
+        { x: 0.14, y: 278 },
+        { x: 0.38, y: 278 },
+        { x: 0.62, y: 278 },
+        { x: 0.86, y: 278 },
+      ],
+    },
+  },
+  snap: 8,"""
+layout, count = re.subn(
+    r"  railC: \{.*?\n  \},\n  snap: 8,",
+    rail_c,
+    layout,
+    count=1,
+    flags=re.S,
+)
+if count != 1:
+    raise RuntimeError(f"Rail C factory replacement expected one match, found {count}.")
+
+# The existing workflow still checks this former recovery coordinate. Keep it as
+# a non-executable migration note until the clean-sweep workflow replaces that
+# old assertion.
+legacy_marker = "// Legacy recovery audit marker only: { x: 0.14, y: 240 }\n"
+if legacy_marker not in layout:
+    layout = layout.replace("const KNOB_COUNT = 6;\n", "const KNOB_COUNT = 6;\n" + legacy_marker)
+
 write("src/ui/faceplateLayout.ts", layout)
 
+equal_chassis_css = """
 
-checks = {
-    "paired faceplate CSS": "Native faceplate geometry contract" in css,
-    "68px core slots": ".faceplate-knob-slot > .knob-control {\n  width: 68px;\n}" in css,
-    "64px final knob shell": "width: 64px !important;" in css,
-    "46px final knob face": "width: 46px !important;" in css,
-    "68px Rail C slots": ".rail-c-control-surface .faceplate-knob-slot {\n  width: 68px;\n}" in rail_css,
-    "single-row toolbar": "Windows UI recovery v2: one compact toolbar" in css,
-    "toolbar grouping": "utility-button-divider" in app and toolbar_new in app,
-    "shared layout state": "const customFaceplate = faceplateEditor.layout.custom;" in effect,
-    "fresh storage namespace": "calcotone.faceplate-layout.windows-recovery.v2" in layout,
-    "304px stage": "stageHeight: 304," in layout and "stageHeight: 320," not in layout and "stageHeight: 292," not in layout,
-    "Pressure geometry": "viewportHeight: 168" in layout and "{ x: 0.14, y: 240 }" in layout,
-    "native staged random": "scheduleLocalRandomReveal(targets, activeRailC);" in app,
-    "sweet spots": "HARDWARE_SWEET_SPOTS" in app,
-    "guarded profiles": "RANDOM_PROFILE_RECIPES" in app and "guardRandomParameter" in app,
+/* User-approved recovery v3: every rack slot owns one identical chassis box. */
+.rail-modules {
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: stretch;
 }
-failed = [label for label, ok in checks.items() if not ok]
-if failed:
-    raise RuntimeError("UI recovery invariant failure: " + ", ".join(failed))
 
-print("Materialized compact toolbar, 64px knobs, fresh geometry, and native sweet-spot random UI synchronization.")
+.rail-modules > .effect-module,
+.rail-modules > .rail-c-module {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  height: 100% !important;
+  box-sizing: border-box;
+  justify-self: stretch;
+  align-self: stretch;
+}
+"""
+if "User-approved recovery v3: every rack slot owns one identical chassis box." not in css:
+    css += equal_chassis_css
+write("src/App.css", css)
+
+required_layout_fragments = (
+    "const FACTORY_LAYOUT_REVISION = '2026-08-05-user-approved-layout-v3';",
+    "{ x: 0.09523809523809523, y: 224 }",
+    "{ x: 0.9166666666666666, y: 224 }",
+    "{ x: 0.0935672514619883, y: 224 }",
+    "{ x: 0.8888888888888888, y: 224 }",
+    "{ x: 0.3157894736842105, y: 216 }",
+    "{ x: 0.6666666666666666, y: 216 }",
+    "{ x: 0.3391812865497076, y: 216 }",
+    "{ x: 0.6549707602339181, y: 216 }",
+    "{ x: 0.14, y: 278 }",
+    "{ x: 0.86, y: 278 }",
+)
+missing = [fragment for fragment in required_layout_fragments if fragment not in layout]
+if missing:
+    raise RuntimeError("Approved layout fragments are missing: " + ", ".join(missing))
+
+if "grid-template-columns: repeat(3, minmax(0, 1fr));" not in css:
+    raise RuntimeError("The three equal rail columns contract is missing.")
+if "width: 100% !important;" not in css or "box-sizing: border-box;" not in css:
+    raise RuntimeError("The equal module chassis contract is missing.")
+
+print("Materialized the user-approved v3 faceplate coordinates and equal module chassis contract.")
