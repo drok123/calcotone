@@ -1,7 +1,7 @@
-/* 2560x1440 is CALCOTONE's reference desktop surface.
-   High definition means denser raster backing and smoother scheduling — never a
-   second faceplate scale. The approved module geometry remains pixel-for-pixel
-   identical to the standard profile. */
+/* 2560x1440 reference rendering.
+   This stylesheet may improve rasterization and focus treatment only. Physical
+   faceplate geometry is owned unconditionally by approvedFaceplate.css so
+   Windows DPI scaling cannot select a different control or viewport layout. */
 
 :root {
   --ui-hairline: 1px;
@@ -36,8 +36,6 @@ img {
   box-shadow: var(--ui-focus-ring) !important;
 }
 
-/* Preserve one-device-pixel chassis edges. These rules do not change any
-   component dimensions, padding, line-height, or faceplate anchor positions. */
 .effect-module,
 .module-card,
 .module-faceplate,
@@ -60,9 +58,6 @@ html[data-display-profile='1440p'] body {
   min-width: 1180px;
 }
 
-/* The outer workstation chrome may receive improved text rasterization, but
-   module controls keep the approved type metrics so their fixed slots cannot
-   grow into the display area. */
 html[data-display-profile='1440p'] :where(
   .brand small,
   .status-item span:not(.status-dot),
@@ -83,72 +78,6 @@ html[data-display-profile='1440p'] :where(
   .recorder-panel
 ) {
   border-width: var(--ui-hairline);
-}
-
-/* Approved faceplate control dimensions from the Windows DSP-QA build.
-   Keep these late in the cascade so the 1440p profile can never enlarge them. */
-html[data-display-profile='1440p'] :where(.effect-module, .rail-c-module) .knob-shell {
-  width: 64px !important;
-  height: 64px !important;
-  min-width: 64px !important;
-  min-height: 64px !important;
-}
-
-html[data-display-profile='1440p'] :where(.effect-module, .rail-c-module) .knob-face {
-  width: 46px !important;
-  height: 46px !important;
-}
-
-html[data-display-profile='1440p'] :where(.effect-module, .rail-c-module) .knob-control {
-  min-height: 88px !important;
-  grid-template-rows: 66px 18px !important;
-  gap: 3px !important;
-}
-
-/* The saved viewport rectangle owns the module screen. High-DPI canvases may
-   increase only their backing-store resolution; their CSS box stays 100% of
-   the approved shell and receives no compositor transform or animated overlay. */
-html[data-display-profile='1440p'] .faceplate-layout-custom .faceplate-viewport-shell > .dsp-viewport {
-  position: absolute !important;
-  inset: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  max-width: none !important;
-  max-height: none !important;
-  margin: 0 !important;
-  flex: none !important;
-}
-
-html[data-display-profile='1440p'] .rail-c-module.faceplate-layout-custom .faceplate-viewport-shell > :where(
-  .synth-roll,
-  .chaos-pad-shell,
-  .pressure-ascii
-) {
-  width: 100% !important;
-  height: 100% !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  max-width: none !important;
-  max-height: none !important;
-  margin: 0 !important;
-  flex: none !important;
-}
-
-html[data-display-profile='1440p'] :where(
-  .faceplate-viewport-shell > .dsp-viewport canvas,
-  .faceplate-viewport-shell > .synth-roll canvas,
-  .faceplate-viewport-shell > .chaos-pad-shell canvas,
-  .faceplate-viewport-shell > .pressure-ascii canvas
-) {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  transform: none !important;
-  backface-visibility: visible;
 }
 
 @media (min-width: 2200px) and (min-height: 1200px) {
