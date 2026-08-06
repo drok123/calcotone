@@ -8,6 +8,10 @@ on:
       - scripts/materialize-audio-restart-supervisor.py
       - .github/workflows/materialize-audio-restart-supervisor.yml
 
+concurrency:
+  group: materialize-audio-restart-supervisor
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
