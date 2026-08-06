@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/halo_parity_processor_test.dir/link.d CMakeFiles/halo_parity_processor_test.dir/tests/halo_parity_processor_test.cpp.o -o halo_parity_processor_test  libcalcotone_dsp.a

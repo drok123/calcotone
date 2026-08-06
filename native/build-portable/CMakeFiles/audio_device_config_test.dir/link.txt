@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/audio_device_config_test.dir/link.d CMakeFiles/audio_device_config_test.dir/tests/audio_device_config_test.cpp.o -o audio_device_config_test  libcalcotone_dsp.a

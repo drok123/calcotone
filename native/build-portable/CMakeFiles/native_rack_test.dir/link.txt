@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/native_rack_test.dir/link.d CMakeFiles/native_rack_test.dir/tests/native_rack_test.cpp.o -o native_rack_test  libcalcotone_dsp.a

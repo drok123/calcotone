@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/drift_standard_processor_test.dir/link.d CMakeFiles/drift_standard_processor_test.dir/tests/drift_standard_processor_test.cpp.o -o drift_standard_processor_test  libcalcotone_dsp.a

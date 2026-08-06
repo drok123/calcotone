@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/core_contract_test.dir/link.d CMakeFiles/core_contract_test.dir/tests/core_contract_test.cpp.o -o core_contract_test  libcalcotone_dsp.a

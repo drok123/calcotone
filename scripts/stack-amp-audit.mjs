@@ -22,6 +22,7 @@ const nativeProcessor = read('native/src/native_processor.cpp');
 const host = read('native/src/wasapi_host.cpp');
 const app = read('src/App.tsx');
 const stackEffect = read('src/audio/effects/StackAmp.ts');
+const railC = read('src/components/effects/RailCModules.tsx');
 
 runInNewContext(source, {
   sampleRate: SAMPLE_RATE,
@@ -148,7 +149,10 @@ if (!nativeHeader.includes('std::atomic<unsigned> model_{5};')
     || !nativeHeader.includes('std::atomic<float> mix_{0.62F};')) {
   failures.push('native Stack defaults drifted from the UI contract');
 }
-if (!stackEffect.includes("model: 'calcotone'") || !stackEffect.includes("cabinet: '4x12'")) {
+if (!stackEffect.includes("const MODEL: ParameterDefinition = { id: 'model', label: 'Amp', min: 0, max: STACK_AMP_MODELS.length - 1, defaultValue: 5")
+    || !stackEffect.includes("const CABINET: ParameterDefinition = { id: 'cabinet', label: 'Cabinet', min: 0, max: STACK_CABINETS.length - 1, defaultValue: 2")
+    || !railC.includes("model: 'calcotone' as StackAmpModel")
+    || !railC.includes("cabinet: '4x12' as StackCabinet")) {
   failures.push('web Stack model/cabinet defaults drifted');
 }
 

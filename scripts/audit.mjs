@@ -30,7 +30,7 @@ function extractOrder(source, exportName) {
 }
 function extractUiParameters(source, moduleId) {
   const escaped = moduleId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const moduleMatch = source.match(new RegExp(`id:\\s*['"]${escaped}['"][\\s\\S]*?parameters:\\s*\\[([\\s\\S]*?)\\]\\s*,?\\n\\s*}`));
+  const moduleMatch = source.match(new RegExp(`id:\\s*['"]${escaped}['"][\\s\\S]*?parameters:\\s*\\[([\\s\\S]*?)\\]\\s*,?\\r?\\n\\s*}`));
   if (!moduleMatch) {
     failures.push(`Could not parse UI parameters for ${moduleId}`);
     return [];

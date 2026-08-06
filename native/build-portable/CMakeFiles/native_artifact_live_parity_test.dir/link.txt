@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/native_artifact_live_parity_test.dir/link.d CMakeFiles/native_artifact_live_parity_test.dir/tests/native_artifact_live_parity_test.cpp.o -o native_artifact_live_parity_test  libcalcotone_dsp.a

@@ -20,7 +20,6 @@ const asciiCss = read('src/components/ascii/AsciiArtEngine.css');
 const pressureDisplay = read('src/components/ascii/PressureStyleDisplay.tsx');
 const viewport = read('src/components/effects/ModuleViewport.tsx');
 const field = read('src/components/motion/XYSignalField.tsx');
-const motionPad = read('src/components/motion/MotionPad.tsx');
 const railC = read('src/components/effects/RailCModules.tsx');
 const railCCss = read('src/components/effects/RailCModules.css');
 const app = read('src/App.tsx');
@@ -92,13 +91,13 @@ for (const field of approvedFaceplateGeometry) {
   }
   faceplateGeometryCursor = fieldPosition;
 }
-requireText(faceplate, "const FACTORY_LAYOUT_REVISION = '2026-07-30-banked-knob-faceplate'", 'Approved layout revision');
+requireText(faceplate, "const FACTORY_LAYOUT_REVISION = '2026-08-05-approved-compact-native-1to1'", 'Approved layout revision');
 requireText(faceplate, 'window.localStorage.getItem(FACTORY_LAYOUT_REVISION_KEY) !== FACTORY_LAYOUT_REVISION', 'Stale saved-layout replacement');
 requireText(faceplate, 'return cloneLayout(FACTORY_FACEPLATE_LAYOUT)', 'Factory layout fallback');
 forbidText(faceplate, 'AUTO_FACEPLATE_LAYOUT', 'Automatic layout can override approved geometry');
 requireText(faceplate, 'Math.max(...knobs.map((point) => point.y)) + 46', 'Exact saved-layout floor preservation');
-requireText(faceplate, 'viewportHeight: 168', 'Pressure factory viewport integration');
-requireText(faceplate, '{ x: 0.14, y: 240 }', 'Pressure factory knob integration');
+requireText(faceplate, 'pressure: {\n      viewportHeight: 150', 'Pressure factory viewport integration');
+requireText(faceplate, '{ x: 0.14, y: 210 }', 'Pressure factory knob integration');
 forbidText(main, "import './approvedFaceplateLayoutPatch'", 'Retired startup layout mutation');
 
 requireText(hardwarePalette, '--calcotone-cream-ink: #101315', 'Patches-charcoal ink on cream');
@@ -119,19 +118,22 @@ if (hardwarePolishImport < 0 || charcoalPassImport < 0 || charcoalPassImport < h
   failures.push('Hardware palette cascade: CharcoalHardwarePass must load after HardwarePolishPass');
 }
 
-// Rail C deliberately mixes the six existing ASCII worlds with a functional
-// piano-roll screen, the existing XY signal field, and a conventional Pressure logo.
+// Rail C is definitively Stomp → Stack → Pressure. Synth and the old Chaos XY
+// surface are retired from this rack and must not return through stale source or CSS.
 forbidText(vite, 'signalLabUiTransform()', 'Retired Signal panel placement transform');
 forbidText(vite, 'dreamFieldCompositionTransform()', 'Obsolete Dream visual transform');
-requireText(motionPad, 'signalLab={signalLab}', 'Existing Signal state forwarded to XY');
+forbidText(railC, '<MotionPad', 'Retired Chaos XY surface');
 requireText(app, "const DEFAULT_RAIL_C_ORDER = ['stomp', 'chaos', 'pressure']", 'Three-module Rail C');
-requireText(railC, 'aria-label="16-step piano roll"', 'Functional Synth piano roll');
-requireText(railC, 'toggleCell(step, pitchIndex)', 'Editable Synth notes');
-requireText(railC, 'setChain((current)', 'Synth pattern chaining');
-requireText(railC, '<MotionPad {...motionPadProps}', 'Chaos owns the XY surface');
+forbidText(railC, '16-step piano roll', 'Retired Synth piano roll');
+forbidText(railC, 'toggleCell(step, pitchIndex)', 'Retired Synth note editor');
+forbidText(railC, 'setChain((current)', 'Retired Synth pattern chaining');
+requireText(railC, 'aria-label="STACK amplifier"', 'Stack amplifier selector');
+requireText(railC, 'aria-label="STACK cabinet"', 'Stack cabinet selector');
 requireText(railC, 'stack-amp-readout', 'STACK circuit/cabinet readout');
 requireText(railC, 'pressure-ascii dsp-viewport', 'Pressure conventional ASCII display');
-requireText(railCCss, '.piano-roll-grid', 'Piano-roll screen geometry');
+forbidText(railCCss, '.module-synth', 'Retired Synth module CSS');
+forbidText(railCCss, '.synth-', 'Retired Synth control CSS');
+forbidText(railCCss, '.piano-roll-', 'Retired piano-roll CSS');
 requireText(railCCss, '@keyframes pressure-scan', 'Pressure ASCII display motion');
 requireText(main, "import './pressureBridge'", 'Existing Pressure DSP bridge preserved');
 forbidText(main, "import './components/effects/VideoColorStability.css'", 'Retired video color pass');
@@ -142,4 +144,4 @@ if (failures.length) {
   console.error('');
   process.exit(1);
 }
-console.log('CALCOTONE visual audit passed (six ASCII effects plus functional Rail C displays).');
+console.log('CALCOTONE visual audit passed (six ASCII effects plus Stomp, Stack, and Pressure).');

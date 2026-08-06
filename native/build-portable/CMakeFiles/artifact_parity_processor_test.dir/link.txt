@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/artifact_parity_processor_test.dir/link.d CMakeFiles/artifact_parity_processor_test.dir/tests/artifact_parity_processor_test.cpp.o -o artifact_parity_processor_test  libcalcotone_dsp.a
