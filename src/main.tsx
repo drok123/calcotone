@@ -16,12 +16,16 @@ import './components/layout/CharcoalHardwarePass.css'
 import './components/controls/RandomPerformance.css'
 import './readability.css'
 import './chordChainPatch.css'
+import './highDefinition1440.css'
 import './haloStabilityPatch'
 import './pressureBridge'
 import './randomVisualGovernor'
 import './randomTransferBridge'
 import './chordChainPatch'
+import { installDisplayProfile } from './ui/displayProfile'
 import App from './App.tsx'
+
+installDisplayProfile()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
