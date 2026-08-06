@@ -1,5 +1,7 @@
 #include "calcotone/ember_magnetic_core_processor.hpp"
 
+#include "calcotone/dsp_core.hpp"
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -7,11 +9,12 @@
 
 namespace calcotone {
 namespace {
-constexpr float kPi = 3.14159265358979323846F;
 constexpr unsigned kQuality = 2U;
 
 float clamp01(float value) noexcept { return std::clamp(value, 0.F, 1.F); }
-float db_to_gain(float db) noexcept { return std::pow(10.F, db / 20.F); }
+float time_coefficient(float seconds, float rate) noexcept {
+  return 1.F - std::exp(-1.F / std::max(1.F, seconds * rate));
+}
 
 struct StereoBiquad {
   float b0{1.F}, b1{}, b2{}, a1{}, a2{};
@@ -20,7 +23,7 @@ struct StereoBiquad {
   void reset() noexcept { x1 = {}; x2 = {}; y1 = {}; y2 = {}; }
 
   void set_highpass(float hz, float q, float rate) noexcept {
-    const float omega = 2.F * kPi * std::clamp(hz, 5.F, rate * .45F) / rate;
+    const float omega = 2.F * dsp::kPi * std::clamp(hz, 5.F, rate * .45F) / rate;
     const float cosine = std::cos(omega);
     const float alpha = std::sin(omega) / (2.F * std::max(.05F, q));
     const float a0 = 1.F + alpha;
@@ -32,7 +35,7 @@ struct StereoBiquad {
   }
 
   void set_lowpass(float hz, float q, float rate) noexcept {
-    const float omega = 2.F * kPi * std::clamp(hz, 5.F, rate * .45F) / rate;
+    const float omega = 2.F * dsp::kPi * std::clamp(hz, 5.F, rate * .45F) / rate;
     const float cosine = std::cos(omega);
     const float alpha = std::sin(omega) / (2.F * std::max(.05F, q));
     const float a0 = 1.F + alpha;
@@ -44,10 +47,10 @@ struct StereoBiquad {
   }
 
   void set_peaking(float hz, float q, float gain_db, float rate) noexcept {
-    const float omega = 2.F * kPi * std::clamp(hz, 5.F, rate * .45F) / rate;
+    const float omega = 2.F * dsp::kPi * std::clamp(hz, 5.F, rate * .45F) / rate;
     const float cosine = std::cos(omega);
     const float alpha = std::sin(omega) / (2.F * std::max(.05F, q));
-    const float amplitude = std::pow(10.F, gain_db / 40.F);
+    const float amplitude = std::sqrt(dsp::db_to_gain(gain_db));
     const float a0 = 1.F + alpha / amplitude;
     b0 = (1.F + alpha * amplitude) / a0;
     b1 = (-2.F * cosine) / a0;
@@ -63,18 +66,17 @@ struct StereoBiquad {
     x1[channel] = input;
     y2[channel] = y1[channel];
     y1[channel] = output;
-    return output;
+    return dsp::sanitize_audio(output, 4.F);
   }
 };
 
-float compressor_sample(float input, unsigned channel, float rate,
+float compressor_sample(float input, unsigned channel,
                         float threshold_db, float ratio, float knee_db,
-                        float attack_seconds, float release_seconds,
+                        float envelope_attack, float envelope_release,
+                        float gain_attack, float gain_release,
                         std::array<float, 2>& envelope,
                         std::array<float, 2>& gain_state) noexcept {
   const float magnitude = std::abs(input);
-  const float envelope_attack = 1.F - std::exp(-1.F / (rate * std::max(.00005F, attack_seconds)));
-  const float envelope_release = 1.F - std::exp(-1.F / (rate * std::max(.00005F, release_seconds)));
   envelope[channel] += (magnitude - envelope[channel])
       * (magnitude > envelope[channel] ? envelope_attack : envelope_release);
 
@@ -89,11 +91,10 @@ float compressor_sample(float input, unsigned channel, float rate,
         * knee_position * knee_position / (2.F * std::max(.001F, knee_db));
   }
 
-  const float target_gain = db_to_gain(reduction_db);
-  const float gain_coefficient = 1.F - std::exp(-1.F / (rate * std::max(.00005F,
-      target_gain < gain_state[channel] ? attack_seconds : release_seconds)));
-  gain_state[channel] += (target_gain - gain_state[channel]) * gain_coefficient;
-  return input * gain_state[channel];
+  const float target_gain = dsp::db_to_gain(reduction_db);
+  gain_state[channel] += (target_gain - gain_state[channel])
+      * (target_gain < gain_state[channel] ? gain_attack : gain_release);
+  return dsp::sanitize_audio(input * gain_state[channel], 4.F);
 }
 }  // namespace
 
@@ -101,11 +102,13 @@ struct EmberMagneticCoreProcessor::Impl {
   float rate;
   std::array<std::atomic<float>, 6> target{};
   std::array<float, 6> value{.14F, 9500.F, .18F, .22F, .38F, .22F};
+  std::array<float, 6> glide{};
 
   StereoBiquad input_highpass;
   StereoBiquad tone_lowpass;
   StereoBiquad presence;
   StereoBiquad wet_dc_block;
+  dsp::ControlRateDivider filter_control{16U};
 
   std::array<float, 2> previous_input{};
   std::array<float, 2> flux{};
@@ -113,6 +116,7 @@ struct EmberMagneticCoreProcessor::Impl {
   std::array<float, 2> eddy{};
   std::array<float, 2> dc_flux{};
   std::array<float, 2> saturation_memory{};
+  std::array<dsp::AdaaTanh, 2> core_shape{};
   float loss_memory{};
   float thermal_state{};
 
@@ -120,11 +124,33 @@ struct EmberMagneticCoreProcessor::Impl {
   std::array<float, 2> compressor_gain{1.F, 1.F};
   std::array<float, 2> limiter_envelope{};
   std::array<float, 2> limiter_gain{1.F, 1.F};
+  float compressor_attack{};
+  float compressor_release{};
+  float limiter_attack{};
+  float limiter_release{};
 
   explicit Impl(float sample_rate) : rate(std::clamp(sample_rate, 8000.F, 384000.F)) {
-    for (std::size_t i = 0; i < value.size(); ++i) target[i].store(value[i]);
+    constexpr std::array<float, 6> time_constants{.012F, .025F, .012F, .012F, .03F, .025F};
+    for (std::size_t i = 0; i < value.size(); ++i) {
+      target[i].store(value[i]);
+      glide[i] = time_coefficient(time_constants[i], rate);
+    }
+    compressor_attack = time_coefficient(.004F, rate);
+    compressor_release = time_coefficient(.09F, rate);
+    limiter_attack = time_coefficient(.001F, rate);
+    limiter_release = time_coefficient(.06F, rate);
     input_highpass.set_highpass(22.F, .5F, rate);
     wet_dc_block.set_highpass(18.F, .5F, rate);
+    update_post_filters();
+  }
+
+  void update_post_filters() noexcept {
+    const float tone_hz = std::clamp(value[1], 200.F, 18000.F);
+    const float heat = clamp01(value[2]);
+    const float character = clamp01(value[3]);
+    tone_lowpass.set_lowpass(std::max(2600.F, tone_hz * (1.F - heat * .09F)), 1.F, rate);
+    presence.set_peaking(1450.F + character * 900.F, .65F,
+        .25F + (character - .5F) * 1.25F, rate);
   }
 
   void reset() noexcept {
@@ -138,12 +164,15 @@ struct EmberMagneticCoreProcessor::Impl {
     eddy = {};
     dc_flux = {};
     saturation_memory = {};
+    for (auto& shaper : core_shape) shaper.reset();
     loss_memory = 0.F;
     thermal_state = 0.F;
     compressor_envelope = {};
     compressor_gain = {1.F, 1.F};
     limiter_envelope = {};
     limiter_gain = {1.F, 1.F};
+    filter_control.reset();
+    update_post_filters();
   }
 
   void update_shared_state(float left, float right, float drive, float heat) noexcept {
@@ -215,8 +244,9 @@ struct EmberMagneticCoreProcessor::Impl {
       const float hysteresis_loss = std::copysign(1.F, local_flux == 0.F ? 1.F : local_flux)
           * std::abs(local_flux - target_flux) * (.006F + character * .008F);
 
-      const float core = std::tanh((local_flux - eddy_loss - hysteresis_loss)
-          * (1.02F + heat * .22F));
+      const float core_input = (local_flux - eddy_loss - hysteresis_loss)
+          * (1.02F + heat * .22F);
+      const float core = core_shape[channel].process(core_input);
       const float residual = core - interpolated;
       const float wet = .10F + drive * .16F + heat * .05F;
       const float thermal_trim = 1.F - std::min(.025F,
@@ -230,31 +260,28 @@ struct EmberMagneticCoreProcessor::Impl {
     eddy[channel] = local_eddy;
     dc_flux[channel] = local_dc_flux;
     saturation_memory[channel] = local_saturation_memory;
-    return accumulated / static_cast<float>(kQuality);
+    return dsp::sanitize_audio(accumulated / static_cast<float>(kQuality), 2.F);
   }
 
   void process(float* data, std::size_t frames) noexcept {
     if (!data || frames == 0) return;
-    constexpr std::array<float, 6> time_constants{.012F, .025F, .012F, .012F, .03F, .025F};
 
     for (std::size_t frame = 0; frame < frames; ++frame) {
-      for (std::size_t i = 0; i < value.size(); ++i) {
-        const float glide = 1.F - std::exp(-1.F / (rate * time_constants[i]));
-        value[i] += (target[i].load(std::memory_order_relaxed) - value[i]) * glide;
-      }
+      for (std::size_t i = 0; i < value.size(); ++i)
+        value[i] += (target[i].load(std::memory_order_relaxed) - value[i]) * glide[i];
+
+      if (filter_control.tick()) update_post_filters();
 
       const float drive = clamp01(value[0]);
-      const float tone_hz = std::clamp(value[1], 200.F, 18000.F);
       const float heat = clamp01(value[2]);
       const float character = clamp01(value[3]);
       const float dynamics = clamp01(value[4]);
       const float mix = clamp01(value[5]);
 
-      tone_lowpass.set_lowpass(std::max(2600.F, tone_hz * (1.F - heat * .09F)), 1.F, rate);
-      presence.set_peaking(1450.F + character * 900.F, .65F,
-          .25F + (character - .5F) * 1.25F, rate);
-
-      const float dry[2]{data[frame * 2], data[frame * 2 + 1]};
+      const float dry[2]{
+        dsp::sanitize_audio(data[frame * 2], 2.F),
+        dsp::sanitize_audio(data[frame * 2 + 1], 2.F),
+      };
       float filtered[2]{
         input_highpass.process(dry[0], 0),
         input_highpass.process(dry[1], 1),
@@ -268,17 +295,19 @@ struct EmberMagneticCoreProcessor::Impl {
             drive, heat, character, dynamics, channel);
         wet[channel] = tone_lowpass.process(wet[channel], channel);
         wet[channel] = presence.process(wet[channel], channel);
-        wet[channel] = compressor_sample(wet[channel], channel, rate,
-            -1.5F - dynamics * 2.5F, 1.02F + dynamics * .36F,
-            12.F, .004F, .09F, compressor_envelope, compressor_gain);
+        wet[channel] = compressor_sample(wet[channel], channel,
+            -1.5F - dynamics * 2.5F, 1.02F + dynamics * .36F, 12.F,
+            compressor_attack, compressor_release, compressor_attack, compressor_release,
+            compressor_envelope, compressor_gain);
         wet[channel] *= .99F - drive * .035F;
         wet[channel] = wet_dc_block.process(wet[channel], channel);
-        wet[channel] = compressor_sample(wet[channel], channel, rate,
-            -.5F, 20.F, .5F, .001F, .06F, limiter_envelope, limiter_gain);
+        wet[channel] = compressor_sample(wet[channel], channel,
+            -.5F, 20.F, .5F,
+            limiter_attack, limiter_release, limiter_attack, limiter_release,
+            limiter_envelope, limiter_gain);
       }
 
-      const float dry_gain = std::cos(mix * kPi * .5F);
-      const float wet_gain = std::sin(mix * kPi * .5F);
+      const auto [dry_gain, wet_gain] = dsp::equal_power_gains(mix);
       data[frame * 2] = std::clamp(dry[0] * dry_gain + wet[0] * wet_gain, -1.2F, 1.2F);
       data[frame * 2 + 1] = std::clamp(dry[1] * dry_gain + wet[1] * wet_gain, -1.2F, 1.2F);
     }
