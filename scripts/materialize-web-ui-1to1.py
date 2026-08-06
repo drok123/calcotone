@@ -69,6 +69,28 @@ layout = replace_once(
 write("src/ui/faceplateLayout.ts", layout)
 
 
+visual_audit = read("scripts/visual-audit.mjs")
+visual_audit = replace_once(
+    visual_audit,
+    "requireText(faceplate, \"const FACTORY_LAYOUT_REVISION = '2026-08-05-approved-compact-native-1to1'\", 'Approved layout revision');",
+    "requireText(faceplate, \"const FACTORY_LAYOUT_REVISION = '2026-08-05-web-ui-1to1-restoration'\", 'Shared web layout revision');",
+    "visual audit layout revision",
+)
+visual_audit = replace_once(
+    visual_audit,
+    "requireText(faceplate, 'pressure: {\\n      viewportHeight: 150', 'Pressure factory viewport integration');",
+    "requireText(faceplate, 'pressure: {\\n      viewportHeight: 168', 'Pressure web-reference viewport integration');",
+    "visual audit Pressure viewport",
+)
+visual_audit = replace_once(
+    visual_audit,
+    "requireText(faceplate, '{ x: 0.14, y: 210 }', 'Pressure factory knob integration');",
+    "requireText(faceplate, '{ x: 0.14, y: 240 }', 'Pressure web-reference knob integration');",
+    "visual audit Pressure knob geometry",
+)
+write("scripts/visual-audit.mjs", visual_audit)
+
+
 audit = r'''import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -79,6 +101,7 @@ const css = read('src/App.css');
 const effect = read('src/components/effects/EffectModule.tsx');
 const layout = read('src/ui/faceplateLayout.ts');
 const railC = read('src/components/effects/RailCModules.css');
+const visualAudit = read('scripts/visual-audit.mjs');
 
 const forbid = (condition, message) => { if (condition) failures.push(message); };
 const require = (condition, message) => { if (!condition) failures.push(message); };
@@ -101,6 +124,9 @@ require(layout.includes('{ x: 0.07, y: 246 }') && layout.includes('{ x: 0.93, y:
 
 require(railC.includes('.rail-c-control-surface .faceplate-knob-slot'), 'Rail C reference sizing was accidentally removed');
 require(railC.includes('grid-template-rows: 18px 58px 16px;'), 'Rail C labels/value rows drifted');
+require(visualAudit.includes("'Shared web layout revision'"), 'legacy visual audit still owns the native-compressed layout');
+forbid(visualAudit.includes("viewportHeight: 150', 'Pressure factory viewport integration'"), 'legacy compressed Pressure viewport audit returned');
+forbid(visualAudit.includes("y: 210 }', 'Pressure factory knob integration'"), 'legacy compressed Pressure knob audit returned');
 
 if (failures.length) {
   console.error(`Web UI 1:1 parity audit failed (${failures.length})`);
