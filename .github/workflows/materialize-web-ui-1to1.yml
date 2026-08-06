@@ -1,0 +1,65 @@
+name: Materialize Web UI 1 to 1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/materialize-web-ui-1to1.py
+      - .github/workflows/materialize-web-ui-1to1.yml
+
+concurrency:
+  group: materialize-web-ui-1to1
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out canonical source
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore exact web UI geometry
+        run: python scripts/materialize-web-ui-1to1.py
+
+      - name: Verify web UI 1 to 1 contract
+        run: npm run audit:web-ui-1to1
+
+      - name: Run complete diagnostics and production build
+        run: npm run check
+
+      - name: Verify native-only layout mutations are gone
+        shell: bash
+        run: |
+          ! grep -q 'Native faceplate geometry contract' src/App.css
+          ! grep -q 'const customFaceplate = true;' src/components/effects/EffectModule.tsx
+          grep -q 'const customFaceplate = faceplateEditor.layout.custom;' src/components/effects/EffectModule.tsx
+          grep -q "2026-08-05-web-ui-1to1-restoration" src/ui/faceplateLayout.ts
+          grep -q 'audit:web-ui-1to1' package.json
+
+      - name: Remove one-time restoration machinery
+        run: |
+          rm scripts/materialize-web-ui-1to1.py
+          rm .github/workflows/materialize-web-ui-1to1.yml
+
+      - name: Commit canonical 1 to 1 UI
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Restore exact web UI geometry in Windows build"
+          git push origin HEAD:main
