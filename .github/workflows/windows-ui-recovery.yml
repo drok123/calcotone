@@ -138,6 +138,16 @@ jobs:
             Select-Object Algorithm, Hash, Path |
             ConvertTo-Json | Set-Content 'artifact/CALCOTONE-Windows-UI-Recovery.sha256.json'
 
+      - name: Upload UI recovery ZIP
+        uses: actions/upload-artifact@v7
+        with:
+          name: CALCOTONE-Windows-UI-Recovery
+          path: |
+            artifact/CALCOTONE-Windows-UI-Recovery.zip
+            artifact/CALCOTONE-Windows-UI-Recovery.sha256.json
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Commit canonical recovery source
         shell: pwsh
         run: |
@@ -152,13 +162,3 @@ jobs:
             git commit -m "Restore stable Windows faceplate geometry"
             git push origin HEAD:windows-recovery-1ccde1a
           }
-
-      - name: Upload UI recovery ZIP
-        uses: actions/upload-artifact@v7
-        with:
-          name: CALCOTONE-Windows-UI-Recovery
-          path: |
-            artifact/CALCOTONE-Windows-UI-Recovery.zip
-            artifact/CALCOTONE-Windows-UI-Recovery.sha256.json
-          if-no-files-found: error
-          retention-days: 30
