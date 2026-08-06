@@ -1,0 +1,31 @@
+name: Apply HD ASCII patch
+
+on:
+  push:
+    branches: [agent/native-dsp-core]
+    paths:
+      - 'scripts/agent-apply-hd-ascii-patch.py'
+      - '.github/workflows/agent-apply-hd-ascii-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/native-dsp-core
+          fetch-depth: 0
+      - name: Apply targeted source patch
+        run: python scripts/agent-apply-hd-ascii-patch.py
+      - name: Commit patched renderer and remove temporary patch assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Upgrade ASCII renderer for 1440p"
+          git push origin HEAD:agent/native-dsp-core
