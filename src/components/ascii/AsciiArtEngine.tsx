@@ -3,6 +3,7 @@ import type { SignalLabState } from '../../audio/SignalLab';
 import type { ModuleState } from '../../ui/types';
 import { getLatestVisualAudioState, type VisualAudioState } from '../../visual/VisualEngine';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
+import { canvasPixelRatio, getDisplayProfile } from '../../ui/displayProfile';
 import './AsciiArtEngine.css';
 
 type AsciiKind = 'module' | 'landscape';
@@ -1022,7 +1023,7 @@ export function AsciiArtEngine(props: AsciiArtEngineProps) {
 
     let width = 1;
     let height = 1;
-    let dpr = Math.min(1.35, window.devicePixelRatio || 1);
+    let dpr = canvasPixelRatio(1, 1, 6_400_000);
     let visible = true;
     let lastDraw = Number.NEGATIVE_INFINITY;
 
@@ -1030,7 +1031,7 @@ export function AsciiArtEngine(props: AsciiArtEngineProps) {
       const bounds = canvas.getBoundingClientRect();
       width = Math.max(1, bounds.width);
       height = Math.max(1, bounds.height);
-      dpr = Math.min(1.35, window.devicePixelRatio || 1);
+      dpr = canvasPixelRatio(width, height, 6_400_000);
       const pixelWidth = Math.max(1, Math.round(width * dpr));
       const pixelHeight = Math.max(1, Math.round(height * dpr));
       if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) canvas.width = pixelWidth;
@@ -1053,10 +1054,11 @@ export function AsciiArtEngine(props: AsciiArtEngineProps) {
     const render: ViewportRenderCallback = (stamp) => {
       if (!visible) return;
       const scene = sceneRef.current;
+      const profile = getDisplayProfile();
       const interval = scene.kind === 'landscape' && scene.dragging
-        ? 1000 / 30
+        ? 1000 / profile.visualFps
         : scene.active
-          ? 1000 / 18
+          ? 1000 / (profile.reference1440p ? 30 : 24)
           : 250;
       if (stamp - lastDraw < interval) return;
       lastDraw = stamp;
