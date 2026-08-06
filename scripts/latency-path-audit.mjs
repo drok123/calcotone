@@ -18,6 +18,7 @@ const adaptiveFifoHeader = readFileSync(resolve(root, 'native/include/calcotone/
 const adaptiveFifo = readFileSync(resolve(root, 'native/src/adaptive_fifo_safety.cpp'), 'utf8');
 const audioConfig = readFileSync(resolve(root, 'native/src/audio_device_config.cpp'), 'utf8');
 const audioClientPropertyPlan = readFileSync(resolve(root, 'native/src/audio_client_property_plan.cpp'), 'utf8');
+const audioRestartPolicy = readFileSync(resolve(root, 'native/src/audio_restart_policy.cpp'), 'utf8');
 const elasticFifoHeader = readFileSync(resolve(root, 'native/include/calcotone/elastic_stereo_fifo.hpp'), 'utf8');
 const elasticFifo = readFileSync(resolve(root, 'native/src/elastic_stereo_fifo.cpp'), 'utf8');
 const ksProbe = readFileSync(resolve(root, 'native/src/ks_wavert_probe.cpp'), 'utf8');
@@ -142,6 +143,18 @@ requireText(nativeBridge, 'this.commandQueue.then(() => this.sendCommand(line))'
 requireText(controlServer, 'listen(listener, SOMAXCONN)', 'Native control burst backlog');
 requireText(controlServer, 'request_content_length(request_storage)', 'Complete native HTTP request reads');
 requireText(launcher, 'CALCOTONE_AUDIO_MODE=exclusive', 'Launcher exclusive-mode request');
+requireText(audioRestartPolicy, 'AudioRuntimeFault::DeviceInvalidated', 'Immediate device invalidation restart');
+requireText(audioRestartPolicy, 'AudioRuntimeFault::ResourcesInvalidated', 'Immediate resource invalidation restart');
+requireText(audioRestartPolicy, 'AudioRuntimeFault::ServiceStopped', 'Immediate audio service restart');
+requireText(audioRestartPolicy, 'consecutive_buffer_errors_ >= threshold_', 'Bounded repeated buffer-error restart');
+requireText(nativeHost, 'AUDCLNT_E_DEVICE_INVALIDATED', 'WASAPI device-invalidated classification');
+requireText(nativeHost, 'AUDCLNT_E_RESOURCES_INVALIDATED', 'WASAPI resource-invalidated classification');
+requireText(nativeHost, 'AUDCLNT_E_SERVICE_NOT_RUNNING', 'WASAPI service-stopped classification');
+requireText(nativeHost, 'ExitProcess(kAudioRestartExitCode)', 'Realtime-thread supervised restart exit');
+requireText(nativeHost, 'return static_cast<int>(kAudioRestartExitCode)', 'Startup supervised restart exit');
+requireText(launcher, 'if "!CALCOTONE_EXIT!"=="75"', 'Launcher recoverable restart branch');
+requireText(launcher, 'CALCOTONE_RESTARTS! LEQ 12', 'Launcher restart-loop bound');
+requireText(launcher, 'timeout /t !CALCOTONE_RESTART_DELAY!', 'Launcher bounded restart backoff');
 
 const estimateMs = ({ input, base, output, frames, rate }) =>
   (input + base + output + frames / rate) * 1000;

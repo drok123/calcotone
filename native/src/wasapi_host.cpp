@@ -12,6 +12,7 @@
 
 #include "calcotone/adaptive_fifo_safety.hpp"
 #include "calcotone/audio_client_property_plan.hpp"
+#include "calcotone/audio_restart_policy.hpp"
 #include "calcotone/audio_device_config.hpp"
 #include "calcotone/control_server.hpp"
 #include "calcotone/desktop_shell.hpp"
@@ -26,6 +27,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <cstdio>
 #include <cstdint>
 #include <cwctype>
 #include <filesystem>
@@ -34,6 +36,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <stdexcept>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -41,6 +44,7 @@
 using Microsoft::WRL::ComPtr;
 namespace {
 constexpr std::size_t kProcessFrames = 2048;
+constexpr DWORD kAudioRestartExitCode = 75U;
 std::ofstream native_log;
 
 std::filesystem::path executable_directory() {
@@ -154,6 +158,15 @@ struct Endpoint {
   ~Endpoint() { if (event) CloseHandle(event); if (format) CoTaskMemFree(format); }
 };
 
+class HResultError final : public std::runtime_error {
+ public:
+  HResultError(HRESULT result, std::string message)
+      : std::runtime_error(std::move(message)), result_(result) {}
+  [[nodiscard]] HRESULT result() const noexcept { return result_; }
+ private:
+  HRESULT result_;
+};
+
 void check(HRESULT result, const char* operation);
 
 std::string utf8_from_wide(std::wstring_view text) {
@@ -257,8 +270,50 @@ void check(HRESULT result, const char* operation) {
   if (FAILED(result)) {
     std::ostringstream message;
     message << operation << " failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(result) << ')';
-    throw std::runtime_error(message.str());
+    throw HResultError(result, message.str());
   }
+}
+
+calcotone::AudioRuntimeFault classify_audio_runtime_fault(HRESULT result) noexcept {
+  if (result == AUDCLNT_E_DEVICE_INVALIDATED)
+    return calcotone::AudioRuntimeFault::DeviceInvalidated;
+  if (result == AUDCLNT_E_RESOURCES_INVALIDATED)
+    return calcotone::AudioRuntimeFault::ResourcesInvalidated;
+  if (result == AUDCLNT_E_SERVICE_NOT_RUNNING)
+    return calcotone::AudioRuntimeFault::ServiceStopped;
+  if (result == AUDCLNT_E_BUFFER_ERROR)
+    return calcotone::AudioRuntimeFault::BufferError;
+  return calcotone::AudioRuntimeFault::Other;
+}
+
+[[noreturn]] void restart_audio_host(const char* operation, HRESULT result) noexcept {
+  char message[320]{};
+  const int count = std::snprintf(
+      message, sizeof(message),
+      "CALCOTONE audio stream requires recreation: %s (HRESULT 0x%08lx). "
+      "The launcher will restart the native host.\r\n",
+      operation, static_cast<unsigned long>(result));
+  const DWORD bytes = static_cast<DWORD>(std::clamp(count, 0, static_cast<int>(sizeof(message) - 1U)));
+  OutputDebugStringA(message);
+  const HANDLE error_output = GetStdHandle(STD_ERROR_HANDLE);
+  if (error_output && error_output != INVALID_HANDLE_VALUE) {
+    DWORD written = 0U;
+    WriteFile(error_output, message, bytes, &written, nullptr);
+  }
+  ExitProcess(kAudioRestartExitCode);
+}
+
+bool audio_call_succeeded(calcotone::AudioRestartPolicy& policy, HRESULT result,
+                          const char* operation,
+                          std::atomic<std::uint64_t>& error_counter) noexcept {
+  if (SUCCEEDED(result)) {
+    policy.observe_success();
+    return true;
+  }
+  error_counter.fetch_add(1U, std::memory_order_relaxed);
+  const auto decision = policy.observe(classify_audio_runtime_fault(result));
+  if (decision.restart) restart_audio_host(operation, result);
+  return false;
 }
 
 enum class SampleEncoding { Float32, Pcm16, Pcm24, Pcm24In32, Pcm32, Unsupported };
@@ -699,15 +754,20 @@ int main(int argc, char** argv) {
       RealtimeThreadScope realtime;
       capture_mmcss.store(realtime.mmcss(), std::memory_order_relaxed);
       bool pending_stream_discontinuity = false;
+      calcotone::AudioRestartPolicy restart_policy;
       while (running.load(std::memory_order_relaxed)) {
         if (WaitForSingleObject(capture.event, 1000) != WAIT_OBJECT_0) continue;
         UINT32 packet = 0;
-        while (SUCCEEDED(capture_service->GetNextPacketSize(&packet)) && packet) {
+        while (running.load(std::memory_order_relaxed)) {
+          const HRESULT packet_result = capture_service->GetNextPacketSize(&packet);
+          if (!audio_call_succeeded(restart_policy, packet_result,
+                                    "capture GetNextPacketSize", capture_api_errors)) break;
+          if (packet == 0U) break;
           BYTE* bytes = nullptr; UINT32 frames = 0; DWORD flags = 0;
-          if (FAILED(capture_service->GetBuffer(&bytes, &frames, &flags, nullptr, nullptr))) {
-            capture_api_errors.fetch_add(1, std::memory_order_relaxed);
-            break;
-          }
+          const HRESULT buffer_result = capture_service->GetBuffer(
+              &bytes, &frames, &flags, nullptr, nullptr);
+          if (!audio_call_succeeded(restart_policy, buffer_result,
+                                    "capture GetBuffer", capture_api_errors)) break;
           if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) {
             capture_discontinuities.fetch_add(1, std::memory_order_relaxed);
             pending_stream_discontinuity = true;
@@ -740,8 +800,9 @@ int main(int argc, char** argv) {
           publish_peak(input_peak, packet_peak);
           if (packet_clips != 0U)
             input_clips.fetch_add(packet_clips, std::memory_order_relaxed);
-          if (FAILED(capture_service->ReleaseBuffer(frames)))
-            capture_api_errors.fetch_add(1, std::memory_order_relaxed);
+          const HRESULT release_result = capture_service->ReleaseBuffer(frames);
+          if (!audio_call_succeeded(restart_policy, release_result,
+                                    "capture ReleaseBuffer", capture_api_errors)) break;
         }
       }
     });
@@ -750,6 +811,7 @@ int main(int argc, char** argv) {
       RealtimeThreadScope realtime;
       render_mmcss.store(realtime.mmcss(), std::memory_order_relaxed);
       calcotone::StreamRecovery recovery(sample_rate);
+      calcotone::AudioRestartPolicy restart_policy;
       std::uint64_t observed_overruns = ring->overruns();
       const auto publish_fifo_safety = [&] {
         const auto state = fifo_safety.state();
@@ -767,10 +829,9 @@ int main(int argc, char** argv) {
         if (WaitForSingleObject(render.event, 1000) != WAIT_OBJECT_0) continue;
         const auto render_started = std::chrono::steady_clock::now();
         UINT32 padding = 0;
-        if (FAILED(render.client->GetCurrentPadding(&padding))) {
-          render_api_errors.fetch_add(1, std::memory_order_relaxed);
-          continue;
-        }
+        const HRESULT padding_result = render.client->GetCurrentPadding(&padding);
+        if (!audio_call_succeeded(restart_policy, padding_result,
+                                  "render GetCurrentPadding", render_api_errors)) continue;
         if (padding > render.buffer_frames) {
           render_api_errors.fetch_add(1, std::memory_order_relaxed);
           continue;
@@ -779,10 +840,9 @@ int main(int argc, char** argv) {
         while (remaining) {
           const UINT32 block = std::min<UINT32>(remaining, kProcessFrames);
           BYTE* bytes = nullptr;
-          if (FAILED(render_service->GetBuffer(block, &bytes))) {
-            render_api_errors.fetch_add(1, std::memory_order_relaxed);
-            break;
-          }
+          const HRESULT buffer_result = render_service->GetBuffer(block, &bytes);
+          if (!audio_call_succeeded(restart_policy, buffer_result,
+                                    "render GetBuffer", render_api_errors)) break;
           std::uint64_t block_underrun_frames = 0U;
           std::uint64_t block_underrun_events = 0U;
           std::uint64_t block_stream_recoveries = 0U;
@@ -831,8 +891,9 @@ int main(int argc, char** argv) {
             }
           }
           publish_peak(output_peak, block_output_peak);
-          if (FAILED(render_service->ReleaseBuffer(block, 0)))
-            render_api_errors.fetch_add(1, std::memory_order_relaxed);
+          const HRESULT release_result = render_service->ReleaseBuffer(block, 0);
+          if (!audio_call_succeeded(restart_policy, release_result,
+                                    "render ReleaseBuffer", render_api_errors)) break;
           remaining -= block;
         }
         const auto render_micros = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
@@ -909,6 +970,21 @@ int main(int argc, char** argv) {
     capture_thread.join(); render_thread.join();
     capture.client->Stop(); render.client->Stop(); CoUninitialize();
     return 0;
+  } catch (const HResultError& error) {
+    calcotone::AudioRestartPolicy restart_policy;
+    if (restart_policy.observe(classify_audio_runtime_fault(error.result())).restart) {
+      const std::string message = "CALCOTONE audio endpoint became unavailable; requesting supervised restart: "
+          + std::string(error.what());
+      std::cerr << message << std::endl;
+      if (native_log) native_log << message << std::endl;
+      CoUninitialize();
+      return static_cast<int>(kAudioRestartExitCode);
+    }
+    const std::string message = "CALCOTONE native host error: " + std::string(error.what());
+    std::cerr << message << std::endl;
+    if (native_log) native_log << message << std::endl;
+    MessageBoxA(nullptr, message.c_str(), "CALCOTONE native host error", MB_OK | MB_ICONERROR);
+    CoUninitialize(); return 1;
   } catch (const std::exception& error) {
     const std::string message = "CALCOTONE native host error: " + std::string(error.what());
     std::cerr << message << std::endl;
