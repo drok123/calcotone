@@ -19,6 +19,11 @@ forbid(/\.faceplate-layout-stage\s*\{[^}]*overflow:\s*hidden/s.test(css), 'facep
 forbid(/\.faceplate-control-surface\s*\{[^}]*position:\s*absolute/s.test(css), 'core controls were detached from the web flow layout');
 require(css.includes('/* Definitive Windows workspace controls. */'), 'newer top-strip and fullscreen controls were accidentally removed');
 
+require(/\.knob-control\s*\{[^}]*grid-template-rows:\s*24px 78px 19px;/s.test(css), 'core knob label/body/value rows drifted from the web reference');
+require(/\.knob-shell\s*\{[^}]*width:\s*76px;[^}]*height:\s*76px;/s.test(css), 'core knob shell is not the original 76px web size');
+require(/\.knob-label\s*\{[^}]*font-size:\s*\.72rem;/s.test(css), 'core knob label text size drifted');
+require(/\.knob-value\s*\{[^}]*font:\s*800 \.65rem\/1 var\(--mono\);/s.test(css), 'core knob value text size drifted');
+
 require(effect.includes('const customFaceplate = faceplateEditor.layout.custom;'), 'EffectModule no longer follows the shared web layout state');
 forbid(effect.includes('const customFaceplate = true;'), 'native build is forcing a separate core faceplate path');
 const viewportIndex = effect.indexOf('className={`faceplate-viewport-shell');
@@ -41,4 +46,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('Web UI 1:1 parity audit passed · native shell uses the canonical web knob, label, viewport, and Pressure geometry.');
+console.log('Web UI 1:1 parity audit passed · canonical 76px knobs, text rows, viewport flow, and Pressure geometry are locked for Windows.');
