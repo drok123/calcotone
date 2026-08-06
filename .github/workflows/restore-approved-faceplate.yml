@@ -133,6 +133,28 @@ jobs:
               if old not in visual:
                   raise SystemExit(f'missing visual audit contract: {old}')
               visual = visual.replace(old, new, 1)
+
+          geometry_pattern = re.compile(
+              r"const approvedFaceplateGeometry = \[[\s\S]*?\n\];\nlet faceplateGeometryCursor = faceplate\.indexOf\('[^']+'\);",
+              re.MULTILINE,
+          )
+          geometry_contract = '''const approvedFaceplateGeometry = [
+            '{ x: 0.09523809523809523, y: 224 }',
+            '{ x: 0.21428571428571427, y: 224 }',
+            '{ x: 0.3333333333333333, y: 224 }',
+            '{ x: 0.6785714285714286, y: 224 }',
+            '{ x: 0.7976190476190477, y: 224 }',
+            '{ x: 0.9166666666666666, y: 224 }',
+            'version: 2',
+            'custom: true',
+            'viewportHeight: 168',
+            'stageHeight: 304',
+            'snap: 8',
+          ];
+          let faceplateGeometryCursor = faceplate.indexOf('const MASTER_KNOBS');'''
+          visual, geometry_count = geometry_pattern.subn(geometry_contract, visual, count=1)
+          if geometry_count != 1:
+              raise SystemExit(f'visual geometry audit replacement count was {geometry_count}')
           visual_path.write_text(visual)
 
           parity_path = Path('scripts/web-ui-1to1-audit.mjs')
