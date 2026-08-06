@@ -73,19 +73,19 @@ requireText(asciiCss, 'repeating-linear-gradient', 'ASCII scanline optics');
 requireText(asciiCss, '@media (prefers-reduced-motion: reduce)', 'Reduced motion support');
 
 const approvedFaceplateGeometry = [
+  '{ x: 0.09523809523809523, y: 224 }',
+  '{ x: 0.21428571428571427, y: 224 }',
+  '{ x: 0.3333333333333333, y: 224 }',
+  '{ x: 0.6785714285714286, y: 224 }',
+  '{ x: 0.7976190476190477, y: 224 }',
+  '{ x: 0.9166666666666666, y: 224 }',
   'version: 2',
   'custom: true',
   'viewportHeight: 168',
-  'stageHeight: 292',
-  '{ x: 0.07, y: 246 }',
-  '{ x: 0.2099125364431487, y: 246 }',
-  '{ x: 0.3498542274052478, y: 246 }',
-  '{ x: 0.6530612244897959, y: 246 }',
-  '{ x: 0.793002915451895, y: 246 }',
-  '{ x: 0.93, y: 246 }',
+  'stageHeight: 304',
   'snap: 8',
 ];
-let faceplateGeometryCursor = faceplate.indexOf('export const FACTORY_FACEPLATE_LAYOUT');
+let faceplateGeometryCursor = faceplate.indexOf('const MASTER_KNOBS');
 for (const field of approvedFaceplateGeometry) {
   const fieldPosition = faceplate.indexOf(field, faceplateGeometryCursor + 1);
   if (fieldPosition < 0) {
@@ -94,13 +94,13 @@ for (const field of approvedFaceplateGeometry) {
   }
   faceplateGeometryCursor = fieldPosition;
 }
-requireText(faceplate, "const FACTORY_LAYOUT_REVISION = '2026-08-05-web-ui-1to1-restoration'", 'Shared web layout revision');
+requireText(faceplate, "const FACTORY_LAYOUT_REVISION = '2026-08-06-uploaded-approved-faceplate-1440p-v1'", 'Shared web layout revision');
 requireText(faceplate, 'window.localStorage.getItem(FACTORY_LAYOUT_REVISION_KEY) !== FACTORY_LAYOUT_REVISION', 'Stale saved-layout replacement');
 requireText(faceplate, 'return cloneLayout(FACTORY_FACEPLATE_LAYOUT)', 'Factory layout fallback');
 forbidText(faceplate, 'AUTO_FACEPLATE_LAYOUT', 'Automatic layout can override approved geometry');
 requireText(faceplate, 'Math.max(...knobs.map((point) => point.y)) + 46', 'Exact saved-layout floor preservation');
 requireText(faceplate, 'pressure: {\n      viewportHeight: 168', 'Pressure web-reference viewport integration');
-requireText(faceplate, '{ x: 0.14, y: 240 }', 'Pressure web-reference knob integration');
+requireText(faceplate, '{ x: 0.3391812865497076, y: 216 }', 'Pressure uploaded-approved knob integration');
 forbidText(main, "import './approvedFaceplateLayoutPatch'", 'Retired startup layout mutation');
 
 requireText(hardwarePalette, '--calcotone-cream-ink: #101315', 'Patches-charcoal ink on cream');
