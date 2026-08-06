@@ -102,6 +102,8 @@ target_include_directories(calcotone_dsp PUBLIC
 
 add_executable(core_contract_test tests/core_contract_test.cpp)
 target_link_libraries(core_contract_test PRIVATE calcotone_dsp)
+add_executable(dsp_core_test tests/dsp_core_test.cpp)
+target_link_libraries(dsp_core_test PRIVATE calcotone_dsp)
 add_executable(stack_amp_test tests/stack_amp_test.cpp)
 target_link_libraries(stack_amp_test PRIVATE calcotone_dsp)
 add_executable(native_rack_test tests/native_rack_test.cpp)
@@ -179,6 +181,7 @@ target_link_libraries(halo_dual_grain_pitch_processor_test PRIVATE calcotone_dsp
 
 enable_testing()
 add_test(NAME core_contract_test COMMAND core_contract_test)
+add_test(NAME dsp_core_test COMMAND dsp_core_test)
 add_test(NAME stack_amp_test COMMAND stack_amp_test)
 add_test(NAME native_rack_test COMMAND native_rack_test)
 add_test(NAME pitch_tracker_test COMMAND pitch_tracker_test)
