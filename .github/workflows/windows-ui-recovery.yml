@@ -58,7 +58,13 @@ jobs:
           if ($layout -notmatch 'stageHeight: 304,') { throw 'Compact 304px recovery stage is missing.' }
           if ($layout -notmatch 'pressure: \{\s*viewportHeight: 168,\s*stageHeight: 304,') { throw 'Pressure compact geometry is missing.' }
           if ($layout -notmatch '\{ x: 0\.14, y: 240 \}') { throw 'Pressure control row is not restored.' }
-          if ($app -notmatch 'SIGNAL RANDOM</button>\s*<span className="utility-button-divider"[^>]*\/>\s*<button[^>]*>EXPLAIN</button>\s*<FaceplateLayoutEditor \/>\s*<button[^>]*>DSP</button>') { throw 'EXPLAIN / LAYOUT / DSP are not grouped beside SIGNAL RANDOM.' }
+          $signalIndex = $app.IndexOf('>SIGNAL RANDOM</button>')
+          $dividerIndex = $app.IndexOf('className="utility-button-divider"')
+          $explainIndex = $app.IndexOf('>EXPLAIN</button>')
+          $layoutIndex = $app.IndexOf('<FaceplateLayoutEditor />')
+          $dspIndex = $app.IndexOf('>DSP</button>')
+          $badgeIndex = $app.IndexOf('audio-backend-badge')
+          if ($signalIndex -lt 0 -or $dividerIndex -le $signalIndex -or $explainIndex -le $dividerIndex -or $layoutIndex -le $explainIndex -or $dspIndex -le $layoutIndex -or $badgeIndex -le $dspIndex) { throw 'EXPLAIN / LAYOUT / DSP are not grouped beside SIGNAL RANDOM.' }
           if ($app -notmatch 'HARDWARE_SWEET_SPOTS') { throw 'Hardware sweet-spot recipes are missing.' }
           if ($app -notmatch 'RANDOM_PROFILE_RECIPES') { throw 'Coordinated random profiles are missing.' }
           if ($app -notmatch 'scheduleLocalRandomReveal\(targets, activeRailC\);\s*return;') { throw 'Native random does not drive staged UI targets.' }
