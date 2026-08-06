@@ -10,7 +10,8 @@ Rload out 0 10k
 .control
 set wr_singlescale
 set wr_vecnames
-wrdata {{OUTPUT_PATH}} time v(out)
+run
+wrdata {{OUTPUT_PATH}} v(out)
 quit
 .endc
 
