@@ -1,5 +1,7 @@
 #pragma once
 
+#include "calcotone/dsp_core.hpp"
+
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -39,6 +41,11 @@ class StackAmp final {
     float cab_body_low{};
     float dc_input{};
     float dc_value{};
+    dsp::TptLowpass2 anti_imaging{};
+    dsp::TptLowpass2 anti_alias{};
+    dsp::AdaaTanh power_shape{};
+    dsp::AdaaTanh transformer_shape{};
+    dsp::AdaaTanh output_shape{};
   };
 
   float sample_rate_;
