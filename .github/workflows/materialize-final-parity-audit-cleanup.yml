@@ -55,7 +55,7 @@ jobs:
           grep -q "2026-08-05-approved-compact-native-1to1" src/ui/faceplateLayout.ts
           grep -q "defaultValue: 5" scripts/stack-amp-audit.mjs
           grep -q "model: 'calcotone' as StackAmpModel" scripts/stack-amp-audit.mjs
-          grep -q 'ctest --test-dir' native/Makefile
+          grep -q '\$(CTEST) --test-dir' native/Makefile
 
       - name: Remove one-time cleanup machinery
         run: |
