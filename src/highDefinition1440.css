@@ -1,5 +1,7 @@
-/* 2560x1440 is CALCOTONE's reference desktop surface. This pass increases
-   legibility and raster precision without changing the canonical faceplate geometry. */
+/* 2560x1440 is CALCOTONE's reference desktop surface.
+   High definition means denser raster backing and smoother scheduling — never a
+   second faceplate scale. The approved module geometry remains pixel-for-pixel
+   identical to the standard profile. */
 
 :root {
   --ui-hairline: 1px;
@@ -10,15 +12,10 @@
   text-rendering: geometricPrecision;
 }
 
-* {
-  box-sizing: border-box;
-}
-
 button,
 select,
 input,
 textarea {
-  font: inherit;
   font-kerning: normal;
   font-variant-numeric: tabular-nums lining-nums;
   text-rendering: geometricPrecision;
@@ -39,8 +36,8 @@ img {
   box-shadow: var(--ui-focus-ring) !important;
 }
 
-/* Preserve one-device-pixel edges instead of letting translucent effects soften
-   the whole chassis. Individual screens may still use their intentional glow. */
+/* Preserve one-device-pixel chassis edges. These rules do not change any
+   component dimensions, padding, line-height, or faceplate anchor positions. */
 .effect-module,
 .module-card,
 .module-faceplate,
@@ -53,27 +50,6 @@ img {
   background-clip: padding-box;
 }
 
-.dsp-viewport canvas,
-.spectrum-screen canvas,
-.xy-visual-stack canvas {
-  transform: translateZ(0);
-  backface-visibility: hidden;
-}
-
-/* A smooth optical sweep gives active module windows continuous motion between
-   their more expensive content renders. It moves only a translucent scan layer. */
-.dsp-viewport.ascii-viewport::after,
-.xy-visual-stack.ascii-only::after {
-  background-size: 100% 4px, 100% 100%;
-  animation: hd-optics-drift 2.8s linear infinite;
-  will-change: background-position;
-}
-
-@keyframes hd-optics-drift {
-  from { background-position: 0 0, 0 0; }
-  to { background-position: 0 4px, 0 0; }
-}
-
 html[data-display-profile='1440p'] {
   --ui-hairline: 1px;
   -webkit-font-smoothing: subpixel-antialiased;
@@ -84,78 +60,19 @@ html[data-display-profile='1440p'] body {
   min-width: 1180px;
 }
 
+/* The outer workstation chrome may receive improved text rasterization, but
+   module controls keep the approved type metrics so their fixed slots cannot
+   grow into the display area. */
 html[data-display-profile='1440p'] :where(
-  button,
-  select,
-  input,
-  label,
-  small,
-  .knob-label,
-  .knob-value,
-  .module-number,
-  .module-route-cue,
-  .status-item,
-  .spectrum-header,
-  .recorder-status
+  .brand small,
+  .status-item span:not(.status-dot),
+  .status-item strong,
+  .panel-heading h2,
+  .section-header h2,
+  .footer-bar
 ) {
-  line-height: 1.18;
+  text-rendering: geometricPrecision;
   text-shadow: var(--ui-text-edge);
-}
-
-html[data-display-profile='1440p'] :where(button, select, input) {
-  min-height: 30px;
-  font-size: 0.84rem;
-  font-weight: 750;
-  letter-spacing: 0.035em;
-}
-
-html[data-display-profile='1440p'] .brand small {
-  font-size: 0.79rem;
-  letter-spacing: 0.085em;
-}
-
-html[data-display-profile='1440p'] .status-item span:not(.status-dot) {
-  font-size: 0.72rem;
-  letter-spacing: 0.06em;
-}
-
-html[data-display-profile='1440p'] .status-item strong {
-  font-size: 0.84rem;
-}
-
-html[data-display-profile='1440p'] :where(.panel-heading h2, .section-header h2) {
-  font-size: 1.04rem;
-  letter-spacing: 0.105em;
-}
-
-html[data-display-profile='1440p'] .module-header h3 {
-  font-size: 1rem;
-  font-weight: 850;
-  letter-spacing: 0.075em;
-}
-
-html[data-display-profile='1440p'] :where(.knob-label, .knob-value) {
-  font-size: 0.79rem;
-  font-weight: 850;
-  letter-spacing: 0.035em;
-}
-
-html[data-display-profile='1440p'] :where(
-  .module-number,
-  .module-route-cue,
-  .viewport-caption,
-  .spectrum-header,
-  .pressure-style-strip button,
-  .synth-header-controls
-) {
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0.055em;
-}
-
-html[data-display-profile='1440p'] :where(.effect-module select, .module-header-control) {
-  font-size: 0.82rem;
-  letter-spacing: 0.025em;
 }
 
 html[data-display-profile='1440p'] :where(
@@ -168,22 +85,70 @@ html[data-display-profile='1440p'] :where(
   border-width: var(--ui-hairline);
 }
 
-html[data-display-profile='1440p'] .dsp-viewport canvas {
-  filter: saturate(1.045) brightness(1.025) contrast(1.075);
+/* Approved faceplate control dimensions from the Windows DSP-QA build.
+   Keep these late in the cascade so the 1440p profile can never enlarge them. */
+html[data-display-profile='1440p'] :where(.effect-module, .rail-c-module) .knob-shell {
+  width: 64px !important;
+  height: 64px !important;
+  min-width: 64px !important;
+  min-height: 64px !important;
 }
 
-html[data-display-profile='1440p'] .ascii-art-engine.is-active {
-  opacity: 0.975;
-  filter: saturate(0.96) contrast(1.13) brightness(1.025);
+html[data-display-profile='1440p'] :where(.effect-module, .rail-c-module) .knob-face {
+  width: 46px !important;
+  height: 46px !important;
 }
 
-html[data-display-profile='1440p'] .ascii-art-engine.is-standby {
-  opacity: 0.39;
-  filter: saturate(0.48) brightness(0.76) contrast(1.08);
+html[data-display-profile='1440p'] :where(.effect-module, .rail-c-module) .knob-control {
+  min-height: 88px !important;
+  grid-template-rows: 66px 18px !important;
+  gap: 3px !important;
 }
 
-html[data-display-profile='1440p'] .spectrum-screen canvas {
-  filter: contrast(1.09) brightness(1.025);
+/* The saved viewport rectangle owns the module screen. High-DPI canvases may
+   increase only their backing-store resolution; their CSS box stays 100% of
+   the approved shell and receives no compositor transform or animated overlay. */
+html[data-display-profile='1440p'] .faceplate-layout-custom .faceplate-viewport-shell > .dsp-viewport {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  flex: none !important;
+}
+
+html[data-display-profile='1440p'] .rail-c-module.faceplate-layout-custom .faceplate-viewport-shell > :where(
+  .synth-roll,
+  .chaos-pad-shell,
+  .pressure-ascii
+) {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  flex: none !important;
+}
+
+html[data-display-profile='1440p'] :where(
+  .faceplate-viewport-shell > .dsp-viewport canvas,
+  .faceplate-viewport-shell > .synth-roll canvas,
+  .faceplate-viewport-shell > .chaos-pad-shell canvas,
+  .faceplate-viewport-shell > .pressure-ascii canvas
+) {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: none !important;
+  backface-visibility: visible;
 }
 
 @media (min-width: 2200px) and (min-height: 1200px) {
@@ -192,17 +157,5 @@ html[data-display-profile='1440p'] .spectrum-screen canvas {
   .section-header,
   .module-header {
     text-rendering: geometricPrecision;
-  }
-
-  :where(.power-button, .transport-button, .performance-button) {
-    padding-inline: 0.9rem;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .dsp-viewport.ascii-viewport::after,
-  .xy-visual-stack.ascii-only::after {
-    animation: none;
-    will-change: auto;
   }
 }
