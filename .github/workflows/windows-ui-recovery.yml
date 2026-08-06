@@ -1,0 +1,164 @@
+name: Windows UI Recovery
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [windows-recovery-1ccde1a]
+    paths:
+      - scripts/materialize-windows-ui-recovery.py
+      - .github/workflows/windows-ui-recovery.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-ui-recovery
+  cancel-in-progress: true
+
+jobs:
+  build-ui-recovery:
+    runs-on: windows-2022
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out recovery branch
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Materialize paired web faceplate recovery
+        run: python scripts/materialize-windows-ui-recovery.py
+
+      - name: Verify UI recovery invariants
+        shell: pwsh
+        run: |
+          $css = Get-Content src/App.css -Raw
+          $rail = Get-Content src/components/effects/RailCModules.css -Raw
+          $effect = Get-Content src/components/effects/EffectModule.tsx -Raw
+          $layout = Get-Content src/ui/faceplateLayout.ts -Raw
+
+          if ($css -notmatch 'Native faceplate geometry contract') { throw 'Paired custom faceplate CSS is missing.' }
+          if ($css -notmatch 'faceplate-knob-slot > \.knob-control \{\s*width: 76px;') { throw 'Core control width is not restored.' }
+          if ($rail -notmatch 'rail-c-control-surface \.faceplate-knob-slot \{\s*width: 76px;') { throw 'Rail C control width is not restored.' }
+          if ($effect -notmatch 'const customFaceplate = faceplateEditor\.layout\.custom;') { throw 'Shared faceplate ownership is missing.' }
+          if ($layout -notmatch 'calcotone\.faceplate-layout\.windows-recovery\.v1') { throw 'Fresh recovery storage namespace is missing.' }
+          if ($layout -match 'stageHeight: 292,') { throw 'Clipping-prone 292px stage remains.' }
+          if ($layout -notmatch 'stageHeight: 320,') { throw 'Recovery stage height is missing.' }
+          if ($layout -notmatch 'pressure: \{\s*viewportHeight: 168,\s*stageHeight: 320,') { throw 'Pressure web geometry is missing.' }
+          if ($layout -notmatch '\{ x: 0\.14, y: 240 \}') { throw 'Pressure control row is not restored.' }
+
+      - name: Build production faceplate
+        run: npm run build
+
+      - name: Generate native spectrum host sources
+        shell: pwsh
+        run: |
+          python native/tools/apply_native_host_visual_parity.py native/src/wasapi_host.cpp native/src/wasapi_host.parity.cpp
+          Move-Item -Force native/src/wasapi_host.parity.cpp native/src/wasapi_host.cpp
+          python native/tools/apply_control_server_spectrum.py native/src/control_server.cpp native/src/control_server.parity.cpp
+          Move-Item -Force native/src/control_server.parity.cpp native/src/control_server.cpp
+
+      - name: Restore WebView2 SDK
+        shell: pwsh
+        run: |
+          nuget install Microsoft.Web.WebView2 -OutputDirectory native/packages -NonInteractive
+          $package = Get-ChildItem native/packages -Directory -Filter 'Microsoft.Web.WebView2.*' |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+          if (-not $package) { throw 'WebView2 NuGet package was not restored.' }
+          "CALCOTONE_WEBVIEW2_ROOT=$($package.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure native host
+        run: >-
+          cmake -S native -B native/build -A x64
+          -DCALCOTONE_WEBVIEW2_ROOT="${{ env.CALCOTONE_WEBVIEW2_ROOT }}"
+
+      - name: Build native host
+        run: cmake --build native/build --config Release --parallel
+
+      - name: Run native tests
+        run: ctest --test-dir native/build -C Release --output-on-failure
+
+      - name: Assemble isolated recovery package
+        shell: pwsh
+        run: |
+          $packageRoot = Join-Path $PWD 'artifact/CALCOTONE-Windows-UI-Recovery'
+          New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $packageRoot 'web') | Out-Null
+
+          Copy-Item 'native/build/Release/calcotone_host.exe' $packageRoot
+          Copy-Item 'dist/*' (Join-Path $packageRoot 'web') -Recurse -Force
+          Copy-Item 'native/*.bat' $packageRoot -Force
+          Copy-Item 'native/README.md' (Join-Path $packageRoot 'NATIVE-README.md') -Force
+
+          @"
+          CALCOTONE Windows UI Recovery
+          =============================
+
+          This is an isolated UI-validation build from windows-recovery-1ccde1a.
+          It does not replace the current main build.
+
+          1. Extract the entire ZIP into a new folder.
+          2. Do not copy it over an older CALCOTONE folder.
+          3. Double-click START-CALCOTONE-NATIVE.bat.
+          4. Check knob size, all labels, dropdown placement, Rail C, and Pressure before testing DSP.
+
+          Recovery source: $env:GITHUB_SHA
+          "@ | Set-Content (Join-Path $packageRoot 'UI-RECOVERY-README.txt')
+
+          $manifest = [ordered]@{
+            product = 'CALCOTONE Windows UI Recovery'
+            sourceBranch = 'windows-recovery-1ccde1a'
+            workflowSource = $env:GITHUB_SHA
+            builtAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+            uiOnly = $true
+            dspChanges = 'none'
+            storageNamespace = 'calcotone.faceplate-layout.windows-recovery.v1'
+            faceplate = [ordered]@{
+              controlWidth = 76
+              viewportHeight = 168
+              stageHeight = 320
+              pressureControlY = 240
+              staleLayoutMigration = 'disabled'
+            }
+          }
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $packageRoot 'UI-RECOVERY-MANIFEST.json')
+
+          Compress-Archive -Path $packageRoot -DestinationPath 'artifact/CALCOTONE-Windows-UI-Recovery.zip' -Force
+          Get-FileHash 'artifact/CALCOTONE-Windows-UI-Recovery.zip' -Algorithm SHA256 |
+            Select-Object Algorithm, Hash, Path |
+            ConvertTo-Json | Set-Content 'artifact/CALCOTONE-Windows-UI-Recovery.sha256.json'
+
+      - name: Commit canonical recovery source
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force native/packages -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force native/build -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force artifact -ErrorAction SilentlyContinue
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.css src/components/effects/EffectModule.tsx src/components/effects/RailCModules.css src/ui/faceplateLayout.ts
+          if (-not (git diff --cached --quiet)) {
+            git commit -m "Restore stable Windows faceplate geometry"
+            git push origin HEAD:windows-recovery-1ccde1a
+          }
+
+      - name: Upload UI recovery ZIP
+        uses: actions/upload-artifact@v7
+        with:
+          name: CALCOTONE-Windows-UI-Recovery
+          path: |
+            artifact/CALCOTONE-Windows-UI-Recovery.zip
+            artifact/CALCOTONE-Windows-UI-Recovery.sha256.json
+          if-no-files-found: error
+          retention-days: 30
