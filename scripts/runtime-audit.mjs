@@ -202,8 +202,10 @@ forbidText(main, "import './components/effects/VideoColorStability.css'", 'Retir
 requireText(viewport, '<PressureStyleDisplay module={module}', 'Module ASCII wiring');
 requireText(ascii, 'subscribeViewportAnimation(render)', 'ASCII shared scheduler');
 requireText(ascii, 'IntersectionObserver', 'ASCII offscreen suspension');
-requireText(ascii, '1000 / 18', 'ASCII bounded active cadence');
-requireText(ascii, 'Math.min(1.35, window.devicePixelRatio', 'ASCII pixel-density cap');
+requireText(ascii, 'profile.reference1440p ? 30 : 24', 'ASCII adaptive active cadence');
+requireText(ascii, 'canvasPixelRatio(width, height, 6_400_000)', 'ASCII bounded high-DPI budget');
+requireText(pressureDisplay, 'display.reference1440p ? 30 : 24', 'Module display adaptive cadence');
+requireText(pressureDisplay, 'canvasPixelRatio(width, height, 5_400_000)', 'Module display bounded high-DPI budget');
 requireText(pressureDisplay, 'subscribeViewportAnimation(render)', 'Module display shared scheduler');
 requireText(pressureDisplay, 'if (canvas.width !== pixelWidth)', 'Module display resize allocation guard');
 forbidText(ascii, 'requestAnimationFrame(', 'Independent ASCII animation loop');
