@@ -1,5 +1,6 @@
 * CALCOTONE reusable hardware-stage behavioral calibration
 * The expression is filled from the same typed operating point used by realtime DSP.
+* The control block must run the transient before exporting v(out); wr_singlescale writes time first.
 
 Vin in 0 SIN(0 {{INPUT_AMPLITUDE}} {{INPUT_FREQUENCY}})
 Bstage out 0 V = {{TRANSFER_EXPRESSION}}
