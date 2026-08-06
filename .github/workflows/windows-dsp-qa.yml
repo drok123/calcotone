@@ -1,0 +1,218 @@
+name: Windows DSP QA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [windows-recovery-1ccde1a]
+    paths:
+      - .github/workflows/windows-dsp-qa.yml
+      - scripts/register-native-full-rack-qa.py
+      - native/tests/native_full_rack_qa_test.cpp
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-dsp-qa
+  cancel-in-progress: true
+
+env:
+  UI_FILES: >-
+    src/App.tsx
+    src/App.css
+    src/components/effects/EffectModule.tsx
+    src/components/effects/RailCModules.css
+    src/ui/faceplateLayout.ts
+
+jobs:
+  portable-dsp-qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Check out approved DSP recovery branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Protect approved UI and register QA
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum $UI_FILES > /tmp/ui-before.sha256
+          python scripts/register-native-full-rack-qa.py
+          sha256sum -c /tmp/ui-before.sha256
+          grep -q 'native_full_rack_qa_test' native/CMakeLists.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install strict DSP dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ngspice ninja-build
+          npm ci
+
+      - name: Run strict circuit calibration
+        shell: bash
+        run: |
+          python scripts/apply-hardware-spice-vector-fix.py
+          npm run audit:spice:strict
+          npm run audit:hardware-spice:strict
+
+      - name: Configure portable QA graph
+        run: cmake -S native -B native/build-qa -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build portable QA graph
+        run: cmake --build native/build-qa --parallel 2
+
+      - name: Require 39-test graph
+        shell: bash
+        run: |
+          ctest --test-dir native/build-qa -N | tee native/build-qa/DSP-QA-TEST-LIST.txt
+          grep -q 'Total Tests: 39' native/build-qa/DSP-QA-TEST-LIST.txt
+          grep -q 'native_full_rack_qa_test' native/build-qa/DSP-QA-TEST-LIST.txt
+
+      - name: Run complete portable QA suite
+        run: ctest --test-dir native/build-qa --output-on-failure
+
+  windows-dsp-qa:
+    needs: portable-dsp-qa
+    runs-on: windows-2022
+    timeout-minutes: 50
+    steps:
+      - name: Check out approved DSP recovery branch
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Protect approved UI and register QA
+        shell: pwsh
+        run: |
+          $uiFiles = @(
+            'src/App.tsx',
+            'src/App.css',
+            'src/components/effects/EffectModule.tsx',
+            'src/components/effects/RailCModules.css',
+            'src/ui/faceplateLayout.ts'
+          )
+          $before = @{}
+          foreach ($path in $uiFiles) { $before[$path] = (Get-FileHash $path -Algorithm SHA256).Hash }
+          python scripts/register-native-full-rack-qa.py
+          foreach ($path in $uiFiles) {
+            if ((Get-FileHash $path -Algorithm SHA256).Hash -ne $before[$path]) {
+              throw "Approved UI changed during DSP QA registration: $path"
+            }
+          }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build approved UI
+        run: npm run build
+
+      - name: Generate release-equivalent host sources
+        shell: pwsh
+        run: |
+          python native/tools/apply_native_host_visual_parity.py native/src/wasapi_host.cpp native/src/wasapi_host.parity.cpp
+          Move-Item -Force native/src/wasapi_host.parity.cpp native/src/wasapi_host.cpp
+          python native/tools/apply_control_server_spectrum.py native/src/control_server.cpp native/src/control_server.parity.cpp
+          Move-Item -Force native/src/control_server.parity.cpp native/src/control_server.cpp
+
+      - name: Restore WebView2 SDK
+        shell: pwsh
+        run: |
+          nuget install Microsoft.Web.WebView2 -OutputDirectory native/packages -NonInteractive
+          $package = Get-ChildItem native/packages -Directory -Filter 'Microsoft.Web.WebView2.*' |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+          if (-not $package) { throw 'WebView2 SDK was not restored.' }
+          "CALCOTONE_WEBVIEW2_ROOT=$($package.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure Windows QA graph
+        run: >-
+          cmake -S native -B native/build-qa -A x64
+          -DCALCOTONE_WEBVIEW2_ROOT="${{ env.CALCOTONE_WEBVIEW2_ROOT }}"
+
+      - name: Build Windows host and QA graph
+        run: cmake --build native/build-qa --config Release --parallel
+
+      - name: Require 39-test Windows graph
+        shell: pwsh
+        run: |
+          $tests = ctest --test-dir native/build-qa -C Release -N | Out-String
+          $tests | Set-Content native/build-qa/DSP-QA-TEST-LIST.txt
+          if ($tests -notmatch 'Total Tests: 39') { throw 'Expected 39 native QA tests.' }
+          if ($tests -notmatch 'native_full_rack_qa_test') { throw 'Whole-rack QA test is not registered.' }
+
+      - name: Run complete Windows QA suite
+        shell: pwsh
+        run: |
+          ctest --test-dir native/build-qa -C Release --output-on-failure |
+            Tee-Object -FilePath native/build-qa/DSP-QA-TEST-RESULTS.txt
+
+      - name: Verify approved UI remained byte-identical
+        shell: pwsh
+        run: |
+          $changed = git diff --name-only -- src/App.tsx src/App.css src/components/effects/EffectModule.tsx src/components/effects/RailCModules.css src/ui/faceplateLayout.ts
+          if ($changed) { throw "DSP QA changed approved UI: $changed" }
+
+      - name: Assemble perfecting-pass package
+        shell: pwsh
+        run: |
+          $root = Join-Path $PWD 'artifact/CALCOTONE-Windows-DSP-QA'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $root 'web') | Out-Null
+          Copy-Item native/build-qa/Release/calcotone_host.exe $root
+          Copy-Item dist/* (Join-Path $root 'web') -Recurse -Force
+          Copy-Item native/*.bat $root -Force
+          Copy-Item native/README.md (Join-Path $root 'NATIVE-README.md') -Force
+          Copy-Item native/build-qa/DSP-QA-TEST-LIST.txt $root
+          Copy-Item native/build-qa/DSP-QA-TEST-RESULTS.txt $root
+          @"
+          CALCOTONE Windows DSP QA
+          ========================
+          Approved UI is SHA-256 protected and unchanged.
+          Strict Model D and hardware SPICE calibration passed before Windows packaging.
+          Native graph contains 39 tests, including whole-rack RAW, module health,
+          order rotation, deterministic-state, gain, limiter, and parameter stress checks.
+          "@ | Set-Content (Join-Path $root 'DSP-QA-README.txt')
+          Compress-Archive -Path $root -DestinationPath artifact/CALCOTONE-Windows-DSP-QA.zip -Force
+          Get-FileHash artifact/CALCOTONE-Windows-DSP-QA.zip -Algorithm SHA256 |
+            Select-Object Algorithm,Hash,Path | ConvertTo-Json |
+            Set-Content artifact/CALCOTONE-Windows-DSP-QA.sha256.json
+
+      - name: Upload DSP QA package
+        uses: actions/upload-artifact@v7
+        with:
+          name: CALCOTONE-Windows-DSP-QA
+          path: |
+            artifact/CALCOTONE-Windows-DSP-QA.zip
+            artifact/CALCOTONE-Windows-DSP-QA.sha256.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Commit registered QA only
+        shell: pwsh
+        run: |
+          git checkout -- native/src/wasapi_host.cpp native/src/control_server.cpp
+          Remove-Item -Recurse -Force native/build-qa,native/packages,dist,artifact -ErrorAction SilentlyContinue
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add native/CMakeLists.txt native/tests/native_full_rack_qa_test.cpp
+          $uiChanged = git diff --cached --name-only -- src/App.tsx src/App.css src/components/effects/EffectModule.tsx src/components/effects/RailCModules.css src/ui/faceplateLayout.ts
+          if ($uiChanged) { throw "Approved UI staged unexpectedly: $uiChanged" }
+          if (-not (git diff --cached --quiet)) {
+            git commit -m 'Register whole-rack native DSP quality gate'
+            git push origin HEAD:windows-recovery-1ccde1a
+          }
