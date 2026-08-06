@@ -6,6 +6,7 @@ on:
     paths:
       - scripts/materialize-final-parity-audit-cleanup.py
       - scripts/fix-final-stack-default-audit.py
+      - scripts/fix-portable-native-test-driver.py
       - .github/workflows/materialize-final-parity-audit-cleanup.yml
 
 concurrency:
@@ -18,7 +19,7 @@ permissions:
 jobs:
   cleanup:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Check out canonical source
         uses: actions/checkout@v6
@@ -38,6 +39,7 @@ jobs:
         run: |
           python scripts/materialize-final-parity-audit-cleanup.py
           python scripts/fix-final-stack-default-audit.py
+          python scripts/fix-portable-native-test-driver.py
           rm -f scripts/materialize-top-strip-random-controls.mjs
           rm -f .github/workflows/materialize-top-strip-random-controls.yml
 
@@ -53,11 +55,13 @@ jobs:
           grep -q "2026-08-05-approved-compact-native-1to1" src/ui/faceplateLayout.ts
           grep -q "defaultValue: 5" scripts/stack-amp-audit.mjs
           grep -q "model: 'calcotone' as StackAmpModel" scripts/stack-amp-audit.mjs
+          grep -q 'ctest --test-dir' native/Makefile
 
       - name: Remove one-time cleanup machinery
         run: |
           rm scripts/materialize-final-parity-audit-cleanup.py
           rm scripts/fix-final-stack-default-audit.py
+          rm scripts/fix-portable-native-test-driver.py
           rm .github/workflows/materialize-final-parity-audit-cleanup.yml
 
       - name: Commit clean canonical audits
