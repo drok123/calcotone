@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { getLatestVisualSpectrum } from '../../visual/VisualEngine';
 import type { VisualSpectrumSource } from '../../visual/SharedVisualSpectrum';
+import { canvasPixelRatio, getDisplayProfile, subscribeDisplayProfile } from '../../ui/displayProfile';
+import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
 
 export function SpectrumWaterfall({
   analyser,
@@ -15,20 +17,25 @@ export function SpectrumWaterfall({
     const canvasElement = canvasRef.current;
     if (!canvasElement) return;
 
-    const drawingContext = canvasElement.getContext('2d');
+    const drawingContext = canvasElement.getContext('2d', { alpha: false });
     if (!drawingContext) return;
 
     const canvas = canvasElement;
     const context = drawingContext;
 
-    let animationFrame = 0;
     let lastDrawTime = 0;
     let lastSampleTime = 0;
-    const drawInterval = 1000 / 30;
-    const sampleInterval = 42;
-    const historyLength = 24;
-    const pointCount = 36;
-    const history: Float32Array[] = Array.from({ length: historyLength }, () => new Float32Array(pointCount));
+    let cssWidth = 1;
+    let cssHeight = 1;
+    let pixelRatio = 1;
+    let visible = true;
+    const sampleInterval = 1000 / 30;
+    const historyLength = 28;
+    const pointCount = 48;
+    const history: Float32Array[] = Array.from(
+      { length: historyLength },
+      () => new Float32Array(pointCount),
+    );
     let historyCursor = 0;
     const frequencyBinCount = analyser?.frequencyBinCount ?? 0;
     const binStarts = new Uint16Array(pointCount);
@@ -47,14 +54,17 @@ export function SpectrumWaterfall({
 
     function resizeCanvas(): void {
       const bounds = canvas.getBoundingClientRect();
-      const ratio = Math.min(window.devicePixelRatio || 1, 2);
-      const width = Math.max(1, Math.round(bounds.width * ratio));
-      const height = Math.max(1, Math.round(bounds.height * ratio));
+      cssWidth = Math.max(1, bounds.width);
+      cssHeight = Math.max(1, bounds.height);
+      pixelRatio = canvasPixelRatio(cssWidth, cssHeight, 5_600_000);
+      const width = Math.max(1, Math.round(cssWidth * pixelRatio));
+      const height = Math.max(1, Math.round(cssHeight * pixelRatio));
 
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
       }
+      lastDrawTime = Number.NEGATIVE_INFINITY;
     }
 
     function collectSpectrum(): void {
@@ -82,7 +92,7 @@ export function SpectrumWaterfall({
       depthPosition: number,
       amplitude: number,
       width: number,
-      height: number
+      height: number,
     ): { x: number; y: number } {
       const horizonY = height * 0.19;
       const frontY = height * 0.88;
@@ -98,15 +108,15 @@ export function SpectrumWaterfall({
     function drawBackground(width: number, height: number): void {
       context.fillStyle = '#06110c';
       context.fillRect(0, 0, width, height);
-      context.strokeStyle = 'rgba(237, 242, 237, 0.12)';
+      context.strokeStyle = 'rgba(237, 242, 237, 0.13)';
       context.lineWidth = 1;
 
       const horizonY = height * 0.19;
       const frontY = height * 0.88;
       const centerX = width / 2;
 
-      for (let index = 0; index <= 12; index += 1) {
-        const position = index / 12;
+      for (let index = 0; index <= 14; index += 1) {
+        const position = index / 14;
         const frontX = width * 0.03 + position * width * 0.94;
         const horizonX = centerX + (position - 0.5) * width * 0.34;
         context.beginPath();
@@ -115,8 +125,8 @@ export function SpectrumWaterfall({
         context.stroke();
       }
 
-      for (let index = 0; index <= 18; index += 1) {
-        const normalized = index / 18;
+      for (let index = 0; index <= 20; index += 1) {
+        const normalized = index / 20;
         const curved = normalized ** 1.65;
         const y = horizonY + curved * (frontY - horizonY);
         const widthAtDepth = width * (0.34 + curved * 0.6);
@@ -126,7 +136,7 @@ export function SpectrumWaterfall({
         context.stroke();
       }
 
-      context.strokeStyle = 'rgba(237, 242, 237, 0.44)';
+      context.strokeStyle = 'rgba(237, 242, 237, 0.48)';
       context.lineWidth = Math.max(1, width / 500);
       context.strokeRect(1, 1, width - 2, height - 2);
     }
@@ -153,9 +163,9 @@ export function SpectrumWaterfall({
     }
 
     function drawLabels(width: number, height: number): void {
-      const fontSize = Math.max(8, Math.round(width / 42));
-      context.fillStyle = 'rgba(237, 242, 237, 0.88)';
-      context.font = `700 ${fontSize}px "Courier New", monospace`;
+      const fontSize = Math.max(9, Math.round(width / 40));
+      context.fillStyle = 'rgba(244, 247, 242, 0.94)';
+      context.font = `800 ${fontSize}px "IBM Plex Mono", "Courier New", monospace`;
       context.textBaseline = 'top';
       context.textAlign = 'left';
       context.fillText('SPECTRUM', width * 0.045, height * 0.045);
@@ -168,9 +178,10 @@ export function SpectrumWaterfall({
       context.fillText('HIGH', width * 0.955, height * 0.955);
     }
 
-    function draw(timestamp: number): void {
-      animationFrame = window.requestAnimationFrame(draw);
-      if (document.hidden || timestamp - lastDrawTime < drawInterval) return;
+    const render: ViewportRenderCallback = (timestamp) => {
+      if (!visible || document.hidden) return;
+      const drawInterval = 1000 / getDisplayProfile().visualFps;
+      if (timestamp - lastDrawTime < drawInterval) return;
       lastDrawTime = timestamp;
 
       if (timestamp - lastSampleTime >= sampleInterval) {
@@ -178,20 +189,31 @@ export function SpectrumWaterfall({
         lastSampleTime = timestamp;
       }
 
-      context.clearRect(0, 0, canvas.width, canvas.height);
-      drawBackground(canvas.width, canvas.height);
-      drawSpectrum(canvas.width, canvas.height);
-      drawLabels(canvas.width, canvas.height);
-    }
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      context.clearRect(0, 0, cssWidth, cssHeight);
+      drawBackground(cssWidth, cssHeight);
+      drawSpectrum(cssWidth, cssHeight);
+      drawLabels(cssWidth, cssHeight);
+    };
 
     const resizeObserver = new ResizeObserver(resizeCanvas);
     resizeObserver.observe(canvas);
+    const visibilityObserver = 'IntersectionObserver' in window
+      ? new IntersectionObserver((entries) => {
+          visible = entries[0]?.isIntersecting ?? true;
+          if (visible) lastDrawTime = Number.NEGATIVE_INFINITY;
+        }, { rootMargin: '80px' })
+      : null;
+    visibilityObserver?.observe(canvas);
+    const unsubscribeProfile = subscribeDisplayProfile(resizeCanvas);
+    const unsubscribeAnimation = subscribeViewportAnimation(render);
     resizeCanvas();
-    animationFrame = window.requestAnimationFrame(draw);
 
     return () => {
-      window.cancelAnimationFrame(animationFrame);
+      unsubscribeAnimation();
+      unsubscribeProfile();
       resizeObserver.disconnect();
+      visibilityObserver?.disconnect();
     };
   }, [analyser, running]);
 
