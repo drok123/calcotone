@@ -1,0 +1,32 @@
+name: Fix signed cubic SPICE parity
+
+on:
+  push:
+    branches: [agent/native-dsp-core]
+    paths:
+      - 'scripts/agent-fix-signed-cubic-spice.py'
+      - '.github/workflows/agent-fix-signed-cubic-spice.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/native-dsp-core
+          fetch-depth: 0
+      - name: Preserve signed summing cubic
+        run: python scripts/agent-fix-signed-cubic-spice.py
+      - name: Commit portable signed transfer
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Preserve signed cubic in SPICE reference"
+          git pull --rebase origin agent/native-dsp-core
+          git push origin HEAD:agent/native-dsp-core
