@@ -10,14 +10,22 @@ const scheduler = read('src/components/effects/viewportScheduler.ts');
 const moduleDisplay = read('src/components/ascii/PressureStyleDisplay.tsx');
 const ascii = read('src/components/ascii/AsciiArtEngine.tsx');
 const spectrum = read('src/components/meters/SpectrumWaterfall.tsx');
-const css = read('src/highDefinition1440.css');
+const hdCss = read('src/highDefinition1440.css');
+const faceplateCss = read('src/approvedFaceplate.css');
 
 for (const token of [
   "import './highDefinition1440.css'",
   "import { installDisplayProfile } from './ui/displayProfile'",
   'installDisplayProfile()',
+  "import './approvedFaceplate.css'",
 ]) {
   if (!main.includes(token)) failures.push(`main entry is missing ${token}`);
+}
+
+const appImport = main.indexOf("import App from './App.tsx'");
+const faceplateImport = main.indexOf("import './approvedFaceplate.css'");
+if (appImport < 0 || faceplateImport < appImport) {
+  failures.push('approved faceplate stylesheet must load after the App dependency graph');
 }
 
 for (const token of [
@@ -65,25 +73,39 @@ for (const token of [
   "html[data-display-profile='1440p']",
   'text-rendering: geometricPrecision',
   ':focus-visible',
-  'width: 64px !important',
-  'height: 64px !important',
-  'width: 46px !important',
-  'height: 46px !important',
-  'grid-template-rows: 66px 18px !important',
-  ".faceplate-layout-custom .faceplate-viewport-shell > .dsp-viewport",
-  'transform: none !important',
 ]) {
-  if (!css.includes(token)) failures.push(`1440p stylesheet is missing ${token}`);
+  if (!hdCss.includes(token)) failures.push(`1440p raster stylesheet is missing ${token}`);
 }
 
 for (const token of [
+  'width:64px!important;height:64px!important',
+  'width:46px!important;height:46px!important',
+  'min-height:88px!important;grid-template-rows:66px 18px!important;gap:3px!important',
+  '.faceplate-knob-slot>.knob-control{width:68px}',
+  '.rail-c-control-surface .faceplate-knob-slot{width:68px}',
+  '.faceplate-layout-stage{position:relative;display:block;width:100%;min-width:0;flex:0 0 auto;overflow:hidden}',
+  '.faceplate-viewport-shell{position:absolute;inset:0 0 auto;display:block;width:100%;min-width:0;overflow:hidden}',
+  '.faceplate-viewport-shell>.dsp-viewport{width:100%;height:100%!important;min-width:0;margin:0!important;flex:none!important}',
+  '.rail-c-module.faceplate-layout-custom .faceplate-viewport-shell>.synth-roll',
+  '.chaos-pad-shell .xy-pad{min-height:158px;height:158px',
+  '2026-08-06-uploaded-approved-faceplate-1440p-v1',
+]) {
+  if (!faceplateCss.includes(token)) failures.push(`approved faceplate stylesheet is missing ${token}`);
+}
+
+for (const token of [
+  '.knob-shell',
+  '.knob-face',
+  '.knob-control',
+  '.faceplate-viewport-shell',
+  '.faceplate-knob-slot',
   '@keyframes hd-optics-drift',
   'animation: hd-optics-drift',
   'transform: translateZ(0)',
   "html[data-display-profile='1440p'] :where(button, select, input)",
   "html[data-display-profile='1440p'] :where(.knob-label, .knob-value)",
 ]) {
-  if (css.includes(token)) failures.push(`1440p stylesheet must not mutate approved faceplate geometry via ${token}`);
+  if (hdCss.includes(token)) failures.push(`1440p raster stylesheet must not own approved faceplate geometry via ${token}`);
 }
 
 if (failures.length) {
@@ -92,4 +114,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('1440p UI fidelity audit passed · adaptive DPI/FPS retained with approved 64/46px controls and fixed viewport boxes');
+console.log('1440p UI fidelity audit passed · adaptive DPI/FPS separated from the unconditional uploaded faceplate contract');
