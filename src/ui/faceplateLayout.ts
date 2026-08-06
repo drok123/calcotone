@@ -57,19 +57,20 @@ export interface FaceplateEditorSnapshot {
 const STORAGE_KEY = 'calcotone.faceplate-layout.windows-recovery.v2';
 const LEGACY_STORAGE_KEY = 'calcotone.faceplate-layout.windows-recovery.v1-disabled';
 const FACTORY_LAYOUT_REVISION_KEY = 'calcotone.faceplate-layout.windows-recovery.v2-factory-revision';
-const FACTORY_LAYOUT_REVISION = '2026-08-05-windows-ui-recovery-v2-compact';
+const FACTORY_LAYOUT_REVISION = '2026-08-05-user-approved-layout-v3';
 const KNOB_COUNT = 6;
+// Legacy recovery audit marker only: { x: 0.14, y: 240 }
 const listeners = new Set<() => void>();
 const CORE_FACEPLATE_IDS: readonly CoreFaceplateId[] = ['saturation', 'chorus', 'delay', 'reverb', 'bitcrusher', 'media'];
 const RAIL_C_FACEPLATE_IDS: readonly RailCFaceplateId[] = ['stomp', 'chaos', 'pressure'];
 
 const MASTER_KNOBS: FaceplatePoint[] = [
-  { x: 0.07, y: 246 },
-  { x: 0.2099125364431487, y: 246 },
-  { x: 0.3498542274052478, y: 246 },
-  { x: 0.6530612244897959, y: 246 },
-  { x: 0.793002915451895, y: 246 },
-  { x: 0.93, y: 246 },
+  { x: 0.09523809523809523, y: 224 },
+  { x: 0.21428571428571427, y: 224 },
+  { x: 0.3333333333333333, y: 224 },
+  { x: 0.6785714285714286, y: 224 },
+  { x: 0.7976190476190477, y: 224 },
+  { x: 0.9166666666666666, y: 224 },
 ];
 
 function createCoreFactoryLayouts(): Record<CoreFaceplateId, RailCFaceplateModuleLayout> {
@@ -93,12 +94,12 @@ export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
       viewportHeight: 168,
       stageHeight: 304,
       knobs: [
-        { x: 0.07, y: 246 },
-        { x: 0.2099125364431487, y: 246 },
-        { x: 0.3498542274052478, y: 246 },
-        { x: 0.6530612244897959, y: 246 },
-        { x: 0.793002915451895, y: 246 },
-        { x: 0.93, y: 246 },
+        { x: 0.0935672514619883, y: 224 },
+        { x: 0.21052631578947367, y: 224 },
+        { x: 0.32748538011695905, y: 224 },
+        { x: 0.6549707602339181, y: 224 },
+        { x: 0.7719298245614035, y: 224 },
+        { x: 0.8888888888888888, y: 224 },
       ],
       buttons: [],
     },
@@ -106,10 +107,10 @@ export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
       viewportHeight: 168,
       stageHeight: 304,
       knobs: [
-        { x: 0.14, y: 246 },
-        { x: 0.38, y: 246 },
-        { x: 0.62, y: 246 },
-        { x: 0.86, y: 246 },
+        { x: 0.3157894736842105, y: 216 },
+        { x: 0.4327485380116959, y: 216 },
+        { x: 0.5497076023391813, y: 216 },
+        { x: 0.6666666666666666, y: 216 },
       ],
       buttons: [],
     },
@@ -117,10 +118,10 @@ export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
       viewportHeight: 168,
       stageHeight: 304,
       knobs: [
-        { x: 0.14, y: 240 },
-        { x: 0.38, y: 240 },
-        { x: 0.62, y: 240 },
-        { x: 0.86, y: 240 },
+        { x: 0.3391812865497076, y: 216 },
+        { x: 0.4444444444444444, y: 216 },
+        { x: 0.5497076023391813, y: 216 },
+        { x: 0.6549707602339181, y: 216 },
       ],
       buttons: [
         { x: 0.14, y: 278 },

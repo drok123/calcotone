@@ -3892,3 +3892,21 @@ body {
   right: max(0px, calc(50% - 42px)) !important;
   top: 39px !important;
 }
+
+
+/* User-approved recovery v3: every rack slot owns one identical chassis box. */
+.rail-modules {
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.rail-modules > .effect-module,
+.rail-modules > .rail-c-module {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  height: 100% !important;
+  box-sizing: border-box;
+  justify-self: stretch;
+  align-self: stretch;
+}
