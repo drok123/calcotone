@@ -76,8 +76,8 @@ img {
 
 html[data-display-profile='1440p'] {
   --ui-hairline: 1px;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: subpixel-antialiased;
+  -moz-osx-font-smoothing: auto;
 }
 
 html[data-display-profile='1440p'] body {
@@ -135,7 +135,6 @@ html[data-display-profile='1440p'] .module-header h3 {
 }
 
 html[data-display-profile='1440p'] :where(.knob-label, .knob-value) {
-  min-font-size: 12px;
   font-size: 0.79rem;
   font-weight: 850;
   letter-spacing: 0.035em;
