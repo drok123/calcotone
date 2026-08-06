@@ -6,6 +6,7 @@ on:
     branches: [windows-recovery-1ccde1a]
     paths:
       - .github/workflows/windows-dsp-forward-port.yml
+      - circuits/modules/static-hardware-stage-template.cir
 
 permissions:
   contents: write
