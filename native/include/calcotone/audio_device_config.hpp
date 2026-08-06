@@ -18,6 +18,7 @@ struct AudioDeviceConfig {
   unsigned output_left_channel{};
   unsigned output_right_channel{1};
   bool prefer_exclusive{true};
+  bool allow_shared_raw{true};
 };
 
 AudioDeviceConfig audio_device_config_from_environment() noexcept;

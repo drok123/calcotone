@@ -1,6 +1,7 @@
 #include "calcotone/native_processor.hpp"
 
 #include "calcotone/input_router.hpp"
+#include "calcotone/native_dream_engine.hpp"
 #include "calcotone/pitch_tracker.hpp"
 
 #include <algorithm>
@@ -33,7 +34,7 @@ struct NativeProcessor::Impl {
   explicit Impl(float sample_rate)
       : rate(std::clamp(sample_rate, 8'000.F, 384'000.F)), tuner(rate),
         stack_one(rate), stack_two(rate), rack_one(rate), rack_two(rate),
-        pressure_one(rate), pressure_two(rate), dream_one(rate), dream_two(rate) {
+        pressure_one(rate), pressure_two(rate), dream(rate, kBlockFrames) {
     std::array<unsigned, kOrderSlots> initial{};
     for (unsigned slot = 0; slot < kOrderSlots; ++slot) initial[slot] = slot;
     packed_order.store(pack_order(initial));
@@ -44,6 +45,7 @@ struct NativeProcessor::Impl {
     for (unsigned module = 0; module < kStackToken; ++module) {
       rack_one.set_bypassed(static_cast<RackModule>(module), true);
       rack_two.set_bypassed(static_cast<RackModule>(module), true);
+      module_bypassed[module].store(true, std::memory_order_relaxed);
     }
     pressure_one.set_bypassed(true);
     pressure_two.set_bypassed(true);
@@ -63,9 +65,11 @@ struct NativeProcessor::Impl {
                     input_gain.load(std::memory_order_relaxed));
     std::copy_n(lane_one_input.data(), frames * 2, lane_one_output.data());
     std::copy_n(lane_two_input.data(), frames * 2, lane_two_output.data());
+    dream.begin_block(frames);
     const bool stack_off = stack_bypassed.load(std::memory_order_relaxed);
     const auto stack_source = static_cast<StackInputSource>(stack_input.load(std::memory_order_relaxed));
     const auto order_snapshot = packed_order.load(std::memory_order_acquire);
+    bool any_rack_active = false;
     for (unsigned slot = 0; slot < kOrderSlots; ++slot) {
       const unsigned module = static_cast<unsigned>((order_snapshot >> (slot * 4U)) & 0xFU);
       if (module == kStackToken) {
@@ -74,14 +78,20 @@ struct NativeProcessor::Impl {
         if (!stack_off && stack_receives_lane(stack_source, 1))
           stack_two.process(lane_two_output.data(), lane_two_output.data(), frames);
       } else if (module < kStackToken) {
-        rack_one.process_module(static_cast<RackModule>(module), lane_one_output.data(), frames);
-        rack_two.process_module(static_cast<RackModule>(module), lane_two_output.data(), frames);
+        const auto rack_module = static_cast<RackModule>(module);
+        const bool enabled = !module_bypassed[module].load(std::memory_order_relaxed);
+        any_rack_active = any_rack_active || enabled;
+        dream.inject_route(rack_module, lane_one_output.data(), lane_two_output.data(), frames, enabled);
+        rack_one.process_module(rack_module, lane_one_output.data(), frames);
+        rack_two.process_module(rack_module, lane_two_output.data(), frames);
+        dream.capture_module(rack_module, lane_one_output.data(), lane_two_output.data(), frames, enabled);
       }
     }
     pressure_one.process(lane_one_output.data(), frames);
     pressure_two.process(lane_two_output.data(), frames);
-    dream_one.process(lane_one_output.data(), frames);
-    dream_two.process(lane_two_output.data(), frames);
+    const bool pressure_active = !pressure_bypassed.load(std::memory_order_relaxed);
+    dream.finish_block(lane_one_output.data(), lane_two_output.data(), frames,
+                       any_rack_active || !stack_off || pressure_active);
     const float gain = active.load(std::memory_order_relaxed)
         ? output_gain.load(std::memory_order_relaxed) : 0.F;
     std::uint64_t limited = 0;
@@ -91,16 +101,18 @@ struct NativeProcessor::Impl {
     publish_peak(pre_limiter_peak, peak);
   }
 
+
   float rate;
   PitchTracker tuner;
   StackAmp stack_one, stack_two;
   NativeRack rack_one, rack_two;
   NativePressure pressure_one, pressure_two;
-  NativeDreamBuffer dream_one, dream_two;
+  NativeDreamEngine dream;
   std::array<float, kBlockFrames * 2> lane_one_input{}, lane_two_input{};
   std::array<float, kBlockFrames * 2> lane_one_output{}, lane_two_output{};
   std::atomic<std::uint64_t> packed_order{};
-  std::atomic<bool> active{false}, stack_bypassed{true}, stomp_bypassed{true};
+  std::array<std::atomic<bool>, kStackToken> module_bypassed{};
+  std::atomic<bool> active{false}, stack_bypassed{true}, stomp_bypassed{true}, pressure_bypassed{true};
   std::atomic<unsigned> stack_input{1}, stomp_input{1};
   std::atomic<float> input_gain{1.F}, output_gain{.72F};
   std::atomic<std::uint64_t> output_limited_samples{};
@@ -124,6 +136,8 @@ bool NativeProcessor::set_pressure_parameter(std::string_view name, float value)
       && impl_->pressure_two.set_parameter(name, value);
 }
 void NativeProcessor::set_module_bypassed(RackModule module, bool bypassed) noexcept {
+  if (module < RackModule::Count)
+    impl_->module_bypassed[static_cast<unsigned>(module)].store(bypassed, std::memory_order_relaxed);
   if (module == RackModule::Stomp) {
     impl_->stomp_bypassed.store(bypassed, std::memory_order_relaxed); impl_->apply_stomp_route();
   } else {
@@ -131,6 +145,7 @@ void NativeProcessor::set_module_bypassed(RackModule module, bool bypassed) noex
   }
 }
 void NativeProcessor::set_pressure_bypassed(bool bypassed) noexcept {
+  impl_->pressure_bypassed.store(bypassed, std::memory_order_relaxed);
   impl_->pressure_one.set_bypassed(bypassed); impl_->pressure_two.set_bypassed(bypassed);
 }
 bool NativeProcessor::set_serial_order(std::span<const std::string_view> stages) noexcept {

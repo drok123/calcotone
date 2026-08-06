@@ -6,12 +6,14 @@
 
 namespace calcotone {
 
-class ArtifactChainProcessor final {
+inline constexpr std::size_t kStompModeCount = 14U;
+
+class StompParityProcessor final {
  public:
-  explicit ArtifactChainProcessor(float sample_rate = 48'000.F);
-  ~ArtifactChainProcessor();
-  ArtifactChainProcessor(const ArtifactChainProcessor&) = delete;
-  ArtifactChainProcessor& operator=(const ArtifactChainProcessor&) = delete;
+  explicit StompParityProcessor(float sample_rate = 48'000.F);
+  ~StompParityProcessor();
+  StompParityProcessor(const StompParityProcessor&) = delete;
+  StompParityProcessor& operator=(const StompParityProcessor&) = delete;
 
   void process(float* interleaved_stereo, std::size_t frames) noexcept;
   bool set_parameter(std::string_view name, float value) noexcept;

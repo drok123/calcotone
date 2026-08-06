@@ -1,41 +1,127 @@
 #include "calcotone/atmos_parity_processor.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
-#include <iostream>
+#include <cstddef>
 #include <vector>
 
-int main() {
-  constexpr float rate = 48'000.F;
-  constexpr std::size_t frames = 48'000;
-  std::vector<float> impulse(frames * 2, 0.F);
-  impulse[0] = .5F;
-  impulse[1] = .5F;
+namespace {
+constexpr float kRate = 48'000.F;
+constexpr std::size_t kBlock = 128U;
 
-  for (unsigned algorithm = 0; algorithm < 12; ++algorithm) {
-    calcotone::AtmosParityProcessor processor(rate);
-    assert(processor.set_parameter("algorithm", static_cast<float>(algorithm)));
-    assert(processor.set_parameter("decay", algorithm == 5 ? 12.F : 2.4F));
-    assert(processor.set_parameter("size", .52F));
-    assert(processor.set_parameter("color", .42F));
-    assert(processor.set_parameter("diffusion", .74F));
-    assert(processor.set_parameter("motion", .18F));
-    assert(processor.set_parameter("mix", 1.F));
+void process_blocks(calcotone::AtmosParityProcessor& processor, std::vector<float>& audio) {
+  const std::size_t frames = audio.size() / 2U;
+  for (std::size_t offset = 0; offset < frames; offset += kBlock)
+    processor.process(audio.data() + offset * 2U, std::min(kBlock, frames - offset));
+}
 
-    auto output = impulse;
-    processor.process(output.data(), output.size() / 2U);
-    assert(std::all_of(output.begin(), output.end(), [](float value) {
-      return std::isfinite(value) && std::abs(value) <= 1.2F;
-    }));
-    const float peak = *std::max_element(output.begin(), output.end(), [](float a, float b) {
-      return std::abs(a) < std::abs(b);
-    });
-    assert(std::abs(peak) > 1e-6F);
+void configure(calcotone::AtmosParityProcessor& processor, unsigned mode, float decay = 2.4F) {
+  assert(processor.set_parameter("algorithm", static_cast<float>(mode)));
+  assert(processor.set_parameter("decay", decay));
+  assert(processor.set_parameter("size", .52F));
+  assert(processor.set_parameter("color", .42F));
+  assert(processor.set_parameter("diffusion", .74F));
+  assert(processor.set_parameter("motion", .18F));
+  assert(processor.set_parameter("mix", 1.F));
+}
+
+std::vector<float> render(unsigned mode, float decay, std::size_t frames = 96'000U, bool left_only = false) {
+  calcotone::AtmosParityProcessor processor(kRate);
+  configure(processor, mode, decay);
+  std::vector<float> audio(frames * 2U, 0.F);
+  audio[0] = .5F;
+  audio[1] = left_only ? 0.F : .5F;
+  process_blocks(processor, audio);
+  for (float sample : audio) assert(std::isfinite(sample) && std::abs(sample) <= 1.2F);
+  return audio;
+}
+
+double energy(const std::vector<float>& audio, std::size_t first, std::size_t last, unsigned channel = 2U) {
+  double result = 0.0;
+  last = std::min(last, audio.size() / 2U);
+  for (std::size_t frame = first; frame < last; ++frame) {
+    if (channel == 2U) result += std::abs(static_cast<double>(audio[frame * 2U]))
+                                  + std::abs(static_cast<double>(audio[frame * 2U + 1U]));
+    else result += std::abs(static_cast<double>(audio[frame * 2U + channel]));
   }
+  return result;
+}
 
-  calcotone::AtmosParityProcessor processor(rate);
-  assert(!processor.set_parameter("not-a-parameter", .5F));
+void test_model_identities() {
+  std::array<double, 12> signatures{};
+  for (unsigned mode = 0; mode < signatures.size(); ++mode) {
+    const auto audio = render(mode, mode == 5U ? 12.F : 2.4F, 48'000U);
+    double signature = 0.0;
+    for (std::size_t index = 0; index < audio.size(); ++index)
+      signature += std::abs(static_cast<double>(audio[index])) * static_cast<double>((index % 251U) + 1U);
+    assert(signature > 1e-6);
+    signatures[mode] = signature;
+  }
+  for (std::size_t first = 0; first < signatures.size(); ++first)
+    for (std::size_t second = first + 1U; second < signatures.size(); ++second)
+      assert(std::abs(signatures[first] - signatures[second]) > 1e-4);
+}
+
+void test_early_reflections_precede_tail() {
+  const auto room = render(0U, 1.2F, 24'000U);
+  assert(energy(room, 250U, 950U) > 1e-5);
+}
+
+void test_decay_extends_tail() {
+  const auto short_decay = render(2U, .55F);
+  const auto long_decay = render(2U, 9.F);
+  const double short_tail = energy(short_decay, 30'000U, 90'000U);
+  const double long_tail = energy(long_decay, 30'000U, 90'000U);
+  assert(long_tail > short_tail * 1.35 + 1e-7);
+}
+
+void test_emt_mono_excitation_reaches_both_pickups() {
+  const auto emt = render(10U, 3.F, 48'000U, true);
+  const double left = energy(emt, 0U, 48'000U, 0U);
+  const double right = energy(emt, 0U, 48'000U, 1U);
+  assert(left > 1e-5 && right > left * .18);
+}
+
+void test_live_algorithm_switch_preserves_outgoing_tail() {
+  calcotone::AtmosParityProcessor processor(kRate);
+  configure(processor, 2U, 5.F);
+  std::vector<float> first(24'000U * 2U, 0.F);
+  first[0] = .6F; first[1] = -.35F;
+  process_blocks(processor, first);
+  assert(processor.set_parameter("algorithm", 1.F));
+  std::vector<float> transition(48'000U * 2U, 0.F);
+  process_blocks(processor, transition);
+  assert(energy(transition, 0U, 8'000U) > 1e-5);
+}
+
+void test_reset_is_deterministic() {
+  calcotone::AtmosParityProcessor processor(kRate);
+  configure(processor, 8U, 6.F);
+  auto render_once = [&processor]() {
+    std::vector<float> audio(48'000U * 2U, 0.F);
+    audio[0] = .41F; audio[1] = -.27F;
+    process_blocks(processor, audio);
+    return audio;
+  };
+  const auto first = render_once();
   processor.reset();
-  std::cout << "Atmos parity processor passed all twelve canonical models\n";
+  const auto second = render_once();
+  assert(first.size() == second.size());
+  for (std::size_t index = 0; index < first.size(); ++index)
+    assert(std::abs(first[index] - second[index]) < 1e-6F);
+}
+}  // namespace
+
+int main() {
+  test_model_identities();
+  test_early_reflections_precede_tail();
+  test_decay_extends_tail();
+  test_emt_mono_excitation_reaches_both_pickups();
+  test_live_algorithm_switch_preserves_outgoing_tail();
+  test_reset_is_deterministic();
+
+  calcotone::AtmosParityProcessor processor(kRate);
+  assert(!processor.set_parameter("not-a-parameter", .5F));
 }

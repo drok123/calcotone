@@ -10,12 +10,16 @@
 #include <propvarutil.h>
 #include <wrl/client.h>
 
+#include "calcotone/adaptive_fifo_safety.hpp"
+#include "calcotone/audio_client_property_plan.hpp"
+#include "calcotone/audio_restart_policy.hpp"
 #include "calcotone/audio_device_config.hpp"
 #include "calcotone/control_server.hpp"
 #include "calcotone/desktop_shell.hpp"
 #include "calcotone/elastic_stereo_fifo.hpp"
 #include "calcotone/ks_wavert_probe.hpp"
 #include "calcotone/native_processor.hpp"
+#include "calcotone/stream_recovery.hpp"
 
 #include <algorithm>
 #include <array>
@@ -23,6 +27,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <cstdio>
 #include <cstdint>
 #include <cwctype>
 #include <filesystem>
@@ -31,6 +36,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <stdexcept>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -38,6 +44,7 @@
 using Microsoft::WRL::ComPtr;
 namespace {
 constexpr std::size_t kProcessFrames = 2048;
+constexpr DWORD kAudioRestartExitCode = 75U;
 std::ofstream native_log;
 
 std::filesystem::path executable_directory() {
@@ -136,6 +143,7 @@ struct Endpoint {
   UINT32 period_frames{};
   UINT32 buffer_frames{};
   bool exclusive{};
+  bool raw{};
   std::string name;
   std::string id;
   Endpoint() = default;
@@ -143,10 +151,20 @@ struct Endpoint {
   Endpoint& operator=(const Endpoint&) = delete;
   Endpoint(Endpoint&& other) noexcept
       : client(std::move(other.client)), format(std::exchange(other.format, nullptr)),
-        event(std::exchange(other.event, nullptr)), period_frames(other.period_frames), buffer_frames(other.buffer_frames), exclusive(other.exclusive),
+        event(std::exchange(other.event, nullptr)), period_frames(other.period_frames), buffer_frames(other.buffer_frames),
+        exclusive(other.exclusive), raw(other.raw),
         name(std::move(other.name)), id(std::move(other.id)) {}
   Endpoint& operator=(Endpoint&&) = delete;
   ~Endpoint() { if (event) CloseHandle(event); if (format) CoTaskMemFree(format); }
+};
+
+class HResultError final : public std::runtime_error {
+ public:
+  HResultError(HRESULT result, std::string message)
+      : std::runtime_error(std::move(message)), result_(result) {}
+  [[nodiscard]] HRESULT result() const noexcept { return result_; }
+ private:
+  HRESULT result_;
 };
 
 void check(HRESULT result, const char* operation);
@@ -252,8 +270,50 @@ void check(HRESULT result, const char* operation) {
   if (FAILED(result)) {
     std::ostringstream message;
     message << operation << " failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(result) << ')';
-    throw std::runtime_error(message.str());
+    throw HResultError(result, message.str());
   }
+}
+
+calcotone::AudioRuntimeFault classify_audio_runtime_fault(HRESULT result) noexcept {
+  if (result == AUDCLNT_E_DEVICE_INVALIDATED)
+    return calcotone::AudioRuntimeFault::DeviceInvalidated;
+  if (result == AUDCLNT_E_RESOURCES_INVALIDATED)
+    return calcotone::AudioRuntimeFault::ResourcesInvalidated;
+  if (result == AUDCLNT_E_SERVICE_NOT_RUNNING)
+    return calcotone::AudioRuntimeFault::ServiceStopped;
+  if (result == AUDCLNT_E_BUFFER_ERROR)
+    return calcotone::AudioRuntimeFault::BufferError;
+  return calcotone::AudioRuntimeFault::Other;
+}
+
+[[noreturn]] void restart_audio_host(const char* operation, HRESULT result) noexcept {
+  char message[320]{};
+  const int count = std::snprintf(
+      message, sizeof(message),
+      "CALCOTONE audio stream requires recreation: %s (HRESULT 0x%08lx). "
+      "The launcher will restart the native host.\r\n",
+      operation, static_cast<unsigned long>(result));
+  const DWORD bytes = static_cast<DWORD>(std::clamp(count, 0, static_cast<int>(sizeof(message) - 1U)));
+  OutputDebugStringA(message);
+  const HANDLE error_output = GetStdHandle(STD_ERROR_HANDLE);
+  if (error_output && error_output != INVALID_HANDLE_VALUE) {
+    DWORD written = 0U;
+    WriteFile(error_output, message, bytes, &written, nullptr);
+  }
+  ExitProcess(kAudioRestartExitCode);
+}
+
+bool audio_call_succeeded(calcotone::AudioRestartPolicy& policy, HRESULT result,
+                          const char* operation,
+                          std::atomic<std::uint64_t>& error_counter) noexcept {
+  if (SUCCEEDED(result)) {
+    policy.observe_success();
+    return true;
+  }
+  error_counter.fetch_add(1U, std::memory_order_relaxed);
+  const auto decision = policy.observe(classify_audio_runtime_fault(result));
+  if (decision.restart) restart_audio_host(operation, result);
+  return false;
 }
 
 enum class SampleEncoding { Float32, Pcm16, Pcm24, Pcm24In32, Pcm32, Unsupported };
@@ -324,19 +384,34 @@ WAVEFORMATEXTENSIBLE pcm_candidate(const WAVEFORMATEX* basis, WORD container_bit
 
 Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow, bool prefer_exclusive,
                        std::string_view selector, std::uint32_t requested_frames,
-                       std::uint32_t requested_rate) {
+                       std::uint32_t requested_rate, bool allow_shared_raw) {
   Endpoint endpoint;
   ComPtr<IMMDevice> device = select_device(enumerator, flow, selector);
   describe_device(device.Get(), endpoint.id, endpoint.name);
-  const auto activate = [&]() {
+  const auto activate = [&](bool exclusive, bool allow_raw) {
     ComPtr<IAudioClient3> client;
     check(device->Activate(__uuidof(IAudioClient3), CLSCTX_ALL, nullptr, &client), "Activate IAudioClient3");
-    AudioClientProperties properties{};
-    properties.cbSize = sizeof(properties); properties.eCategory = AudioCategory_Media; properties.Options = AUDCLNT_STREAMOPTIONS_RAW;
-    if (FAILED(client->SetClientProperties(&properties))) { properties.Options = AUDCLNT_STREAMOPTIONS_NONE; check(client->SetClientProperties(&properties), "SetClientProperties"); }
+    endpoint.raw = false;
+    HRESULT last_result = E_FAIL;
+    const auto plan = calcotone::audio_client_property_plan(exclusive, allow_raw);
+    for (std::size_t attempt_index = 0; attempt_index < plan.count; ++attempt_index) {
+      const auto attempt = plan.attempts[attempt_index];
+      AudioClientProperties properties{};
+      properties.cbSize = sizeof(properties);
+      properties.bIsOffload = FALSE;
+      properties.eCategory = flow == eRender ? AudioCategory_Media : AudioCategory_Other;
+      properties.Options = attempt == calcotone::AudioClientPropertyAttempt::Raw
+          ? AUDCLNT_STREAMOPTIONS_RAW : AUDCLNT_STREAMOPTIONS_NONE;
+      last_result = client->SetClientProperties(&properties);
+      if (SUCCEEDED(last_result)) {
+        endpoint.raw = properties.Options == AUDCLNT_STREAMOPTIONS_RAW;
+        return client;
+      }
+    }
+    check(last_result, "SetClientProperties");
     return client;
   };
-  endpoint.client = activate();
+  endpoint.client = activate(prefer_exclusive, allow_shared_raw);
   check(endpoint.client->GetMixFormat(&endpoint.format), "GetMixFormat");
   const std::string endpoint_name = flow == eCapture ? "Capture" : "Render";
   HRESULT initialize = E_FAIL;
@@ -365,7 +440,7 @@ Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow, bool pre
       if (initialize == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED) {
         UINT32 aligned_frames{};
         if (SUCCEEDED(endpoint.client->GetBufferSize(&aligned_frames)) && aligned_frames > 0) {
-          endpoint.client = activate();
+          endpoint.client = activate(true, false);
           const auto aligned_hns = static_cast<REFERENCE_TIME>(
               std::ceil(10'000'000.0 * aligned_frames / candidate->nSamplesPerSec));
           initialize = endpoint.client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
@@ -385,24 +460,38 @@ Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow, bool pre
       }
       std::ostringstream reason; reason << endpoint_name << " exclusive initialization failed for " << format_description(candidate)
           << " (HRESULT 0x" << std::hex << static_cast<unsigned long>(initialize) << ')'; log_line(reason.str());
-      endpoint.client = activate();
+      endpoint.client = activate(true, false);
     }
   }
   if (!endpoint.exclusive) {
     // A failed exclusive Initialize can leave a driver-specific client in an
     // indeterminate state. Reactivate before the guaranteed shared fallback.
-    endpoint.client = activate();
-    UINT32 default_period{}, fundamental{}, minimum{}, maximum{};
-    check(endpoint.client->GetSharedModeEnginePeriod(endpoint.format, &default_period, &fundamental, &minimum, &maximum), "GetSharedModeEnginePeriod");
-    const UINT32 clamped = std::clamp<UINT32>(requested_frames, minimum, maximum);
-    endpoint.period_frames = fundamental > 0
-        ? minimum + ((clamped - minimum + fundamental - 1U) / fundamental) * fundamental
-        : clamped;
-    endpoint.period_frames = std::min(endpoint.period_frames, maximum);
-    initialize = endpoint.client->InitializeSharedAudioStream(AUDCLNT_STREAMFLAGS_EVENTCALLBACK, endpoint.period_frames, endpoint.format, nullptr);
-    if (FAILED(initialize) && default_period != endpoint.period_frames) {
-      endpoint.period_frames = default_period;
-      initialize = endpoint.client->InitializeSharedAudioStream(AUDCLNT_STREAMFLAGS_EVENTCALLBACK, endpoint.period_frames, endpoint.format, nullptr);
+    const auto initialize_shared = [&](bool allow_raw) {
+      endpoint.client = activate(false, allow_raw);
+      UINT32 default_period{}, fundamental{}, minimum{}, maximum{};
+      check(endpoint.client->GetSharedModeEnginePeriod(endpoint.format, &default_period, &fundamental, &minimum, &maximum), "GetSharedModeEnginePeriod");
+      const UINT32 clamped = std::clamp<UINT32>(requested_frames, minimum, maximum);
+      endpoint.period_frames = fundamental > 0
+          ? minimum + ((clamped - minimum + fundamental - 1U) / fundamental) * fundamental
+          : clamped;
+      endpoint.period_frames = std::min(endpoint.period_frames, maximum);
+      HRESULT shared_result = endpoint.client->InitializeSharedAudioStream(
+          AUDCLNT_STREAMFLAGS_EVENTCALLBACK, endpoint.period_frames, endpoint.format, nullptr);
+      if (FAILED(shared_result) && default_period != endpoint.period_frames) {
+        endpoint.period_frames = default_period;
+        shared_result = endpoint.client->InitializeSharedAudioStream(
+            AUDCLNT_STREAMFLAGS_EVENTCALLBACK, endpoint.period_frames, endpoint.format, nullptr);
+      }
+      return shared_result;
+    };
+    initialize = initialize_shared(allow_shared_raw);
+    if (FAILED(initialize) && endpoint.raw && allow_shared_raw) {
+      std::ostringstream reason;
+      reason << endpoint_name << " RAW shared initialization failed (HRESULT 0x"
+             << std::hex << static_cast<unsigned long>(initialize)
+             << "); retrying shared stream without RAW.";
+      log_line(reason.str());
+      initialize = initialize_shared(false);
     }
     check(initialize, "InitializeSharedAudioStream");
   }
@@ -417,12 +506,28 @@ Endpoint open_endpoint(IMMDeviceEnumerator* enumerator, EDataFlow flow, bool pre
 }
 
 
-void set_realtime_thread() noexcept {
-  DWORD task_index = 0;
-  if (HANDLE task = AvSetMmThreadCharacteristicsW(L"Pro Audio", &task_index)) {
-    AvSetMmThreadPriority(task, AVRT_PRIORITY_CRITICAL);
+class RealtimeThreadScope final {
+ public:
+  RealtimeThreadScope() noexcept {
+    task_ = AvSetMmThreadCharacteristicsW(L"Pro Audio", &task_index_);
+    if (task_) {
+      mmcss_ = true;
+      AvSetMmThreadPriority(task_, AVRT_PRIORITY_CRITICAL);
+    } else {
+      SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+    }
   }
-}
+  ~RealtimeThreadScope() {
+    if (task_) AvRevertMmThreadCharacteristics(task_);
+  }
+  RealtimeThreadScope(const RealtimeThreadScope&) = delete;
+  RealtimeThreadScope& operator=(const RealtimeThreadScope&) = delete;
+  [[nodiscard]] bool mmcss() const noexcept { return mmcss_; }
+ private:
+  HANDLE task_{};
+  DWORD task_index_{};
+  bool mmcss_{};
+};
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -457,16 +562,20 @@ int main(int argc, char** argv) {
       log_line("KS/WaveRT streaming is experimental and not armed in this build; continuing with safe WASAPI fallback.");
     log_line("Opening Windows capture endpoint...");
     Endpoint capture = open_endpoint(enumerator.Get(), eCapture, audio_config.prefer_exclusive,
-        audio_config.capture_device, audio_config.buffer_frames, audio_config.sample_rate);
+        audio_config.capture_device, audio_config.buffer_frames, audio_config.sample_rate,
+        audio_config.allow_shared_raw);
     log_line("Capture endpoint ready: " + capture.name + " | " + std::to_string(capture.format->nSamplesPerSec) + " Hz, " +
              std::to_string(capture.format->nChannels) + " channels, " + std::to_string(capture.period_frames) +
-             " frame period, " + (capture.exclusive ? "exclusive" : "shared") + " mode");
+             " frame period, " + (capture.exclusive ? "exclusive" : "shared") + " mode, " +
+             "category Other" + (capture.raw ? " RAW" : ""));
     log_line("Opening Windows render endpoint...");
     Endpoint render = open_endpoint(enumerator.Get(), eRender, audio_config.prefer_exclusive,
-        audio_config.render_device, audio_config.buffer_frames, audio_config.sample_rate);
+        audio_config.render_device, audio_config.buffer_frames, audio_config.sample_rate,
+        audio_config.allow_shared_raw);
     log_line("Render endpoint ready: " + render.name + " | " + std::to_string(render.format->nSamplesPerSec) + " Hz, " +
              std::to_string(render.format->nChannels) + " channels, " + std::to_string(render.period_frames) +
-             " frame period, " + (render.exclusive ? "exclusive" : "shared") + " mode");
+             " frame period, " + (render.exclusive ? "exclusive" : "shared") + " mode, " +
+             "category Media" + (render.raw ? " RAW" : ""));
     if (capture.format->nSamplesPerSec != render.format->nSamplesPerSec) throw std::runtime_error("Input/output sample rates differ; select matching Windows device formats first.");
     ComPtr<IAudioCaptureClient> capture_service;
     ComPtr<IAudioRenderClient> render_service;
@@ -485,14 +594,19 @@ int main(int argc, char** argv) {
     const float sample_rate = static_cast<float>(render.format->nSamplesPerSec);
     calcotone::NativeProcessor processor(sample_rate);
     NativeRecorder recorder(sample_rate);
-    const auto fifo_target_frames = static_cast<std::uint64_t>(
-        2U * std::max(capture.period_frames, render.buffer_frames));
+    const auto fifo_period_frames = static_cast<std::uint64_t>(
+        std::max(capture.period_frames, render.buffer_frames));
+    const auto fifo_target_frames = 2U * fifo_period_frames;
     // These blocks exceed Windows' default 1 MB stack when combined. Allocate
     // once during startup; the realtime threads never allocate or resize them.
     auto ring = std::make_unique<calcotone::ElasticStereoFifo>(fifo_target_frames);
+    calcotone::AdaptiveFifoSafety fifo_safety(
+        fifo_target_frames, fifo_period_frames, sample_rate);
     auto process = std::make_unique<ProcessBuffers>();
     std::atomic<bool> running{true};
     std::atomic<std::uint64_t> underruns{};
+    std::atomic<std::uint64_t> underrun_events{};
+    std::atomic<std::uint64_t> stream_recovery_events{};
     std::atomic<std::uint64_t> render_deadline_misses{};
     std::atomic<std::uint64_t> max_render_micros{};
     std::atomic<std::uint64_t> capture_discontinuities{};
@@ -503,6 +617,14 @@ int main(int argc, char** argv) {
     std::atomic<std::uint64_t> input_clips{};
     std::atomic<float> input_peak{};
     std::atomic<float> output_peak{};
+    std::atomic<bool> capture_mmcss{};
+    std::atomic<bool> render_mmcss{};
+    std::atomic<std::uint64_t> adaptive_fifo_target{fifo_target_frames};
+    std::atomic<std::uint64_t> adaptive_fifo_maximum{fifo_safety.maximum_target_frames()};
+    std::atomic<std::uint64_t> adaptive_fifo_raises{};
+    std::atomic<std::uint64_t> adaptive_fifo_relaxations{};
+    std::atomic<std::uint64_t> adaptive_fifo_instability{};
+    std::atomic<double> adaptive_fifo_stable_seconds{};
     const auto apply_command = [&](std::string_view line) -> std::string {
       if (line == "health" || line == "stats") {
         std::ostringstream status;
@@ -511,6 +633,9 @@ int main(int argc, char** argv) {
                << ",\"ksAvailable\":" << (ks_probe.kernel_streaming_available ? "true" : "false")
                << ",\"ksFilterCount\":" << ks_probe.filter_count << ",\"ksPinCount\":" << ks_probe.pin_count
                << ",\"audioMode\":\"" << (capture.exclusive && render.exclusive ? "exclusive" : capture.exclusive || render.exclusive ? "mixed" : "shared") << '"'
+               << ",\"sharedRawRequested\":" << (audio_config.allow_shared_raw ? "true" : "false")
+               << ",\"captureRaw\":" << (capture.raw ? "true" : "false")
+               << ",\"renderRaw\":" << (render.raw ? "true" : "false")
                << ",\"captureDevice\":\"" << json_escape(capture.name) << '"'
                << ",\"renderDevice\":\"" << json_escape(render.name) << '"'
                << ",\"requestedBufferFrames\":" << audio_config.buffer_frames
@@ -518,10 +643,21 @@ int main(int argc, char** argv) {
                << ",\"outputBufferFrames\":" << render.buffer_frames
                << ",\"inputChannels\":" << capture.format->nChannels
                << ",\"outputChannels\":" << render.format->nChannels
-               << ",\"estimatedPathMs\":" << (capture.period_frames + render.buffer_frames + fifo_target_frames) / sample_rate * 1000.
-               << ",\"underruns\":" << underruns.load() << ",\"overruns\":" << ring->overruns()
+               << ",\"estimatedPathMs\":" << (capture.period_frames + render.buffer_frames + adaptive_fifo_target.load()) / sample_rate * 1000.
+               << ",\"underruns\":" << underruns.load()
+               << ",\"underrunEvents\":" << underrun_events.load()
+               << ",\"streamRecoveryEvents\":" << stream_recovery_events.load()
+               << ",\"captureMmcss\":" << (capture_mmcss.load() ? "true" : "false")
+               << ",\"renderMmcss\":" << (render_mmcss.load() ? "true" : "false")
+               << ",\"overruns\":" << ring->overruns()
                << ",\"ringFrames\":" << ring->available()
-               << ",\"fifoTargetFrames\":" << fifo_target_frames
+               << ",\"fifoBaseTargetFrames\":" << fifo_target_frames
+               << ",\"fifoTargetFrames\":" << adaptive_fifo_target.load()
+               << ",\"fifoMaximumTargetFrames\":" << adaptive_fifo_maximum.load()
+               << ",\"fifoSafetyRaises\":" << adaptive_fifo_raises.load()
+               << ",\"fifoSafetyRelaxations\":" << adaptive_fifo_relaxations.load()
+               << ",\"fifoInstabilityEvents\":" << adaptive_fifo_instability.load()
+               << ",\"fifoStableSeconds\":" << adaptive_fifo_stable_seconds.load()
                << ",\"ringHighWaterFrames\":" << ring->high_water_frames()
                << ",\"clockCorrections\":" << ring->resampled_frames()
                << ",\"fifoReadRatio\":" << ring->read_ratio()
@@ -615,51 +751,87 @@ int main(int argc, char** argv) {
     log_line("Native control bridge is listening on 127.0.0.1:48157.");
 
     std::thread capture_thread([&] {
-      set_realtime_thread();
+      RealtimeThreadScope realtime;
+      capture_mmcss.store(realtime.mmcss(), std::memory_order_relaxed);
+      bool pending_stream_discontinuity = false;
+      calcotone::AudioRestartPolicy restart_policy;
       while (running.load(std::memory_order_relaxed)) {
         if (WaitForSingleObject(capture.event, 1000) != WAIT_OBJECT_0) continue;
         UINT32 packet = 0;
-        while (SUCCEEDED(capture_service->GetNextPacketSize(&packet)) && packet) {
+        while (running.load(std::memory_order_relaxed)) {
+          const HRESULT packet_result = capture_service->GetNextPacketSize(&packet);
+          if (!audio_call_succeeded(restart_policy, packet_result,
+                                    "capture GetNextPacketSize", capture_api_errors)) break;
+          if (packet == 0U) break;
           BYTE* bytes = nullptr; UINT32 frames = 0; DWORD flags = 0;
-          if (FAILED(capture_service->GetBuffer(&bytes, &frames, &flags, nullptr, nullptr))) {
-            capture_api_errors.fetch_add(1, std::memory_order_relaxed);
-            break;
-          }
-          if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY)
+          const HRESULT buffer_result = capture_service->GetBuffer(
+              &bytes, &frames, &flags, nullptr, nullptr);
+          if (!audio_call_succeeded(restart_policy, buffer_result,
+                                    "capture GetBuffer", capture_api_errors)) break;
+          if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) {
             capture_discontinuities.fetch_add(1, std::memory_order_relaxed);
-          if (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR)
+            pending_stream_discontinuity = true;
+          }
+          if (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) {
             capture_timestamp_errors.fetch_add(1, std::memory_order_relaxed);
+            pending_stream_discontinuity = true;
+          }
           if (flags & AUDCLNT_BUFFERFLAGS_SILENT)
             capture_silent_packets.fetch_add(1, std::memory_order_relaxed);
+          float packet_peak = 0.F;
+          std::uint64_t packet_clips = 0U;
           for (UINT32 frame = 0; frame < frames; ++frame) {
             const float left = flags & AUDCLNT_BUFFERFLAGS_SILENT ? 0.F
                 : decode_sample(bytes, frame * capture.format->nChannels + input_one_channel, capture_encoding);
             const float right = flags & AUDCLNT_BUFFERFLAGS_SILENT ? 0.F
                 : decode_sample(bytes, frame * capture.format->nChannels + input_two_channel, capture_encoding);
-            publish_peak(input_peak, std::max(std::abs(left), std::abs(right)));
-            if (std::abs(left) >= .999F) input_clips.fetch_add(1, std::memory_order_relaxed);
-            if (std::abs(right) >= .999F) input_clips.fetch_add(1, std::memory_order_relaxed);
-            ring->push(left, right);
+            packet_peak = std::max({packet_peak, std::abs(left), std::abs(right)});
+            packet_clips += std::abs(left) >= .999F ? 1U : 0U;
+            packet_clips += std::abs(right) >= .999F ? 1U : 0U;
+            const bool mark_discontinuity = pending_stream_discontinuity;
+            if (ring->push(left, right, mark_discontinuity)) {
+              if (mark_discontinuity) pending_stream_discontinuity = false;
+            } else {
+              // Carry an overrun boundary to the first sample that is
+              // successfully accepted after the full ring recovers.
+              pending_stream_discontinuity = true;
+            }
           }
-          if (FAILED(capture_service->ReleaseBuffer(frames)))
-            capture_api_errors.fetch_add(1, std::memory_order_relaxed);
+          publish_peak(input_peak, packet_peak);
+          if (packet_clips != 0U)
+            input_clips.fetch_add(packet_clips, std::memory_order_relaxed);
+          const HRESULT release_result = capture_service->ReleaseBuffer(frames);
+          if (!audio_call_succeeded(restart_policy, release_result,
+                                    "capture ReleaseBuffer", capture_api_errors)) break;
         }
       }
     });
 
     std::thread render_thread([&] {
-      set_realtime_thread();
-      float last_left = 0.F, last_right = 0.F;
+      RealtimeThreadScope realtime;
+      render_mmcss.store(realtime.mmcss(), std::memory_order_relaxed);
+      calcotone::StreamRecovery recovery(sample_rate);
+      calcotone::AudioRestartPolicy restart_policy;
+      std::uint64_t observed_overruns = ring->overruns();
+      const auto publish_fifo_safety = [&] {
+        const auto state = fifo_safety.state();
+        adaptive_fifo_target.store(state.target_frames, std::memory_order_relaxed);
+        adaptive_fifo_maximum.store(state.maximum_target_frames, std::memory_order_relaxed);
+        adaptive_fifo_raises.store(state.raises, std::memory_order_relaxed);
+        adaptive_fifo_relaxations.store(state.relaxations, std::memory_order_relaxed);
+        adaptive_fifo_instability.store(state.instability_events, std::memory_order_relaxed);
+        adaptive_fifo_stable_seconds.store(state.stable_seconds, std::memory_order_relaxed);
+      };
+      publish_fifo_safety();
       const auto render_deadline_micros = static_cast<std::uint64_t>(
           render.period_frames / sample_rate * 1'000'000.);
       while (running.load(std::memory_order_relaxed)) {
         if (WaitForSingleObject(render.event, 1000) != WAIT_OBJECT_0) continue;
         const auto render_started = std::chrono::steady_clock::now();
         UINT32 padding = 0;
-        if (FAILED(render.client->GetCurrentPadding(&padding))) {
-          render_api_errors.fetch_add(1, std::memory_order_relaxed);
-          continue;
-        }
+        const HRESULT padding_result = render.client->GetCurrentPadding(&padding);
+        if (!audio_call_succeeded(restart_policy, padding_result,
+                                  "render GetCurrentPadding", render_api_errors)) continue;
         if (padding > render.buffer_frames) {
           render_api_errors.fetch_add(1, std::memory_order_relaxed);
           continue;
@@ -668,33 +840,47 @@ int main(int argc, char** argv) {
         while (remaining) {
           const UINT32 block = std::min<UINT32>(remaining, kProcessFrames);
           BYTE* bytes = nullptr;
-          if (FAILED(render_service->GetBuffer(block, &bytes))) {
-            render_api_errors.fetch_add(1, std::memory_order_relaxed);
-            break;
-          }
+          const HRESULT buffer_result = render_service->GetBuffer(block, &bytes);
+          if (!audio_call_succeeded(restart_policy, buffer_result,
+                                    "render GetBuffer", render_api_errors)) break;
+          std::uint64_t block_underrun_frames = 0U;
+          std::uint64_t block_underrun_events = 0U;
+          std::uint64_t block_stream_recoveries = 0U;
           for (UINT32 frame = 0; frame < block; ++frame) {
-            float left = 0.F, right = 0.F;
-            if (ring->pull(left, right)) {
-              last_left = left;
-              last_right = right;
-            } else {
-              underruns.fetch_add(1, std::memory_order_relaxed);
-              // Preserve waveform continuity when capture wakes late. A short
-              // decay is much less audible than injecting a hard digital zero.
-              last_left *= .995F;
-              last_right *= .995F;
-              left = last_left;
-              right = last_right;
+            float captured_left = 0.F, captured_right = 0.F;
+            bool stream_discontinuity = false;
+            const bool pulled = ring->pull(captured_left, captured_right, &stream_discontinuity);
+            const bool valid = pulled && std::isfinite(captured_left) && std::isfinite(captured_right);
+            if (stream_discontinuity) {
+              recovery.mark_discontinuity();
+              ++block_stream_recoveries;
             }
-            process->capture_input[frame * 2] = left; process->capture_input[frame * 2 + 1] = right;
+            float left = 0.F, right = 0.F;
+            if (recovery.process(valid, captured_left, captured_right, left, right))
+              ++block_underrun_events;
+            if (!valid) ++block_underrun_frames;
+            process->capture_input[frame * 2] = left;
+            process->capture_input[frame * 2 + 1] = right;
           }
+          if (block_underrun_frames != 0U)
+            underruns.fetch_add(block_underrun_frames, std::memory_order_relaxed);
+          if (block_underrun_events != 0U)
+            underrun_events.fetch_add(block_underrun_events, std::memory_order_relaxed);
+          if (block_stream_recoveries != 0U)
+            stream_recovery_events.fetch_add(block_stream_recoveries, std::memory_order_relaxed);
+          const auto current_overruns = ring->overruns();
+          const auto block_overruns = current_overruns - observed_overruns;
+          observed_overruns = current_overruns;
+          if (fifo_safety.observe_block(block, block_underrun_events,
+                  block_stream_recoveries, block_overruns))
+            ring->set_target_frames(fifo_safety.target_frames());
           processor.process(process->capture_input.data(), process->mixed_output.data(), block);
           recorder.capture(process->mixed_output.data(), block);
+          float block_output_peak = 0.F;
           for (UINT32 frame = 0; frame < block; ++frame) {
-            const float frame_peak = std::max(
+            block_output_peak = std::max({block_output_peak,
                 std::abs(process->mixed_output[frame * 2]),
-                std::abs(process->mixed_output[frame * 2 + 1]));
-            publish_peak(output_peak, frame_peak);
+                std::abs(process->mixed_output[frame * 2 + 1])});
             for (WORD channel = 0; channel < render.format->nChannels; ++channel) {
               float value = 0.F;
               if (output_left_channel == output_right_channel && channel == output_left_channel)
@@ -704,8 +890,10 @@ int main(int argc, char** argv) {
               encode_sample(bytes, frame * render.format->nChannels + channel, render_encoding, value);
             }
           }
-          if (FAILED(render_service->ReleaseBuffer(block, 0)))
-            render_api_errors.fetch_add(1, std::memory_order_relaxed);
+          publish_peak(output_peak, block_output_peak);
+          const HRESULT release_result = render_service->ReleaseBuffer(block, 0);
+          if (!audio_call_succeeded(restart_policy, release_result,
+                                    "render ReleaseBuffer", render_api_errors)) break;
           remaining -= block;
         }
         const auto render_micros = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
@@ -713,8 +901,12 @@ int main(int argc, char** argv) {
         auto previous_max = max_render_micros.load(std::memory_order_relaxed);
         while (render_micros > previous_max && !max_render_micros.compare_exchange_weak(
             previous_max, render_micros, std::memory_order_relaxed, std::memory_order_relaxed)) {}
-        if (render_micros >= render_deadline_micros)
+        if (render_micros >= render_deadline_micros) {
           render_deadline_misses.fetch_add(1, std::memory_order_relaxed);
+          if (fifo_safety.observe_deadline_miss())
+            ring->set_target_frames(fifo_safety.target_frames());
+        }
+        publish_fifo_safety();
       }
     });
 
@@ -778,6 +970,21 @@ int main(int argc, char** argv) {
     capture_thread.join(); render_thread.join();
     capture.client->Stop(); render.client->Stop(); CoUninitialize();
     return 0;
+  } catch (const HResultError& error) {
+    calcotone::AudioRestartPolicy restart_policy;
+    if (restart_policy.observe(classify_audio_runtime_fault(error.result())).restart) {
+      const std::string message = "CALCOTONE audio endpoint became unavailable; requesting supervised restart: "
+          + std::string(error.what());
+      std::cerr << message << std::endl;
+      if (native_log) native_log << message << std::endl;
+      CoUninitialize();
+      return static_cast<int>(kAudioRestartExitCode);
+    }
+    const std::string message = "CALCOTONE native host error: " + std::string(error.what());
+    std::cerr << message << std::endl;
+    if (native_log) native_log << message << std::endl;
+    MessageBoxA(nullptr, message.c_str(), "CALCOTONE native host error", MB_OK | MB_ICONERROR);
+    CoUninitialize(); return 1;
   } catch (const std::exception& error) {
     const std::string message = "CALCOTONE native host error: " + std::string(error.what());
     std::cerr << message << std::endl;
