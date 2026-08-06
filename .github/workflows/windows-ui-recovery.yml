@@ -41,20 +41,28 @@ jobs:
       - name: Verify UI recovery invariants
         shell: pwsh
         run: |
+          $app = Get-Content src/App.tsx -Raw
           $css = Get-Content src/App.css -Raw
           $rail = Get-Content src/components/effects/RailCModules.css -Raw
           $effect = Get-Content src/components/effects/EffectModule.tsx -Raw
           $layout = Get-Content src/ui/faceplateLayout.ts -Raw
 
           if ($css -notmatch 'Native faceplate geometry contract') { throw 'Paired custom faceplate CSS is missing.' }
-          if ($css -notmatch 'faceplate-knob-slot > \.knob-control \{\s*width: 76px;') { throw 'Core control width is not restored.' }
-          if ($rail -notmatch 'rail-c-control-surface \.faceplate-knob-slot \{\s*width: 76px;') { throw 'Rail C control width is not restored.' }
+          if ($css -notmatch 'faceplate-knob-slot > \.knob-control \{\s*width: 68px;') { throw 'Core faceplate slot width is not compact.' }
+          if ($css -notmatch '--control-diameter: 64px;') { throw '64px knob shell contract is missing.' }
+          if ($css -notmatch '--control-face: 46px;') { throw '46px knob face contract is missing.' }
+          if ($rail -notmatch 'rail-c-control-surface \.faceplate-knob-slot \{\s*width: 68px;') { throw 'Rail C control width is not compact.' }
           if ($effect -notmatch 'const customFaceplate = faceplateEditor\.layout\.custom;') { throw 'Shared faceplate ownership is missing.' }
-          if ($layout -notmatch 'calcotone\.faceplate-layout\.windows-recovery\.v1') { throw 'Fresh recovery storage namespace is missing.' }
-          if ($layout -match 'stageHeight: 292,') { throw 'Clipping-prone 292px stage remains.' }
-          if ($layout -notmatch 'stageHeight: 320,') { throw 'Recovery stage height is missing.' }
-          if ($layout -notmatch 'pressure: \{\s*viewportHeight: 168,\s*stageHeight: 320,') { throw 'Pressure web geometry is missing.' }
+          if ($layout -notmatch 'calcotone\.faceplate-layout\.windows-recovery\.v2') { throw 'Fresh compact recovery storage namespace is missing.' }
+          if ($layout -match 'stageHeight: 320,|stageHeight: 292,') { throw 'Old clipping-prone stage remains.' }
+          if ($layout -notmatch 'stageHeight: 304,') { throw 'Compact 304px recovery stage is missing.' }
+          if ($layout -notmatch 'pressure: \{\s*viewportHeight: 168,\s*stageHeight: 304,') { throw 'Pressure compact geometry is missing.' }
           if ($layout -notmatch '\{ x: 0\.14, y: 240 \}') { throw 'Pressure control row is not restored.' }
+          if ($app -notmatch 'SIGNAL RANDOM</button>\s*<span className="utility-button-divider"[^>]*\/>\s*<button[^>]*>EXPLAIN</button>\s*<FaceplateLayoutEditor \/>\s*<button[^>]*>DSP</button>') { throw 'EXPLAIN / LAYOUT / DSP are not grouped beside SIGNAL RANDOM.' }
+          if ($app -notmatch 'HARDWARE_SWEET_SPOTS') { throw 'Hardware sweet-spot recipes are missing.' }
+          if ($app -notmatch 'RANDOM_PROFILE_RECIPES') { throw 'Coordinated random profiles are missing.' }
+          if ($app -notmatch 'scheduleLocalRandomReveal\(targets, activeRailC\);\s*return;') { throw 'Native random does not drive staged UI targets.' }
+          if ($app -notmatch 'guardRandomParameter') { throw 'Random safety guards are missing.' }
 
       - name: Build production faceplate
         run: npm run build
@@ -110,7 +118,7 @@ jobs:
           1. Extract the entire ZIP into a new folder.
           2. Do not copy it over an older CALCOTONE folder.
           3. Double-click START-CALCOTONE-NATIVE.bat.
-          4. Check knob size, all labels, dropdown placement, Rail C, and Pressure before testing DSP.
+          4. Check the compact toolbar, knob size, labels, random knob updates, Rail C, Pressure, and fullscreen before testing DSP.
 
           Recovery source: $env:GITHUB_SHA
           "@ | Set-Content (Join-Path $packageRoot 'UI-RECOVERY-README.txt')
@@ -122,14 +130,17 @@ jobs:
             builtAtUtc = (Get-Date).ToUniversalTime().ToString('o')
             uiOnly = $true
             dspChanges = 'none'
-            storageNamespace = 'calcotone.faceplate-layout.windows-recovery.v1'
+            storageNamespace = 'calcotone.faceplate-layout.windows-recovery.v2'
             faceplate = [ordered]@{
-              controlWidth = 76
+              knobShell = 64
+              controlSlot = 68
               viewportHeight = 168
-              stageHeight = 320
+              stageHeight = 304
               pressureControlY = 240
               staleLayoutMigration = 'disabled'
             }
+            toolbar = 'Explain, Layout, and DSP grouped immediately after Signal Random'
+            random = 'hardware sweet spots, guarded profiles, mutation, and staged native UI target reveal'
           }
           $manifest | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $packageRoot 'UI-RECOVERY-MANIFEST.json')
 
@@ -157,8 +168,8 @@ jobs:
           Remove-Item -Recurse -Force artifact -ErrorAction SilentlyContinue
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/App.css src/components/effects/EffectModule.tsx src/components/effects/RailCModules.css src/ui/faceplateLayout.ts
+          git add src/App.tsx src/App.css src/components/effects/EffectModule.tsx src/components/effects/RailCModules.css src/ui/faceplateLayout.ts
           if (-not (git diff --cached --quiet)) {
-            git commit -m "Restore stable Windows faceplate geometry"
+            git commit -m "Compact recovery toolbar and restore native random UI flow"
             git push origin HEAD:windows-recovery-1ccde1a
           }
