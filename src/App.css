@@ -2019,9 +2019,9 @@ body.knob-is-dragging .knob-shell:focus { transform: translateY(1px) scale(.985)
   --side-input: clamp(220px, 17vw, 250px);
   --side-motion: clamp(260px, 20vw, 300px);
   --module-pad: 14px;
-  --control-diameter: 76px;
-  --control-face: 54px;
-  --control-cell: 94px;
+  --control-diameter: 64px;
+  --control-face: 46px;
+  --control-cell: 80px;
 }
 
 .main-grid {
@@ -3725,7 +3725,7 @@ body {
 }
 
 .faceplate-knob-slot > .knob-control {
-  width: 76px;
+  width: 68px;
 }
 
 .faceplate-layout-editing .faceplate-control-surface,
@@ -3798,4 +3798,97 @@ body {
     padding-left: 6px;
     padding-right: 6px;
   }
+}
+
+
+/* Windows UI recovery v2: one compact toolbar and one final knob scale. */
+.control-strip {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start !important;
+  min-height: 54px;
+  height: 54px;
+  gap: 12px;
+  padding: 6px 18px;
+  overflow: visible;
+}
+
+.control-strip-actions {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.top-random-actions {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  margin: 0;
+  gap: 5px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.top-random-actions .profiler-toggle,
+.top-random-actions .layout-editor-toggle,
+.top-random-actions .random-profile-selector select {
+  flex: 0 0 auto;
+  height: 28px;
+  min-height: 28px;
+}
+
+.utility-button-divider {
+  flex: 0 0 1px;
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: rgba(190, 202, 196, .20);
+  box-shadow: 1px 0 rgba(0, 0, 0, .55);
+}
+
+.control-strip-actions > .audio-backend-badge {
+  flex: 0 0 auto;
+}
+
+/* Final declarations intentionally override the older fixed-canvas 84px knobs. */
+.effect-module .knob-shell,
+.rail-c-module .knob-shell {
+  width: 64px !important;
+  height: 64px !important;
+}
+
+.effect-module .knob-face,
+.rail-c-module .knob-face {
+  width: 46px !important;
+  height: 46px !important;
+}
+
+.effect-module .knob-control,
+.rail-c-module .knob-control {
+  min-height: 88px !important;
+  grid-template-rows: 66px 18px !important;
+  gap: 3px !important;
+}
+
+.effect-module .knob-label,
+.rail-c-module .knob-label {
+  font-size: .62rem !important;
+  line-height: 1 !important;
+}
+
+.effect-module .knob-indicator,
+.rail-c-module .knob-indicator {
+  height: 13px !important;
+}
+
+.effect-module .knob-patch-jack,
+.rail-c-module .knob-patch-jack {
+  right: max(0px, calc(50% - 42px)) !important;
+  top: 39px !important;
 }

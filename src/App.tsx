@@ -1349,6 +1349,24 @@ export default function App() {
   }
 
 
+  function scheduleLocalRandomReveal(
+    targets: Map<string, ModuleState>,
+    activeRailC: readonly RailCRandomModuleId[]
+  ): void {
+    const orderedTargets = [
+      ...RANDOM_UI_EFFECT_ORDER.filter((effectId) => targets.has(effectId)),
+      ...activeRailC,
+    ];
+    for (const [index, effectId] of orderedTargets.entries()) {
+      offlineRandomTimersRef.current.push(
+        window.setTimeout(() => revealRandomUiModule(effectId), 48 + index * 96)
+      );
+    }
+    offlineRandomTimersRef.current.push(
+      window.setTimeout(() => completeRandomUiFlow(), 72 + orderedTargets.length * 96)
+    );
+  }
+
   function randomizeActiveModules(profile: RandomizationProfile = randomProfile): void {
     const activeModules = modules.filter((module) => module.enabled && module.available);
     const activeRailC = getActiveRailCRandomModuleIds();
@@ -1466,6 +1484,10 @@ export default function App() {
           for (const parameter of module.parameters)
             void nativeBridgeRef.current.commandLine(`param ${module.id} ${parameter.id} ${toDspParameterValue(module.id, parameter.id, parameter.value)}`);
         }
+        // Native C++ receives the exact guarded targets immediately and performs its
+        // own click-free smoothing. Drive the same staged UI reveal locally so the
+        // visible modes and knobs always land on those exact targets.
+        scheduleLocalRandomReveal(targets, activeRailC);
         return;
       }
       const engine = engineRef.current;
@@ -2003,14 +2025,15 @@ export default function App() {
               </button>
               <button type="button" className="profiler-toggle randomizer-toggle mutate-randomizer-toggle" onClick={() => randomizeActiveModules('mutate')} title="Drift every active control by at most 10% while preserving machines and patch identity">MUTATE 10%</button>
               <button type="button" className="profiler-toggle signal-randomizer-toggle" onClick={randomizeSignalOrder} title="Randomize the order of both three-module signal rails">SIGNAL RANDOM</button>
+              <span className="utility-button-divider" aria-hidden="true" />
+              <button type="button" className={`profiler-toggle ${explainMode ? 'active' : ''}`} aria-pressed={explainMode} onClick={() => setExplainMode((value) => !value)}>EXPLAIN</button>
+              <FaceplateLayoutEditor />
+              <button type="button" className={`profiler-toggle ${profilerOpen ? 'active' : ''}`} aria-pressed={profilerOpen} onClick={() => setProfilerOpen((open) => !open)}>DSP</button>
             </div>
             <span className={`audio-backend-badge ${audioBackend ?? 'detecting'}`} title="Active audio processing backend">
               <i aria-hidden="true" />
               {audioBackend === 'native' ? 'NATIVE WASAPI' : audioBackend === 'web' ? 'WEB AUDIO' : 'AUDIO AUTO'}
             </span>
-            <button type="button" className={`profiler-toggle ${explainMode ? 'active' : ''}`} aria-pressed={explainMode} onClick={() => setExplainMode((value) => !value)}>EXPLAIN</button>
-            <FaceplateLayoutEditor />
-            <button type="button" className={`profiler-toggle ${profilerOpen ? 'active' : ''}`} aria-pressed={profilerOpen} onClick={() => setProfilerOpen((open) => !open)}>DSP</button>
           </div>
         </section>
 

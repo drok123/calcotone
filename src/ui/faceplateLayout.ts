@@ -54,10 +54,10 @@ export interface FaceplateEditorSnapshot {
   canRedo: boolean;
 }
 
-const STORAGE_KEY = 'calcotone.faceplate-layout.windows-recovery.v1';
-const LEGACY_STORAGE_KEY = 'calcotone.faceplate-layout.windows-recovery.legacy-disabled';
-const FACTORY_LAYOUT_REVISION_KEY = 'calcotone.faceplate-layout.windows-recovery.factory-revision';
-const FACTORY_LAYOUT_REVISION = '2026-08-05-windows-ui-recovery-v1';
+const STORAGE_KEY = 'calcotone.faceplate-layout.windows-recovery.v2';
+const LEGACY_STORAGE_KEY = 'calcotone.faceplate-layout.windows-recovery.v1-disabled';
+const FACTORY_LAYOUT_REVISION_KEY = 'calcotone.faceplate-layout.windows-recovery.v2-factory-revision';
+const FACTORY_LAYOUT_REVISION = '2026-08-05-windows-ui-recovery-v2-compact';
 const KNOB_COUNT = 6;
 const listeners = new Set<() => void>();
 const CORE_FACEPLATE_IDS: readonly CoreFaceplateId[] = ['saturation', 'chorus', 'delay', 'reverb', 'bitcrusher', 'media'];
@@ -75,7 +75,7 @@ const MASTER_KNOBS: FaceplatePoint[] = [
 function createCoreFactoryLayouts(): Record<CoreFaceplateId, RailCFaceplateModuleLayout> {
   return Object.fromEntries(CORE_FACEPLATE_IDS.map((id) => [id, {
     viewportHeight: 168,
-    stageHeight: 320,
+    stageHeight: 304,
     knobs: MASTER_KNOBS.map((point) => ({ ...point })),
     buttons: [],
   }])) as unknown as Record<CoreFaceplateId, RailCFaceplateModuleLayout>;
@@ -85,13 +85,13 @@ export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
   version: 2,
   custom: true,
   viewportHeight: 168,
-  stageHeight: 320,
+  stageHeight: 304,
   knobs: MASTER_KNOBS.map((point) => ({ ...point })),
   core: createCoreFactoryLayouts(),
   railC: {
     stomp: {
       viewportHeight: 168,
-      stageHeight: 320,
+      stageHeight: 304,
       knobs: [
         { x: 0.07, y: 246 },
         { x: 0.2099125364431487, y: 246 },
@@ -104,7 +104,7 @@ export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
     },
     chaos: {
       viewportHeight: 168,
-      stageHeight: 320,
+      stageHeight: 304,
       knobs: [
         { x: 0.14, y: 246 },
         { x: 0.38, y: 246 },
@@ -115,7 +115,7 @@ export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
     },
     pressure: {
       viewportHeight: 168,
-      stageHeight: 320,
+      stageHeight: 304,
       knobs: [
         { x: 0.14, y: 240 },
         { x: 0.38, y: 240 },
