@@ -496,7 +496,7 @@ function opAmpExpression(drive, asymmetry) {
   const asym = Math.round(asymmetry * 512) / 512;
   const positiveDrive = safeDrive * (1 + asym);
   const negativeDrive = safeDrive * (1 - asym * 0.62);
-  return `if(v(in)>=0,tanh(v(in)*${spiceNumber(positiveDrive)})/tanh(${spiceNumber(positiveDrive)}),tanh(v(in)*${spiceNumber(negativeDrive)})/tanh(${spiceNumber(negativeDrive)}))`;
+  return `(u(v(in))*tanh(v(in)*${spiceNumber(positiveDrive)})/tanh(${spiceNumber(positiveDrive)}))+(u(-v(in))*tanh(v(in)*${spiceNumber(negativeDrive)})/tanh(${spiceNumber(negativeDrive)}))`;
 }
 
 function summingExpression(compression, asymmetry) {
@@ -508,7 +508,7 @@ function summingExpression(compression, asymmetry) {
 function transformerExpression(drive, asymmetry) {
   const safeDrive = Math.max(1, Math.round(drive * 128) / 128);
   const asym = Math.round(asymmetry * 512) / 512;
-  return `min(1,max(-1,0.985*tanh((v(in)+${spiceNumber(asym)}*v(in)^2*if(v(in)>=0,1,-0.42))*${spiceNumber(safeDrive)})/tanh(${spiceNumber(safeDrive)})))`;
+  return `min(1,max(-1,0.985*tanh((v(in)+${spiceNumber(asym)}*v(in)^2*(1.42*u(v(in))-0.42))*${spiceNumber(safeDrive)})/tanh(${spiceNumber(safeDrive)})))`;
 }
 
 function atrTapeExpression(drive, bias) {
