@@ -496,7 +496,11 @@ function opAmpExpression(drive, asymmetry) {
   const asym = Math.round(asymmetry * 512) / 512;
   const positiveDrive = safeDrive * (1 + asym);
   const negativeDrive = safeDrive * (1 - asym * 0.62);
-  return `if(v(in)>=0,tanh(v(in)*${spiceNumber(positiveDrive)})/tanh(${spiceNumber(positiveDrive)}),tanh(v(in)*${spiceNumber(negativeDrive)})/tanh(${spiceNumber(negativeDrive)}))`;
+  const positive = `tanh(v(in)*${spiceNumber(positiveDrive)})/tanh(${spiceNumber(positiveDrive)})`;
+  const negative = `tanh(v(in)*${spiceNumber(negativeDrive)})/tanh(${spiceNumber(negativeDrive)})`;
+  // positiveDrive is steeper on positive samples and more negative on negative samples;
+  // max() therefore selects the calibrated positive branch above zero and negative branch below zero.
+  return `max(${positive},${negative})`;
 }
 
 function summingExpression(compression, asymmetry) {
@@ -508,7 +512,8 @@ function summingExpression(compression, asymmetry) {
 function transformerExpression(drive, asymmetry) {
   const safeDrive = Math.max(1, Math.round(drive * 128) / 128);
   const asym = Math.round(asymmetry * 512) / 512;
-  return `min(1,max(-1,0.985*tanh((v(in)+${spiceNumber(asym)}*v(in)^2*if(v(in)>=0,1,-0.42))*${spiceNumber(safeDrive)})/tanh(${spiceNumber(safeDrive)})))`;
+  const asymmetricSquare = `max(0,v(in))^2-0.42*max(0,-v(in))^2`;
+  return `min(1,max(-1,0.985*tanh((v(in)+${spiceNumber(asym)}*(${asymmetricSquare}))*${spiceNumber(safeDrive)})/tanh(${spiceNumber(safeDrive)})))`;
 }
 
 function atrTapeExpression(drive, bias) {
