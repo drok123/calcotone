@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - scripts/materialize-web-ui-1to1.py
+      - scripts/fix-windows-ui-flow-audit.py
       - .github/workflows/materialize-web-ui-1to1.yml
 
 concurrency:
@@ -34,7 +35,9 @@ jobs:
         run: npm ci
 
       - name: Restore exact web UI geometry
-        run: python scripts/materialize-web-ui-1to1.py
+        run: |
+          python scripts/materialize-web-ui-1to1.py
+          python scripts/fix-windows-ui-flow-audit.py
 
       - name: Verify web UI 1 to 1 contract
         run: npm run audit:web-ui-1to1
@@ -50,10 +53,13 @@ jobs:
           grep -q 'const customFaceplate = faceplateEditor.layout.custom;' src/components/effects/EffectModule.tsx
           grep -q "2026-08-05-web-ui-1to1-restoration" src/ui/faceplateLayout.ts
           grep -q 'audit:web-ui-1to1' package.json
+          grep -q 'Windows follows shared web faceplate state' scripts/windows-ui-parity-audit.mjs
+          ! grep -q 'native core faceplate is enforced' scripts/windows-ui-parity-audit.mjs
 
       - name: Remove one-time restoration machinery
         run: |
           rm scripts/materialize-web-ui-1to1.py
+          rm scripts/fix-windows-ui-flow-audit.py
           rm .github/workflows/materialize-web-ui-1to1.yml
 
       - name: Commit canonical 1 to 1 UI
