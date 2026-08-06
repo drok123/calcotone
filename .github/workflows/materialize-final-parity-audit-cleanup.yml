@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - scripts/materialize-final-parity-audit-cleanup.py
+      - scripts/fix-final-stack-default-audit.py
       - .github/workflows/materialize-final-parity-audit-cleanup.yml
 
 concurrency:
@@ -36,6 +37,7 @@ jobs:
       - name: Materialize final parity cleanup
         run: |
           python scripts/materialize-final-parity-audit-cleanup.py
+          python scripts/fix-final-stack-default-audit.py
           rm -f scripts/materialize-top-strip-random-controls.mjs
           rm -f .github/workflows/materialize-top-strip-random-controls.yml
 
@@ -49,10 +51,13 @@ jobs:
           ! grep -q '<MotionPad' src/components/effects/RailCModules.tsx
           grep -q 'stack-amp-readout' src/components/effects/RailCModules.tsx
           grep -q "2026-08-05-approved-compact-native-1to1" src/ui/faceplateLayout.ts
+          grep -q "defaultValue: 5" scripts/stack-amp-audit.mjs
+          grep -q "model: 'calcotone' as StackAmpModel" scripts/stack-amp-audit.mjs
 
       - name: Remove one-time cleanup machinery
         run: |
           rm scripts/materialize-final-parity-audit-cleanup.py
+          rm scripts/fix-final-stack-default-audit.py
           rm .github/workflows/materialize-final-parity-audit-cleanup.yml
 
       - name: Commit clean canonical audits
