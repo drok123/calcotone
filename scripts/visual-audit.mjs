@@ -51,12 +51,15 @@ requireText(ascii, 'sampleModeAccent(layer, x, y, loopAngle)', 'Module-inspired 
 requireText(ascii, 'subscribeViewportAnimation(render)', 'Shared viewport scheduler');
 requireText(ascii, 'getLatestVisualAudioState()', 'Non-React audio snapshot');
 requireText(ascii, 'IntersectionObserver', 'Offscreen renderer sleep');
-requireText(ascii, '1000 / 18', 'Bounded ASCII cadence');
+requireText(ascii, 'profile.reference1440p ? 30 : 24', 'Adaptive ASCII cadence');
+requireText(ascii, '1000 / profile.visualFps', 'Responsive landscape dragging cadence');
+requireText(ascii, 'canvasPixelRatio(width, height, 6_400_000)', 'High-DPI ASCII canvas');
 requireText(ascii, 'const horizontalScale = width / gridWidth', 'Edge-to-edge ASCII width fit');
 requireText(ascii, 'const verticalScale = height / gridHeight', 'Edge-to-edge ASCII height fit');
 requireText(ascii, 'dpr * horizontalScale', 'Measured ASCII canvas transform');
 requireText(pressureDisplay, 'subscribeViewportAnimation(render)', 'Shared module display scheduler');
-requireText(pressureDisplay, '1000 / 18', 'Bounded module display cadence');
+requireText(pressureDisplay, 'display.reference1440p ? 30 : 24', 'Adaptive module display cadence');
+requireText(pressureDisplay, 'canvasPixelRatio(width, height, 5_400_000)', 'High-DPI module display');
 requireText(pressureDisplay, 'IntersectionObserver', 'Offscreen module display sleep');
 requireText(pressureDisplay, 'if (canvas.width !== pixelWidth)', 'Module display resize allocation guard');
 requireText(pressureDisplay, "MODULE_ART_OFF_WHITE = '#f2ead8'", 'Unified off-white module artwork');
