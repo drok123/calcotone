@@ -1,0 +1,232 @@
+name: Windows DSP Forward Port
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [windows-recovery-1ccde1a]
+    paths:
+      - .github/workflows/windows-dsp-forward-port.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-dsp-forward-port
+  cancel-in-progress: true
+
+env:
+  UI_FILES: >-
+    src/App.tsx
+    src/App.css
+    src/components/effects/EffectModule.tsx
+    src/components/effects/RailCModules.css
+    src/ui/faceplateLayout.ts
+
+jobs:
+  portable-reference:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out approved recovery branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Import verified backend without UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          sha256sum $UI_FILES > /tmp/ui-before.sha256
+          git rm -r native
+          git checkout origin/main -- native contracts/calcotone-core-manifest.json public/ember-tube-processor.js
+          rm -rf native/build native/build-portable native/packages
+          sha256sum -c /tmp/ui-before.sha256
+          test ! -e native/include/calcotone/artifact_chain_processor.hpp
+          test ! -e native/src/artifact_chain_processor.cpp
+          test ! -e native/tests/artifact_chain_processor_test.cpp
+          grep -q 'artifact_parity_processor.cpp' native/CMakeLists.txt
+          grep -q 'pressure_parity_processor.cpp' native/CMakeLists.txt
+          grep -q 'native_dream_engine.cpp' native/CMakeLists.txt
+          grep -q 'audio_restart_policy.cpp' native/CMakeLists.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install audit dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ngspice ninja-build
+          npm ci
+
+      - name: Run strict hardware calibration
+        run: |
+          npm run audit:spice:strict
+          npm run audit:hardware-spice:strict
+
+      - name: Configure portable native graph
+        run: cmake -S native -B native/build-portable -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build portable native graph
+        run: cmake --build native/build-portable --parallel 2
+
+      - name: Require complete modern test graph
+        shell: bash
+        run: |
+          ctest --test-dir native/build-portable -N | tee /tmp/ctest-list.txt
+          grep -q 'Total Tests: 38' /tmp/ctest-list.txt
+
+      - name: Run complete portable DSP suite
+        run: ctest --test-dir native/build-portable --output-on-failure
+
+  windows-package:
+    needs: portable-reference
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Check out approved recovery branch
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Import verified backend without UI
+        shell: pwsh
+        run: |
+          git fetch origin main --depth=1
+          $uiFiles = @(
+            'src/App.tsx',
+            'src/App.css',
+            'src/components/effects/EffectModule.tsx',
+            'src/components/effects/RailCModules.css',
+            'src/ui/faceplateLayout.ts'
+          )
+          $before = @{}
+          foreach ($path in $uiFiles) { $before[$path] = (Get-FileHash $path -Algorithm SHA256).Hash }
+
+          git rm -r native
+          git checkout origin/main -- native contracts/calcotone-core-manifest.json public/ember-tube-processor.js
+          Remove-Item -Recurse -Force native/build,native/build-portable,native/packages -ErrorAction SilentlyContinue
+
+          foreach ($path in $uiFiles) {
+            $after = (Get-FileHash $path -Algorithm SHA256).Hash
+            if ($after -ne $before[$path]) { throw "Approved UI changed during DSP import: $path" }
+          }
+          if (Test-Path native/include/calcotone/artifact_chain_processor.hpp) { throw 'Legacy Artifact chain header survived.' }
+          if (Test-Path native/src/artifact_chain_processor.cpp) { throw 'Legacy Artifact chain source survived.' }
+          if (Test-Path native/tests/artifact_chain_processor_test.cpp) { throw 'Legacy Artifact chain test survived.' }
+          $cmake = Get-Content native/CMakeLists.txt -Raw
+          foreach ($required in @('artifact_parity_processor.cpp','pressure_parity_processor.cpp','native_dream_engine.cpp','audio_restart_policy.cpp')) {
+            if (-not $cmake.Contains($required)) { throw "Modern backend source missing: $required" }
+          }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build approved faceplate against modern backend
+        run: npm run build
+
+      - name: Generate release-equivalent host sources
+        shell: pwsh
+        run: |
+          python native/tools/apply_native_host_visual_parity.py native/src/wasapi_host.cpp native/src/wasapi_host.parity.cpp
+          Move-Item -Force native/src/wasapi_host.parity.cpp native/src/wasapi_host.cpp
+          python native/tools/apply_control_server_spectrum.py native/src/control_server.cpp native/src/control_server.parity.cpp
+          Move-Item -Force native/src/control_server.parity.cpp native/src/control_server.cpp
+
+      - name: Restore WebView2 SDK
+        shell: pwsh
+        run: |
+          nuget install Microsoft.Web.WebView2 -OutputDirectory native/packages -NonInteractive
+          $package = Get-ChildItem native/packages -Directory -Filter 'Microsoft.Web.WebView2.*' |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+          if (-not $package) { throw 'WebView2 SDK was not restored.' }
+          "CALCOTONE_WEBVIEW2_ROOT=$($package.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure Windows native graph
+        run: >-
+          cmake -S native -B native/build -A x64
+          -DCALCOTONE_WEBVIEW2_ROOT="${{ env.CALCOTONE_WEBVIEW2_ROOT }}"
+
+      - name: Build Windows host and DSP
+        run: cmake --build native/build --config Release --parallel
+
+      - name: Require complete modern test graph
+        shell: pwsh
+        run: |
+          $tests = ctest --test-dir native/build -C Release -N | Out-String
+          $tests | Set-Content native/build/DSP-TEST-LIST.txt
+          if ($tests -notmatch 'Total Tests: 38') { throw 'Expected the complete 38-test native graph.' }
+
+      - name: Run complete Windows DSP suite
+        shell: pwsh
+        run: |
+          ctest --test-dir native/build -C Release --output-on-failure | Tee-Object -FilePath native/build/DSP-TEST-RESULTS.txt
+
+      - name: Verify approved UI remained byte-identical
+        shell: pwsh
+        run: |
+          $changed = git diff --name-only -- src/App.tsx src/App.css src/components/effects/EffectModule.tsx src/components/effects/RailCModules.css src/ui/faceplateLayout.ts
+          if ($changed) { throw "DSP pass changed approved UI files: $changed" }
+
+      - name: Assemble DSP recovery package
+        shell: pwsh
+        run: |
+          $packageRoot = Join-Path $PWD 'artifact/CALCOTONE-Windows-DSP-Recovery'
+          New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $packageRoot 'web') | Out-Null
+          Copy-Item native/build/Release/calcotone_host.exe $packageRoot
+          Copy-Item dist/* (Join-Path $packageRoot 'web') -Recurse -Force
+          Copy-Item native/*.bat $packageRoot -Force
+          Copy-Item native/README.md (Join-Path $packageRoot 'NATIVE-README.md') -Force
+          Copy-Item native/build/DSP-TEST-LIST.txt $packageRoot
+          Copy-Item native/build/DSP-TEST-RESULTS.txt $packageRoot
+          @"
+          CALCOTONE Windows DSP Recovery
+          ==============================
+          Approved UI source: windows-recovery-1ccde1a
+          Modern backend reference: main
+          UI files protected by SHA-256 during import and packaging.
+          Native graph: 38 registered tests.
+          Legacy Artifact console/tube/chain-order processor: removed.
+          "@ | Set-Content (Join-Path $packageRoot 'DSP-RECOVERY-README.txt')
+          Compress-Archive -Path $packageRoot -DestinationPath artifact/CALCOTONE-Windows-DSP-Recovery.zip -Force
+          Get-FileHash artifact/CALCOTONE-Windows-DSP-Recovery.zip -Algorithm SHA256 |
+            Select-Object Algorithm,Hash,Path | ConvertTo-Json |
+            Set-Content artifact/CALCOTONE-Windows-DSP-Recovery.sha256.json
+
+      - name: Upload DSP recovery package
+        uses: actions/upload-artifact@v7
+        with:
+          name: CALCOTONE-Windows-DSP-Recovery
+          path: |
+            artifact/CALCOTONE-Windows-DSP-Recovery.zip
+            artifact/CALCOTONE-Windows-DSP-Recovery.sha256.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Commit verified backend only
+        shell: pwsh
+        run: |
+          git checkout -- native/src/wasapi_host.cpp native/src/control_server.cpp
+          Remove-Item -Recurse -Force native/build,native/build-portable,native/packages,dist,artifact -ErrorAction SilentlyContinue
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A native contracts/calcotone-core-manifest.json public/ember-tube-processor.js
+          $uiChanged = git diff --cached --name-only -- src/App.tsx src/App.css src/components/effects/EffectModule.tsx src/components/effects/RailCModules.css src/ui/faceplateLayout.ts
+          if ($uiChanged) { throw "Approved UI staged unexpectedly: $uiChanged" }
+          if (-not (git diff --cached --quiet)) {
+            git commit -m 'Forward-port verified native DSP behind approved UI'
+            git push origin HEAD:windows-recovery-1ccde1a
+          }
