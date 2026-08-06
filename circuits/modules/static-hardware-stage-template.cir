@@ -5,12 +5,11 @@ Vin in 0 SIN(0 {{INPUT_AMPLITUDE}} {{INPUT_FREQUENCY}})
 Bstage out 0 V = {{TRANSFER_EXPRESSION}}
 Rload out 0 10k
 
-.tran {{OUTPUT_STEP}} {{STOP_TIME}} {{START_TIME}} {{MAX_STEP}}
-
 .control
 set wr_singlescale
 set wr_vecnames
-wrdata {{OUTPUT_PATH}} time v(out)
+tran {{OUTPUT_STEP}} {{STOP_TIME}} {{START_TIME}} {{MAX_STEP}}
+wrdata {{OUTPUT_PATH}} v(out)
 quit
 .endc
 
