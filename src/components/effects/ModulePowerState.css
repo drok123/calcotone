@@ -3,8 +3,8 @@
  *
  * OFF mirrors the unselected dark hardware wells: charcoal chassis, bright
  * printed legends, dark knob faces, white pointer line, sleeping display.
- * ON mirrors the pressed Live/Balanced/Studio selector: neutral gray chassis
- * and knob faces with dark printed legends while the display wakes up.
+ * ON mirrors the pressed Live/Balanced/Studio selector exactly: neutral gray
+ * chassis and knob faces with white legends while the display wakes up.
  *
  * Geometry is intentionally absent from this file. The approved faceplate owns
  * all sizes and positions.
@@ -18,7 +18,7 @@
   --module-power-on-top: #a19d90;
   --module-power-on-mid: #89867b;
   --module-power-on-bottom: #74726a;
-  --module-power-on-ink: #101315;
+  --module-power-on-ink: #fffaf0;
 }
 
 .effect-module {
@@ -53,7 +53,7 @@
   text-shadow: none !important;
 }
 
-/* Powered: same pressed neutral-gray family used by the quality selector. */
+/* Powered: same pressed neutral-gray + white-ink family as the quality selector. */
 .effect-module.enabled {
   color: var(--module-power-on-ink) !important;
   border-color: rgba(255, 249, 226, 0.72) !important;
