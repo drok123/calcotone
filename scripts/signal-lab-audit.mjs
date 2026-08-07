@@ -20,6 +20,7 @@ const forbidText = (source, needle, label) => {
 
 const core = read('src/audio/SignalLab.ts');
 const railC = read('src/components/effects/RailCModules.tsx');
+const railCArtwork = read('src/components/ascii/RailCHardwareDisplay.tsx');
 const pressureBridge = read('src/pressureBridge.tsx');
 const pressureStore = read('src/components/signal/pressureStore.ts');
 const app = read('src/App.tsx');
@@ -61,7 +62,7 @@ requireText(pressureBridge, 'pressure.output.connect(dcBlock)', 'Pressure feeds 
 requireText(pressureBridge, 'sharedVisualSpectrum?.connect(analyser)', 'Pressure restores shared visual tap');
 requireText(pressureBridge, 'restoreMasterChain(engine)', 'Pressure bypass restores master topology');
 requireText(pressureBridge, "window.addEventListener('calcotone:pressure-change'", 'Pressure state event wiring');
-requireText(railC, 'Math.max(0, Math.round((state.enabled ? visualState.level : 0) * 18))', 'Pressure bypass meter reaches zero');
+requireText(railCArtwork, 'const activity = props.enabled ? clamp01(', 'Pressure/Rail C bypass artwork activity reaches zero');
 forbidText(pressureBridge, 'mountPressurePanel', 'Retired out-of-rail Pressure mount');
 requireText(pressureStore, "STORAGE_KEY = 'calcotone.pressure-state.v1'", 'Pressure state persistence');
 requireText(pressureStore, 'if (!state.enabled) return null', 'RANDOM respects Pressure power');
