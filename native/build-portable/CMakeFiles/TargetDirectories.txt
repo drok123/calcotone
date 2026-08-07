@@ -1,9 +1,11 @@
 /home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles/calcotone_dsp.dir
 /home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles/core_contract_test.dir
+/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles/dsp_core_test.dir
 /home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles/stack_amp_test.dir
 /home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles/native_rack_test.dir
 /home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles/pitch_tracker_test.dir
 /home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles/native_processor_test.dir
+/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles/loop_processor_test.dir
 /home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles/audio_device_config_test.dir
 /home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles/audio_client_property_plan_test.dir
 /home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles/audio_restart_policy_test.dir

@@ -79,7 +79,8 @@ requireText(randomDspScheduler, 'await yieldForUiPaint();', 'RANDOM UI paint yie
 requireText(randomDspScheduler, 'revealModule(effectId);', 'RANDOM per-module reveal');
 requireText(randomUiFlow, "RANDOM_UI_MODULE_EVENT = 'calcotone:random-ui-module'", 'RANDOM typed UI stream event');
 requireText(randomBridge, 'releasePlanningHold();', 'RANDOM short planning hold release');
-requireText(railCRandom, "RAIL_C_RANDOM_ORDER = ['stomp', 'chaos', 'pressure']", 'Rail C RANDOM order');
+requireText(railCRandom, "RAIL_C_RANDOM_ORDER = ['stomp', 'chaos']", 'Rail C RANDOM order excludes Loop');
+forbidText(railCRandom, "'pressure'", 'Loop must stay out of Rail C RANDOM registry');
 requireText(railCRandom, 'return serialOrder.filter(', 'Rail C active-module planning');
 requireText(randomBridge, 'const railCModuleIds = getActiveRailCRandomModuleIds()', 'Rail C bridge planning');
 requireText(randomDspScheduler, 'for (const moduleId of deferredModuleIds)', 'Rail C serialized scheduler');
@@ -88,7 +89,7 @@ requireText(app, 'railCTargets: new Set(activeRailC)', 'Rail C UI transaction ta
 requireText(app, 'randomizeRailCModule(railCId, plan.profile)', 'Rail C profile-aware reveal-time randomization');
 requireText(railCModules, "useRailCRandomController('stomp', enabled, randomizeStomp)", 'Stomp RANDOM controller');
 requireText(railCModules, "useRailCRandomController('chaos', enabled, randomizeChaos)", 'Chaos RANDOM controller');
-requireText(railCModules, "useRailCRandomController('pressure', state.enabled, randomizePressureProfile)", 'Pressure profile-aware RANDOM controller');
+forbidText(railCModules, "useRailCRandomController('pressure'", 'Loop must not register a RANDOM controller');
 if (randomBridge.indexOf('releasePlanningHold();') > randomBridge.indexOf('void flushCapturedRandom(')) {
   failures.push('RANDOM planning hold must end before staged DSP begins');
 }

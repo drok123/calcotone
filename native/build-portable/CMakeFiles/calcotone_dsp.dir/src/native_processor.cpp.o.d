@@ -209,9 +209,9 @@ CMakeFiles/calcotone_dsp.dir/src/native_processor.cpp.o: \
  /usr/include/c++/13/pstl/glue_memory_defs.h \
  /usr/include/c++/13/pstl/execution_defs.h /usr/include/c++/13/span \
  /usr/include/c++/13/array \
+ /home/runner/work/calcotone/calcotone/native/include/calcotone/loop_processor.hpp \
  /home/runner/work/calcotone/calcotone/native/include/calcotone/stack_amp.hpp \
- /usr/include/c++/13/atomic \
- /home/runner/work/calcotone/calcotone/native/include/calcotone/input_router.hpp \
+ /home/runner/work/calcotone/calcotone/native/include/calcotone/dsp_core.hpp \
  /usr/include/c++/13/algorithm /usr/include/c++/13/bits/stl_algo.h \
  /usr/include/c++/13/bits/algorithmfwd.h \
  /usr/include/c++/13/bits/stl_heap.h \
@@ -239,7 +239,9 @@ CMakeFiles/calcotone_dsp.dir/src/native_processor.cpp.o: \
  /usr/include/c++/13/tr1/modified_bessel_func.tcc \
  /usr/include/c++/13/tr1/poly_hermite.tcc \
  /usr/include/c++/13/tr1/poly_laguerre.tcc \
- /usr/include/c++/13/tr1/riemann_zeta.tcc \
+ /usr/include/c++/13/tr1/riemann_zeta.tcc /usr/include/c++/13/utility \
+ /usr/include/c++/13/bits/stl_relops.h /usr/include/c++/13/atomic \
+ /home/runner/work/calcotone/calcotone/native/include/calcotone/input_router.hpp \
  /home/runner/work/calcotone/calcotone/native/include/calcotone/native_dream_engine.hpp \
  /home/runner/work/calcotone/calcotone/native/include/calcotone/dream_buffer_parity_processor.hpp \
  /home/runner/work/calcotone/calcotone/native/include/calcotone/pitch_tracker.hpp

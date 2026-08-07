@@ -108,7 +108,7 @@ inline constexpr std::array<std::string_view, 12> kBitcrusherModels{{
   "particle2",
   "microcosm",
 }};
-inline constexpr std::array<std::string_view, 14> kMediaModels{{
+inline constexpr std::array<std::string_view, 18> kMediaModels{{
   "cassette",
   "reel",
   "vinyl",
@@ -123,6 +123,10 @@ inline constexpr std::array<std::string_view, 14> kMediaModels{{
   "API 1608",
   "Ampex ATR-102",
   "Neve BCM10",
+  "compressor-fet",
+  "compressor-opto",
+  "compressor-varimu",
+  "compressor-vca",
 }};
 inline constexpr std::array<std::string_view, 14> kStompModels{{
   "808 Overdrive",
@@ -148,11 +152,8 @@ inline constexpr std::array<std::string_view, 6> kChaosModels{{
   "model-t",
   "calcotone",
 }};
-inline constexpr std::array<std::string_view, 4> kPressureModels{{
-  "fet",
-  "opto",
-  "varimu",
-  "vca",
+inline constexpr std::array<std::string_view, 1> kPressureModels{{
+  "loop",
 }};
 
 inline constexpr std::array<ControlContract, 6> kSaturationControls{{
@@ -217,12 +218,11 @@ inline constexpr std::array<ControlContract, 5> kChaosControls{{
   {"sag", 0.34F},
   {"mix", 0.62F},
 }};
-inline constexpr std::array<ControlContract, 5> kPressureControls{{
-  {"style", 2.0F},
-  {"drive", 0.42F},
-  {"time", 0.46F},
-  {"character", 0.38F},
-  {"mix", 0.72F},
+inline constexpr std::array<ControlContract, 4> kPressureControls{{
+  {"track", 0.0F},
+  {"masterLevel", 0.78F},
+  {"overdub", 1.0F},
+  {"fade", 0.18F},
 }};
 
 inline constexpr std::array<ModuleContract, 9> kCoreModules{{
@@ -231,10 +231,10 @@ inline constexpr std::array<ModuleContract, 9> kCoreModules{{
   {"delay", "Halo", 'A', 12, 1, 6},
   {"reverb", "Atmos", 'B', 12, 2, 6},
   {"bitcrusher", "Grain", 'B', 12, 2, 6},
-  {"media", "Artifact", 'B', 14, 0, 5},
+  {"media", "Artifact", 'B', 18, 0, 5},
   {"stomp", "Stomp", 'C', 14, 0, 6},
   {"chaos", "Stack", 'C', 6, 5, 5},
-  {"pressure", "Pressure", 'C', 4, 0, 5},
+  {"pressure", "Loop", 'C', 1, 0, 4},
 }};
 
 inline constexpr std::array<std::string_view, 3> kRailA{{

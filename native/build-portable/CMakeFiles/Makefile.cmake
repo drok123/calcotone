@@ -53,10 +53,12 @@ set(CMAKE_MAKEFILE_PRODUCTS
 set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/calcotone_dsp.dir/DependInfo.cmake"
   "CMakeFiles/core_contract_test.dir/DependInfo.cmake"
+  "CMakeFiles/dsp_core_test.dir/DependInfo.cmake"
   "CMakeFiles/stack_amp_test.dir/DependInfo.cmake"
   "CMakeFiles/native_rack_test.dir/DependInfo.cmake"
   "CMakeFiles/pitch_tracker_test.dir/DependInfo.cmake"
   "CMakeFiles/native_processor_test.dir/DependInfo.cmake"
+  "CMakeFiles/loop_processor_test.dir/DependInfo.cmake"
   "CMakeFiles/audio_device_config_test.dir/DependInfo.cmake"
   "CMakeFiles/audio_client_property_plan_test.dir/DependInfo.cmake"
   "CMakeFiles/audio_restart_policy_test.dir/DependInfo.cmake"
