@@ -37,14 +37,17 @@ export interface LoopRuntime {
 
 export interface LoopState extends LoopSettings, LoopRuntime {}
 
-const STORAGE_KEY = 'calcotone.loop-state.v1';
+const STORAGE_KEY = 'calcotone.loop-state.v2';
+const LEGACY_STORAGE_KEY = 'calcotone.loop-state.v1';
 const listeners = new Set<() => void>();
 
 const DEFAULT_SETTINGS: LoopSettings = {
   enabled: false,
   selectedTrack: 0,
   masterLevel: 0.78,
-  overdub: 1,
+  // Internally retained as `overdub` for command/schema compatibility.
+  // Semantically this is old-loop RETAIN: 0 = live replace, 1 = classic additive dub.
+  overdub: 0,
   fade: 0.18,
   trackLevels: Array.from({ length: LOOP_TRACK_COUNT }, () => 0.72),
 };
@@ -80,13 +83,18 @@ function normalizeWaveform(values: readonly number[] | undefined): number[] {
 function loadSettings(): LoopSettings {
   if (typeof window === 'undefined') return { ...DEFAULT_SETTINGS, trackLevels: [...DEFAULT_SETTINGS.trackLevels] };
   try {
-    const saved = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? 'null') as Partial<LoopSettings> | null;
+    const currentRaw = window.localStorage.getItem(STORAGE_KEY);
+    const legacyRaw = currentRaw === null ? window.localStorage.getItem(LEGACY_STORAGE_KEY) : null;
+    const saved = JSON.parse(currentRaw ?? legacyRaw ?? 'null') as Partial<LoopSettings> | null;
     if (!saved) return { ...DEFAULT_SETTINGS, trackLevels: [...DEFAULT_SETTINGS.trackLevels] };
+    const migratedLegacy = currentRaw === null && legacyRaw !== null;
     return {
       enabled: saved.enabled === true,
       selectedTrack: clampTrack(saved.selectedTrack ?? 0),
       masterLevel: clamp01(saved.masterLevel ?? DEFAULT_SETTINGS.masterLevel),
-      overdub: clamp01(saved.overdub ?? DEFAULT_SETTINGS.overdub),
+      // v1 shipped with 100% feedback as its default. Migrating that value
+      // would defeat the new live-replace workflow, so legacy sessions start at 0% RETAIN.
+      overdub: migratedLegacy ? DEFAULT_SETTINGS.overdub : clamp01(saved.overdub ?? DEFAULT_SETTINGS.overdub),
       fade: clamp01(saved.fade ?? DEFAULT_SETTINGS.fade),
       trackLevels: normalizeTrackLevels(saved.trackLevels),
     };

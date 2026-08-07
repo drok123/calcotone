@@ -26,6 +26,11 @@ forbidText(native, 'master_frames', 'native retired shared master length');
 requireText(nativeHeader, 'kLoopEnvelopeBins = 16\'384U', 'native transient envelope resolution');
 requireText(worklet, 'const ENVELOPE_BINS = 16384', 'browser transient envelope resolution');
 requireText(worklet, 'autoTrim(track)', 'browser auto trim');
+requireText(store, 'overdub: 0', 'Loop live-replace default');
+requireText(rail, "['Track', 'Loop', 'RETAIN', 'Fade']", 'Loop RETAIN hardware label');
+requireText(rail, "'LIVE REPLACE'", 'Loop live-replace transport display');
+requireText(worklet, 'rolling tape-style replacement pass', 'browser continuous live replace');
+requireText(native, 'previous performance is completely gone after one full orbit', 'native continuous live replace');
 requireText(native, 'auto_trim_window(unsigned track)', 'native auto trim');
 requireText(rail, 'className={`loop-trim-toggle ${trimEditing ? \'active\' : \'\'}`}', 'Loop trim mode control');
 requireText(rail, "{ key: 'auto', label: 'AUTO'", 'Loop auto-trim button');
@@ -42,4 +47,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('CALCOTONE Loop audit passed · 8 independent track lengths, non-destructive trim, auto trim, and transient ASCII editor locked');
+console.log('CALCOTONE Loop audit passed · 8 independent timelines, live-replace DUB, trim/auto-trim, and orbital ASCII editor locked');

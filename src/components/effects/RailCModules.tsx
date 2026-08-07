@@ -672,7 +672,7 @@ function LoopModule({
   const rawSeconds = state.rawFrames > 0 ? state.rawFrames / Math.max(1, state.sampleRate) : 0;
   const selectedFilled = (state.trackMask & (1 << state.selectedTrack)) !== 0;
   const minimumTrim = state.rawFrames > 0 ? Math.min(0.25, 64 / state.rawFrames) : 0.001;
-  const knobLabels = trimEditing ? ['IN', 'OUT', 'Track', 'Fade'] as const : ['Track', 'Loop', 'Overdub', 'Fade'] as const;
+  const knobLabels = trimEditing ? ['IN', 'OUT', 'Track', 'Fade'] as const : ['Track', 'Loop', 'RETAIN', 'Fade'] as const;
   const knobValues = trimEditing
     ? [state.trimStart, state.trimEnd, trackLevel, state.fade] as const
     : [trackLevel, state.masterLevel, state.overdub, state.fade] as const;
@@ -705,7 +705,7 @@ function LoopModule({
     }
     if (index === 0) setSelectedTrackLevel(0.72);
     else if (index === 1) setLoopState({ masterLevel: 0.78 });
-    else if (index === 2) setLoopState({ overdub: 1 });
+    else if (index === 2) setLoopState({ overdub: 0 });
     else setLoopState({ fade: 0.18 });
   }
 
@@ -767,7 +767,11 @@ function LoopModule({
               kind="loop"
               enabled={state.enabled}
               visualState={visualState}
-              modeLabel={trimEditing ? 'TRIM EDIT' : state.transport}
+              modeLabel={trimEditing
+                ? 'TRIM EDIT'
+                : state.transport === 'overdubbing'
+                  ? (state.overdub <= 0.001 ? 'LIVE REPLACE' : 'LIVE DUB')
+                  : state.transport}
               detailLabel={trimEditing
                 ? `T${state.selectedTrack + 1} · ${seconds.toFixed(2)}s / ${rawSeconds.toFixed(2)}s RAW`
                 : `T${state.selectedTrack + 1} · ${selectedFilled ? 'MEM' : 'EMPTY'} · ${occupied}/8 · ${seconds.toFixed(1)}s · ${running ? 'LIVE' : 'READY'}`}

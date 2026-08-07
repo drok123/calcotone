@@ -299,6 +299,9 @@ struct LoopProcessor::Impl {
           const auto relative = std::min(positions[selected_track], length - 1U);
           const auto absolute = trim_start_frames[selected_track] + relative;
           const auto write = absolute * 2U;
+          // DUB is a continuous rolling replacement pass. At RETAIN=0 the
+          // previous performance is completely gone after one full orbit; raising
+          // RETAIN restores classic feedback overdubbing without changing transport.
           const float next_left = selected_buffer[write] * overdub_feedback + live_left;
           const float next_right = selected_buffer[write + 1U] * overdub_feedback + live_right;
           selected_buffer[write] = next_left;
@@ -328,7 +331,8 @@ struct LoopProcessor::Impl {
   std::atomic<bool> enabled{false};
   std::atomic<unsigned> selected{0U};
   std::atomic<float> master_level{.78F};
-  std::atomic<float> overdub{1.F};
+  // RETAIN feedback: 0 = live replace, 1 = classic additive overdub.
+  std::atomic<float> overdub{0.F};
   std::atomic<float> fade{.18F};
   std::atomic<unsigned> pending_command{kNoCommand};
   std::atomic<float> pending_trim_start{0.F};

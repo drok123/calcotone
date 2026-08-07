@@ -70,14 +70,15 @@ requireText(nativeArtifact, 'std::clamp(std::round(value), 0.F, 17.F)', 'Native 
 requireText(railC, 'name="Loop"', 'Loop rail module heading');
 requireText(railC, 'aria-label="Loop track"', 'Loop track selector');
 for (const label of ['REC', 'DUB', 'PLAY', 'CLEAR']) requireText(railC, `'${label}'`, `Loop ${label} transport control`);
-requireText(railC, "['Track', 'Loop', 'Overdub', 'Fade']", 'Loop normal macro controls');
+requireText(railC, "['Track', 'Loop', 'RETAIN', 'Fade']", 'Loop live-replace macro controls');
 requireText(railC, "['IN', 'OUT', 'Track', 'Fade']", 'Loop trim macro controls');
 requireText(railC, 'trimEditing ?', 'Loop trim macro switch');
 requireText(railC, 'kind="loop"', 'Loop hardware artwork mount');
 requireText(railCArtwork, 'loop: {', 'Loop hardware artwork profile');
 requireText(railCArtwork, "title: 'L O O P'", 'Loop display identity');
 requireText(loopStore, 'export const LOOP_TRACK_COUNT = 8', 'Loop eight-track contract');
-requireText(loopStore, "STORAGE_KEY = 'calcotone.loop-state.v1'", 'Loop settings persistence');
+requireText(loopStore, "STORAGE_KEY = 'calcotone.loop-state.v2'", 'Loop live-replace settings persistence');
+requireText(loopStore, "LEGACY_STORAGE_KEY = 'calcotone.loop-state.v1'", 'Loop legacy settings migration');
 requireText(loopStore, "transport: 'empty'", 'Loop transport does not persist audio state');
 requireText(loopWorklet, 'const TRACKS = 8', 'Browser Loop eight-track buffer');
 requireText(loopWorklet, 'const MAX_SECONDS = 60', 'Browser Loop bounded memory');

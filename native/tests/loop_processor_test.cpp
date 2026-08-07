@@ -61,6 +61,31 @@ int main() {
   consume(loop);
   assert(loop.loop_frames() == 768U);
 
+  // DUB is a latched live-replace pass. With RETAIN=0, exactly one full pass
+  // must erase the previous Track 1 performance without changing its loop length.
+  loop.set_selected_track(0);
+  consume(loop);
+  loop.set_overdub(0.F);
+  loop.command(calcotone::LoopCommand::Overdub);
+  consume(loop);
+  assert(loop.transport() == calcotone::LoopTransport::Overdubbing);
+  std::vector<float> replacement(256U * 2U);
+  fill(replacement, .05F, -.04F);
+  loop.process(replacement.data(), 256U);
+  loop.command(calcotone::LoopCommand::Overdub);
+  consume(loop);
+  assert(loop.transport() == calcotone::LoopTransport::Playing);
+  assert(loop.loop_frames() == 256U);
+  std::vector<float> replaced_playback(256U * 2U, 0.F);
+  loop.process(replaced_playback.data(), 256U);
+  float replaced_peak = 0.F;
+  for (const auto sample : replaced_playback) replaced_peak = std::max(replaced_peak, std::abs(sample));
+  assert(replaced_peak > .02F);
+  assert(replaced_peak < .05F);
+
+  loop.set_selected_track(1);
+  consume(loop);
+
   // Manual trim is non-destructive: active loop length changes but the raw take remains.
   loop.set_trim(.25F, .75F);
   consume(loop);

@@ -79,7 +79,7 @@ int main() {
 
   constexpr std::array<std::string_view, 4> pressure_control_ids{
       "track", "masterLevel", "overdub", "fade"};
-  constexpr std::array<float, 4> pressure_defaults{0.F,.78F,1.F,.18F};
+  constexpr std::array<float, 4> pressure_defaults{0.F,.78F,0.F,.18F};
   if (kPressureControls.size() != pressure_control_ids.size()) return EXIT_FAILURE;
   for (std::size_t index = 0; index < pressure_control_ids.size(); ++index)
     if (kPressureControls[index].id != pressure_control_ids[index]

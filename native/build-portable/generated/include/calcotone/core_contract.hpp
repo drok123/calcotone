@@ -221,7 +221,7 @@ inline constexpr std::array<ControlContract, 5> kChaosControls{{
 inline constexpr std::array<ControlContract, 4> kPressureControls{{
   {"track", 0.0F},
   {"masterLevel", 0.78F},
-  {"overdub", 1.0F},
+  {"overdub", 0.0F},
   {"fade", 0.18F},
 }};
 

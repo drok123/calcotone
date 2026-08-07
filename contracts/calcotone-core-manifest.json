@@ -425,7 +425,7 @@
         },
         {
           "id": "overdub",
-          "defaultUi": 1
+          "defaultUi": 0
         },
         {
           "id": "fade",

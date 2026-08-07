@@ -7,10 +7,12 @@ CMakeFiles/loop_processor_test.dir/tests/loop_processor_test.cpp.o: /home/runner
   /usr/include/asm-generic/errno-base.h \
   /usr/include/asm-generic/errno.h \
   /usr/include/assert.h \
+  /usr/include/c++/13/algorithm \
   /usr/include/c++/13/array \
   /usr/include/c++/13/backward/auto_ptr.h \
   /usr/include/c++/13/backward/binders.h \
   /usr/include/c++/13/bit \
+  /usr/include/c++/13/bits/algorithmfwd.h \
   /usr/include/c++/13/bits/align.h \
   /usr/include/c++/13/bits/alloc_traits.h \
   /usr/include/c++/13/bits/allocated_ptr.h \
@@ -54,6 +56,7 @@ CMakeFiles/loop_processor_test.dir/tests/loop_processor_test.cpp.o: /home/runner
   /usr/include/c++/13/bits/predefined_ops.h \
   /usr/include/c++/13/bits/ptr_traits.h \
   /usr/include/c++/13/bits/range_access.h \
+  /usr/include/c++/13/bits/ranges_algo.h \
   /usr/include/c++/13/bits/ranges_algobase.h \
   /usr/include/c++/13/bits/ranges_base.h \
   /usr/include/c++/13/bits/ranges_cmp.h \
@@ -67,9 +70,12 @@ CMakeFiles/loop_processor_test.dir/tests/loop_processor_test.cpp.o: /home/runner
   /usr/include/c++/13/bits/specfun.h \
   /usr/include/c++/13/bits/std_abs.h \
   /usr/include/c++/13/bits/std_mutex.h \
+  /usr/include/c++/13/bits/stl_algo.h \
   /usr/include/c++/13/bits/stl_algobase.h \
+  /usr/include/c++/13/bits/stl_bvector.h \
   /usr/include/c++/13/bits/stl_construct.h \
   /usr/include/c++/13/bits/stl_function.h \
+  /usr/include/c++/13/bits/stl_heap.h \
   /usr/include/c++/13/bits/stl_iterator.h \
   /usr/include/c++/13/bits/stl_iterator_base_funcs.h \
   /usr/include/c++/13/bits/stl_iterator_base_types.h \
@@ -77,14 +83,17 @@ CMakeFiles/loop_processor_test.dir/tests/loop_processor_test.cpp.o: /home/runner
   /usr/include/c++/13/bits/stl_raw_storage_iter.h \
   /usr/include/c++/13/bits/stl_tempbuf.h \
   /usr/include/c++/13/bits/stl_uninitialized.h \
+  /usr/include/c++/13/bits/stl_vector.h \
   /usr/include/c++/13/bits/streambuf.tcc \
   /usr/include/c++/13/bits/streambuf_iterator.h \
   /usr/include/c++/13/bits/string_view.tcc \
   /usr/include/c++/13/bits/stringfwd.h \
+  /usr/include/c++/13/bits/uniform_int_dist.h \
   /usr/include/c++/13/bits/unique_ptr.h \
   /usr/include/c++/13/bits/uses_allocator.h \
   /usr/include/c++/13/bits/uses_allocator_args.h \
   /usr/include/c++/13/bits/utility.h \
+  /usr/include/c++/13/bits/vector.tcc \
   /usr/include/c++/13/cassert \
   /usr/include/c++/13/cctype \
   /usr/include/c++/13/cerrno \
@@ -118,6 +127,7 @@ CMakeFiles/loop_processor_test.dir/tests/loop_processor_test.cpp.o: /home/runner
   /usr/include/c++/13/numbers \
   /usr/include/c++/13/ostream \
   /usr/include/c++/13/pstl/execution_defs.h \
+  /usr/include/c++/13/pstl/glue_algorithm_defs.h \
   /usr/include/c++/13/pstl/glue_memory_defs.h \
   /usr/include/c++/13/pstl/pstl_config.h \
   /usr/include/c++/13/stdexcept \
@@ -140,6 +150,7 @@ CMakeFiles/loop_processor_test.dir/tests/loop_processor_test.cpp.o: /home/runner
   /usr/include/c++/13/tuple \
   /usr/include/c++/13/type_traits \
   /usr/include/c++/13/typeinfo \
+  /usr/include/c++/13/vector \
   /usr/include/ctype.h \
   /usr/include/endian.h \
   /usr/include/errno.h \
@@ -310,8 +321,6 @@ loop_processor_test: /lib/x86_64-linux-gnu/libc.so.6 \
 
 /usr/lib/x86_64-linux-gnu/libc.so:
 
-/usr/lib/x86_64-linux-gnu/crtn.o:
-
 /lib64/ld-linux-x86-64.so.2:
 
 /lib/x86_64-linux-gnu/libmvec.so.1:
@@ -388,8 +397,6 @@ CMakeFiles/loop_processor_test.dir/tests/loop_processor_test.cpp.o:
 
 /usr/include/x86_64-linux-gnu/bits/timex.h:
 
-/usr/include/x86_64-linux-gnu/bits/time64.h:
-
 /usr/include/x86_64-linux-gnu/bits/time.h:
 
 /usr/include/x86_64-linux-gnu/bits/thread-shared-types.h:
@@ -413,8 +420,6 @@ CMakeFiles/loop_processor_test.dir/tests/loop_processor_test.cpp.o:
 /usr/lib/x86_64-linux-gnu/crti.o:
 
 /usr/include/x86_64-linux-gnu/bits/select-decl.h:
-
-/usr/include/x86_64-linux-gnu/bits/sched.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/locale_t.h:
 
@@ -468,17 +473,29 @@ CMakeFiles/loop_processor_test.dir/tests/loop_processor_test.cpp.o:
 
 /usr/include/x86_64-linux-gnu/bits/confname.h:
 
-/usr/include/c++/13/bits/streambuf_iterator.h:
+/usr/include/wctype.h:
 
-/usr/include/x86_64-linux-gnu/bits/stdlib-bsearch.h:
+/usr/lib/x86_64-linux-gnu/Scrt1.o:
 
-/usr/include/c++/13/bits/stringfwd.h:
+/usr/include/wchar.h:
 
-/usr/include/x86_64-linux-gnu/bits/posix2_lim.h:
+/usr/include/x86_64-linux-gnu/bits/mathcalls-narrow.h:
 
-/usr/include/c++/13/bits/stl_raw_storage_iter.h:
+/usr/include/unistd.h:
+
+/usr/include/time.h:
+
+/usr/lib/gcc/x86_64-linux-gnu/13/include/syslimits.h:
+
+/usr/include/syscall.h:
+
+/usr/include/x86_64-linux-gnu/bits/wchar2-decl.h:
+
+/usr/include/stdlib.h:
 
 /usr/include/c++/13/bits/stl_iterator_base_funcs.h:
+
+/usr/include/c++/13/bits/stl_bvector.h:
 
 /usr/include/c++/13/bits/stl_algobase.h:
 
@@ -500,13 +517,15 @@ CMakeFiles/loop_processor_test.dir/tests/loop_processor_test.cpp.o:
 
 /usr/include/c++/13/ios:
 
-/usr/include/c++/13/bits/streambuf.tcc:
-
-/usr/include/math.h:
-
 /usr/include/x86_64-linux-gnu/c++/13/bits/c++allocator.h:
 
 /usr/include/c++/13/bits/ranges_algobase.h:
+
+/usr/include/c++/13/bits/ranges_algo.h:
+
+/usr/include/x86_64-linux-gnu/bits/sched.h:
+
+/usr/include/c++/13/bits/algorithmfwd.h:
 
 /usr/include/c++/13/bits/predefined_ops.h:
 
@@ -542,13 +561,9 @@ CMakeFiles/loop_processor_test.dir/tests/loop_processor_test.cpp.o:
 
 /usr/include/c++/13/bits/locale_facets.tcc:
 
-/usr/include/x86_64-linux-gnu/bits/types/__sigset_t.h:
+/usr/include/x86_64-linux-gnu/asm/errno.h:
 
-/usr/include/x86_64-linux-gnu/bits/select2.h:
-
-/usr/include/c++/13/bits/stl_tempbuf.h:
-
-/usr/include/c++/13/bits/charconv.h:
+/usr/include/c++/13/bits/locale_facets.h:
 
 libcalcotone_dsp.a:
 
@@ -558,11 +573,19 @@ libcalcotone_dsp.a:
 
 /home/runner/work/calcotone/calcotone/native/include/calcotone/loop_processor.hpp:
 
-/usr/include/c++/13/bits/functexcept.h:
+/usr/include/c++/13/cstddef:
 
-/usr/include/c++/13/ext/alloc_traits.h:
+/usr/include/c++/13/bits/range_access.h:
 
-/usr/include/linux/close_range.h:
+/usr/include/c++/13/tr1/modified_bessel_func.tcc:
+
+/usr/include/c++/13/tr1/ell_integral.tcc:
+
+/usr/include/x86_64-linux-gnu/bits/types/struct_timespec.h:
+
+/usr/include/c++/13/bits/ios_base.h:
+
+/usr/include/c++/13/tr1/bessel_function.tcc:
 
 /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h:
 
@@ -576,16 +599,6 @@ libcalcotone_dsp.a:
 
 /usr/include/c++/13/new:
 
-/usr/include/c++/13/bits/max_size_type.h:
-
-/usr/include/x86_64-linux-gnu/bits/mathcalls-narrow.h:
-
-/usr/include/unistd.h:
-
-/usr/include/c++/13/bits/align.h:
-
-/usr/include/c++/13/backward/auto_ptr.h:
-
 /usr/include/x86_64-linux-gnu/bits/timesize.h:
 
 /usr/include/c++/13/system_error:
@@ -594,23 +607,11 @@ libcalcotone_dsp.a:
 
 /usr/include/c++/13/backward/binders.h:
 
-/usr/include/c++/13/bits/locale_facets.h:
-
-/usr/include/x86_64-linux-gnu/asm/errno.h:
-
-/usr/include/c++/13/bits/cpp_type_traits.h:
-
-/usr/include/c++/13/ext/numeric_traits.h:
-
 /usr/include/c++/13/bits/ostream.tcc:
 
 /usr/include/c++/13/bits/std_mutex.h:
 
 /usr/include/c++/13/bits/stl_function.h:
-
-/usr/include/c++/13/bits/localefwd.h:
-
-/usr/include/c++/13/bits/string_view.tcc:
 
 /usr/include/x86_64-linux-gnu/gnu/stubs-64.h:
 
@@ -618,13 +619,33 @@ libcalcotone_dsp.a:
 
 /usr/include/c++/13/tr1/special_function_util.h:
 
-/usr/lib/x86_64-linux-gnu/Scrt1.o:
+/usr/include/c++/13/bits/iterator_concepts.h:
 
-/usr/include/wchar.h:
+/usr/include/c++/13/bits/allocator.h:
+
+/usr/include/c++/13/bits/string_view.tcc:
+
+/usr/include/c++/13/bits/localefwd.h:
+
+/usr/include/x86_64-linux-gnu/bits/posix2_lim.h:
+
+/usr/include/c++/13/bits/stl_raw_storage_iter.h:
+
+/usr/include/c++/13/bits/functexcept.h:
+
+/usr/include/c++/13/ext/alloc_traits.h:
+
+/usr/include/linux/close_range.h:
 
 /usr/include/c++/13/bit:
 
 /usr/include/c++/13/bits/basic_ios.h:
+
+/usr/include/c++/13/backward/auto_ptr.h:
+
+/usr/include/c++/13/bits/max_size_type.h:
+
+/usr/include/c++/13/bits/align.h:
 
 /usr/include/c++/13/debug/assertions.h:
 
@@ -638,25 +659,31 @@ libcalcotone_dsp.a:
 
 /usr/include/c++/13/cwchar:
 
-/usr/include/c++/13/bits/allocated_ptr.h:
-
-/usr/include/c++/13/bits/stl_uninitialized.h:
-
-/usr/include/x86_64-linux-gnu/bits/byteswap.h:
-
-/usr/include/c++/13/bits/atomic_wait.h:
-
-/usr/include/x86_64-linux-gnu/bits/fp-logb.h:
-
-/usr/include/c++/13/bits/atomic_lockfree_defines.h:
-
-/usr/include/alloca.h:
+/usr/include/x86_64-linux-gnu/asm/unistd_64.h:
 
 /usr/include/c++/13/tr1/poly_laguerre.tcc:
 
-/usr/include/x86_64-linux-gnu/asm/unistd_64.h:
+/usr/include/x86_64-linux-gnu/bits/stdlib.h:
 
-/usr/include/c++/13/bits/stl_pair.h:
+/usr/include/c++/13/bits/uses_allocator.h:
+
+/usr/include/c++/13/bits/uses_allocator_args.h:
+
+/usr/include/c++/13/bits/allocated_ptr.h:
+
+/usr/include/c++/13/bits/atomic_wait.h:
+
+/usr/include/c++/13/bits/charconv.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/__sigset_t.h:
+
+/usr/include/x86_64-linux-gnu/bits/select2.h:
+
+/usr/include/c++/13/bits/stl_algo.h:
+
+/usr/include/c++/13/bits/stl_tempbuf.h:
+
+/home/runner/work/calcotone/calcotone/native/tests/loop_processor_test.cpp:
 
 /usr/include/c++/13/bits/stl_iterator_base_types.h:
 
@@ -664,31 +691,35 @@ libcalcotone_dsp.a:
 
 /usr/include/c++/13/bits/locale_classes.h:
 
+/usr/include/ctype.h:
+
+/usr/include/linux/errno.h:
+
 /usr/include/c++/13/bits/char_traits.h:
 
 /usr/include/c++/13/bits/shared_ptr_atomic.h:
 
 /usr/include/c++/13/bits/concept_check.h:
 
-/usr/include/c++/13/cstddef:
+/usr/include/alloca.h:
 
-/usr/include/c++/13/bits/range_access.h:
+/usr/include/x86_64-linux-gnu/bits/fp-logb.h:
 
-/usr/include/c++/13/tr1/modified_bessel_func.tcc:
+/usr/include/c++/13/bits/atomic_lockfree_defines.h:
 
-/usr/include/linux/errno.h:
+/usr/include/c++/13/bits/cpp_type_traits.h:
 
-/usr/include/ctype.h:
+/usr/include/c++/13/bits/stl_heap.h:
 
-/usr/include/c++/13/bits/allocator.h:
+/usr/include/x86_64-linux-gnu/bits/wchar.h:
 
-/usr/include/c++/13/bits/iterator_concepts.h:
-
-/usr/include/c++/13/tr1/ell_integral.tcc:
+/usr/include/c++/13/string_view:
 
 /usr/include/c++/13/array:
 
 /usr/include/c++/13/bits/basic_ios.tcc:
+
+/usr/include/c++/13/bits/vector.tcc:
 
 /usr/include/c++/13/cstdint:
 
@@ -696,19 +727,23 @@ libcalcotone_dsp.a:
 
 /usr/include/c++/13/cctype:
 
+/usr/include/c++/13/vector:
+
 /usr/include/endian.h:
 
 /usr/include/x86_64-linux-gnu/bits/math-vector.h:
 
 /usr/include/c++/13/bits/basic_string.h:
 
-/home/runner/work/calcotone/calcotone/native/tests/loop_processor_test.cpp:
-
 /usr/include/c++/13/bits/cxxabi_forced.h:
 
 /usr/include/x86_64-linux-gnu/bits/wordsize.h:
 
 /usr/include/c++/13/bits/exception_ptr.h:
+
+/usr/include/x86_64-linux-gnu/asm/unistd.h:
+
+/usr/include/c++/13/bits/ranges_util.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/sigset_t.h:
 
@@ -722,19 +757,39 @@ libcalcotone_dsp.a:
 
 /usr/include/c++/13/tr1/legendre_function.tcc:
 
-/usr/include/x86_64-linux-gnu/bits/types/struct_timespec.h:
+/usr/include/c++/13/bits/stl_pair.h:
 
-/usr/include/c++/13/bits/ios_base.h:
+/usr/include/x86_64-linux-gnu/bits/byteswap.h:
 
-/usr/include/c++/13/tr1/bessel_function.tcc:
+/usr/include/c++/13/bits/stl_uninitialized.h:
+
+/usr/include/c++/13/ext/numeric_traits.h:
+
+/usr/include/x86_64-linux-gnu/bits/time64.h:
+
+/usr/include/c++/13/bits/stl_vector.h:
+
+/usr/lib/gcc/x86_64-linux-gnu/13/crtbeginS.o:
+
+/usr/include/x86_64-linux-gnu/sys/types.h:
+
+/usr/include/c++/13/bits/ptr_traits.h:
+
+/usr/include/pthread.h:
+
+/usr/include/math.h:
+
+/usr/include/c++/13/bits/streambuf.tcc:
+
+/usr/include/c++/13/bits/streambuf_iterator.h:
+
+/usr/include/x86_64-linux-gnu/bits/stdlib-bsearch.h:
+
+/usr/include/c++/13/bits/stringfwd.h:
+
+/usr/include/c++/13/bits/uniform_int_dist.h:
 
 /usr/include/c++/13/bits/unique_ptr.h:
-
-/usr/include/x86_64-linux-gnu/bits/stdlib.h:
-
-/usr/include/c++/13/bits/uses_allocator.h:
-
-/usr/include/c++/13/bits/uses_allocator_args.h:
 
 /usr/include/c++/13/cassert:
 
@@ -743,8 +798,6 @@ libcalcotone_dsp.a:
 /usr/include/c++/13/bits/locale_classes.tcc:
 
 /usr/include/c++/13/clocale:
-
-/usr/include/time.h:
 
 /usr/include/c++/13/cmath:
 
@@ -773,6 +826,8 @@ libcalcotone_dsp.a:
 /usr/include/c++/13/cwctype:
 
 /usr/include/c++/13/tr1/poly_hermite.tcc:
+
+/usr/include/c++/13/algorithm:
 
 /usr/include/c++/13/debug/debug.h:
 
@@ -810,6 +865,10 @@ libcalcotone_dsp.a:
 
 /usr/include/c++/13/pstl/execution_defs.h:
 
+/usr/lib/x86_64-linux-gnu/crtn.o:
+
+/usr/include/c++/13/pstl/glue_algorithm_defs.h:
+
 /usr/include/c++/13/bits/new_allocator.h:
 
 /usr/include/c++/13/stdexcept:
@@ -820,17 +879,11 @@ libcalcotone_dsp.a:
 
 /usr/include/c++/13/typeinfo:
 
-/usr/include/x86_64-linux-gnu/bits/wchar.h:
-
-/usr/include/c++/13/string_view:
-
 /usr/include/x86_64-linux-gnu/c++/13/bits/c++locale.h:
 
 /usr/include/c++/13/bits/exception.h:
 
 /usr/include/c++/13/tr1/exp_integral.tcc:
-
-/usr/include/wctype.h:
 
 /usr/include/c++/13/tuple:
 
@@ -847,10 +900,6 @@ libcalcotone_dsp.a:
 /usr/include/c++/13/tr1/riemann_zeta.tcc:
 
 /usr/include/c++/13/type_traits:
-
-/usr/include/x86_64-linux-gnu/bits/wchar2-decl.h:
-
-/usr/include/stdlib.h:
 
 /usr/include/c++/13/initializer_list:
 
@@ -870,30 +919,14 @@ libcalcotone_dsp.a:
 
 /usr/include/locale.h:
 
-/usr/lib/gcc/x86_64-linux-gnu/13/crtbeginS.o:
-
-/usr/include/x86_64-linux-gnu/sys/types.h:
-
-/usr/include/c++/13/bits/ptr_traits.h:
-
-/usr/include/pthread.h:
-
 /usr/include/sched.h:
 
-/usr/include/stdint.h:
-
-/usr/lib/gcc/x86_64-linux-gnu/13/include/syslimits.h:
-
-/usr/include/syscall.h:
-
-/usr/include/c++/13/bits/ranges_util.h:
-
-/usr/include/x86_64-linux-gnu/asm/unistd.h:
-
 /usr/include/x86_64-linux-gnu/bits/floatn-common.h:
+
+/usr/include/x86_64-linux-gnu/bits/atomic_wide_counter.h:
 
 /usr/include/c++/13/bits/atomic_base.h:
 
 /usr/include/stdc-predef.h:
 
-/usr/include/x86_64-linux-gnu/bits/atomic_wide_counter.h:
+/usr/include/stdint.h:

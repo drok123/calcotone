@@ -21,7 +21,9 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
     this.enabled = false;
     this.selectedTrack = 0;
     this.masterLevel = 0.78;
-    this.overdub = 1;
+    // RETAIN feedback: 0 = rolling live replace, 1 = classic additive overdub.
+    this.overdub = 0;
+    this.replaceEnvelopeBin = -1;
     this.fade = 0.18;
     this.playing = false;
     this.recording = false;
@@ -67,6 +69,17 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
     const bin = Math.min(ENVELOPE_BINS - 1, Math.floor(frameIndex * this.envelopeScale));
     const peak = Math.max(Math.abs(left), Math.abs(right));
     if (peak > this.envelopes[track][bin]) this.envelopes[track][bin] = peak;
+  }
+
+  updateReplaceEnvelope(track, frameIndex, left, right) {
+    const bin = Math.min(ENVELOPE_BINS - 1, Math.floor(frameIndex * this.envelopeScale));
+    const peak = Math.max(Math.abs(left), Math.abs(right));
+    if (bin !== this.replaceEnvelopeBin) {
+      this.envelopes[track][bin] = peak;
+      this.replaceEnvelopeBin = bin;
+    } else if (peak > this.envelopes[track][bin]) {
+      this.envelopes[track][bin] = peak;
+    }
   }
 
   startRecording(track) {
@@ -181,6 +194,7 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
     } else if (command === 'overdub') {
       if (this.occupied[track] && this.activeLength(track) > 0) {
         this.overdubbing = !this.overdubbing;
+        this.replaceEnvelopeBin = -1;
         this.recording = false;
         this.playing = true;
       }
@@ -318,11 +332,15 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
           const relative = Math.min(this.positions[track], length - 1);
           const absolute = this.trimStartFrames[track] + relative;
           const write = absolute * 2;
+          // Continuous DUB is a rolling tape-style replacement pass. RETAIN=0
+          // overwrites the previous take sample-for-sample; higher RETAIN values
+          // intentionally preserve old material for conventional feedback overdub.
           const nextL = selected[write] * this.overdub + liveL;
           const nextR = selected[write + 1] * this.overdub + liveR;
           selected[write] = nextL;
           selected[write + 1] = nextR;
-          this.updateEnvelope(track, absolute, nextL, nextR);
+          if (this.overdub <= 0.001) this.updateReplaceEnvelope(track, absolute, nextL, nextR);
+          else this.updateEnvelope(track, absolute, nextL, nextR);
         }
       }
 
