@@ -1,0 +1,247 @@
+import { useEffect, useRef } from 'react';
+import type { VisualAudioState } from '../../visual/VisualEngine';
+import { canvasPixelRatio, getDisplayProfile, subscribeDisplayProfile } from '../../ui/displayProfile';
+import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
+import './PressureStyleDisplay.css';
+
+export type RailCHardwareKind = 'stomp' | 'stack' | 'pressure';
+
+interface RailCHardwareDisplayProps {
+  kind: RailCHardwareKind;
+  enabled: boolean;
+  visualState: VisualAudioState;
+  modeLabel: string;
+  detailLabel?: string;
+}
+
+type HardwareProfile = {
+  title: string;
+  subtitle: string;
+  meterLabel: string;
+  primary: string;
+  glyphs: string;
+};
+
+const PROFILES: Record<RailCHardwareKind, HardwareProfile> = {
+  stomp: {
+    title: 'S T O M P',
+    subtitle: 'ANALOG PEDAL MATRIX',
+    meterLabel: 'DRIVE',
+    primary: '#e9b57c',
+    glyphs: ' ·─╪█',
+  },
+  stack: {
+    title: 'S T A C K',
+    subtitle: 'AMPLIFIER / CABINET',
+    meterLabel: 'POWER',
+    primary: '#9de8f2',
+    glyphs: ' ·─≈█',
+  },
+  pressure: {
+    title: 'P R E S S U R E',
+    subtitle: 'HARDWARE DYNAMICS',
+    meterLabel: 'GR',
+    primary: '#d7c8ff',
+    glyphs: ' ·─▾█',
+  },
+};
+
+const OFF_WHITE = '#f2ead8';
+const TAU = Math.PI * 2;
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+}
+
+function fitText(value: string, width: number): string {
+  if (value.length <= width) return value;
+  return `${value.slice(0, Math.max(0, width - 1))}…`;
+}
+
+function centerText(value: string, width: number): string {
+  const fitted = fitText(value, width);
+  const left = Math.max(0, Math.floor((width - fitted.length) / 2));
+  return `${' '.repeat(left)}${fitted}${' '.repeat(Math.max(0, width - fitted.length - left))}`;
+}
+
+function meter(value: number, width: number): string {
+  const active = Math.max(0, Math.min(width, Math.round(clamp01(value) * width)));
+  return `${'█'.repeat(active)}${'░'.repeat(width - active)}`;
+}
+
+function field(kind: RailCHardwareKind, x: number, y: number, phase: number, audio: VisualAudioState): number {
+  const activity = clamp01(audio.level * 0.7 + audio.transient * 0.3);
+  if (kind === 'stomp') {
+    const raw = Math.sin(x * 7.6 + phase) * (0.2 + audio.low * 0.17);
+    const clipped = Math.max(-0.18, Math.min(0.18, raw));
+    const diode = Math.abs(Math.abs(x) - 0.45) < 0.025 ? 0.28 : 0;
+    return 0.9 - Math.abs(y - clipped) * 9.8 + diode + activity * 0.08;
+  }
+  if (kind === 'stack') {
+    const fundamental = Math.sin(x * 5.4 + phase * 0.54) * (0.2 + audio.low * 0.12);
+    const harmonic = Math.sin(x * 10.8 - phase * 0.28) * 0.075;
+    const cabinet = Math.abs((x * 6) % 1 - 0.5) < 0.045 ? 0.16 : 0;
+    return 0.9 - Math.abs(y - fundamental - harmonic) * 8.8 + cabinet + activity * 0.1;
+  }
+  const envelope = Math.sin(x * 5.8 + phase * 0.42) * (0.12 + audio.mid * 0.08);
+  const reduction = Math.max(0, activity - 0.32) * (0.22 + Math.max(0, x) * 0.12);
+  const threshold = Math.abs(y) < 0.035 ? 0.2 : 0;
+  return 0.88 - Math.abs(y - envelope + reduction) * 9.6 + threshold;
+}
+
+function draw(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  dpr: number,
+  props: RailCHardwareDisplayProps,
+  stamp: number,
+): void {
+  const profile = PROFILES[props.kind];
+  const highDefinition = getDisplayProfile().reference1440p;
+  const columns = highDefinition
+    ? Math.max(44, Math.min(76, Math.floor(width / 5.05)))
+    : Math.max(42, Math.min(72, Math.floor(width / 5.25)));
+  const fontSize = highDefinition
+    ? Math.max(6.2, Math.min(8.9, width / columns * 1.54))
+    : Math.max(5.8, Math.min(8.4, width / columns * 1.5));
+  const lineHeight = fontSize * 1.08;
+  const rows = Math.max(16, Math.floor(height / lineHeight));
+  const innerWidth = columns - 2;
+  const graphStart = 7;
+  const graphEnd = Math.max(graphStart + 3, rows - 3);
+  const graphRows = Math.max(1, graphEnd - graphStart);
+  const phase = ((stamp / 1000) % 18) / 18 * TAU;
+  const activity = props.enabled ? clamp01(props.visualState.level * 0.72 + props.visualState.transient * 0.28) : 0;
+
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  context.fillStyle = '#050706';
+  context.fillRect(0, 0, width, height);
+  context.font = `700 ${fontSize}px "IBM Plex Mono", "SFMono-Regular", Consolas, monospace`;
+  const textWidth = Math.max(1, context.measureText('M'.repeat(columns)).width);
+  const textHeight = Math.max(1, (rows - 1) * lineHeight + fontSize);
+  context.setTransform(dpr * width / textWidth, 0, 0, dpr * height / textHeight, 0, 0);
+  context.textBaseline = 'top';
+  context.shadowBlur = props.enabled ? (highDefinition ? 2.4 : 3) : 1;
+
+  const levelMeter = meter(props.enabled ? 0.15 + activity * 0.85 : 0, Math.max(8, innerWidth - 12));
+  const mode = fitText(props.modeLabel.toUpperCase(), Math.max(8, innerWidth - 6));
+  const detail = fitText((props.detailLabel ?? '').toUpperCase(), Math.max(8, innerWidth - 6));
+
+  for (let row = 0; row < rows; row += 1) {
+    let line = '';
+    let accentLine: string | null = null;
+    let intensity = 0.45;
+
+    if (row === 0) line = `╔${'═'.repeat(innerWidth)}╗`;
+    else if (row === 1) line = `║${centerText(profile.title, innerWidth)}║`;
+    else if (row === 2) line = `║${centerText(profile.subtitle, innerWidth)}║`;
+    else if (row === 3) line = `╠${'═'.repeat(innerWidth)}╣`;
+    else if (row === 4) line = `║${fitText(`${profile.meterLabel.padEnd(5)} ${levelMeter}`, innerWidth).padEnd(innerWidth)}║`;
+    else if (row === 5) line = `║${fitText(`MODE  ${mode}`, innerWidth).padEnd(innerWidth)}║`;
+    else if (row === 6 && detail) line = `║${fitText(`PATH  ${detail}`, innerWidth).padEnd(innerWidth)}║`;
+    else if (row >= graphStart && row < graphEnd) {
+      const chars = Array.from({ length: innerWidth }, () => ' ');
+      const accents = Array.from({ length: innerWidth }, () => ' ');
+      const y = ((row - graphStart) / Math.max(1, graphRows - 1)) * 2 - 1;
+      for (let column = 0; column < innerWidth; column += 1) {
+        const x = (column / Math.max(1, innerWidth - 1)) * 2 - 1;
+        const normalized = clamp01(field(props.kind, x, y, phase, props.visualState));
+        if (!props.enabled && normalized < 0.72) continue;
+        if (normalized < 0.22) continue;
+        const glyphIndex = Math.min(profile.glyphs.length - 1, Math.floor(normalized * profile.glyphs.length));
+        chars[column] = profile.glyphs[glyphIndex] ?? ' ';
+        if (normalized > 0.76 && (column + row) % 13 === 0) accents[column] = chars[column];
+        intensity = Math.max(intensity, normalized);
+      }
+      line = `║${chars.join('')}║`;
+      accentLine = ` ${accents.join('')} `;
+    } else if (row === rows - 2) line = `║${centerText(props.enabled ? 'ONLINE // SIGNAL LOCK' : 'BYPASS // STANDBY', innerWidth)}║`;
+    else if (row === rows - 1) line = `╚${'═'.repeat(innerWidth)}╝`;
+    else line = `║${' '.repeat(innerWidth)}║`;
+
+    const textRow = row <= 6 || row === rows - 2;
+    context.globalAlpha = props.enabled ? 0.62 + intensity * 0.34 : 0.28 + intensity * 0.18;
+    context.fillStyle = textRow ? profile.primary : OFF_WHITE;
+    context.shadowColor = textRow ? profile.primary : OFF_WHITE;
+    context.fillText(line, 0, row * lineHeight);
+    if (accentLine) {
+      context.fillStyle = profile.primary;
+      context.shadowColor = profile.primary;
+      context.fillText(accentLine, 0, row * lineHeight);
+    }
+  }
+
+  context.globalAlpha = 1;
+  context.shadowBlur = 0;
+}
+
+export function RailCHardwareDisplay(props: RailCHardwareDisplayProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const propsRef = useRef(props);
+  propsRef.current = props;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const context = canvas.getContext('2d', { alpha: false });
+    if (!context) return;
+
+    let width = 1;
+    let height = 1;
+    let dpr = canvasPixelRatio(1, 1, 5_400_000);
+    let visible = true;
+    let lastDraw = Number.NEGATIVE_INFINITY;
+
+    const resize = () => {
+      const bounds = canvas.getBoundingClientRect();
+      width = Math.max(1, bounds.width);
+      height = Math.max(1, bounds.height);
+      dpr = canvasPixelRatio(width, height, 5_400_000);
+      const pixelWidth = Math.max(1, Math.round(width * dpr));
+      const pixelHeight = Math.max(1, Math.round(height * dpr));
+      if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+      if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+      lastDraw = Number.NEGATIVE_INFINITY;
+    };
+
+    resize();
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(canvas);
+    const visibilityObserver = 'IntersectionObserver' in window
+      ? new IntersectionObserver((entries) => {
+          visible = entries[0]?.isIntersecting ?? true;
+          if (visible) lastDraw = Number.NEGATIVE_INFINITY;
+        }, { rootMargin: '80px' })
+      : null;
+    visibilityObserver?.observe(canvas);
+    const unsubscribeProfile = subscribeDisplayProfile(resize);
+
+    const render: ViewportRenderCallback = (stamp) => {
+      if (!visible) return;
+      const current = propsRef.current;
+      const display = getDisplayProfile();
+      const interval = current.enabled ? 1000 / (display.reference1440p ? 30 : 24) : 250;
+      if (stamp - lastDraw < interval) return;
+      lastDraw = stamp;
+      draw(context, width, height, dpr, current, stamp);
+    };
+
+    const unsubscribe = subscribeViewportAnimation(render);
+    return () => {
+      unsubscribe();
+      unsubscribeProfile();
+      resizeObserver.disconnect();
+      visibilityObserver?.disconnect();
+    };
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className={`pressure-style-display rail-c-hardware-art ${props.enabled ? 'is-active' : 'is-standby'}`}
+      data-pressure-variant={props.kind}
+      aria-hidden="true"
+    />
+  );
+}
