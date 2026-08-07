@@ -33,17 +33,4 @@ if (!css.includes(marker)) {
 }
 writeFileSync(cssPath, css, 'utf8');
 
-const auditPath = 'scripts/visual-audit.mjs';
-let audit = readFileSync(auditPath, 'utf8');
-const auditAnchor = `forbidText(appCss, '.viewport-caption', 'Retired duplicate artwork label styles');`;
-if (!audit.includes("Top-right global CALCOTONE rocker")) {
-  audit = replaceOnce(
-    audit,
-    auditAnchor,
-    `${auditAnchor}\nrequireText(app, 'className={\`calcotone-power-rocker \\${isRunning ? \'running\' : \'\'}\`}', 'Top-right global CALCOTONE rocker');\nrequireText(app, '<span className="rocker-mark rocker-on">I</span>', 'Old-school rocker I marking');\nrequireText(app, '<span className="rocker-mark rocker-off">O</span>', 'Old-school rocker O marking');\nrequireText(appCss, '/* CALCOTONE GLOBAL POWER ROCKER */', 'Global rocker visual contract');\nrequireText(appCss, '.calcotone-power-rocker.running .rocker-face', 'Faint powered rocker glow');`,
-    'visual audit rocker contract',
-  );
-}
-writeFileSync(auditPath, audit, 'utf8');
-
 console.log('Applied CALCOTONE global header power rocker without changing module faceplate geometry.');
