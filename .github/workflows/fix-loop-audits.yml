@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Refresh Loop realtime and latency audits
+      - name: Refresh Loop contract audits
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -65,6 +65,24 @@ jobs:
           for old,new in replacements:
             if old not in s: raise SystemExit(f'latency audit anchor missing: {old}')
             s=s.replace(old,new,1)
+          p.write_text(s)
+
+          p=Path('scripts/dropdown-audit.mjs')
+          s=p.read_text()
+          s=s.replace("const pressureStore = read('src/components/signal/pressureStore.ts');", "const loopStore = read('src/components/signal/loopStore.ts');")
+          old="const ARTIFACT = ['cassette','reel','vinyl','vhs','radio','wax','broken','archive','tascam424','Neve 1073','SSL 4000E','API 1608','Ampex ATR-102','Neve BCM10'];"
+          new="const ARTIFACT = ['cassette','reel','vinyl','vhs','radio','wax','broken','archive','tascam424','Neve 1073','SSL 4000E','API 1608','Ampex ATR-102','Neve BCM10'];\nconst ARTIFACT_DYNAMICS = ['compressor-fet','compressor-opto','compressor-varimu','compressor-vca'];"
+          if old not in s: raise SystemExit('Artifact dropdown fixture anchor missing')
+          s=s.replace(old,new,1)
+          old="requireText(pressureStore, 'recipe.mode !== state.mode || recipe.style !== state.style', 'Pressure random mode/style changes');"
+          new="requireText(loopStore, 'export const LOOP_TRACK_COUNT = 8', 'Loop eight-track selector contract');\nforbidText(railC, \"useRailCRandomController('pressure'\", 'Loop RANDOM isolation');\nfor (const mode of ARTIFACT_DYNAMICS) requireText(artifact, `'${mode}'`, `Artifact ${mode} dynamics dropdown`);"
+          if old not in s: raise SystemExit('Pressure dropdown random anchor missing')
+          s=s.replace(old,new,1)
+          old="// Stomp, Stack, and Pressure share the same high-DPI animated hardware-art language as the core rack.\nfor (const kind of ['stomp', 'stack', 'pressure']) requireText(railCArtwork, `${kind}: {`, `Rail C ${kind} artwork profile`);\nfor (const kind of ['stomp', 'stack', 'pressure']) requireText(railC, `kind=\"${kind}\"`, `Rail C ${kind} artwork mount`);"
+          new="// Stomp, Stack, and Loop share the same high-DPI animated hardware-art language as the core rack.\nfor (const kind of ['stomp', 'stack', 'loop']) requireText(railCArtwork, `${kind}: {`, `Rail C ${kind} artwork profile`);\nfor (const kind of ['stomp', 'stack', 'loop']) requireText(railC, `kind=\"${kind}\"`, `Rail C ${kind} artwork mount`);"
+          if old not in s: raise SystemExit('Rail C artwork audit anchor missing')
+          s=s.replace(old,new,1)
+          s=s.replace("EMBER.length + DRIFT.length + HALO.length + ATMOS.length + GRAIN.length + ARTIFACT.length", "EMBER.length + DRIFT.length + HALO.length + ATMOS.length + GRAIN.length + ARTIFACT.length + ARTIFACT_DYNAMICS.length")
           p.write_text(s)
           PY
       - run: npm ci
