@@ -1,0 +1,52 @@
+name: Loop live replace
+
+on:
+  push:
+    branches: [agent/native-dsp-core]
+    paths:
+      - scripts/loop-live-replace-patch.py
+      - .github/workflows/loop-live-replace.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-check-land:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/native-dsp-core
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply live replace behavior
+        run: python scripts/loop-live-replace-patch.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run focused Loop checks
+        run: |
+          npm run audit:loop
+          npm run audit:native
+          npm run build
+
+      - name: Run full Calcotone diagnostics
+        run: npm run check
+
+      - name: Commit validated live replace
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f scripts/loop-live-replace-patch.py .github/workflows/loop-live-replace.yml
+          git add -A
+          git diff --cached --quiet || git commit -m "Make Loop DUB a continuous live-replace pass"
+          git push origin HEAD:agent/native-dsp-core
