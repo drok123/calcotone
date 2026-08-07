@@ -5,6 +5,8 @@
  * printed legends, dark knob faces, white pointer line, sleeping display.
  * ON mirrors the pressed Live/Balanced/Studio selector exactly: neutral gray
  * chassis and knob faces with white legends while the display wakes up.
+ * This file is visual-state parity only; the approved faceplate remains the
+ * sole geometry owner for both web and native desktop presentation.
  *
  * Geometry is intentionally absent from this file. The approved faceplate owns
  * all sizes and positions.
