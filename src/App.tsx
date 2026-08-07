@@ -1946,13 +1946,7 @@ export default function App() {
         <span className="case-screw screw-four" aria-hidden="true" />
 
         <header className="topbar">
-          <button
-            type="button"
-            className={`brand brand-power ${isRunning ? 'running' : ''}`}
-            disabled={engineState === 'starting'}
-            onClick={() => void toggleAudio()}
-            aria-label={isRunning ? 'Power off CALCOTONE' : 'Power on CALCOTONE'}
-          >
+          <div className={`brand brand-power ${isRunning ? 'running' : ''}`}>
             <div className="brand-mark" aria-hidden="true">
               <span />
               <span />
@@ -1962,9 +1956,24 @@ export default function App() {
               <h1>{APP_NAME}</h1>
               <small>CT-86 · STEREO PROCESSOR</small>
             </div>
-          </button>
+          </div>
 
-          <div className="topbar-actions" />
+          <div className="topbar-actions">
+            <button
+              type="button"
+              className={`calcotone-power-rocker ${isRunning ? 'running' : ''}`}
+              disabled={engineState === 'starting'}
+              onClick={() => void toggleAudio()}
+              aria-label={isRunning ? 'Power off CALCOTONE' : 'Power on CALCOTONE'}
+              aria-pressed={isRunning}
+              title={isRunning ? 'Power off CALCOTONE' : 'Power on CALCOTONE'}
+            >
+              <span className="rocker-face" aria-hidden="true">
+                <span className="rocker-mark rocker-on">I</span>
+                <span className="rocker-mark rocker-off">O</span>
+              </span>
+            </button>
+          </div>
         </header>
 
         <section className="status-strip control-strip">
