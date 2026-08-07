@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Repair patch-script boundary
+      - name: Repair patch-script anchors
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -30,7 +30,13 @@ jobs:
           new="source = replaceSlice(source, `  useEffect(() => {\\n    const syncNativePressure`, `  const [recordingState`, loopSync, 'native Pressure sync effect');"
           if old not in s:
               raise SystemExit('Loop App replacement boundary not found')
-          p.write_text(s.replace(old,new,1))
+          s=s.replace(old,new,1)
+          start=s.index('// ---------------- Native host commands / health ----------------')
+          end=s.index('// ---------------- Native build registration ----------------', start)
+          block=s[start:end]
+          block=block.replace('\\\\"','\\"')
+          s=s[:start]+block+s[end:]
+          p.write_text(s)
           PY
           node --check scripts/apply-loop-finalize.mjs
       - name: Apply Loop integration
