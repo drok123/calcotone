@@ -12,6 +12,9 @@ export const DEFAULT_SERIAL_ORDER = [
 
 export const STACK_MODULE_ID = 'chaos';
 export const STOMP_MODULE_ID = 'stomp';
+// Legacy layout key retained so the approved Pressure geometry becomes Loop
+// without migrating or disturbing the faceplate coordinates.
+export const LOOP_MODULE_ID = 'pressure';
 
 export type SerialModuleId = (typeof DEFAULT_SERIAL_ORDER)[number];
 export type SerialOrder = readonly string[];
@@ -47,33 +50,22 @@ export function serialRows(order: SerialOrder): SerialRows {
   };
 }
 
-export function moveSerialModule(
-  order: SerialOrder,
-  sourceId: string,
-  targetId: string,
-): string[] {
+export function moveSerialModule(order: SerialOrder, sourceId: string, targetId: string): string[] {
   const current = normalizeSerialOrder(order);
   if (sourceId === targetId) return current;
-
   const from = current.indexOf(sourceId);
   const to = current.indexOf(targetId);
   if (from < 0 || to < 0) return current;
-
   current.splice(from, 1);
   current.splice(to, 0, sourceId);
   return current;
 }
 
-export function nudgeSerialModule(
-  order: SerialOrder,
-  moduleId: string,
-  direction: -1 | 1,
-): string[] {
+export function nudgeSerialModule(order: SerialOrder, moduleId: string, direction: -1 | 1): string[] {
   const current = normalizeSerialOrder(order);
   const index = current.indexOf(moduleId);
   const targetIndex = index + direction;
   if (index < 0 || targetIndex < 0 || targetIndex >= current.length) return current;
-
   [current[index], current[targetIndex]] = [current[targetIndex]!, current[index]!];
   return current;
 }
@@ -81,17 +73,11 @@ export function nudgeSerialModule(
 export function shuffledSerialOrder(order: SerialOrder, random = Math.random): string[] {
   const current = normalizeSerialOrder(order);
   const next = [...current];
-
   for (let index = next.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(random() * (index + 1));
     [next[index], next[swapIndex]] = [next[swapIndex]!, next[index]!];
   }
-
-  // SIGNAL RANDOM should always produce a visible topology change.
-  if (next.every((id, index) => id === current[index])) {
-    next.push(next.shift()!);
-  }
-
+  if (next.every((id, index) => id === current[index])) next.push(next.shift()!);
   return next;
 }
 
@@ -119,11 +105,9 @@ function cloneRack(rack: RackOrders): RackOrders {
   return { A: [...rack.A], B: [...rack.B], C: [...rack.C] };
 }
 
-/**
- * Same-rail drops reorder. Cross-rail drops exchange fixed rack slots so the
- * three-column faceplate geometry never changes.
- */
+/** LOOP is visually parked in Rail C but never participates in serial routing. */
 export function moveRackModule(rack: RackOrders, sourceId: string, targetId: string): RackOrders {
+  if (sourceId === LOOP_MODULE_ID || targetId === LOOP_MODULE_ID) return cloneRack(rack);
   if (sourceId === targetId) return cloneRack(rack);
   const source = locateRackModule(rack, sourceId);
   const target = locateRackModule(rack, targetId);
@@ -143,18 +127,17 @@ export function moveRackModule(rack: RackOrders, sourceId: string, targetId: str
 }
 
 export function nudgeRackModule(rack: RackOrders, moduleId: string, direction: -1 | 1): RackOrders {
+  if (moduleId === LOOP_MODULE_ID) return cloneRack(rack);
   const location = locateRackModule(rack, moduleId);
   if (!location) return cloneRack(rack);
   const targetIndex = location.index + direction;
   if (targetIndex < 0 || targetIndex >= rack[location.rail].length) return cloneRack(rack);
-  return moveRackModule(rack, moduleId, rack[location.rail][targetIndex]!);
+  const target = rack[location.rail][targetIndex]!;
+  if (target === LOOP_MODULE_ID) return cloneRack(rack);
+  return moveRackModule(rack, moduleId, target);
 }
 
-export function restoreRackRail(
-  rack: RackOrders,
-  rail: RackRail,
-  defaults: RackOrders,
-): RackOrders {
+export function restoreRackRail(rack: RackOrders, rail: RackRail, defaults: RackOrders): RackOrders {
   const next = cloneRack(rack);
   for (let index = 0; index < defaults[rail].length; index += 1) {
     const wanted = defaults[rail][index]!;
@@ -173,17 +156,11 @@ function shuffled(values: readonly string[], random: () => number): string[] {
     const swapIndex = Math.floor(random() * (index + 1));
     [next[index], next[swapIndex]] = [next[swapIndex]!, next[index]!];
   }
-  if (next.length > 1 && next.every((value, index) => value === values[index])) {
-    next.push(next.shift()!);
-  }
+  if (next.length > 1 && next.every((value, index) => value === values[index])) next.push(next.shift()!);
   return next;
 }
 
-/**
- * SIGNAL RANDOM changes order without silently moving controller modules into
- * new rack rows. If the user already exchanged rows manually, those positions
- * remain valid and each family shuffles inside its current set of slots.
- */
+/** SIGNAL RANDOM leaves LOOP fixed and only shuffles effect/controller families. */
 export function shuffledRackOrder(rack: RackOrders, random = Math.random): RackOrders {
   const next = cloneRack(rack);
   const serialIds = new Set<string>(DEFAULT_SERIAL_ORDER);
@@ -194,6 +171,7 @@ export function shuffledRackOrder(rack: RackOrders, random = Math.random): RackO
 
   for (const rail of ['A', 'B', 'C'] as const) {
     rack[rail].forEach((moduleId, index) => {
+      if (moduleId === LOOP_MODULE_ID) return;
       if (serialIds.has(moduleId)) {
         serialSlots.push({ rail, index });
         serialModules.push(moduleId);
