@@ -1,0 +1,249 @@
+name: Fix random dropdown sync and Rail C artwork
+
+on:
+  push:
+    branches: [agent/native-dsp-core]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/native-dsp-core
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply random/UI/artwork patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'missing patch target in {path}: {old[:120]!r}')
+              if text.count(old) != 1:
+                  raise SystemExit(f'patch target not unique in {path}: {text.count(old)} occurrences')
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once('src/App.tsx', '''function chooseMusical<T>(values: readonly T[]): T {
+            return values[Math.floor(Math.random() * values.length)]!;
+          }
+          ''', '''function chooseMusical<T>(values: readonly T[]): T {
+            return values[Math.floor(Math.random() * values.length)]!;
+          }
+
+          function chooseMusicalDifferent<T>(values: readonly T[], current: T | undefined): T {
+            const alternatives = values.filter((value) => value !== current);
+            return chooseMusical(alternatives.length ? alternatives : values);
+          }
+          ''')
+
+          replace_once('src/App.tsx', '''function withMusicalRandomMode(module: ModuleState): ModuleState {
+            if (module.id === 'saturation') return { ...module, emberMode: chooseMusical(MUSICAL_EMBER_MODES) };
+            if (module.id === 'chorus') return { ...module, driftMode: chooseMusical(MUSICAL_DRIFT_MODES) };
+            if (module.id === 'delay') return { ...module, delayAlgorithm: chooseMusical(MUSICAL_HALO_MODES) };
+            if (module.id === 'reverb') return { ...module, algorithm: chooseMusical(MUSICAL_ATMOS_MODES) };
+            if (module.id === 'bitcrusher') return { ...module, grainMode: chooseMusical(MUSICAL_GRAIN_MODES) };
+            if (module.id === 'media') return { ...module, mediaMode: chooseMusical(MUSICAL_MEDIA_MODES) };
+            return module;
+          }
+          ''', '''function withMusicalRandomMode(module: ModuleState): ModuleState {
+            if (module.id === 'saturation') return { ...module, emberMode: chooseMusicalDifferent(MUSICAL_EMBER_MODES, module.emberMode) };
+            if (module.id === 'chorus') return { ...module, driftMode: chooseMusicalDifferent(MUSICAL_DRIFT_MODES, module.driftMode) };
+            if (module.id === 'delay') return { ...module, delayAlgorithm: chooseMusicalDifferent(MUSICAL_HALO_MODES, module.delayAlgorithm) };
+            if (module.id === 'reverb') return { ...module, algorithm: chooseMusicalDifferent(MUSICAL_ATMOS_MODES, module.algorithm) };
+            if (module.id === 'bitcrusher') return { ...module, grainMode: chooseMusicalDifferent(MUSICAL_GRAIN_MODES, module.grainMode) };
+            if (module.id === 'media') return { ...module, mediaMode: chooseMusicalDifferent(MUSICAL_MEDIA_MODES, module.mediaMode) };
+            return module;
+          }
+          ''')
+
+          replace_once('src/App.tsx', '''          for (const parameter of module.parameters)
+                    void nativeBridgeRef.current.commandLine(`param ${module.id} ${parameter.id} ${toDspParameterValue(module.id, parameter.id, parameter.value)}`);
+                }
+                return;
+              }
+          ''', '''          for (const parameter of module.parameters)
+                    void nativeBridgeRef.current.commandLine(`param ${module.id} ${parameter.id} ${toDspParameterValue(module.id, parameter.id, parameter.value)}`);
+                }
+
+                // The native host receives DSP parameters directly, but unlike the WebAudio
+                // transfer scheduler it does not own React's serial RANDOM reveal. Drive the
+                // exact same UI packet flow locally so controlled selects, knobs, and Rail C
+                // controllers always land on the state that is actually sounding.
+                const orderedTargets = [
+                  ...RANDOM_UI_EFFECT_ORDER.filter((effectId) => targets.has(effectId)),
+                  ...activeRailC,
+                ];
+                for (const [index, effectId] of orderedTargets.entries()) {
+                  offlineRandomTimersRef.current.push(
+                    window.setTimeout(() => revealRandomUiModule(effectId), 48 + index * 96)
+                  );
+                }
+                offlineRandomTimersRef.current.push(
+                  window.setTimeout(() => completeRandomUiFlow(), 72 + orderedTargets.length * 96)
+                );
+                return;
+              }
+          ''')
+
+          replace_once('src/components/effects/RailCModules.tsx', "import { Knob } from '../controls/Knob';\n", "import { Knob } from '../controls/Knob';\nimport { RailCHardwareDisplay } from '../ascii/RailCHardwareDisplay';\n")
+
+          replace_once('src/components/effects/RailCModules.tsx', '''function centeredRandom(minimum: number, maximum: number): number {
+            const centerBiased = (Math.random() + Math.random()) * 0.5;
+            return minimum + (maximum - minimum) * centerBiased;
+          }
+          ''', '''function centeredRandom(minimum: number, maximum: number): number {
+            const centerBiased = (Math.random() + Math.random()) * 0.5;
+            return minimum + (maximum - minimum) * centerBiased;
+          }
+
+          function chooseDifferent<T>(values: readonly T[], current: T): T {
+            const alternatives = values.filter((value) => value !== current);
+            const pool = alternatives.length ? alternatives : values;
+            return pool[Math.floor(Math.random() * pool.length)]!;
+          }
+          ''')
+
+          replace_once('src/components/effects/RailCModules.tsx', '''type StompModuleProps = RailInteractionProps & {
+            engineRunning: boolean;
+          ''', '''type StompModuleProps = RailInteractionProps & {
+            engineRunning: boolean;
+            visualState: VisualAudioState;
+          ''')
+          replace_once('src/components/effects/RailCModules.tsx', '''function StompModule({ engineRunning, onEnabledChange, onModeChange, onInputSourceChange, onParametersChange, ...props }: StompModuleProps) {
+          ''', '''function StompModule({ engineRunning, visualState, onEnabledChange, onModeChange, onInputSourceChange, onParametersChange, ...props }: StompModuleProps) {
+          ''')
+          replace_once('src/components/effects/RailCModules.tsx', "    const nextMode = profile === 'mutate' ? mode : pool[Math.floor(Math.random()*pool.length)]!;\n", "    const nextMode = profile === 'mutate' ? mode : chooseDifferent(pool, mode);\n")
+
+          old_stomp = '''        viewport={<div className={`stomp-display dsp-viewport ${enabled?'active':'is-off'}`}><span className="stomp-led"/><strong>STOMP</strong><small>{STOMP_MODE_LABELS[mode]}</small><div className="stomp-circuit-lines" aria-hidden="true"/></div>}
+          '''
+          new_stomp = '''        viewport={(
+                  <div className={`stomp-display dsp-viewport ${enabled ? 'active' : 'is-off'}`}>
+                    <RailCHardwareDisplay
+                      kind="stomp"
+                      enabled={enabled}
+                      visualState={visualState}
+                      modeLabel={STOMP_MODE_LABELS[mode]}
+                      detailLabel={presetId === 'custom' ? 'CUSTOM SIGNAL PATH' : STOMP_PRESETS[mode]?.find((preset) => preset.id === presetId)?.label ?? 'PEDAL PATH'}
+                    />
+                  </div>
+                )}
+          '''
+          replace_once('src/components/effects/RailCModules.tsx', old_stomp, new_stomp)
+
+          replace_once('src/components/effects/RailCModules.tsx', "    const nextModel = modelPool[Math.floor(Math.random() * modelPool.length)] ?? 'calcotone';\n", "    const nextModel = chooseDifferent(modelPool, model);\n")
+          replace_once('src/components/effects/RailCModules.tsx', "    const nextCabinet = cabinetPool[Math.floor(Math.random() * cabinetPool.length)] ?? '4x12';\n", "    const nextCabinet = chooseDifferent(cabinetPool, cabinet);\n")
+
+          old_stack = '''          <div className={`chaos-pad-shell dsp-viewport ${enabled ? 'active' : 'is-off'}`}>
+                    <div className="stack-amp-readout" aria-hidden="true">
+                      <strong>{STACK_MODEL_LABELS[model]}</strong>
+                      <pre>{`┌─ PRE ─┬─ POWER ─┬─ ${cabinet.toUpperCase()} ─┐\\n│  ▸▸▸  │  ≋ SAG  │  ◉  ◉  ◉  ◉ │\\n└───────┴─────────┴────────────┘`}</pre>
+                      <i style={{ '--stack-level': `${Math.round((enabled ? visualState.level : 0) * 100)}%` } as CSSProperties} />
+                    </div>
+                  </div>
+          '''
+          new_stack = '''          <div className={`chaos-pad-shell dsp-viewport ${enabled ? 'active' : 'is-off'}`}>
+                    <RailCHardwareDisplay
+                      kind="stack"
+                      enabled={enabled}
+                      visualState={visualState}
+                      modeLabel={STACK_MODEL_LABELS[model]}
+                      detailLabel={STACK_CABINET_LABELS[cabinet]}
+                    />
+                  </div>
+          '''
+          replace_once('src/components/effects/RailCModules.tsx', old_stack, new_stack)
+
+          replace_once('src/components/effects/RailCModules.tsx', '''  const state = usePressureState();
+            const meter = Math.max(0, Math.round((state.enabled ? visualState.level : 0) * 18));
+            const meterText = `${'█'.repeat(meter)}${'░'.repeat(18 - meter)}`;
+          ''', '''  const state = usePressureState();
+          ''')
+
+          old_pressure = '''          <div className={`pressure-ascii dsp-viewport ${state.enabled ? 'active' : 'is-off'}`} aria-label="Pressure compressor display">
+                    <pre aria-hidden="true">{`╔══════════════════════════╗
+          ║      P R E S S U R E     ║
+          ║    HARDWARE DYNAMICS     ║
+          ╠══════════════════════════╣
+          ║ IN  ${meterText} ║
+          ║ GR  ${state.enabled && running ? '▾▾▾▾' : '····'}  ${state.style.toUpperCase().padEnd(9, ' ')} ║
+          ╚══════════════════════════╝`}</pre>
+                    <div className="pressure-scanline" aria-hidden="true" />
+                  </div>
+          '''
+          new_pressure = '''          <div className={`pressure-ascii dsp-viewport ${state.enabled ? 'active' : 'is-off'}`} aria-label="Pressure compressor display">
+                    <RailCHardwareDisplay
+                      kind="pressure"
+                      enabled={state.enabled}
+                      visualState={visualState}
+                      modeLabel={SIGNAL_LAB_LABELS[state.mode]}
+                      detailLabel={`${state.style.toUpperCase()} · ${running ? 'LIVE' : 'READY'}`}
+                    />
+                  </div>
+          '''
+          replace_once('src/components/effects/RailCModules.tsx', old_pressure, new_pressure)
+
+          replace_once('src/components/effects/RailCModules.tsx', '''    return <StompModule {...interaction} engineRunning={running} onEnabledChange={onStompEnabledChange} onModeChange={onStompModeChange} onInputSourceChange={onStompInputSourceChange} onParametersChange={onStompParametersChange} />;
+          ''', '''    return <StompModule {...interaction} engineRunning={running} visualState={visualState} onEnabledChange={onStompEnabledChange} onModeChange={onStompModeChange} onInputSourceChange={onStompInputSourceChange} onParametersChange={onStompParametersChange} />;
+          ''')
+
+          replace_once('src/components/signal/pressureStore.ts', '''  const recipe = SIGNAL_LAB_SWEET_SPOTS[Math.floor(Math.random() * SIGNAL_LAB_SWEET_SPOTS.length)];
+            if (!recipe) return null;
+          ''', '''  const alternatives = SIGNAL_LAB_SWEET_SPOTS.filter((recipe) => recipe.mode !== state.mode || recipe.style !== state.style);
+            const pool = alternatives.length ? alternatives : SIGNAL_LAB_SWEET_SPOTS;
+            const recipe = pool[Math.floor(Math.random() * pool.length)];
+            if (!recipe) return null;
+          ''')
+
+          replace_once('scripts/dropdown-audit.mjs', '''const emberDigitalCapture = read('public/ember-digital-capture-processor.js');
+          ''', '''const emberDigitalCapture = read('public/ember-digital-capture-processor.js');
+          const app = read('src/App.tsx');
+          const railC = read('src/components/effects/RailCModules.tsx');
+          const pressureStore = read('src/components/signal/pressureStore.ts');
+          const railCArtwork = read('src/components/ascii/RailCHardwareDisplay.tsx');
+          ''')
+
+          replace_once('scripts/dropdown-audit.mjs', '''if (failures.length) {
+          ''', '''// RANDOM must keep controlled dropdown state synchronized with native DSP and visibly move when alternatives exist.
+          requireText(app, 'chooseMusicalDifferent(MUSICAL_EMBER_MODES, module.emberMode)', 'Core random mode changes');
+          requireText(app, 'The native host receives DSP parameters directly', 'Native RANDOM UI synchronization');
+          requireText(app, 'window.setTimeout(() => revealRandomUiModule(effectId), 48 + index * 96)', 'Native RANDOM serial reveal');
+          requireText(railC, 'chooseDifferent(pool, mode)', 'Stomp random mode changes');
+          requireText(railC, 'chooseDifferent(modelPool, model)', 'Stack random model changes');
+          requireText(pressureStore, 'recipe.mode !== state.mode || recipe.style !== state.style', 'Pressure random mode/style changes');
+
+          // Stomp, Stack, and Pressure share the same high-DPI animated hardware-art language as the core rack.
+          for (const kind of ['stomp', 'stack', 'pressure']) requireText(railCArtwork, `${kind}: {`, `Rail C ${kind} artwork profile`);
+          for (const kind of ['stomp', 'stack', 'pressure']) requireText(railC, `kind="${kind}"`, `Rail C ${kind} artwork mount`);
+          requireText(railCArtwork, 'subscribeViewportAnimation(render)', 'Rail C artwork shared scheduler');
+          requireText(railCArtwork, 'canvasPixelRatio(width, height, 5_400_000)', 'Rail C artwork high-DPI backing');
+
+          if (failures.length) {
+          ''')
+          PY
+      - name: Validate dropdown contract and production build
+        run: |
+          npm run audit:dropdowns
+          npm run build
+      - name: Commit patch and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-random-dropdown-art.yml
+          git add src/App.tsx src/components/effects/RailCModules.tsx src/components/signal/pressureStore.ts src/components/ascii/RailCHardwareDisplay.tsx scripts/dropdown-audit.mjs
+          git commit -m "Sync random dropdowns and unify Rail C artwork"
+          git push origin HEAD:agent/native-dsp-core
