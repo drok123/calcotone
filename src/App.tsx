@@ -256,6 +256,11 @@ function chooseMusical<T>(values: readonly T[]): T {
   return values[Math.floor(Math.random() * values.length)]!;
 }
 
+function chooseMusicalDifferent<T>(values: readonly T[], current: T | undefined): T {
+  const alternatives = values.filter((value) => value !== current);
+  return chooseMusical(alternatives.length ? alternatives : values);
+}
+
 const MUSICAL_RANDOM_RANGES: Record<string, Record<string, MusicalRange>> = {
   saturation: {
     drive: [0.08, 0.78],
@@ -552,12 +557,12 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
 };
 
 function withMusicalRandomMode(module: ModuleState): ModuleState {
-  if (module.id === 'saturation') return { ...module, emberMode: chooseMusical(MUSICAL_EMBER_MODES) };
-  if (module.id === 'chorus') return { ...module, driftMode: chooseMusical(MUSICAL_DRIFT_MODES) };
-  if (module.id === 'delay') return { ...module, delayAlgorithm: chooseMusical(MUSICAL_HALO_MODES) };
-  if (module.id === 'reverb') return { ...module, algorithm: chooseMusical(MUSICAL_ATMOS_MODES) };
-  if (module.id === 'bitcrusher') return { ...module, grainMode: chooseMusical(MUSICAL_GRAIN_MODES) };
-  if (module.id === 'media') return { ...module, mediaMode: chooseMusical(MUSICAL_MEDIA_MODES) };
+  if (module.id === 'saturation') return { ...module, emberMode: chooseMusicalDifferent(MUSICAL_EMBER_MODES, module.emberMode) };
+  if (module.id === 'chorus') return { ...module, driftMode: chooseMusicalDifferent(MUSICAL_DRIFT_MODES, module.driftMode) };
+  if (module.id === 'delay') return { ...module, delayAlgorithm: chooseMusicalDifferent(MUSICAL_HALO_MODES, module.delayAlgorithm) };
+  if (module.id === 'reverb') return { ...module, algorithm: chooseMusicalDifferent(MUSICAL_ATMOS_MODES, module.algorithm) };
+  if (module.id === 'bitcrusher') return { ...module, grainMode: chooseMusicalDifferent(MUSICAL_GRAIN_MODES, module.grainMode) };
+  if (module.id === 'media') return { ...module, mediaMode: chooseMusicalDifferent(MUSICAL_MEDIA_MODES, module.mediaMode) };
   return module;
 }
 
@@ -1450,6 +1455,23 @@ export default function App() {
           for (const parameter of module.parameters)
             void nativeBridgeRef.current.commandLine(`param ${module.id} ${parameter.id} ${toDspParameterValue(module.id, parameter.id, parameter.value)}`);
         }
+
+        // Native DSP receives the new values immediately, but it does not emit the
+        // browser transfer scheduler's RANDOM reveal events. Drive the same serial UI
+        // packet flow locally so every controlled select and Rail C controller lands
+        // on the exact state that is actually sounding.
+        const orderedTargets = [
+          ...RANDOM_UI_EFFECT_ORDER.filter((effectId) => targets.has(effectId)),
+          ...activeRailC,
+        ];
+        for (const [index, effectId] of orderedTargets.entries()) {
+          offlineRandomTimersRef.current.push(
+            window.setTimeout(() => revealRandomUiModule(effectId), 48 + index * 96)
+          );
+        }
+        offlineRandomTimersRef.current.push(
+          window.setTimeout(() => completeRandomUiFlow(), 72 + orderedTargets.length * 96)
+        );
         return;
       }
       const engine = engineRef.current;

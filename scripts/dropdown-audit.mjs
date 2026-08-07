@@ -47,6 +47,10 @@ const grain = read('src/audio/effects/Bitcrusher.ts');
 const grainProcessor = read('public/grain-processor.js');
 const artifact = read('src/audio/effects/Media.ts');
 const emberDigitalCapture = read('public/ember-digital-capture-processor.js');
+const app = read('src/App.tsx');
+const railC = read('src/components/effects/RailCModules.tsx');
+const pressureStore = read('src/components/signal/pressureStore.ts');
+const railCArtwork = read('src/components/ascii/RailCHardwareDisplay.tsx');
 
 const EMBER = ['velvet','tube','console','transformer','furnace','exciter','broken','goldlion','mullard','telefunken','bugleboy','rcablack','sp1200','mpc60','mirage','s950','emulator2','fairlightiix'];
 const DRIFT = ['chorus','ensemble','dimension','vibrato','rotary','doppler','liquid','orbit','ce1','dimensiond','mxrflanger','electricmistress','adaflanger','bf2','biphase','smallstone','univibe','leslie','phase90','instantphaser','schulte','pn2'];
@@ -127,6 +131,20 @@ requireText(artifact, 'getBcm10CaptureCurve(', 'Artifact BCM10 captured 1073N/Ma
 requireText(artifact, 'getSummingCurve(point.busCompression, point.busAsymmetry)', 'Artifact BCM10 live 1272 summing stage');
 forbidText(artifact, 'AudioWorkletNode', 'Artifact digital-capture ownership');
 requireText(artifact, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve caches');
+
+// RANDOM must keep controlled dropdown state synchronized with native DSP and visibly move when alternatives exist.
+requireText(app, 'chooseMusicalDifferent(MUSICAL_EMBER_MODES, module.emberMode)', 'Core random mode changes');
+requireText(app, 'Native DSP receives the new values immediately', 'Native RANDOM UI synchronization');
+requireText(app, 'window.setTimeout(() => revealRandomUiModule(effectId), 48 + index * 96)', 'Native RANDOM serial reveal');
+requireText(railC, 'chooseDifferent(pool, mode)', 'Stomp random mode changes');
+requireText(railC, 'chooseDifferent(modelPool, model)', 'Stack random model changes');
+requireText(pressureStore, 'recipe.mode !== state.mode || recipe.style !== state.style', 'Pressure random mode/style changes');
+
+// Stomp, Stack, and Pressure share the same high-DPI animated hardware-art language as the core rack.
+for (const kind of ['stomp', 'stack', 'pressure']) requireText(railCArtwork, `${kind}: {`, `Rail C ${kind} artwork profile`);
+for (const kind of ['stomp', 'stack', 'pressure']) requireText(railC, `kind="${kind}"`, `Rail C ${kind} artwork mount`);
+requireText(railCArtwork, 'subscribeViewportAnimation(render)', 'Rail C artwork shared scheduler');
+requireText(railCArtwork, 'canvasPixelRatio(width, height, 5_400_000)', 'Rail C artwork high-DPI backing');
 
 if (failures.length) {
   console.error('\nCALCOTONE dropdown audit failed:\n');

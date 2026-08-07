@@ -11,6 +11,7 @@ import {
 import type { VisualAudioState } from '../../visual/VisualEngine';
 import type { ModuleState, XYAssignment } from '../../ui/types';
 import { Knob } from '../controls/Knob';
+import { RailCHardwareDisplay } from '../ascii/RailCHardwareDisplay';
 import {
   SIGNAL_LAB_LABELS,
   SIGNAL_LAB_MODES,
@@ -84,6 +85,12 @@ function useRailCRandomController(
 function centeredRandom(minimum: number, maximum: number): number {
   const centerBiased = (Math.random() + Math.random()) * 0.5;
   return minimum + (maximum - minimum) * centerBiased;
+}
+
+function chooseDifferent<T>(values: readonly T[], current: T): T {
+  const alternatives = values.filter((value) => value !== current);
+  const pool = alternatives.length ? alternatives : values;
+  return pool[Math.floor(Math.random() * pool.length)]!;
 }
 
 function clamp01(value: number): number {
@@ -364,13 +371,14 @@ const STOMP_RACK_STATE = { enabled: false, mode: 0, inputSource: 'input-2' as St
 
 type StompModuleProps = RailInteractionProps & {
   engineRunning: boolean;
+  visualState: VisualAudioState;
   onEnabledChange: (enabled: boolean) => void;
   onModeChange: (mode: number) => void;
   onInputSourceChange: (source: StackInputSource) => void;
   onParametersChange: (values: readonly number[]) => void;
 };
 
-function StompModule({ engineRunning, onEnabledChange, onModeChange, onInputSourceChange, onParametersChange, ...props }: StompModuleProps) {
+function StompModule({ engineRunning, visualState, onEnabledChange, onModeChange, onInputSourceChange, onParametersChange, ...props }: StompModuleProps) {
   const [enabled, setEnabled] = useState(STOMP_RACK_STATE.enabled);
   const [mode, setMode] = useState(STOMP_RACK_STATE.mode);
   const [presetId, setPresetId] = useState(STOMP_RACK_STATE.presetId);
@@ -394,7 +402,7 @@ function StompModule({ engineRunning, onEnabledChange, onModeChange, onInputSour
   }
   function randomizeStomp(profile: RandomizationProfile): string | null {
     const pool = profile === 'bass' ? [0,2,3,6,10,13] : profile === 'pad' || profile === 'retro-ambient' ? [5,6,9,11,12,13] : profile === 'lead' ? [0,1,4,5,6,9,12] : [0,1,2,3,4,5,6,7,8,9,10,11,12,13];
-    const nextMode = profile === 'mutate' ? mode : pool[Math.floor(Math.random()*pool.length)]!;
+    const nextMode = profile === 'mutate' ? mode : chooseDifferent(pool, mode);
     const amount = profile === 'mutate' ? RANDOM_MUTATION_AMOUNT : 1;
     const next = values.map((value, index) => {
       const ranges: readonly MusicalRange[] = [[.16,.76],[.24,.78],[.48,.78],[.18,.72],[.28,.74],[.42,1]];
@@ -439,7 +447,17 @@ function StompModule({ engineRunning, onEnabledChange, onModeChange, onInputSour
       <RailCFaceplateSurface
         moduleId="stomp"
         knobRowClass="synth-knob-row stomp-knob-row"
-        viewport={<div className={`stomp-display dsp-viewport ${enabled?'active':'is-off'}`}><span className="stomp-led"/><strong>STOMP</strong><small>{STOMP_MODE_LABELS[mode]}</small><div className="stomp-circuit-lines" aria-hidden="true"/></div>}
+        viewport={(
+          <div className={`stomp-display dsp-viewport ${enabled ? 'active' : 'is-off'}`}>
+            <RailCHardwareDisplay
+              kind="stomp"
+              enabled={enabled}
+              visualState={visualState}
+              modeLabel={STOMP_MODE_LABELS[mode]}
+              detailLabel={presetId === 'custom' ? 'CUSTOM SIGNAL PATH' : STOMP_PRESETS[mode]?.find((preset) => preset.id === presetId)?.label ?? 'PEDAL PATH'}
+            />
+          </div>
+        )}
         knobs={controls.map((label,index)=><Knob key={`${mode}-${label}`} label={label} value={values[index]!} effectiveValue={values[index]!} display={`${Math.round(values[index]!*100)}%`} patchTarget={`stomp.${index}`} onChange={(value)=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?value:item));}} onReset={()=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?0.5:item));}} onPatchStart={()=>undefined} onPatchMove={()=>undefined} onPatchEnd={()=>undefined} onPatchDisconnect={()=>undefined}/>) }
       />
     </RailModuleFrame>
@@ -542,12 +560,12 @@ function ChaosModule({
       : profile === 'lead' || profile === 'gritty-drive' ? ['plexi', 'model-t', 'calcotone']
       : profile === 'pad' || profile === 'retro-ambient' ? ['blackface', 'ac30', 'calcotone']
       : STACK_AMP_MODELS;
-    const nextModel = modelPool[Math.floor(Math.random() * modelPool.length)] ?? 'calcotone';
+    const nextModel = chooseDifferent(modelPool, model);
     const cabinetPool: readonly StackCabinet[] = nextModel === 'svt' ? ['8x10', 'direct']
       : nextModel === 'blackface' ? ['1x12', '2x12']
       : nextModel === 'ac30' ? ['2x12', '1x12']
       : ['4x12', '2x12'];
-    const nextCabinet = cabinetPool[Math.floor(Math.random() * cabinetPool.length)] ?? '4x12';
+    const nextCabinet = chooseDifferent(cabinetPool, cabinet);
     setModel(nextModel);
     setCabinet(nextCabinet);
     const driveRange: MusicalRange = profile === 'gritty-drive' ? [0.52, 0.74] : profile === 'pad' ? [0.12, 0.32] : [0.24, 0.58];
@@ -609,11 +627,13 @@ function ChaosModule({
         knobRowClass="chaos-knob-row"
         viewport={(
           <div className={`chaos-pad-shell dsp-viewport ${enabled ? 'active' : 'is-off'}`}>
-            <div className="stack-amp-readout" aria-hidden="true">
-              <strong>{STACK_MODEL_LABELS[model]}</strong>
-              <pre>{`┌─ PRE ─┬─ POWER ─┬─ ${cabinet.toUpperCase()} ─┐\n│  ▸▸▸  │  ≋ SAG  │  ◉  ◉  ◉  ◉ │\n└───────┴─────────┴────────────┘`}</pre>
-              <i style={{ '--stack-level': `${Math.round((enabled ? visualState.level : 0) * 100)}%` } as CSSProperties} />
-            </div>
+            <RailCHardwareDisplay
+              kind="stack"
+              enabled={enabled}
+              visualState={visualState}
+              modeLabel={STACK_MODEL_LABELS[model]}
+              detailLabel={STACK_CABINET_LABELS[cabinet]}
+            />
           </div>
         )}
         knobs={labels.map((label, index) => (
@@ -646,8 +666,6 @@ function PressureModule({
   visualState: VisualAudioState;
 }) {
   const state = usePressureState();
-  const meter = Math.max(0, Math.round((state.enabled ? visualState.level : 0) * 18));
-  const meterText = `${'█'.repeat(meter)}${'░'.repeat(18 - meter)}`;
 
   function randomizePressureProfile(profile: RandomizationProfile): string | null {
     if (profile !== 'mutate') return randomizePressure();
@@ -683,14 +701,13 @@ function PressureModule({
         knobRowClass="pressure-rail-knobs"
         viewport={(
           <div className={`pressure-ascii dsp-viewport ${state.enabled ? 'active' : 'is-off'}`} aria-label="Pressure compressor display">
-            <pre aria-hidden="true">{`╔══════════════════════════╗
-║      P R E S S U R E     ║
-║    HARDWARE DYNAMICS     ║
-╠══════════════════════════╣
-║ IN  ${meterText} ║
-║ GR  ${state.enabled && running ? '▾▾▾▾' : '····'}  ${state.style.toUpperCase().padEnd(9, ' ')} ║
-╚══════════════════════════╝`}</pre>
-            <div className="pressure-scanline" aria-hidden="true" />
+            <RailCHardwareDisplay
+              kind="pressure"
+              enabled={state.enabled}
+              visualState={visualState}
+              modeLabel={SIGNAL_LAB_LABELS[state.mode]}
+              detailLabel={`${state.style.toUpperCase()} · ${running ? 'LIVE' : 'READY'}`}
+            />
           </div>
         )}
         knobs={([
@@ -765,7 +782,7 @@ export function RailCModule({
   void modules;
   void assignments;
   if (moduleId === 'stomp') {
-    return <StompModule {...interaction} engineRunning={running} onEnabledChange={onStompEnabledChange} onModeChange={onStompModeChange} onInputSourceChange={onStompInputSourceChange} onParametersChange={onStompParametersChange} />;
+    return <StompModule {...interaction} engineRunning={running} visualState={visualState} onEnabledChange={onStompEnabledChange} onModeChange={onStompModeChange} onInputSourceChange={onStompInputSourceChange} onParametersChange={onStompParametersChange} />;
   }
   if (moduleId === 'chaos') return (
     <ChaosModule
