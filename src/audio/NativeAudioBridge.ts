@@ -37,6 +37,11 @@ export interface NativeAudioHealth {
   ksPinCount: number;
   tunerHz: number;
   tunerLevel: number;
+  loopTransport?: number;
+  loopTrack?: number;
+  loopTrackMask?: number;
+  loopFrames?: number;
+  loopPosition?: number;
 }
 
 const NATIVE_ORIGIN = 'http://127.0.0.1:48157';
