@@ -31,6 +31,9 @@ requireText(rail, 'className={`loop-trim-toggle ${trimEditing ? \'active\' : \'\
 requireText(rail, "{ key: 'auto', label: 'AUTO'", 'Loop auto-trim button');
 requireText(rail, "{ key: 'reset', label: 'RESET'", 'Loop reset-trim button');
 requireText(display, 'TRANSIENT MEMORY // NON-DESTRUCTIVE TRIM', 'ASCII transient trim view');
+requireText(display, 'Loopy-inspired motion language', 'Loop circular clip-orbit motion language');
+requireText(display, 'CLIP ORBITS // 8 TRACK MEMORY', 'Loop eight-orbit memory bank footer');
+requireText(display, "accents[column] = '●'", 'Loop selected-track ASCII wiper');
 requireText(display, "accents[column] = '┃'", 'ASCII trim markers');
 requireText(random, "RAIL_C_RANDOM_ORDER = ['stomp', 'chaos']", 'Loop excluded from RANDOM registry');
 

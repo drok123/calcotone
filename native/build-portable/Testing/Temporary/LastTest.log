@@ -1,10 +1,10 @@
-Start testing: Aug 07 03:41 UTC
+Start testing: Aug 07 04:53 UTC
 ----------------------------------------------------------
 1/40 Testing: core_contract_test
 1/40 Test: core_contract_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/core_contract_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"core_contract_test" start time: Aug 07 03:41 UTC
+"core_contract_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 CALCOTONE generated native full-rack contract manifest-v2 passed
@@ -12,7 +12,7 @@ CALCOTONE generated native full-rack contract manifest-v2 passed
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"core_contract_test" end time: Aug 07 03:41 UTC
+"core_contract_test" end time: Aug 07 04:53 UTC
 "core_contract_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -20,14 +20,14 @@ Test Passed.
 2/40 Test: dsp_core_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/dsp_core_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"dsp_core_test" start time: Aug 07 03:41 UTC
+"dsp_core_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"dsp_core_test" end time: Aug 07 03:41 UTC
+"dsp_core_test" end time: Aug 07 04:53 UTC
 "dsp_core_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -35,15 +35,15 @@ Test Passed.
 3/40 Test: stack_amp_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/stack_amp_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"stack_amp_test" start time: Aug 07 03:41 UTC
+"stack_amp_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 Native STACK exact-worklet parity passed: 30 amp/cab identities, quality, sag, cabinet, glide, mix, and routing
 <end of output>
-Test time =   0.65 sec
+Test time =   0.76 sec
 ----------------------------------------------------------
 Test Passed.
-"stack_amp_test" end time: Aug 07 03:41 UTC
+"stack_amp_test" end time: Aug 07 04:53 UTC
 "stack_amp_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -51,15 +51,15 @@ Test Passed.
 4/40 Test: native_rack_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/native_rack_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"native_rack_test" start time: Aug 07 03:41 UTC
+"native_rack_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 native rack tests passed
 <end of output>
-Test time =   0.49 sec
+Test time =   0.63 sec
 ----------------------------------------------------------
 Test Passed.
-"native_rack_test" end time: Aug 07 03:41 UTC
+"native_rack_test" end time: Aug 07 04:53 UTC
 "native_rack_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -67,7 +67,7 @@ Test Passed.
 5/40 Test: pitch_tracker_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/pitch_tracker_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"pitch_tracker_test" start time: Aug 07 03:41 UTC
+"pitch_tracker_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 pitch tracker tests passed
@@ -75,7 +75,7 @@ pitch tracker tests passed
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"pitch_tracker_test" end time: Aug 07 03:41 UTC
+"pitch_tracker_test" end time: Aug 07 04:53 UTC
 "pitch_tracker_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -83,7 +83,7 @@ Test Passed.
 6/40 Test: native_processor_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/native_processor_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"native_processor_test" start time: Aug 07 03:41 UTC
+"native_processor_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 native processor transport boundary passed
@@ -91,7 +91,7 @@ native processor transport boundary passed
 Test time =   0.04 sec
 ----------------------------------------------------------
 Test Passed.
-"native_processor_test" end time: Aug 07 03:41 UTC
+"native_processor_test" end time: Aug 07 04:53 UTC
 "native_processor_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -99,14 +99,14 @@ Test Passed.
 7/40 Test: loop_processor_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/loop_processor_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"loop_processor_test" start time: Aug 07 03:41 UTC
+"loop_processor_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.03 sec
+Test time =   0.02 sec
 ----------------------------------------------------------
 Test Passed.
-"loop_processor_test" end time: Aug 07 03:41 UTC
+"loop_processor_test" end time: Aug 07 04:53 UTC
 "loop_processor_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -114,7 +114,7 @@ Test Passed.
 8/40 Test: audio_device_config_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/audio_device_config_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"audio_device_config_test" start time: Aug 07 03:41 UTC
+"audio_device_config_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 audio device configuration passed
@@ -122,7 +122,7 @@ audio device configuration passed
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"audio_device_config_test" end time: Aug 07 03:41 UTC
+"audio_device_config_test" end time: Aug 07 04:53 UTC
 "audio_device_config_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -130,14 +130,14 @@ Test Passed.
 9/40 Test: audio_client_property_plan_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/audio_client_property_plan_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"audio_client_property_plan_test" start time: Aug 07 03:41 UTC
+"audio_client_property_plan_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"audio_client_property_plan_test" end time: Aug 07 03:41 UTC
+"audio_client_property_plan_test" end time: Aug 07 04:53 UTC
 "audio_client_property_plan_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -145,14 +145,14 @@ Test Passed.
 10/40 Test: audio_restart_policy_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/audio_restart_policy_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"audio_restart_policy_test" start time: Aug 07 03:41 UTC
+"audio_restart_policy_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"audio_restart_policy_test" end time: Aug 07 03:41 UTC
+"audio_restart_policy_test" end time: Aug 07 04:53 UTC
 "audio_restart_policy_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -160,7 +160,7 @@ Test Passed.
 11/40 Test: elastic_stereo_fifo_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/elastic_stereo_fifo_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"elastic_stereo_fifo_test" start time: Aug 07 03:41 UTC
+"elastic_stereo_fifo_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 elastic stereo FIFO drift bridge passed
@@ -168,7 +168,7 @@ elastic stereo FIFO drift bridge passed
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"elastic_stereo_fifo_test" end time: Aug 07 03:41 UTC
+"elastic_stereo_fifo_test" end time: Aug 07 04:53 UTC
 "elastic_stereo_fifo_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -176,14 +176,14 @@ Test Passed.
 12/40 Test: elastic_stereo_fifo_discontinuity_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/elastic_stereo_fifo_discontinuity_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"elastic_stereo_fifo_discontinuity_test" start time: Aug 07 03:41 UTC
+"elastic_stereo_fifo_discontinuity_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"elastic_stereo_fifo_discontinuity_test" end time: Aug 07 03:41 UTC
+"elastic_stereo_fifo_discontinuity_test" end time: Aug 07 04:53 UTC
 "elastic_stereo_fifo_discontinuity_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -191,14 +191,14 @@ Test Passed.
 13/40 Test: stream_recovery_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/stream_recovery_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"stream_recovery_test" start time: Aug 07 03:41 UTC
+"stream_recovery_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"stream_recovery_test" end time: Aug 07 03:41 UTC
+"stream_recovery_test" end time: Aug 07 04:53 UTC
 "stream_recovery_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -206,14 +206,14 @@ Test Passed.
 14/40 Test: adaptive_fifo_safety_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/adaptive_fifo_safety_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"adaptive_fifo_safety_test" start time: Aug 07 03:41 UTC
+"adaptive_fifo_safety_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"adaptive_fifo_safety_test" end time: Aug 07 03:41 UTC
+"adaptive_fifo_safety_test" end time: Aug 07 04:53 UTC
 "adaptive_fifo_safety_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -221,14 +221,14 @@ Test Passed.
 15/40 Test: atmos_parity_profile_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/atmos_parity_profile_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"atmos_parity_profile_test" start time: Aug 07 03:41 UTC
+"atmos_parity_profile_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"atmos_parity_profile_test" end time: Aug 07 03:41 UTC
+"atmos_parity_profile_test" end time: Aug 07 04:53 UTC
 "atmos_parity_profile_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -236,29 +236,29 @@ Test Passed.
 16/40 Test: atmos_parity_processor_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/atmos_parity_processor_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"atmos_parity_processor_test" start time: Aug 07 03:41 UTC
+"atmos_parity_processor_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   2.42 sec
+Test time =   1.25 sec
 ----------------------------------------------------------
 Test Passed.
-"atmos_parity_processor_test" end time: Aug 07 03:41 UTC
-"atmos_parity_processor_test" time elapsed: 00:00:02
+"atmos_parity_processor_test" end time: Aug 07 04:53 UTC
+"atmos_parity_processor_test" time elapsed: 00:00:01
 ----------------------------------------------------------
 
 17/40 Testing: atmos_lexicon224_converter_test
 17/40 Test: atmos_lexicon224_converter_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/atmos_lexicon224_converter_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"atmos_lexicon224_converter_test" start time: Aug 07 03:41 UTC
+"atmos_lexicon224_converter_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"atmos_lexicon224_converter_test" end time: Aug 07 03:41 UTC
+"atmos_lexicon224_converter_test" end time: Aug 07 04:53 UTC
 "atmos_lexicon224_converter_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -266,14 +266,14 @@ Test Passed.
 18/40 Test: native_atmos_live_parity_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/native_atmos_live_parity_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"native_atmos_live_parity_test" start time: Aug 07 03:41 UTC
+"native_atmos_live_parity_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.45 sec
+Test time =   0.25 sec
 ----------------------------------------------------------
 Test Passed.
-"native_atmos_live_parity_test" end time: Aug 07 03:41 UTC
+"native_atmos_live_parity_test" end time: Aug 07 04:53 UTC
 "native_atmos_live_parity_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -281,14 +281,14 @@ Test Passed.
 19/40 Test: ember_parity_profile_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/ember_parity_profile_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"ember_parity_profile_test" start time: Aug 07 03:41 UTC
+"ember_parity_profile_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"ember_parity_profile_test" end time: Aug 07 03:41 UTC
+"ember_parity_profile_test" end time: Aug 07 04:53 UTC
 "ember_parity_profile_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -296,14 +296,14 @@ Test Passed.
 20/40 Test: ember_parity_processor_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/ember_parity_processor_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"ember_parity_processor_test" start time: Aug 07 03:41 UTC
+"ember_parity_processor_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
 Test time =   0.02 sec
 ----------------------------------------------------------
 Test Passed.
-"ember_parity_processor_test" end time: Aug 07 03:41 UTC
+"ember_parity_processor_test" end time: Aug 07 04:53 UTC
 "ember_parity_processor_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -311,14 +311,14 @@ Test Passed.
 21/40 Test: ember_magnetic_core_processor_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/ember_magnetic_core_processor_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"ember_magnetic_core_processor_test" start time: Aug 07 03:41 UTC
+"ember_magnetic_core_processor_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"ember_magnetic_core_processor_test" end time: Aug 07 03:41 UTC
+"ember_magnetic_core_processor_test" end time: Aug 07 04:53 UTC
 "ember_magnetic_core_processor_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -326,14 +326,14 @@ Test Passed.
 22/40 Test: ember_digital_capture_processor_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/ember_digital_capture_processor_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"ember_digital_capture_processor_test" start time: Aug 07 03:41 UTC
+"ember_digital_capture_processor_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"ember_digital_capture_processor_test" end time: Aug 07 03:41 UTC
+"ember_digital_capture_processor_test" end time: Aug 07 04:53 UTC
 "ember_digital_capture_processor_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -341,14 +341,14 @@ Test Passed.
 23/40 Test: native_ember_live_parity_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/native_ember_live_parity_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"native_ember_live_parity_test" start time: Aug 07 03:41 UTC
+"native_ember_live_parity_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.06 sec
+Test time =   0.07 sec
 ----------------------------------------------------------
 Test Passed.
-"native_ember_live_parity_test" end time: Aug 07 03:41 UTC
+"native_ember_live_parity_test" end time: Aug 07 04:53 UTC
 "native_ember_live_parity_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -356,14 +356,14 @@ Test Passed.
 24/40 Test: drift_parity_processor_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/drift_parity_processor_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"drift_parity_processor_test" start time: Aug 07 03:41 UTC
+"drift_parity_processor_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.08 sec
+Test time =   0.05 sec
 ----------------------------------------------------------
 Test Passed.
-"drift_parity_processor_test" end time: Aug 07 03:41 UTC
+"drift_parity_processor_test" end time: Aug 07 04:53 UTC
 "drift_parity_processor_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -371,14 +371,14 @@ Test Passed.
 25/40 Test: drift_classic_processor_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/drift_classic_processor_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"drift_classic_processor_test" start time: Aug 07 03:41 UTC
+"drift_classic_processor_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.03 sec
+Test time =   0.04 sec
 ----------------------------------------------------------
 Test Passed.
-"drift_classic_processor_test" end time: Aug 07 03:41 UTC
+"drift_classic_processor_test" end time: Aug 07 04:53 UTC
 "drift_classic_processor_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -386,14 +386,14 @@ Test Passed.
 26/40 Test: drift_standard_processor_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/drift_standard_processor_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"drift_standard_processor_test" start time: Aug 07 03:41 UTC
+"drift_standard_processor_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.11 sec
+Test time =   0.13 sec
 ----------------------------------------------------------
 Test Passed.
-"drift_standard_processor_test" end time: Aug 07 03:41 UTC
+"drift_standard_processor_test" end time: Aug 07 04:53 UTC
 "drift_standard_processor_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -401,14 +401,14 @@ Test Passed.
 27/40 Test: halo_parity_processor_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/halo_parity_processor_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"halo_parity_processor_test" start time: Aug 07 03:41 UTC
+"halo_parity_processor_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.31 sec
+Test time =   0.36 sec
 ----------------------------------------------------------
 Test Passed.
-"halo_parity_processor_test" end time: Aug 07 03:41 UTC
+"halo_parity_processor_test" end time: Aug 07 04:53 UTC
 "halo_parity_processor_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -416,14 +416,14 @@ Test Passed.
 28/40 Test: halo_space_echo_processor_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/halo_space_echo_processor_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"halo_space_echo_processor_test" start time: Aug 07 03:41 UTC
+"halo_space_echo_processor_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.38 sec
+Test time =   0.50 sec
 ----------------------------------------------------------
 Test Passed.
-"halo_space_echo_processor_test" end time: Aug 07 03:41 UTC
+"halo_space_echo_processor_test" end time: Aug 07 04:53 UTC
 "halo_space_echo_processor_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -431,14 +431,14 @@ Test Passed.
 29/40 Test: grain_parity_processor_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/grain_parity_processor_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"grain_parity_processor_test" start time: Aug 07 03:41 UTC
+"grain_parity_processor_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.54 sec
+Test time =   0.69 sec
 ----------------------------------------------------------
 Test Passed.
-"grain_parity_processor_test" end time: Aug 07 03:41 UTC
+"grain_parity_processor_test" end time: Aug 07 04:53 UTC
 "grain_parity_processor_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -446,14 +446,14 @@ Test Passed.
 30/40 Test: native_grain_live_parity_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/native_grain_live_parity_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"native_grain_live_parity_test" start time: Aug 07 03:41 UTC
+"native_grain_live_parity_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.33 sec
+Test time =   0.42 sec
 ----------------------------------------------------------
 Test Passed.
-"native_grain_live_parity_test" end time: Aug 07 03:41 UTC
+"native_grain_live_parity_test" end time: Aug 07 04:53 UTC
 "native_grain_live_parity_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -461,14 +461,14 @@ Test Passed.
 31/40 Test: artifact_parity_processor_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/artifact_parity_processor_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"artifact_parity_processor_test" start time: Aug 07 03:41 UTC
+"artifact_parity_processor_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.24 sec
+Test time =   0.33 sec
 ----------------------------------------------------------
 Test Passed.
-"artifact_parity_processor_test" end time: Aug 07 03:41 UTC
+"artifact_parity_processor_test" end time: Aug 07 04:53 UTC
 "artifact_parity_processor_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -476,14 +476,14 @@ Test Passed.
 32/40 Test: native_artifact_live_parity_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/native_artifact_live_parity_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"native_artifact_live_parity_test" start time: Aug 07 03:41 UTC
+"native_artifact_live_parity_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.20 sec
+Test time =   0.24 sec
 ----------------------------------------------------------
 Test Passed.
-"native_artifact_live_parity_test" end time: Aug 07 03:41 UTC
+"native_artifact_live_parity_test" end time: Aug 07 04:53 UTC
 "native_artifact_live_parity_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -491,14 +491,14 @@ Test Passed.
 33/40 Test: stomp_parity_processor_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/stomp_parity_processor_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"stomp_parity_processor_test" start time: Aug 07 03:41 UTC
+"stomp_parity_processor_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.12 sec
+Test time =   0.16 sec
 ----------------------------------------------------------
 Test Passed.
-"stomp_parity_processor_test" end time: Aug 07 03:41 UTC
+"stomp_parity_processor_test" end time: Aug 07 04:53 UTC
 "stomp_parity_processor_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -506,14 +506,14 @@ Test Passed.
 34/40 Test: native_stomp_live_parity_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/native_stomp_live_parity_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"native_stomp_live_parity_test" start time: Aug 07 03:41 UTC
+"native_stomp_live_parity_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.08 sec
+Test time =   0.12 sec
 ----------------------------------------------------------
 Test Passed.
-"native_stomp_live_parity_test" end time: Aug 07 03:41 UTC
+"native_stomp_live_parity_test" end time: Aug 07 04:53 UTC
 "native_stomp_live_parity_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -521,14 +521,14 @@ Test Passed.
 35/40 Test: pressure_parity_processor_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/pressure_parity_processor_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"pressure_parity_processor_test" start time: Aug 07 03:41 UTC
+"pressure_parity_processor_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.34 sec
+Test time =   0.36 sec
 ----------------------------------------------------------
 Test Passed.
-"pressure_parity_processor_test" end time: Aug 07 03:41 UTC
+"pressure_parity_processor_test" end time: Aug 07 04:53 UTC
 "pressure_parity_processor_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -536,14 +536,14 @@ Test Passed.
 36/40 Test: native_pressure_live_parity_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/native_pressure_live_parity_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"native_pressure_live_parity_test" start time: Aug 07 03:41 UTC
+"native_pressure_live_parity_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.15 sec
+Test time =   0.22 sec
 ----------------------------------------------------------
 Test Passed.
-"native_pressure_live_parity_test" end time: Aug 07 03:41 UTC
+"native_pressure_live_parity_test" end time: Aug 07 04:53 UTC
 "native_pressure_live_parity_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -551,14 +551,14 @@ Test Passed.
 37/40 Test: dream_buffer_parity_processor_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/dream_buffer_parity_processor_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"dream_buffer_parity_processor_test" start time: Aug 07 03:41 UTC
+"dream_buffer_parity_processor_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.23 sec
+Test time =   0.15 sec
 ----------------------------------------------------------
 Test Passed.
-"dream_buffer_parity_processor_test" end time: Aug 07 03:41 UTC
+"dream_buffer_parity_processor_test" end time: Aug 07 04:53 UTC
 "dream_buffer_parity_processor_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -566,14 +566,14 @@ Test Passed.
 38/40 Test: native_dream_engine_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/native_dream_engine_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"native_dream_engine_test" start time: Aug 07 03:41 UTC
+"native_dream_engine_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
 Test time =   0.23 sec
 ----------------------------------------------------------
 Test Passed.
-"native_dream_engine_test" end time: Aug 07 03:41 UTC
+"native_dream_engine_test" end time: Aug 07 04:53 UTC
 "native_dream_engine_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -581,14 +581,14 @@ Test Passed.
 39/40 Test: native_dream_live_parity_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/native_dream_live_parity_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"native_dream_live_parity_test" start time: Aug 07 03:41 UTC
+"native_dream_live_parity_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
-Test time =   0.53 sec
+Test time =   0.60 sec
 ----------------------------------------------------------
 Test Passed.
-"native_dream_live_parity_test" end time: Aug 07 03:41 UTC
+"native_dream_live_parity_test" end time: Aug 07 04:53 UTC
 "native_dream_live_parity_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -596,15 +596,15 @@ Test Passed.
 40/40 Test: halo_dual_grain_pitch_processor_test
 Command: "/home/runner/work/calcotone/calcotone/native/build-portable/halo_dual_grain_pitch_processor_test"
 Directory: /home/runner/work/calcotone/calcotone/native/build-portable
-"halo_dual_grain_pitch_processor_test" start time: Aug 07 03:41 UTC
+"halo_dual_grain_pitch_processor_test" start time: Aug 07 04:53 UTC
 Output:
 ----------------------------------------------------------
 <end of output>
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"halo_dual_grain_pitch_processor_test" end time: Aug 07 03:41 UTC
+"halo_dual_grain_pitch_processor_test" end time: Aug 07 04:53 UTC
 "halo_dual_grain_pitch_processor_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Aug 07 03:41 UTC
+End testing: Aug 07 04:53 UTC

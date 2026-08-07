@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { VisualAudioState } from '../../visual/VisualEngine';
 import { canvasPixelRatio, getDisplayProfile, subscribeDisplayProfile } from '../../ui/displayProfile';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
+import { getLoopState, LOOP_TRACK_COUNT } from '../signal/loopStore';
 import './PressureStyleDisplay.css';
 
 export type RailCHardwareKind = 'stomp' | 'stack' | 'loop';
@@ -129,6 +130,14 @@ function draw(
     ? clamp01(props.loopProgress ?? 0) * TAU
     : phase;
   const activity = props.enabled ? clamp01(props.visualState.level * 0.72 + props.visualState.transient * 0.28) : 0;
+  // Loopy-inspired motion language, translated into Calcotone hardware ASCII:
+  // eight circular clip orbits, one accurate selected-track wiper, and no
+  // imitation of Loopy Pro's colors, controls, layout, or branded appearance.
+  const loopState = props.kind === 'loop' ? getLoopState() : null;
+  const loopSelectedTrack = loopState?.selectedTrack ?? 0;
+  const loopTrackMask = loopState?.trackMask ?? 0;
+  const loopTransport = loopState?.transport ?? 'empty';
+  const loopSelectedProgress = clamp01(props.loopProgress ?? 0);
 
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.fillStyle = '#050706';
@@ -185,6 +194,70 @@ function draw(
           if (column === playColumn && inside && localRow === Math.round(center)) accents[column] = '●';
           intensity = Math.max(intensity, amplitude);
         }
+      } else if (props.kind === 'loop') {
+        const localRow = row - graphStart;
+        const y = ((localRow) / Math.max(1, graphRows - 1)) * 2 - 1;
+        const recording = loopTransport === 'recording';
+        const overdubbing = loopTransport === 'overdubbing';
+        const playing = loopTransport === 'playing' || overdubbing;
+        const animatedWiper = recording ? ((phase / TAU) % 1) : loopSelectedProgress;
+
+        for (let column = 0; column < innerWidth; column += 1) {
+          const x = (column / Math.max(1, innerWidth - 1)) * 2 - 1;
+          for (let track = 0; track < LOOP_TRACK_COUNT; track += 1) {
+            const gridColumn = track % 4;
+            const gridRow = Math.floor(track / 4);
+            const centerX = -0.75 + gridColumn * 0.5;
+            const centerY = -0.5 + gridRow;
+            const ellipseX = (x - centerX) / 0.205;
+            const ellipseY = (y - centerY) / 0.335;
+            const radius = Math.sqrt(ellipseX * ellipseX + ellipseY * ellipseY);
+            const ringDistance = Math.abs(radius - 1);
+            const occupied = (loopTrackMask & (1 << track)) !== 0;
+            const selected = track === loopSelectedTrack;
+            const selectedActive = selected && (occupied || recording);
+            const angle = Math.atan2(ellipseY, ellipseX);
+            const orbitPosition = ((angle + Math.PI * 0.5 + TAU) % TAU) / TAU;
+            const wiperDelta = Math.abs(((orbitPosition - animatedWiper + 1.5) % 1) - 0.5);
+
+            if (ringDistance < 0.17) {
+              if (!occupied && !selectedActive) {
+                if ((column + localRow + track) % 2 === 0) chars[column] = '·';
+              } else if (selected) {
+                const passed = playing && orbitPosition <= loopSelectedProgress;
+                chars[column] = recording ? (orbitPosition <= animatedWiper ? '█' : '◦') : passed ? '●' : '○';
+              } else {
+                chars[column] = '◦';
+              }
+              intensity = Math.max(intensity, selected ? 0.9 : occupied ? 0.67 : 0.48);
+            }
+
+            // Selected-track wiper: this is the Loopy-style idea, expressed as
+            // a tiny Calcotone ASCII playhead rather than a copied clip widget.
+            if (selectedActive && ringDistance < 0.27 && wiperDelta < 0.035) {
+              accents[column] = '●';
+              intensity = 1;
+            }
+
+            // DUB grows a second inner memory orbit so layering is visible
+            // without turning the screen into a busy waveform visualizer.
+            if (selected && overdubbing && Math.abs(radius - 0.70) < 0.11) {
+              chars[column] = (column + localRow) % 2 === 0 ? '◦' : '·';
+              if ((column + localRow) % 7 === 0) accents[column] = '○';
+              intensity = Math.max(intensity, 0.88);
+            }
+          }
+        }
+
+        // Put the track number inside every clip orbit. Selected track number
+        // uses the sparse accent layer; all others remain Calcotone off-white.
+        for (let track = 0; track < LOOP_TRACK_COUNT; track += 1) {
+          const centerColumn = Math.round(((0.125 + (track % 4) * 0.25)) * Math.max(1, innerWidth - 1));
+          const centerRow = Math.round((0.25 + Math.floor(track / 4) * 0.5) * Math.max(1, graphRows - 1));
+          if (localRow !== centerRow || centerColumn < 0 || centerColumn >= innerWidth) continue;
+          chars[centerColumn] = String(track + 1);
+          if (track === loopSelectedTrack) accents[centerColumn] = String(track + 1);
+        }
       } else {
         const y = ((row - graphStart) / Math.max(1, graphRows - 1)) * 2 - 1;
         for (let column = 0; column < innerWidth; column += 1) {
@@ -204,7 +277,7 @@ function draw(
       const footer = props.kind === 'loop'
         ? props.trimEditing
           ? 'TRANSIENT MEMORY // NON-DESTRUCTIVE TRIM'
-          : (props.enabled ? 'MEMORY ONLINE // 8 TRACKS' : 'MEMORY HELD // STANDBY')
+          : (props.enabled ? 'CLIP ORBITS // 8 TRACK MEMORY' : 'MEMORY HELD // STANDBY')
         : (props.enabled ? 'ONLINE // SIGNAL LOCK' : 'BYPASS // STANDBY');
       line = `║${centerText(footer, innerWidth)}║`;
     } else if (row === rows - 1) line = `╚${'═'.repeat(innerWidth)}╝`;
