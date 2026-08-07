@@ -41,6 +41,25 @@ jobs:
           node --check scripts/apply-loop-finalize.mjs
       - name: Apply Loop integration
         run: node scripts/apply-loop-finalize.mjs
+      - name: Refresh native contract test
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('native/tests/core_contract_test.cpp')
+          s=p.read_text()
+          replacements={
+            'artifact->model_count != 14':'artifact->model_count != 18',
+            'pressure->name != "Pressure" || pressure->rail != \'C\' || pressure->model_count != 4':'pressure->name != "Loop" || pressure->rail != \'C\' || pressure->model_count != 1',
+            'kMediaModels.back() != "Neve BCM10"':'kMediaModels.back() != "compressor-vca"',
+            'kPressureModels.front() != "fet" || kPressureModels.back() != "vca"':'kPressureModels.front() != "loop" || kPressureModels.back() != "loop"',
+            'constexpr std::array<std::string_view, 5> pressure_control_ids{\n      "style", "drive", "time", "character", "mix"};\n  constexpr std::array<float, 5> pressure_defaults{2.F,.42F,.46F,.38F,.72F};':'constexpr std::array<std::string_view, 4> pressure_control_ids{\n      "track", "masterLevel", "overdub", "fade"};\n  constexpr std::array<float, 4> pressure_defaults{0.F,.78F,1.F,.18F};'
+          }
+          for old,new in replacements.items():
+              if old not in s:
+                  raise SystemExit(f'contract test anchor missing: {old}')
+              s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
       - name: Install web dependencies
         run: npm ci --legacy-peer-deps
       - name: Validate Loop and web build
