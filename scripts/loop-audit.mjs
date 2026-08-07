@@ -14,6 +14,8 @@ const rail = read('src/components/effects/RailCModules.tsx');
 const display = read('src/components/ascii/RailCHardwareDisplay.tsx');
 const random = read('src/features/random/railCRandomRegistry.ts');
 
+// Loop is an eight-timeline performance recorder: track duration and trim are
+// selected-track properties, never a hidden master length inherited from T1.
 requireText(store, 'export const LOOP_TRACK_COUNT = 8', 'Loop hard track limit');
 requireText(worklet, 'this.rawFrames = new Uint32Array(TRACKS)', 'browser independent track lengths');
 requireText(worklet, 'this.positions = new Uint32Array(TRACKS)', 'browser independent playheads');
