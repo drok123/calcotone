@@ -1,0 +1,52 @@
+name: Tighten Loop usability
+
+on:
+  push:
+    branches: [agent/native-dsp-core]
+    paths:
+      - scripts/tighten-loop.py
+      - .github/workflows/tighten-loop.yml
+
+permissions:
+  contents: write
+
+jobs:
+  tighten-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/native-dsp-core
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply Loop usability patch
+        run: python scripts/tighten-loop.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run focused Loop checks
+        run: |
+          npm run audit:loop
+          npm run audit:native
+          npm run build
+
+      - name: Run full Calcotone checks
+        run: npm run check
+
+      - name: Commit finished Loop pass
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm scripts/tighten-loop.py .github/workflows/tighten-loop.yml
+          git add -A
+          git diff --cached --quiet || git commit -m "Tighten Loop track lengths and trim editor"
+          git push origin HEAD:agent/native-dsp-core
