@@ -8,5 +8,17 @@ if old not in text:
     raise SystemExit('replace_exact helper anchor not found')
 text = text.replace(old, new, 1)
 text = text.replace("forbidText(random, \"'pressure'\", 'Loop excluded from RANDOM registry');", "requireText(random, \"RAIL_C_RANDOM_ORDER = ['stomp', 'chaos']\", 'Loop excluded from RANDOM registry');")
+
+marker = "print('Loop usability patch applied.')\n"
+audit_patch = r'''# Teach the legacy signal audit that the four physical Loop knobs deliberately
+# change legends while TRIM is active without changing the approved geometry.
+replace_exact('scripts/signal-lab-audit.mjs',
+'''requireText(railC, "const knobLabels = ['Track', 'Loop', 'Overdub', 'Fade']", 'Loop four macro controls');\n''',
+'''requireText(railC, "['Track', 'Loop', 'Overdub', 'Fade']", 'Loop normal macro controls');\nrequireText(railC, "['IN', 'OUT', 'Track', 'Fade']", 'Loop trim macro controls');\nrequireText(railC, 'trimEditing ?', 'Loop trim macro switch');\n''')
+
+'''
+if marker not in text:
+    raise SystemExit('Loop patch completion marker not found')
+text = text.replace(marker, audit_patch + marker, 1)
 path.write_text(text, encoding='utf-8')
-print('Hardened Loop patch anchors.')
+print('Hardened Loop patch anchors and trim audit contract.')
