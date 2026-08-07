@@ -25,6 +25,7 @@ import './chordChainPatch'
 import { installDisplayProfile } from './ui/displayProfile'
 import App from './App.tsx'
 import './approvedFaceplate.css'
+import './components/effects/ModulePowerState.css'
 
 installDisplayProfile()
 
