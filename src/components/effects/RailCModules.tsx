@@ -665,14 +665,30 @@ function LoopModule({
   visualState: VisualAudioState;
 }) {
   const state = useLoopState();
+  const [trimEditing, setTrimEditing] = useState(false);
   const trackLevel = state.trackLevels[state.selectedTrack] ?? 0.72;
   const occupied = occupiedLoopTracks(state.trackMask);
   const seconds = state.loopFrames > 0 ? state.loopFrames / Math.max(1, state.sampleRate) : 0;
+  const rawSeconds = state.rawFrames > 0 ? state.rawFrames / Math.max(1, state.sampleRate) : 0;
   const selectedFilled = (state.trackMask & (1 << state.selectedTrack)) !== 0;
-  const knobLabels = ['Track', 'Loop', 'Overdub', 'Fade'] as const;
-  const knobValues = [trackLevel, state.masterLevel, state.overdub, state.fade] as const;
+  const minimumTrim = state.rawFrames > 0 ? Math.min(0.25, 64 / state.rawFrames) : 0.001;
+  const knobLabels = trimEditing ? ['IN', 'OUT', 'Track', 'Fade'] as const : ['Track', 'Loop', 'Overdub', 'Fade'] as const;
+  const knobValues = trimEditing
+    ? [state.trimStart, state.trimEnd, trackLevel, state.fade] as const
+    : [trackLevel, state.masterLevel, state.overdub, state.fade] as const;
+
+  useEffect(() => {
+    if (!selectedFilled && trimEditing) setTrimEditing(false);
+  }, [selectedFilled, trimEditing]);
 
   function setKnob(index: number, value: number): void {
+    if (trimEditing) {
+      if (index === 0) sendLoopCommand({ type: 'trim', start: Math.min(value, state.trimEnd - minimumTrim), end: state.trimEnd });
+      else if (index === 1) sendLoopCommand({ type: 'trim', start: state.trimStart, end: Math.max(value, state.trimStart + minimumTrim) });
+      else if (index === 2) setSelectedTrackLevel(value);
+      else setLoopState({ fade: value });
+      return;
+    }
     if (index === 0) setSelectedTrackLevel(value);
     else if (index === 1) setLoopState({ masterLevel: value });
     else if (index === 2) setLoopState({ overdub: value });
@@ -680,11 +696,30 @@ function LoopModule({
   }
 
   function resetKnob(index: number): void {
+    if (trimEditing) {
+      if (index === 0) sendLoopCommand({ type: 'trim', start: 0, end: state.trimEnd });
+      else if (index === 1) sendLoopCommand({ type: 'trim', start: state.trimStart, end: 1 });
+      else if (index === 2) setSelectedTrackLevel(0.72);
+      else setLoopState({ fade: 0.18 });
+      return;
+    }
     if (index === 0) setSelectedTrackLevel(0.72);
     else if (index === 1) setLoopState({ masterLevel: 0.78 });
     else if (index === 2) setLoopState({ overdub: 1 });
     else setLoopState({ fade: 0.18 });
   }
+
+  const buttons = trimEditing ? [
+    { key: 'auto', label: 'AUTO', active: false, action: () => sendLoopCommand({ type: 'autoTrim' } as const) },
+    { key: 'reset', label: 'RESET', active: false, action: () => sendLoopCommand({ type: 'resetTrim' } as const) },
+    { key: 'play', label: 'PLAY', active: state.transport === 'playing', action: () => sendLoopCommand('play') },
+    { key: 'done', label: 'DONE', active: true, action: () => setTrimEditing(false) },
+  ] : [
+    { key: 'record', label: 'REC', active: state.transport === 'recording', action: () => sendLoopCommand('record') },
+    { key: 'overdub', label: 'DUB', active: state.transport === 'overdubbing', action: () => sendLoopCommand('overdub') },
+    { key: 'play', label: 'PLAY', active: state.transport === 'playing', action: () => sendLoopCommand('play') },
+    { key: 'clear', label: 'CLEAR', active: false, action: () => sendLoopCommand('clear') },
+  ];
 
   return (
     <RailModuleFrame
@@ -694,14 +729,33 @@ function LoopModule({
       enabled={state.enabled}
       onToggle={() => setLoopState({ enabled: !state.enabled })}
       headerControl={(
-        <label className="algorithm-selector pressure-machine-selector">
-          <span className="sr-only">Loop track</span>
-          <select aria-label="Loop track" value={state.selectedTrack} onChange={(event) => setLoopState({ selectedTrack: Number(event.target.value) })}>
-            {Array.from({ length: LOOP_TRACK_COUNT }, (_, index) => (
-              <option value={index} key={index}>{`T${index + 1}${(state.trackMask & (1 << index)) !== 0 ? ' ●' : ''}`}</option>
-            ))}
-          </select>
-        </label>
+        <div className="loop-header-controls">
+          <label className="algorithm-selector pressure-machine-selector">
+            <span className="sr-only">Loop track</span>
+            <select
+              aria-label="Loop track"
+              value={state.selectedTrack}
+              onChange={(event) => {
+                setTrimEditing(false);
+                setLoopState({ selectedTrack: Number(event.target.value) });
+              }}
+            >
+              {Array.from({ length: LOOP_TRACK_COUNT }, (_, index) => (
+                <option value={index} key={index}>{`T${index + 1}${(state.trackMask & (1 << index)) !== 0 ? ' ●' : ''}`}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className={`loop-trim-toggle ${trimEditing ? 'active' : ''}`}
+            disabled={!selectedFilled}
+            aria-pressed={trimEditing}
+            onClick={() => setTrimEditing((current) => !current)}
+            title={selectedFilled ? 'Edit non-destructive loop boundaries' : 'Record this track before trimming'}
+          >
+            TRIM
+          </button>
+        </div>
       )}
     >
       <RailCFaceplateSurface
@@ -713,8 +767,15 @@ function LoopModule({
               kind="loop"
               enabled={state.enabled}
               visualState={visualState}
-              modeLabel={state.transport}
-              detailLabel={`T${state.selectedTrack + 1} · ${selectedFilled ? 'MEM' : 'EMPTY'} · ${occupied}/8 · ${seconds.toFixed(1)}s · ${running ? 'LIVE' : 'READY'}`}
+              modeLabel={trimEditing ? 'TRIM EDIT' : state.transport}
+              detailLabel={trimEditing
+                ? `T${state.selectedTrack + 1} · ${seconds.toFixed(2)}s / ${rawSeconds.toFixed(2)}s RAW`
+                : `T${state.selectedTrack + 1} · ${selectedFilled ? 'MEM' : 'EMPTY'} · ${occupied}/8 · ${seconds.toFixed(1)}s · ${running ? 'LIVE' : 'READY'}`}
+              loopWaveform={state.waveform}
+              trimStart={state.trimStart}
+              trimEnd={state.trimEnd}
+              trimEditing={trimEditing}
+              loopProgress={state.loopFrames > 0 ? state.position / state.loopFrames : 0}
             />
           </div>
         )}
@@ -724,7 +785,11 @@ function LoopModule({
             label={label}
             value={knobValues[index]}
             effectiveValue={knobValues[index]}
-            display={index === 3 ? `${Math.round(knobValues[index] * 20)} ms` : `${Math.round(knobValues[index] * 100)}%`}
+            display={trimEditing && index < 2
+              ? `${(knobValues[index] * 100).toFixed(1)}%`
+              : index === 3
+                ? `${Math.round(knobValues[index] * 20)} ms`
+                : `${Math.round(knobValues[index] * 100)}%`}
             patchTarget={`pressure.loop-${index}`}
             onChange={(value) => setKnob(index, value)}
             onReset={() => resetKnob(index)}
@@ -734,26 +799,16 @@ function LoopModule({
             onPatchDisconnect={() => undefined}
           />
         ))}
-        buttons={([
-          ['REC', 'record'],
-          ['DUB', 'overdub'],
-          ['PLAY', 'play'],
-          ['CLEAR', 'clear'],
-        ] as const).map(([label, command]) => {
-          const active = command === 'record' ? state.transport === 'recording'
-            : command === 'overdub' ? state.transport === 'overdubbing'
-            : command === 'play' ? state.transport === 'playing'
-            : false;
-          return (
-            <button type="button" key={command} className={active ? 'active' : ''} aria-pressed={active} onClick={() => sendLoopCommand(command)}>
-              {label}
-            </button>
-          );
-        })}
+        buttons={buttons.map((button) => (
+          <button type="button" key={button.key} className={button.active ? 'active' : ''} aria-pressed={button.active} onClick={button.action}>
+            {button.label}
+          </button>
+        ))}
       />
     </RailModuleFrame>
   );
 }
+
 
 
 export function RailCModule({

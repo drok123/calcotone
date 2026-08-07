@@ -2,11 +2,17 @@ import { useSyncExternalStore } from 'react';
 
 export const LOOP_TRACK_COUNT = 8;
 export const LOOP_MAX_SECONDS = 60;
+export const LOOP_WAVEFORM_BINS = 64;
 export const LOOP_COMMAND_EVENT = 'calcotone:loop-command';
 export const LOOP_CHANGE_EVENT = 'calcotone:loop-change';
 
 export type LoopTransport = 'empty' | 'stopped' | 'playing' | 'recording' | 'overdubbing';
-export type LoopCommand = 'record' | 'overdub' | 'play' | 'clear';
+export type LoopTransportCommand = 'record' | 'overdub' | 'play' | 'clear';
+export type LoopCommand =
+  | LoopTransportCommand
+  | { type: 'trim'; start: number; end: number }
+  | { type: 'autoTrim' }
+  | { type: 'resetTrim' };
 
 export interface LoopSettings {
   enabled: boolean;
@@ -21,8 +27,12 @@ export interface LoopRuntime {
   transport: LoopTransport;
   trackMask: number;
   loopFrames: number;
+  rawFrames: number;
   position: number;
   sampleRate: number;
+  trimStart: number;
+  trimEnd: number;
+  waveform: number[];
 }
 
 export interface LoopState extends LoopSettings, LoopRuntime {}
@@ -43,8 +53,12 @@ const DEFAULT_RUNTIME: LoopRuntime = {
   transport: 'empty',
   trackMask: 0,
   loopFrames: 0,
+  rawFrames: 0,
   position: 0,
   sampleRate: 48_000,
+  trimStart: 0,
+  trimEnd: 1,
+  waveform: Array.from({ length: LOOP_WAVEFORM_BINS }, () => 0),
 };
 
 function clamp01(value: number): number {
@@ -57,6 +71,10 @@ function clampTrack(value: number): number {
 
 function normalizeTrackLevels(values: readonly number[] | undefined): number[] {
   return Array.from({ length: LOOP_TRACK_COUNT }, (_, index) => clamp01(values?.[index] ?? DEFAULT_SETTINGS.trackLevels[index]!));
+}
+
+function normalizeWaveform(values: readonly number[] | undefined): number[] {
+  return Array.from({ length: LOOP_WAVEFORM_BINS }, (_, index) => clamp01(values?.[index] ?? 0));
 }
 
 function loadSettings(): LoopSettings {
@@ -90,7 +108,7 @@ function persist(): void {
 }
 
 export function getLoopState(): LoopState {
-  return { ...state, trackLevels: [...state.trackLevels] };
+  return { ...state, trackLevels: [...state.trackLevels], waveform: [...state.waveform] };
 }
 
 export function setLoopState(patch: Partial<LoopSettings>): void {
@@ -116,19 +134,39 @@ export function setSelectedTrackLevel(value: number): void {
 }
 
 export function setLoopRuntime(patch: Partial<LoopRuntime>): void {
+  const trimStart = clamp01(patch.trimStart ?? state.trimStart);
+  const trimEnd = Math.max(trimStart, clamp01(patch.trimEnd ?? state.trimEnd));
   state = {
     ...state,
     ...patch,
     trackMask: Math.max(0, Math.min(255, Math.round(patch.trackMask ?? state.trackMask))),
     loopFrames: Math.max(0, Math.round(patch.loopFrames ?? state.loopFrames)),
+    rawFrames: Math.max(0, Math.round(patch.rawFrames ?? state.rawFrames)),
     position: Math.max(0, Math.round(patch.position ?? state.position)),
     sampleRate: Math.max(8_000, Math.round(patch.sampleRate ?? state.sampleRate)),
+    trimStart,
+    trimEnd,
+    waveform: patch.waveform ? normalizeWaveform(patch.waveform) : state.waveform,
   };
   emit();
 }
 
 export function sendLoopCommand(command: LoopCommand): void {
-  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent<LoopCommand>(LOOP_COMMAND_EVENT, { detail: command }));
+  let normalized = command;
+  if (typeof command !== 'string' && command.type === 'trim') {
+    const rawFrames = state.rawFrames;
+    const minimum = rawFrames > 0 ? Math.min(0.25, 64 / rawFrames) : 0.001;
+    const start = clamp01(command.start);
+    const end = clamp01(command.end);
+    const boundedStart = Math.min(start, Math.max(0, end - minimum));
+    const boundedEnd = Math.max(end, Math.min(1, boundedStart + minimum));
+    normalized = { type: 'trim', start: boundedStart, end: boundedEnd };
+    const loopFrames = rawFrames > 0 ? Math.max(64, Math.round((boundedEnd - boundedStart) * rawFrames)) : 0;
+    setLoopRuntime({ trimStart: boundedStart, trimEnd: boundedEnd, loopFrames, position: Math.min(state.position, Math.max(0, loopFrames - 1)) });
+  } else if (typeof command !== 'string' && command.type === 'resetTrim') {
+    setLoopRuntime({ trimStart: 0, trimEnd: 1, loopFrames: state.rawFrames, position: Math.min(state.position, Math.max(0, state.rawFrames - 1)) });
+  }
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent<LoopCommand>(LOOP_COMMAND_EVENT, { detail: normalized }));
 }
 
 export function useLoopState(): LoopState {

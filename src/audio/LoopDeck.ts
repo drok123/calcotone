@@ -1,4 +1,5 @@
 import type { LoopCommand, LoopSettings, LoopRuntime } from '../components/signal/loopStore';
+import { LOOP_WAVEFORM_BINS } from '../components/signal/loopStore';
 
 export class LoopDeck {
   public readonly input: GainNode;
@@ -25,8 +26,12 @@ export class LoopDeck {
         transport: detail.transport ?? 'empty',
         trackMask: detail.trackMask ?? 0,
         loopFrames: detail.loopFrames ?? 0,
+        rawFrames: detail.rawFrames ?? detail.loopFrames ?? 0,
         position: detail.position ?? 0,
         sampleRate: detail.sampleRate ?? context.sampleRate,
+        trimStart: detail.trimStart ?? 0,
+        trimEnd: detail.trimEnd ?? 1,
+        waveform: Array.from({ length: LOOP_WAVEFORM_BINS }, (_, index) => detail.waveform?.[index] ?? 0),
       });
     };
   }

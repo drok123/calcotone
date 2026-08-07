@@ -12,6 +12,11 @@ interface RailCHardwareDisplayProps {
   visualState: VisualAudioState;
   modeLabel: string;
   detailLabel?: string;
+  loopWaveform?: readonly number[];
+  trimStart?: number;
+  trimEnd?: number;
+  trimEditing?: boolean;
+  loopProgress?: number;
 }
 
 type HardwareProfile = {
@@ -120,6 +125,9 @@ function draw(
   const graphEnd = Math.max(graphStart + 3, rows - 3);
   const graphRows = Math.max(1, graphEnd - graphStart);
   const phase = ((stamp / 1000) % 18) / 18 * TAU;
+  const drawPhase = props.kind === 'loop' && Number.isFinite(props.loopProgress)
+    ? clamp01(props.loopProgress ?? 0) * TAU
+    : phase;
   const activity = props.enabled ? clamp01(props.visualState.level * 0.72 + props.visualState.transient * 0.28) : 0;
 
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -133,8 +141,13 @@ function draw(
   context.shadowBlur = props.enabled ? (highDefinition ? 2.4 : 3) : 1;
 
   const levelMeter = meter(props.enabled ? 0.15 + activity * 0.85 : 0, Math.max(8, innerWidth - 12));
-  const mode = fitText(props.modeLabel.toUpperCase(), Math.max(8, innerWidth - 6));
-  const detail = fitText((props.detailLabel ?? '').toUpperCase(), Math.max(8, innerWidth - 6));
+  const trimStart = clamp01(props.trimStart ?? 0);
+  const trimEnd = Math.max(trimStart, clamp01(props.trimEnd ?? 1));
+  const mode = fitText((props.kind === 'loop' && props.trimEditing ? 'TRIM EDIT' : props.modeLabel).toUpperCase(), Math.max(8, innerWidth - 6));
+  const detailText = props.kind === 'loop' && props.trimEditing
+    ? `IN ${(trimStart * 100).toFixed(1)}% // OUT ${(trimEnd * 100).toFixed(1)}%`
+    : (props.detailLabel ?? '');
+  const detail = fitText(detailText.toUpperCase(), Math.max(8, innerWidth - 6));
 
   for (let row = 0; row < rows; row += 1) {
     let line = '';
@@ -151,22 +164,47 @@ function draw(
     else if (row >= graphStart && row < graphEnd) {
       const chars = Array.from({ length: innerWidth }, () => ' ');
       const accents = Array.from({ length: innerWidth }, () => ' ');
-      const y = ((row - graphStart) / Math.max(1, graphRows - 1)) * 2 - 1;
-      for (let column = 0; column < innerWidth; column += 1) {
-        const x = (column / Math.max(1, innerWidth - 1)) * 2 - 1;
-        const normalized = clamp01(field(props.kind, x, y, phase, props.visualState));
-        if (!props.enabled && normalized < 0.72) continue;
-        if (normalized < 0.22) continue;
-        const glyphIndex = Math.min(profile.glyphs.length - 1, Math.floor(normalized * profile.glyphs.length));
-        chars[column] = profile.glyphs[glyphIndex] ?? ' ';
-        if (normalized > 0.76 && (column + row) % 13 === 0) accents[column] = chars[column];
-        intensity = Math.max(intensity, normalized);
+      if (props.kind === 'loop' && props.trimEditing) {
+        const waveform = props.loopWaveform ?? [];
+        const localRow = row - graphStart;
+        const center = (graphRows - 1) * 0.5;
+        const vertical = Math.abs(localRow - center) / Math.max(1, center);
+        const inColumn = Math.round(trimStart * Math.max(1, innerWidth - 1));
+        const outColumn = Math.round(trimEnd * Math.max(1, innerWidth - 1));
+        const playColumn = Math.round(clamp01(props.loopProgress ?? 0) * Math.max(1, innerWidth - 1));
+        for (let column = 0; column < innerWidth; column += 1) {
+          const normalizedX = column / Math.max(1, innerWidth - 1);
+          const waveformIndex = waveform.length > 0
+            ? Math.min(waveform.length - 1, Math.floor(normalizedX * waveform.length))
+            : 0;
+          const amplitude = clamp01(waveform[waveformIndex] ?? 0);
+          const inside = normalizedX >= trimStart && normalizedX <= trimEnd;
+          if (vertical <= amplitude * 0.92) chars[column] = inside ? (amplitude > 0.72 ? '█' : '│') : '·';
+          else if (Math.abs(localRow - center) < 0.6) chars[column] = inside ? '─' : '·';
+          if (column === inColumn || column === outColumn) accents[column] = '┃';
+          if (column === playColumn && inside && localRow === Math.round(center)) accents[column] = '●';
+          intensity = Math.max(intensity, amplitude);
+        }
+      } else {
+        const y = ((row - graphStart) / Math.max(1, graphRows - 1)) * 2 - 1;
+        for (let column = 0; column < innerWidth; column += 1) {
+          const x = (column / Math.max(1, innerWidth - 1)) * 2 - 1;
+          const normalized = clamp01(field(props.kind, x, y, drawPhase, props.visualState));
+          if (!props.enabled && normalized < 0.72) continue;
+          if (normalized < 0.22) continue;
+          const glyphIndex = Math.min(profile.glyphs.length - 1, Math.floor(normalized * profile.glyphs.length));
+          chars[column] = profile.glyphs[glyphIndex] ?? ' ';
+          if (normalized > 0.76 && (column + row) % 13 === 0) accents[column] = chars[column];
+          intensity = Math.max(intensity, normalized);
+        }
       }
       line = `║${chars.join('')}║`;
       accentLine = ` ${accents.join('')} `;
     } else if (row === rows - 2) {
       const footer = props.kind === 'loop'
-        ? (props.enabled ? 'MEMORY ONLINE // 8 TRACKS' : 'MEMORY HELD // STANDBY')
+        ? props.trimEditing
+          ? 'TRANSIENT MEMORY // NON-DESTRUCTIVE TRIM'
+          : (props.enabled ? 'MEMORY ONLINE // 8 TRACKS' : 'MEMORY HELD // STANDBY')
         : (props.enabled ? 'ONLINE // SIGNAL LOCK' : 'BYPASS // STANDBY');
       line = `║${centerText(footer, innerWidth)}║`;
     } else if (row === rows - 1) line = `╚${'═'.repeat(innerWidth)}╝`;

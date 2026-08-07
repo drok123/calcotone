@@ -70,7 +70,9 @@ requireText(nativeArtifact, 'std::clamp(std::round(value), 0.F, 17.F)', 'Native 
 requireText(railC, 'name="Loop"', 'Loop rail module heading');
 requireText(railC, 'aria-label="Loop track"', 'Loop track selector');
 for (const label of ['REC', 'DUB', 'PLAY', 'CLEAR']) requireText(railC, `'${label}'`, `Loop ${label} transport control`);
-requireText(railC, "const knobLabels = ['Track', 'Loop', 'Overdub', 'Fade']", 'Loop four macro controls');
+requireText(railC, "['Track', 'Loop', 'Overdub', 'Fade']", 'Loop normal macro controls');
+requireText(railC, "['IN', 'OUT', 'Track', 'Fade']", 'Loop trim macro controls');
+requireText(railC, 'trimEditing ?', 'Loop trim macro switch');
 requireText(railC, 'kind="loop"', 'Loop hardware artwork mount');
 requireText(railCArtwork, 'loop: {', 'Loop hardware artwork profile');
 requireText(railCArtwork, "title: 'L O O P'", 'Loop display identity');

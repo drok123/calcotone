@@ -627,6 +627,7 @@ int main(int argc, char** argv) {
     std::atomic<double> adaptive_fifo_stable_seconds{};
     const auto apply_command = [&](std::string_view line) -> std::string {
       if (line == "health" || line == "stats") {
+        const auto loop_waveform = processor.loop_waveform();
         std::ostringstream status;
         status << "{\"engine\":\"calcotone-native\",\"protocol\":1,\"sampleRate\":" << sample_rate
                << ",\"transport\":\"wasapi\",\"requestedBackend\":\"" << calcotone::audio_backend_name(audio_config.backend) << '"'
@@ -680,7 +681,16 @@ int main(int argc, char** argv) {
                << ",\"loopTrack\":" << processor.loop_selected_track()
                << ",\"loopTrackMask\":" << processor.loop_track_mask()
                << ",\"loopFrames\":" << processor.loop_frames()
+               << ",\"loopRawFrames\":" << processor.loop_raw_frames()
                << ",\"loopPosition\":" << processor.loop_position()
+               << ",\"loopTrimStart\":" << processor.loop_trim_start()
+               << ",\"loopTrimEnd\":" << processor.loop_trim_end()
+               << ",\"loopWaveform\":[";
+        for (unsigned index = 0U; index < loop_waveform.size(); ++index) {
+          if (index) status << ',';
+          status << loop_waveform[index];
+        }
+        status << ']'
                << ",\"tunerHz\":" << processor.tuner_frequency()
                << ",\"tunerLevel\":" << processor.tuner_level() << '}';
         return status.str();
@@ -694,13 +704,19 @@ int main(int argc, char** argv) {
       if (name == "recordCancel") { recorder.cancel(); return R"({"ok":true,"command":"recordCancel"})"; }
       if (name == "loop") {
         std::string action; command >> action;
-        if (!command) return R"({"error":"expected loop record|overdub|play|clear"})";
+        if (!command) return R"({\"error\":\"expected loop record|overdub|play|clear|trim|autoTrim|resetTrim\"})";
         if (action == "record") processor.loop_command(calcotone::LoopCommand::Record);
         else if (action == "overdub") processor.loop_command(calcotone::LoopCommand::Overdub);
         else if (action == "play") processor.loop_command(calcotone::LoopCommand::Play);
         else if (action == "clear") processor.loop_command(calcotone::LoopCommand::Clear);
-        else return R"({"error":"unknown loop command"})";
-        return R"({"ok":true,"command":"loop"})";
+        else if (action == "trim") {
+          float start = 0.F, end = 1.F; command >> start >> end;
+          if (!command || !std::isfinite(start) || !std::isfinite(end)) return R"({\"error\":\"expected loop trim start end\"})";
+          processor.set_loop_trim(start, end);
+        } else if (action == "autoTrim") processor.auto_trim_loop();
+        else if (action == "resetTrim") processor.reset_loop_trim();
+        else return R"({\"error\":\"unknown loop command\"})";
+        return R"({\"ok\":true,\"command\":\"loop\"})";
       }
       if (name == "loopParam") {
         std::string parameter; float value = 0.F; command >> parameter >> value;

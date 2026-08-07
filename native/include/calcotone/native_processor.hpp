@@ -4,6 +4,7 @@
 #include "calcotone/loop_processor.hpp"
 #include "calcotone/stack_amp.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -34,11 +35,18 @@ class NativeProcessor final {
   void set_loop_overdub(float value) noexcept;
   void set_loop_fade(float value) noexcept;
   void loop_command(LoopCommand command) noexcept;
+  void set_loop_trim(float start, float end) noexcept;
+  void auto_trim_loop() noexcept;
+  void reset_loop_trim() noexcept;
   LoopTransport loop_transport() const noexcept;
   unsigned loop_selected_track() const noexcept;
   std::uint32_t loop_track_mask() const noexcept;
   std::uint64_t loop_frames() const noexcept;
+  std::uint64_t loop_raw_frames() const noexcept;
   std::uint64_t loop_position() const noexcept;
+  float loop_trim_start() const noexcept;
+  float loop_trim_end() const noexcept;
+  std::array<float, kLoopWaveformBins> loop_waveform() const noexcept;
   bool set_serial_order(std::span<const std::string_view> stages) noexcept;
   void set_active(bool active) noexcept;
   void set_stack_bypassed(bool bypassed) noexcept;

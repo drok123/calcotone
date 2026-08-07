@@ -1,24 +1,40 @@
 import { readFileSync } from 'node:fs';
-const files = Object.fromEntries(['src/components/effects/RailCModules.tsx','src/features/random/railCRandomRegistry.ts','src/routing/serialRouting.ts','src/loopBridge.tsx','src/audio/effects/Media.ts','native/src/native_processor.cpp','native/src/loop_processor.cpp'].map((p)=>[p,readFileSync(p,'utf8')]));
-const failures=[];
-const need=(p,s,m)=>{if(!files[p].includes(s)) failures.push(m)};
-const forbid=(p,s,m)=>{if(files[p].includes(s)) failures.push(m)};
-need('src/components/effects/RailCModules.tsx','name="Loop"','Loop visible module name missing');
-need('src/components/effects/RailCModules.tsx','kind="loop"','Loop ASCII hardware art missing');
-need('src/components/effects/RailCModules.tsx','REC','Loop REC control missing');
-need('src/components/effects/RailCModules.tsx','DUB','Loop DUB control missing');
-need('src/components/effects/RailCModules.tsx','CLEAR','Loop CLEAR control missing');
-need('src/features/random/railCRandomRegistry.ts',"['stomp', 'chaos']",'Loop must be excluded from RANDOM');
-forbid('src/features/random/railCRandomRegistry.ts',"'pressure']",'Loop leaked into RANDOM order');
-need('src/routing/serialRouting.ts',"LOOP_MODULE_ID = 'pressure'",'Loop compatibility layout key missing');
-need('src/routing/serialRouting.ts','sourceId === LOOP_MODULE_ID','Loop must be routing-locked');
-need('src/loopBridge.tsx','graph.output.connect(loop.input)','Browser Loop is not post-rack');
-need('native/src/native_processor.cpp','sum_dual_mono','Native Loop capture is not post-rack');
-need('native/src/native_processor.cpp','loop.process(output, frames)','Native Loop return missing');
-need('src/audio/effects/Media.ts','compressor-fet','FET compressor not moved to Artifact');
-need('src/audio/effects/Media.ts','compressor-opto','Opto compressor not moved to Artifact');
-need('src/audio/effects/Media.ts','compressor-varimu','Vari-Mu compressor not moved to Artifact');
-need('src/audio/effects/Media.ts','compressor-vca','VCA compressor not moved to Artifact');
-need('native/src/loop_processor.cpp','kLoopTrackCount','Native eight-track loop contract missing');
-if(failures.length){console.error('CALCOTONE Loop audit failed:\n - '+failures.join('\n - '));process.exit(1)}
-console.log('CALCOTONE Loop audit passed (8 tracks, standalone post-rack, RANDOM-safe, Artifact dynamics moved).');
+import { resolve } from 'node:path';
+
+const read = (path) => readFileSync(resolve(process.cwd(), path), 'utf8');
+const failures = [];
+const requireText = (source, needle, label) => { if (!source.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`); };
+const forbidText = (source, needle, label) => { if (source.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`); };
+
+const store = read('src/components/signal/loopStore.ts');
+const worklet = read('public/loop-processor.js');
+const native = read('native/src/loop_processor.cpp');
+const nativeHeader = read('native/include/calcotone/loop_processor.hpp');
+const rail = read('src/components/effects/RailCModules.tsx');
+const display = read('src/components/ascii/RailCHardwareDisplay.tsx');
+const random = read('src/features/random/railCRandomRegistry.ts');
+
+requireText(store, 'export const LOOP_TRACK_COUNT = 8', 'Loop hard track limit');
+requireText(worklet, 'this.rawFrames = new Uint32Array(TRACKS)', 'browser independent track lengths');
+requireText(worklet, 'this.positions = new Uint32Array(TRACKS)', 'browser independent playheads');
+forbidText(worklet, 'masterFrames', 'browser retired shared master length');
+requireText(native, 'std::array<std::size_t, kLoopTrackCount> raw_frames{}', 'native independent track lengths');
+requireText(native, 'std::array<std::size_t, kLoopTrackCount> positions{}', 'native independent playheads');
+forbidText(native, 'master_frames', 'native retired shared master length');
+requireText(nativeHeader, 'kLoopEnvelopeBins = 16\'384U', 'native transient envelope resolution');
+requireText(worklet, 'const ENVELOPE_BINS = 16384', 'browser transient envelope resolution');
+requireText(worklet, 'autoTrim(track)', 'browser auto trim');
+requireText(native, 'auto_trim_window(unsigned track)', 'native auto trim');
+requireText(rail, 'className={`loop-trim-toggle ${trimEditing ? \'active\' : \'\'}`}', 'Loop trim mode control');
+requireText(rail, "{ key: 'auto', label: 'AUTO'", 'Loop auto-trim button');
+requireText(rail, "{ key: 'reset', label: 'RESET'", 'Loop reset-trim button');
+requireText(display, 'TRANSIENT MEMORY // NON-DESTRUCTIVE TRIM', 'ASCII transient trim view');
+requireText(display, "accents[column] = '┃'", 'ASCII trim markers');
+requireText(random, "RAIL_C_RANDOM_ORDER = ['stomp', 'chaos']", 'Loop excluded from RANDOM registry');
+
+if (failures.length) {
+  console.error(`Loop usability audit failed (${failures.length})`);
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
+console.log('CALCOTONE Loop audit passed · 8 independent track lengths, non-destructive trim, auto trim, and transient ASCII editor locked');

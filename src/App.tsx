@@ -669,8 +669,12 @@ export default function App() {
           transport: loopTransports[health.loopTransport ?? 0] ?? 'empty',
           trackMask: health.loopTrackMask ?? 0,
           loopFrames: health.loopFrames ?? 0,
+          rawFrames: health.loopRawFrames ?? health.loopFrames ?? 0,
           position: health.loopPosition ?? 0,
           sampleRate: health.sampleRate,
+          trimStart: health.loopTrimStart ?? 0,
+          trimEnd: health.loopTrimEnd ?? 1,
+          waveform: health.loopWaveform ?? [],
         });
       }
     };
@@ -694,7 +698,16 @@ export default function App() {
     const syncNativeLoopCommand = (event: Event): void => {
       if (backendRef.current !== 'native') return;
       const command = (event as CustomEvent<LoopCommand>).detail;
-      if (command) void nativeBridgeRef.current.commandLine(`loop ${command}`);
+      if (!command) return;
+      if (typeof command === 'string') {
+        void nativeBridgeRef.current.commandLine(`loop ${command}`);
+      } else if (command.type === 'trim') {
+        void nativeBridgeRef.current.commandLine(`loop trim ${command.start} ${command.end}`);
+      } else if (command.type === 'autoTrim') {
+        void nativeBridgeRef.current.commandLine('loop autoTrim');
+      } else if (command.type === 'resetTrim') {
+        void nativeBridgeRef.current.commandLine('loop resetTrim');
+      }
     };
     window.addEventListener(LOOP_CHANGE_EVENT, syncNativeLoop);
     window.addEventListener(LOOP_COMMAND_EVENT, syncNativeLoopCommand);

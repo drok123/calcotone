@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -8,6 +9,8 @@ namespace calcotone {
 
 inline constexpr unsigned kLoopTrackCount = 8U;
 inline constexpr float kLoopMaxSeconds = 60.F;
+inline constexpr unsigned kLoopWaveformBins = 64U;
+inline constexpr unsigned kLoopEnvelopeBins = 16'384U;
 
 enum class LoopCommand : unsigned { Record = 0U, Overdub = 1U, Play = 2U, Clear = 3U };
 enum class LoopTransport : unsigned { Empty = 0U, Stopped = 1U, Playing = 2U, Recording = 3U, Overdubbing = 4U };
@@ -27,12 +30,19 @@ class LoopProcessor final {
   void set_overdub(float value) noexcept;
   void set_fade(float value) noexcept;
   void command(LoopCommand command) noexcept;
+  void set_trim(float start, float end) noexcept;
+  void auto_trim() noexcept;
+  void reset_trim() noexcept;
 
   LoopTransport transport() const noexcept;
   unsigned selected_track() const noexcept;
   std::uint32_t track_mask() const noexcept;
   std::uint64_t loop_frames() const noexcept;
+  std::uint64_t raw_frames() const noexcept;
   std::uint64_t position() const noexcept;
+  float trim_start() const noexcept;
+  float trim_end() const noexcept;
+  std::array<float, kLoopWaveformBins> waveform() const noexcept;
 
  private:
   struct Impl;
