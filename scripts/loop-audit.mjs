@@ -16,6 +16,7 @@ const random = read('src/features/random/railCRandomRegistry.ts');
 
 // Loop is an eight-timeline performance recorder: track duration and trim are
 // selected-track properties, never a hidden master length inherited from T1.
+// DUB is continuous live replacement at zero RETAIN and feedback overdub above it.
 requireText(store, 'export const LOOP_TRACK_COUNT = 8', 'Loop hard track limit');
 requireText(worklet, 'this.rawFrames = new Uint32Array(TRACKS)', 'browser independent track lengths');
 requireText(worklet, 'this.positions = new Uint32Array(TRACKS)', 'browser independent playheads');
