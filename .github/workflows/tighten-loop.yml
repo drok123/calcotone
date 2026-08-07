@@ -5,6 +5,7 @@ on:
     branches: [agent/native-dsp-core]
     paths:
       - scripts/tighten-loop.py
+      - scripts/fix-tighten-loop.py
       - .github/workflows/tighten-loop.yml
 
 permissions:
@@ -26,6 +27,9 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Harden patch anchors
+        run: python scripts/fix-tighten-loop.py
+
       - name: Apply Loop usability patch
         run: python scripts/tighten-loop.py
 
@@ -46,7 +50,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm scripts/tighten-loop.py .github/workflows/tighten-loop.yml
+          git rm scripts/tighten-loop.py scripts/fix-tighten-loop.py .github/workflows/tighten-loop.yml
           git add -A
           git diff --cached --quiet || git commit -m "Tighten Loop track lengths and trim editor"
           git push origin HEAD:agent/native-dsp-core
