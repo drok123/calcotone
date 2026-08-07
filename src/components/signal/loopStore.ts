@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 
 export const LOOP_TRACK_COUNT = 8;
 export const LOOP_MAX_SECONDS = 60;
-export const LOOP_WAVEFORM_BINS = 64;
+export const LOOP_WAVEFORM_BINS = 256;
 export const LOOP_COMMAND_EVENT = 'calcotone:loop-command';
 export const LOOP_CHANGE_EVENT = 'calcotone:loop-change';
 

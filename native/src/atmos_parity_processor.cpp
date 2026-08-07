@@ -144,7 +144,8 @@ class AtmosNetwork {
                                                 : std::max(.25F, decay * profile.decay_bias);
     const float color_cutoff = 1700.F * std::pow(10.2F, color) * profile.damping_bias;
     const bool freeze = model_ == 5U;
-    const float loop_budget = freeze ? .958F : .875F;
+    const float loop_budget = freeze ? .997F : .992F;
+    const float feedback_headroom = freeze ? .004F : .010F;
     const float cross_magnitude = std::min(freeze ? .016F : .034F,
         profile.cross_amount * (.14F + diffusion * .22F));
 
@@ -247,7 +248,7 @@ class AtmosNetwork {
           * (.7F + (1.F - color) * .6F);
       const float line_decay = std::pow(.001F, line_time / std::max(.18F, effective_decay * spectral_decay_scale));
       const float spread = .988F - static_cast<float>(index) * .0019F;
-      self_feedback[index] = std::min(loop_budget - cross_magnitude - .042F,
+      self_feedback[index] = std::min(loop_budget - cross_magnitude - feedback_headroom,
           std::max(.18F, line_decay * spread));
       cross_gain[index] = cross_magnitude * (index % 4U < 2U ? 1.F : -1.F);
       late[index % 2U] += raw[index] * output_polarity(index) * base_output * energy_trim;

@@ -9,7 +9,7 @@ namespace calcotone {
 
 inline constexpr unsigned kLoopTrackCount = 8U;
 inline constexpr float kLoopMaxSeconds = 60.F;
-inline constexpr unsigned kLoopWaveformBins = 64U;
+inline constexpr unsigned kLoopWaveformBins = 256U;
 inline constexpr unsigned kLoopEnvelopeBins = 16'384U;
 
 enum class LoopCommand : unsigned { Record = 0U, Overdub = 1U, Play = 2U, Clear = 3U };

@@ -735,6 +735,7 @@ function LoopModule({
             <select
               aria-label="Loop track"
               value={state.selectedTrack}
+              disabled={state.transport === 'recording' || state.transport === 'overdubbing'}
               onChange={(event) => {
                 setTrimEditing(false);
                 setLoopState({ selectedTrack: Number(event.target.value) });

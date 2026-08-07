@@ -25,8 +25,14 @@ requireText(native, 'std::array<std::size_t, kLoopTrackCount> raw_frames{}', 'na
 requireText(native, 'std::array<std::size_t, kLoopTrackCount> positions{}', 'native independent playheads');
 forbidText(native, 'master_frames', 'native retired shared master length');
 requireText(nativeHeader, 'kLoopEnvelopeBins = 16\'384U', 'native transient envelope resolution');
+requireText(nativeHeader, 'kLoopWaveformBins = 256U', 'native high-resolution transient preview');
+requireText(store, 'LOOP_WAVEFORM_BINS = 256', 'UI high-resolution transient preview');
 requireText(worklet, 'const ENVELOPE_BINS = 16384', 'browser transient envelope resolution');
 requireText(worklet, 'autoTrim(track)', 'browser auto trim');
+requireText(worklet, 'this.buffers = Array.from({ length: TRACKS }, () => null)', 'browser lazy Loop audio allocation');
+requireText(worklet, 'this.recordTrack = 0', 'browser REC target latch');
+requireText(native, 'ensure_track_buffer(unsigned track)', 'native lazy Loop audio allocation');
+requireText(native, 'pending_track{0U}', 'native command target latch');
 requireText(store, 'overdub: 0', 'Loop live-replace default');
 requireText(rail, "['Track', 'Loop', 'RETAIN', 'Fade']", 'Loop RETAIN hardware label');
 requireText(rail, "'LIVE REPLACE'", 'Loop live-replace transport display');
@@ -39,7 +45,8 @@ requireText(rail, "{ key: 'reset', label: 'RESET'", 'Loop reset-trim button');
 requireText(display, 'TRANSIENT MEMORY // NON-DESTRUCTIVE TRIM', 'ASCII transient trim view');
 requireText(display, 'Loopy-inspired motion language', 'Loop circular clip-orbit motion language');
 requireText(display, 'CLIP ORBITS // 8 TRACK MEMORY', 'Loop eight-orbit memory bank footer');
-requireText(display, "accents[column] = '●'", 'Loop selected-track ASCII wiper');
+requireText(display, "accents[column] = selected ? '●' : '○'", 'Loop all-track ASCII wipers');
+requireText(display, 'const denseLoopTrim', 'Loop dense transient editor grid');
 requireText(display, "accents[column] = '┃'", 'ASCII trim markers');
 requireText(random, "RAIL_C_RANDOM_ORDER = ['stomp', 'chaos']", 'Loop excluded from RANDOM registry');
 

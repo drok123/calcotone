@@ -1,7 +1,7 @@
 const TRACKS = 8;
 const MAX_SECONDS = 60;
 const ENVELOPE_BINS = 16384;
-const WAVEFORM_BINS = 64;
+const WAVEFORM_BINS = 256;
 const MIN_LOOP_FRAMES = 64;
 
 class CalcotoneLoopProcessor extends AudioWorkletProcessor {
@@ -9,7 +9,9 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
     super();
     this.maxFrames = Math.max(1, Math.floor(sampleRate * MAX_SECONDS));
     this.envelopeScale = ENVELOPE_BINS / this.maxFrames;
-    this.buffers = Array.from({ length: TRACKS }, () => new Float32Array(this.maxFrames * 2));
+    // Large stereo loop buffers are allocated only when a track is first armed.
+    // This avoids reserving ~184 MB up front at 48 kHz (much more at high rates).
+    this.buffers = Array.from({ length: TRACKS }, () => null);
     this.envelopes = Array.from({ length: TRACKS }, () => new Float32Array(ENVELOPE_BINS));
     this.trackLevels = new Float32Array(TRACKS);
     this.trackLevels.fill(0.72);
@@ -27,8 +29,10 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
     this.fade = 0.18;
     this.playing = false;
     this.recording = false;
+    this.recordTrack = 0;
     this.recordCount = 0;
     this.overdubbing = false;
+    this.overdubTrack = 0;
     this.runtimeCountdown = 0;
     this.port.onmessage = (event) => this.onMessage(event.data || {});
   }
@@ -82,7 +86,20 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
     }
   }
 
+  ensureBuffer(track) {
+    if (this.buffers[track]) return this.buffers[track];
+    try {
+      const buffer = new Float32Array(this.maxFrames * 2);
+      this.buffers[track] = buffer;
+      return buffer;
+    } catch {
+      return null;
+    }
+  }
+
   startRecording(track) {
+    if (!this.ensureBuffer(track)) return false;
+    this.recordTrack = track;
     this.occupied[track] = 0;
     this.rawFrames[track] = 0;
     this.trimStartFrames[track] = 0;
@@ -93,6 +110,7 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
     this.recording = true;
     this.overdubbing = false;
     this.playing = true;
+    return true;
   }
 
   finishRecording(track) {
@@ -116,11 +134,11 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
     this.trimStartFrames[track] = 0;
     this.trimEndFrames[track] = 0;
     this.positions[track] = 0;
-    if (this.recording) {
+    if (this.recording && this.recordTrack === track) {
       this.recording = false;
       this.recordCount = 0;
     }
-    this.overdubbing = false;
+    if (this.overdubbing && this.overdubTrack === track) this.overdubbing = false;
     if (!this.anyOccupied()) this.playing = false;
   }
 
@@ -189,11 +207,14 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
     }
 
     if (command === 'record') {
-      if (this.recording) this.finishRecording(track);
+      if (this.recording) this.finishRecording(this.recordTrack);
       else this.startRecording(track);
     } else if (command === 'overdub') {
-      if (this.occupied[track] && this.activeLength(track) > 0) {
-        this.overdubbing = !this.overdubbing;
+      if (this.overdubbing) {
+        this.overdubbing = false;
+      } else if (this.occupied[track] && this.activeLength(track) > 0) {
+        this.overdubTrack = track;
+        this.overdubbing = true;
         this.replaceEnvelopeBin = -1;
         this.recording = false;
         this.playing = true;
@@ -267,6 +288,7 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
     const relative = Math.min(this.positions[track], length - 1);
     const absolute = this.trimStartFrames[track] + relative;
     const buffer = this.buffers[track];
+    if (!buffer) return 0;
     const index = absolute * 2 + channel;
     const fadeSamples = Math.min(Math.floor(length / 4), Math.floor(this.fade * 0.02 * sampleRate));
     if (fadeSamples <= 1 || relative < length - fadeSamples) return buffer[index];
@@ -315,9 +337,9 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
       rightOut[frame] = liveR + loopR * this.masterLevel;
 
       if (!this.enabled) continue;
-      const track = this.selectedTrack;
+      const track = this.recording ? this.recordTrack : this.overdubbing ? this.overdubTrack : this.selectedTrack;
       const selected = this.buffers[track];
-      if (this.recording) {
+      if (this.recording && selected) {
         if (this.recordCount < this.maxFrames) {
           const write = this.recordCount * 2;
           selected[write] = liveL;
@@ -326,7 +348,7 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
           this.recordCount += 1;
         }
         if (this.recordCount >= this.maxFrames) this.finishRecording(track);
-      } else if (this.overdubbing && this.occupied[track]) {
+      } else if (this.overdubbing && selected && this.occupied[track]) {
         const length = this.activeLength(track);
         if (length > 0) {
           const relative = Math.min(this.positions[track], length - 1);

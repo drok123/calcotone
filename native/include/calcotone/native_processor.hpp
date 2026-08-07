@@ -15,7 +15,7 @@ namespace calcotone {
 
 // Transport-independent realtime processor. WASAPI, KS/WaveRT, and future
 // backends hand it interleaved stereo frames and receive the final stereo mix.
-// All memory is allocated at construction; process() is allocation-free.
+// Realtime process() is allocation-free; large Loop buffers are prepared on the control thread when first armed.
 class NativeProcessor final {
  public:
   explicit NativeProcessor(float sample_rate = 48'000.F);

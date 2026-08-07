@@ -113,12 +113,21 @@ function draw(
 ): void {
   const profile = PROFILES[props.kind];
   const highDefinition = getDisplayProfile().reference1440p;
-  const columns = highDefinition
-    ? Math.max(44, Math.min(76, Math.floor(width / 5.05)))
-    : Math.max(42, Math.min(72, Math.floor(width / 5.25)));
-  const fontSize = highDefinition
-    ? Math.max(6.2, Math.min(8.9, width / columns * 1.54))
-    : Math.max(5.8, Math.min(8.4, width / columns * 1.5));
+  const denseLoopTrim = props.kind === 'loop' && props.trimEditing;
+  const columns = denseLoopTrim
+    ? (highDefinition
+        ? Math.max(88, Math.min(112, Math.floor(width / 3.15)))
+        : Math.max(80, Math.min(104, Math.floor(width / 3.35))))
+    : highDefinition
+      ? Math.max(44, Math.min(76, Math.floor(width / 5.05)))
+      : Math.max(42, Math.min(72, Math.floor(width / 5.25)));
+  const fontSize = denseLoopTrim
+    ? (highDefinition
+        ? Math.max(4.4, Math.min(6.2, width / columns * 1.42))
+        : Math.max(4.2, Math.min(5.9, width / columns * 1.38)))
+    : highDefinition
+      ? Math.max(6.2, Math.min(8.9, width / columns * 1.54))
+      : Math.max(5.8, Math.min(8.4, width / columns * 1.5));
   const lineHeight = fontSize * 1.08;
   const rows = Math.max(16, Math.floor(height / lineHeight));
   const innerWidth = columns - 2;
@@ -188,7 +197,7 @@ function draw(
             : 0;
           const amplitude = clamp01(waveform[waveformIndex] ?? 0);
           const inside = normalizedX >= trimStart && normalizedX <= trimEnd;
-          if (vertical <= amplitude * 0.92) chars[column] = inside ? (amplitude > 0.72 ? '█' : '│') : '·';
+          if (vertical <= amplitude * 0.92) chars[column] = inside ? (amplitude > 0.72 ? '┆' : '│') : '·';
           else if (Math.abs(localRow - center) < 0.6) chars[column] = inside ? '─' : '·';
           if (column === inColumn || column === outColumn) accents[column] = '┃';
           if (column === playColumn && inside && localRow === Math.round(center)) accents[column] = '●';
@@ -200,7 +209,7 @@ function draw(
         const recording = loopTransport === 'recording';
         const overdubbing = loopTransport === 'overdubbing';
         const playing = loopTransport === 'playing' || overdubbing;
-        const animatedWiper = recording ? ((phase / TAU) % 1) : loopSelectedProgress;
+        const selectedWiper = recording ? ((phase / TAU) % 1) : loopSelectedProgress;
 
         for (let column = 0; column < innerWidth; column += 1) {
           const x = (column / Math.max(1, innerWidth - 1)) * 2 - 1;
@@ -218,25 +227,30 @@ function draw(
             const selectedActive = selected && (occupied || recording);
             const angle = Math.atan2(ellipseY, ellipseX);
             const orbitPosition = ((angle + Math.PI * 0.5 + TAU) % TAU) / TAU;
-            const wiperDelta = Math.abs(((orbitPosition - animatedWiper + 1.5) % 1) - 0.5);
+            // Selected track follows its real transport position. Other occupied
+            // tracks keep their own subtle moving orbit so every playing loop stays alive.
+            const trackWiper = selected ? selectedWiper : ((phase / TAU + track * 0.137) % 1);
+            const wiperDelta = Math.abs(((orbitPosition - trackWiper + 1.5) % 1) - 0.5);
 
             if (ringDistance < 0.17) {
               if (!occupied && !selectedActive) {
                 if ((column + localRow + track) % 2 === 0) chars[column] = '·';
               } else if (selected) {
                 const passed = playing && orbitPosition <= loopSelectedProgress;
-                chars[column] = recording ? (orbitPosition <= animatedWiper ? '█' : '◦') : passed ? '●' : '○';
+                chars[column] = recording ? (orbitPosition <= selectedWiper ? '█' : '◦') : passed ? '●' : '○';
               } else {
-                chars[column] = '◦';
+                const passed = playing && orbitPosition <= trackWiper;
+                chars[column] = passed ? '○' : '◦';
               }
               intensity = Math.max(intensity, selected ? 0.9 : occupied ? 0.67 : 0.48);
             }
 
-            // Selected-track wiper: this is the Loopy-style idea, expressed as
-            // a tiny Calcotone ASCII playhead rather than a copied clip widget.
-            if (selectedActive && ringDistance < 0.27 && wiperDelta < 0.035) {
-              accents[column] = '●';
-              intensity = 1;
+            // Every occupied playing track keeps a moving clip-orbit wiper; the
+            // selected track remains the brightest Calcotone accent.
+            const orbitActive = (occupied && playing) || (selected && recording);
+            if (orbitActive && ringDistance < 0.27 && wiperDelta < 0.035) {
+              accents[column] = selected ? '●' : '○';
+              intensity = selected ? 1 : Math.max(intensity, 0.78);
             }
 
             // DUB grows a second inner memory orbit so layering is visible

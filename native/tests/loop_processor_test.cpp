@@ -98,6 +98,24 @@ int main() {
   assert(loop.loop_frames() == 768U);
   assert(loop.raw_frames() == 768U);
 
+  // Track 4 must arm reliably, and changing the selected UI track while REC is
+  // active must never steal the recording target underneath the audio thread.
+  loop.set_selected_track(3);
+  consume(loop);
+  std::vector<float> track_four_phrase(512U * 2U);
+  fill(track_four_phrase, .09F, -.07F);
+  loop.command(calcotone::LoopCommand::Record);
+  loop.process(track_four_phrase.data(), 192U);
+  loop.set_selected_track(4);
+  loop.process(track_four_phrase.data() + 192U * 2U, 320U);
+  loop.command(calcotone::LoopCommand::Record);
+  consume(loop);
+  loop.set_selected_track(3);
+  consume(loop);
+  assert(loop.raw_frames() == 512U);
+  assert((loop.track_mask() & (1U << 3U)) != 0U);
+  assert((loop.track_mask() & (1U << 4U)) == 0U);
+
   // Auto trim uses the stored transient envelope instead of scanning a full
   // 60-second audio buffer on the realtime thread.
   loop.set_selected_track(2);
