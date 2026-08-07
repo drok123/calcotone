@@ -4,7 +4,7 @@ import { canvasPixelRatio, getDisplayProfile, subscribeDisplayProfile } from '..
 import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
 import './PressureStyleDisplay.css';
 
-export type RailCHardwareKind = 'stomp' | 'stack' | 'pressure';
+export type RailCHardwareKind = 'stomp' | 'stack' | 'loop';
 
 interface RailCHardwareDisplayProps {
   kind: RailCHardwareKind;
@@ -37,12 +37,12 @@ const PROFILES: Record<RailCHardwareKind, HardwareProfile> = {
     primary: '#9de8f2',
     glyphs: ' ·─≈█',
   },
-  pressure: {
-    title: 'P R E S S U R E',
-    subtitle: 'HARDWARE DYNAMICS',
-    meterLabel: 'GR',
+  loop: {
+    title: 'L O O P',
+    subtitle: 'MEMORY TRANSPORT',
+    meterLabel: 'BUF',
     primary: '#d7c8ff',
-    glyphs: ' ·─▾█',
+    glyphs: ' ·◦○●█',
   },
 };
 
@@ -83,10 +83,18 @@ function field(kind: RailCHardwareKind, x: number, y: number, phase: number, aud
     const cabinet = Math.abs((x * 6) % 1 - 0.5) < 0.045 ? 0.16 : 0;
     return 0.9 - Math.abs(y - fundamental - harmonic) * 8.8 + cabinet + activity * 0.1;
   }
-  const envelope = Math.sin(x * 5.8 + phase * 0.42) * (0.12 + audio.mid * 0.08);
-  const reduction = Math.max(0, activity - 0.32) * (0.22 + Math.max(0, x) * 0.12);
-  const threshold = Math.abs(y) < 0.035 ? 0.2 : 0;
-  return 0.88 - Math.abs(y - envelope + reduction) * 9.6 + threshold;
+
+  // LOOP intentionally reads as stored/circular motion rather than another
+  // waveform meter. The ring stays subtle and the playhead only brightens with
+  // real signal activity, matching the rest of Calcotone's hardware screens.
+  const radius = Math.sqrt(x * x + y * y);
+  const angle = Math.atan2(y, x);
+  const ring = 1 - Math.abs(radius - 0.56) * 16;
+  const innerRing = 0.58 - Math.abs(radius - 0.34) * 12;
+  const playheadAngle = Math.atan2(Math.sin(angle - phase), Math.cos(angle - phase));
+  const playhead = Math.max(0, 1 - Math.abs(playheadAngle) * 7) * Math.max(0, 1 - Math.abs(radius - 0.56) * 24);
+  const memoryTrace = Math.max(0, 0.62 - Math.abs(y - Math.sin(x * 8.5 + phase * 0.22) * (0.055 + audio.mid * 0.035)) * 11);
+  return Math.max(ring * 0.76, innerRing * 0.42, memoryTrace * (0.7 + activity * 0.12), playhead * (0.82 + activity * 0.18));
 }
 
 function draw(
@@ -138,8 +146,8 @@ function draw(
     else if (row === 2) line = `║${centerText(profile.subtitle, innerWidth)}║`;
     else if (row === 3) line = `╠${'═'.repeat(innerWidth)}╣`;
     else if (row === 4) line = `║${fitText(`${profile.meterLabel.padEnd(5)} ${levelMeter}`, innerWidth).padEnd(innerWidth)}║`;
-    else if (row === 5) line = `║${fitText(`MODE  ${mode}`, innerWidth).padEnd(innerWidth)}║`;
-    else if (row === 6 && detail) line = `║${fitText(`PATH  ${detail}`, innerWidth).padEnd(innerWidth)}║`;
+    else if (row === 5) line = `║${fitText(`${props.kind === 'loop' ? 'STATE' : 'MODE '}  ${mode}`, innerWidth).padEnd(innerWidth)}║`;
+    else if (row === 6 && detail) line = `║${fitText(`${props.kind === 'loop' ? 'TRACK' : 'PATH '}  ${detail}`, innerWidth).padEnd(innerWidth)}║`;
     else if (row >= graphStart && row < graphEnd) {
       const chars = Array.from({ length: innerWidth }, () => ' ');
       const accents = Array.from({ length: innerWidth }, () => ' ');
@@ -156,8 +164,12 @@ function draw(
       }
       line = `║${chars.join('')}║`;
       accentLine = ` ${accents.join('')} `;
-    } else if (row === rows - 2) line = `║${centerText(props.enabled ? 'ONLINE // SIGNAL LOCK' : 'BYPASS // STANDBY', innerWidth)}║`;
-    else if (row === rows - 1) line = `╚${'═'.repeat(innerWidth)}╝`;
+    } else if (row === rows - 2) {
+      const footer = props.kind === 'loop'
+        ? (props.enabled ? 'MEMORY ONLINE // 8 TRACKS' : 'MEMORY HELD // STANDBY')
+        : (props.enabled ? 'ONLINE // SIGNAL LOCK' : 'BYPASS // STANDBY');
+      line = `║${centerText(footer, innerWidth)}║`;
+    } else if (row === rows - 1) line = `╚${'═'.repeat(innerWidth)}╝`;
     else line = `║${' '.repeat(innerWidth)}║`;
 
     const textRow = row <= 6 || row === rows - 2;
