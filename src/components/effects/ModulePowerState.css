@@ -23,7 +23,8 @@
   --module-power-on-ink: #fffaf0;
 }
 
-.effect-module {
+.effect-module,
+.rail-c-module {
   transition:
     background 180ms ease,
     border-color 180ms ease,
@@ -32,7 +33,8 @@
 }
 
 /* Standby: readable white silkscreen on a dark, unpowered chassis. */
-.effect-module:not(.enabled) {
+.effect-module:not(.enabled),
+.rail-c-module:not(.enabled) {
   color: var(--module-power-off-ink) !important;
   border-color: rgba(244, 239, 220, 0.36) !important;
   background:
@@ -50,13 +52,19 @@
 .effect-module:not(.enabled) .module-header h3,
 .effect-module:not(.enabled) .module-route-cue,
 .effect-module:not(.enabled) .knob-label,
-.effect-module:not(.enabled) .coming-soon {
+.effect-module:not(.enabled) .coming-soon,
+.rail-c-module:not(.enabled) .module-number,
+.rail-c-module:not(.enabled) .module-header h3,
+.rail-c-module:not(.enabled) .module-route-cue,
+.rail-c-module:not(.enabled) .knob-label,
+.rail-c-module:not(.enabled) .coming-soon {
   color: var(--module-power-off-ink) !important;
   text-shadow: none !important;
 }
 
 /* Powered: same pressed neutral-gray + white-ink family as the quality selector. */
-.effect-module.enabled {
+.effect-module.enabled,
+.rail-c-module.enabled {
   color: var(--module-power-on-ink) !important;
   border-color: rgba(255, 249, 226, 0.72) !important;
   background:
@@ -74,19 +82,28 @@
 .effect-module.enabled .module-header h3,
 .effect-module.enabled .module-route-cue,
 .effect-module.enabled .knob-label,
-.effect-module.enabled .coming-soon {
+.effect-module.enabled .coming-soon,
+.rail-c-module.enabled .module-number,
+.rail-c-module.enabled .module-header h3,
+.rail-c-module.enabled .module-route-cue,
+.rail-c-module.enabled .knob-label,
+.rail-c-module.enabled .coming-soon {
   color: var(--module-power-on-ink) !important;
   text-shadow: none !important;
 }
 
 /* Knob face follows the chassis state. The outer dark metal bezel stays put. */
 .effect-module .knob-face,
-.effect-module .knob-shell::after {
+.effect-module .knob-shell::after,
+.rail-c-module .knob-face,
+.rail-c-module .knob-shell::after {
   transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
 .effect-module:not(.enabled) .knob-face,
-.effect-module:not(.enabled) .knob-shell::after {
+.effect-module:not(.enabled) .knob-shell::after,
+.rail-c-module:not(.enabled) .knob-face,
+.rail-c-module:not(.enabled) .knob-shell::after {
   border-color: rgba(244, 239, 220, 0.30) !important;
   background:
     linear-gradient(145deg, #272b2d 0%, #15191b 48%, #090b0c 100%) !important;
@@ -96,7 +113,9 @@
 }
 
 .effect-module.enabled .knob-face,
-.effect-module.enabled .knob-shell::after {
+.effect-module.enabled .knob-shell::after,
+.rail-c-module.enabled .knob-face,
+.rail-c-module.enabled .knob-shell::after {
   border-color: rgba(255, 249, 226, 0.52) !important;
   background:
     linear-gradient(145deg,
@@ -109,19 +128,23 @@
 }
 
 /* The pointer stays white in both states, exactly like the requested hardware mark. */
-.effect-module .knob-indicator {
+.effect-module .knob-indicator,
+.rail-c-module .knob-indicator {
   background: #fffaf0 !important;
   box-shadow: 0 0 1px rgba(255, 255, 255, 0.36) !important;
 }
 
 /* Value readouts/selects are dark inset hardware and keep light display ink. */
 .effect-module .knob-value,
-.effect-module .module-header-control select {
+.effect-module .module-header-control select,
+.rail-c-module .knob-value,
+.rail-c-module .module-header-control select {
   color: #f3efe4 !important;
 }
 
 /* The module rocker participates in the same material transition. */
-.effect-module:not(.enabled) .module-toggle {
+.effect-module:not(.enabled) .module-toggle,
+.rail-c-module:not(.enabled) .module-toggle {
   color: var(--module-power-off-ink) !important;
   border-color: rgba(244, 239, 220, 0.38) !important;
   background: linear-gradient(180deg, #202426, #0b0e0f) !important;
@@ -131,7 +154,8 @@
     inset 0 -1px rgba(0, 0, 0, 0.82) !important;
 }
 
-.effect-module.enabled .module-toggle {
+.effect-module.enabled .module-toggle,
+.rail-c-module.enabled .module-toggle {
   color: var(--module-power-on-ink) !important;
   border-color: rgba(255, 249, 226, 0.72) !important;
   background:
@@ -148,14 +172,22 @@
 .effect-module .dsp-viewport canvas,
 .effect-module .module-viewport canvas,
 .effect-module .module-screen canvas,
-.effect-module .module-display canvas {
+.effect-module .module-display canvas,
+.rail-c-module .dsp-viewport canvas,
+.rail-c-module .module-viewport canvas,
+.rail-c-module .module-screen canvas,
+.rail-c-module .module-display canvas {
   transition: opacity 180ms ease, filter 180ms ease;
 }
 
 .effect-module:not(.enabled) .dsp-viewport canvas,
 .effect-module:not(.enabled) .module-viewport canvas,
 .effect-module:not(.enabled) .module-screen canvas,
-.effect-module:not(.enabled) .module-display canvas {
+.effect-module:not(.enabled) .module-display canvas,
+.rail-c-module:not(.enabled) .dsp-viewport canvas,
+.rail-c-module:not(.enabled) .module-viewport canvas,
+.rail-c-module:not(.enabled) .module-screen canvas,
+.rail-c-module:not(.enabled) .module-display canvas {
   opacity: 0.055 !important;
   filter: brightness(0.18) saturate(0.18) !important;
 }
@@ -163,14 +195,20 @@
 .effect-module.enabled .dsp-viewport canvas,
 .effect-module.enabled .module-viewport canvas,
 .effect-module.enabled .module-screen canvas,
-.effect-module.enabled .module-display canvas {
+.effect-module.enabled .module-display canvas,
+.rail-c-module.enabled .dsp-viewport canvas,
+.rail-c-module.enabled .module-viewport canvas,
+.rail-c-module.enabled .module-screen canvas,
+.rail-c-module.enabled .module-display canvas {
   opacity: 1 !important;
   filter: none !important;
 }
 
 /* Keep layout/editing affordances readable without changing their dimensions. */
 .effect-module.faceplate-layout-editing:not(.enabled) .faceplate-guide,
-.effect-module.faceplate-layout-editing:not(.enabled) .faceplate-viewport-resize {
+.effect-module.faceplate-layout-editing:not(.enabled) .faceplate-viewport-resize,
+.rail-c-module.faceplate-layout-editing:not(.enabled) .faceplate-guide,
+.rail-c-module.faceplate-layout-editing:not(.enabled) .faceplate-viewport-resize {
   opacity: 1 !important;
   filter: none !important;
 }
