@@ -1,0 +1,24 @@
+import { readFileSync } from 'node:fs';
+const files = Object.fromEntries(['src/components/effects/RailCModules.tsx','src/features/random/railCRandomRegistry.ts','src/routing/serialRouting.ts','src/loopBridge.tsx','src/audio/effects/Media.ts','native/src/native_processor.cpp','native/src/loop_processor.cpp'].map((p)=>[p,readFileSync(p,'utf8')]));
+const failures=[];
+const need=(p,s,m)=>{if(!files[p].includes(s)) failures.push(m)};
+const forbid=(p,s,m)=>{if(files[p].includes(s)) failures.push(m)};
+need('src/components/effects/RailCModules.tsx','name="Loop"','Loop visible module name missing');
+need('src/components/effects/RailCModules.tsx','kind="loop"','Loop ASCII hardware art missing');
+need('src/components/effects/RailCModules.tsx','REC','Loop REC control missing');
+need('src/components/effects/RailCModules.tsx','DUB','Loop DUB control missing');
+need('src/components/effects/RailCModules.tsx','CLEAR','Loop CLEAR control missing');
+need('src/features/random/railCRandomRegistry.ts',"['stomp', 'chaos']",'Loop must be excluded from RANDOM');
+forbid('src/features/random/railCRandomRegistry.ts',"'pressure']",'Loop leaked into RANDOM order');
+need('src/routing/serialRouting.ts',"LOOP_MODULE_ID = 'pressure'",'Loop compatibility layout key missing');
+need('src/routing/serialRouting.ts','sourceId === LOOP_MODULE_ID','Loop must be routing-locked');
+need('src/loopBridge.tsx','graph.output.connect(loop.input)','Browser Loop is not post-rack');
+need('native/src/native_processor.cpp','sum_dual_mono','Native Loop capture is not post-rack');
+need('native/src/native_processor.cpp','loop.process(output, frames)','Native Loop return missing');
+need('src/audio/effects/Media.ts','compressor-fet','FET compressor not moved to Artifact');
+need('src/audio/effects/Media.ts','compressor-opto','Opto compressor not moved to Artifact');
+need('src/audio/effects/Media.ts','compressor-varimu','Vari-Mu compressor not moved to Artifact');
+need('src/audio/effects/Media.ts','compressor-vca','VCA compressor not moved to Artifact');
+need('native/src/loop_processor.cpp','kLoopTrackCount','Native eight-track loop contract missing');
+if(failures.length){console.error('CALCOTONE Loop audit failed:\n - '+failures.join('\n - '));process.exit(1)}
+console.log('CALCOTONE Loop audit passed (8 tracks, standalone post-rack, RANDOM-safe, Artifact dynamics moved).');

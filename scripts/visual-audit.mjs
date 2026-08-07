@@ -121,7 +121,7 @@ if (hardwarePolishImport < 0 || charcoalPassImport < 0 || charcoalPassImport < h
   failures.push('Hardware palette cascade: CharcoalHardwarePass must load after HardwarePolishPass');
 }
 
-// Rail C is definitively Stomp → Stack → Pressure. Synth and the old Chaos XY
+// Rail C is definitively Stomp → Stack → Loop (legacy layout key pressure). Synth and the old Chaos XY
 // surface are retired from this rack and must not return through stale source or CSS.
 forbidText(vite, 'signalLabUiTransform()', 'Retired Signal panel placement transform');
 forbidText(vite, 'dreamFieldCompositionTransform()', 'Obsolete Dream visual transform');
@@ -134,13 +134,14 @@ requireText(railC, 'aria-label="STACK amplifier"', 'Stack amplifier selector');
 requireText(railC, 'aria-label="STACK cabinet"', 'Stack cabinet selector');
 requireText(railC, 'kind="stomp"', 'Stomp shared hardware artwork');
 requireText(railC, 'kind="stack"', 'Stack shared hardware artwork');
-requireText(railC, 'kind="pressure"', 'Pressure shared hardware artwork');
-requireText(railC, 'pressure-ascii dsp-viewport', 'Pressure conventional ASCII display');
+requireText(railC, 'kind="loop"', 'Loop shared hardware artwork');
+requireText(railC, 'pressure-ascii dsp-viewport', 'Loop approved-geometry ASCII display');
 forbidText(railCCss, '.module-synth', 'Retired Synth module CSS');
 forbidText(railCCss, '.synth-', 'Retired Synth control CSS');
 forbidText(railCCss, '.piano-roll-', 'Retired piano-roll CSS');
 requireText(railCCss, '@keyframes pressure-scan', 'Pressure ASCII display motion');
-requireText(main, "import './pressureBridge'", 'Existing Pressure DSP bridge preserved');
+requireText(main, "import './loopBridge'", 'Standalone Loop bridge installed');
+forbidText(main, "import './pressureBridge'", 'Retired Pressure post-rack bridge');
 forbidText(main, "import './components/effects/VideoColorStability.css'", 'Retired video color pass');
 
 if (failures.length) {
@@ -149,4 +150,4 @@ if (failures.length) {
   console.error('');
   process.exit(1);
 }
-console.log('CALCOTONE visual audit passed (six ASCII effects plus Stomp, Stack, and Pressure).');
+console.log('CALCOTONE visual audit passed (six ASCII effects plus Stomp, Stack, and Loop).');

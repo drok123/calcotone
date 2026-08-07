@@ -1,4 +1,5 @@
 #include "calcotone/artifact_parity_processor.hpp"
+#include "calcotone/pressure_parity_processor.hpp"
 
 #include <algorithm>
 #include <array>
@@ -228,7 +229,7 @@ struct ModelPoint {
 
 struct ArtifactParityProcessor::Impl {
   explicit Impl(float requested_rate)
-      : rate(std::clamp(requested_rate, 8'000.F, 384'000.F)) {
+      : rate(std::clamp(requested_rate, 8'000.F, 384'000.F)), dynamics(rate) {
     const auto capacity = static_cast<std::size_t>(rate * .55F) + 64U;
     for (auto& buffer : transport) buffer.assign(capacity, 0.F);
     update_point();
@@ -256,6 +257,7 @@ struct ArtifactParityProcessor::Impl {
     random_state = 0xA471FAC7U;
     coefficient_countdown = 0U;
     active_mode = -1;
+    dynamics.reset();
     update_point();
     update_filters();
   }
@@ -441,6 +443,18 @@ struct ArtifactParityProcessor::Impl {
   }
 
   void process(float* data, std::size_t frames) noexcept {
+    const unsigned requested_mode = std::min(17U, static_cast<unsigned>(std::max(0.F, std::round(target[0].load(std::memory_order_relaxed)))));
+    if (requested_mode >= 14U) {
+      dynamics.set_bypassed(false);
+      dynamics.set_parameter("mode", static_cast<float>(requested_mode - 14U));
+      dynamics.set_parameter("style", std::round(clamp01(target[3].load(std::memory_order_relaxed)) * 3.F));
+      dynamics.set_parameter("drive", clamp01(target[1].load(std::memory_order_relaxed)));
+      dynamics.set_parameter("time", clamp01(target[2].load(std::memory_order_relaxed)));
+      dynamics.set_parameter("character", clamp01(target[4].load(std::memory_order_relaxed)));
+      dynamics.set_parameter("mix", clamp01(target[5].load(std::memory_order_relaxed)));
+      dynamics.process(data, frames);
+      return;
+    }
     const float character_smoothing = smoothing_coefficient(.04F, rate);
     const float mix_smoothing = smoothing_coefficient(.025F, rate);
     for (std::size_t frame = 0; frame < frames; ++frame) {
@@ -493,6 +507,7 @@ struct ArtifactParityProcessor::Impl {
   }
 
   float rate;
+  PressureParityProcessor dynamics;
   std::array<std::vector<float>, 2> transport;
   std::array<std::array<Biquad, 4>, 2> filters{};
   std::array<AnalogState, 2> tascam_pre{};
@@ -525,7 +540,7 @@ bool ArtifactParityProcessor::set_parameter(std::string_view name, float value) 
   else if (name == "tone") index = 4U;
   else if (name == "mix") index = 5U;
   if (index >= impl_->target.size()) return false;
-  if (index == 0U) value = std::clamp(std::round(value), 0.F, 13.F);
+  if (index == 0U) value = std::clamp(std::round(value), 0.F, 17.F);
   else value = clamp01(value);
   impl_->target[index].store(value, std::memory_order_relaxed);
   return true;

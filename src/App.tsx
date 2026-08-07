@@ -20,8 +20,14 @@ import { DEFAULT_PRESET } from './audio/Preset';
 import { NativeAudioBridge, type NativeAudioHealth } from './audio/NativeAudioBridge';
 import { NativeVisualSpectrum } from './visual/NativeVisualSpectrum';
 import { nativeWaveToRecordedWav } from './audio/NativeRecording';
-import { SIGNAL_LAB_MODES, SIGNAL_LAB_STYLES, type SignalLabState } from './audio/SignalLab';
-import { getPressureState } from './components/signal/pressureStore';
+import {
+  getLoopState,
+  setLoopRuntime,
+  LOOP_CHANGE_EVENT,
+  LOOP_COMMAND_EVENT,
+  type LoopCommand,
+  type LoopSettings,
+} from './components/signal/loopStore';
 import type { InputMode } from './audio/InputMatrix';
 import {
   runGpuCabinetExperiment,
@@ -103,7 +109,6 @@ const DEFAULT_RACK_ORDERS: RackOrders = {
 const RAIL_C_MODULE_NAMES: Record<RailCRandomModuleId, string> = {
   stomp: 'Stomp',
   chaos: 'Stack',
-  pressure: 'Pressure',
 };
 type RoutingRail = RackRail;
 
@@ -659,6 +664,14 @@ export default function App() {
       if (!cancelled && health) {
         setNativeTuner({ hz: health.tunerHz || 0, level: health.tunerLevel || 0 });
         setNativeHealth(health);
+        const loopTransports = ['empty', 'stopped', 'playing', 'recording', 'overdubbing'] as const;
+        setLoopRuntime({
+          transport: loopTransports[health.loopTransport ?? 0] ?? 'empty',
+          trackMask: health.loopTrackMask ?? 0,
+          loopFrames: health.loopFrames ?? 0,
+          position: health.loopPosition ?? 0,
+          sampleRate: health.sampleRate,
+        });
       }
     };
     void refresh();
@@ -667,18 +680,28 @@ export default function App() {
   }, [audioBackend, engineState]);
 
   useEffect(() => {
-    const syncNativePressure = (event: Event): void => {
+    const sendSettings = (settings: LoopSettings): void => {
       if (backendRef.current !== 'native') return;
-      const state = (event as CustomEvent<SignalLabState>).detail ?? getPressureState();
       const bridge = nativeBridgeRef.current;
-      void bridge.commandLine(`moduleBypass pressure ${state.enabled ? 0 : 1}`);
-      void bridge.commandLine(`param pressure mode ${SIGNAL_LAB_MODES.indexOf(state.mode)}`);
-      void bridge.commandLine(`param pressure style ${SIGNAL_LAB_STYLES.indexOf(state.style)}`);
-      for (const key of ['drive', 'time', 'character', 'mix'] as const)
-        void bridge.commandLine(`param pressure ${key} ${state[key]}`);
+      void bridge.commandLine(`loopParam enabled ${settings.enabled ? 1 : 0}`);
+      void bridge.commandLine(`loopParam track ${settings.selectedTrack}`);
+      void bridge.commandLine(`loopParam masterLevel ${settings.masterLevel}`);
+      void bridge.commandLine(`loopParam overdub ${settings.overdub}`);
+      void bridge.commandLine(`loopParam fade ${settings.fade}`);
+      settings.trackLevels.forEach((level, index) => void bridge.commandLine(`loopTrackLevel ${index} ${level}`));
     };
-    window.addEventListener('calcotone:pressure-change', syncNativePressure);
-    return () => window.removeEventListener('calcotone:pressure-change', syncNativePressure);
+    const syncNativeLoop = (event: Event): void => sendSettings((event as CustomEvent<LoopSettings>).detail ?? getLoopState());
+    const syncNativeLoopCommand = (event: Event): void => {
+      if (backendRef.current !== 'native') return;
+      const command = (event as CustomEvent<LoopCommand>).detail;
+      if (command) void nativeBridgeRef.current.commandLine(`loop ${command}`);
+    };
+    window.addEventListener(LOOP_CHANGE_EVENT, syncNativeLoop);
+    window.addEventListener(LOOP_COMMAND_EVENT, syncNativeLoopCommand);
+    return () => {
+      window.removeEventListener(LOOP_CHANGE_EVENT, syncNativeLoop);
+      window.removeEventListener(LOOP_COMMAND_EVENT, syncNativeLoopCommand);
+    };
   }, []);
   const [recordingState, setRecordingState] = useState<
     'idle' | 'recording' | 'ready' | 'error'
@@ -898,12 +921,13 @@ export default function App() {
           if (module.id === 'bitcrusher' && module.grainMode) nativeSync.push(nativeBridgeRef.current.commandLine(`param bitcrusher mode ${GRAIN_MODE_ORDER.indexOf(module.grainMode)}`));
           if (module.id === 'media' && module.mediaMode) nativeSync.push(nativeBridgeRef.current.commandLine(`param media mode ${MEDIA_MODE_ORDER.indexOf(module.mediaMode)}`));
         }
-        const pressure = getPressureState();
-        nativeSync.push(nativeBridgeRef.current.commandLine(`moduleBypass pressure ${pressure.enabled ? 0 : 1}`));
-        nativeSync.push(nativeBridgeRef.current.commandLine(`param pressure mode ${SIGNAL_LAB_MODES.indexOf(pressure.mode)}`));
-        nativeSync.push(nativeBridgeRef.current.commandLine(`param pressure style ${SIGNAL_LAB_STYLES.indexOf(pressure.style)}`));
-        for (const key of ['drive', 'time', 'character', 'mix'] as const)
-          nativeSync.push(nativeBridgeRef.current.commandLine(`param pressure ${key} ${pressure[key]}`));
+        const loop = getLoopState();
+        nativeSync.push(nativeBridgeRef.current.commandLine(`loopParam enabled ${loop.enabled ? 1 : 0}`));
+        nativeSync.push(nativeBridgeRef.current.commandLine(`loopParam track ${loop.selectedTrack}`));
+        nativeSync.push(nativeBridgeRef.current.commandLine(`loopParam masterLevel ${loop.masterLevel}`));
+        nativeSync.push(nativeBridgeRef.current.commandLine(`loopParam overdub ${loop.overdub}`));
+        nativeSync.push(nativeBridgeRef.current.commandLine(`loopParam fade ${loop.fade}`));
+        loop.trackLevels.forEach((level, index) => nativeSync.push(nativeBridgeRef.current.commandLine(`loopTrackLevel ${index} ${level}`)));
         nativeSync.push(nativeBridgeRef.current.commandLine(`order ${serialOrderFromRack({ A: railAOrder, B: railBOrder, C: railCOrder }).join(' ')}`));
         await Promise.all(nativeSync);
         setInputDevice(native.captureDevice || 'Windows native input');

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "calcotone/native_rack.hpp"
+#include "calcotone/loop_processor.hpp"
 #include "calcotone/stack_amp.hpp"
 
 #include <cstddef>
@@ -26,6 +27,18 @@ class NativeProcessor final {
   bool set_pressure_parameter(std::string_view parameter, float value) noexcept;
   void set_module_bypassed(RackModule module, bool bypassed) noexcept;
   void set_pressure_bypassed(bool bypassed) noexcept;
+  void set_loop_enabled(bool enabled) noexcept;
+  void set_loop_selected_track(unsigned track) noexcept;
+  void set_loop_master_level(float value) noexcept;
+  void set_loop_track_level(unsigned track, float value) noexcept;
+  void set_loop_overdub(float value) noexcept;
+  void set_loop_fade(float value) noexcept;
+  void loop_command(LoopCommand command) noexcept;
+  LoopTransport loop_transport() const noexcept;
+  unsigned loop_selected_track() const noexcept;
+  std::uint32_t loop_track_mask() const noexcept;
+  std::uint64_t loop_frames() const noexcept;
+  std::uint64_t loop_position() const noexcept;
   bool set_serial_order(std::span<const std::string_view> stages) noexcept;
   void set_active(bool active) noexcept;
   void set_stack_bypassed(bool bypassed) noexcept;

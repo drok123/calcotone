@@ -676,6 +676,11 @@ int main(int argc, char** argv) {
                << ",\"recording\":" << (recorder.active() ? "true" : "false")
                << ",\"recordingFrames\":" << recorder.frames()
                << ",\"recordingPeak\":" << recorder.peak()
+               << ",\"loopTransport\":" << static_cast<unsigned>(processor.loop_transport())
+               << ",\"loopTrack\":" << processor.loop_selected_track()
+               << ",\"loopTrackMask\":" << processor.loop_track_mask()
+               << ",\"loopFrames\":" << processor.loop_frames()
+               << ",\"loopPosition\":" << processor.loop_position()
                << ",\"tunerHz\":" << processor.tuner_frequency()
                << ",\"tunerLevel\":" << processor.tuner_level() << '}';
         return status.str();
@@ -687,6 +692,33 @@ int main(int argc, char** argv) {
         return saved ? R"({"ok":true,"command":"recordStop"})" : R"({"error":"native recording was empty or could not be saved"})";
       }
       if (name == "recordCancel") { recorder.cancel(); return R"({"ok":true,"command":"recordCancel"})"; }
+      if (name == "loop") {
+        std::string action; command >> action;
+        if (!command) return R"({"error":"expected loop record|overdub|play|clear"})";
+        if (action == "record") processor.loop_command(calcotone::LoopCommand::Record);
+        else if (action == "overdub") processor.loop_command(calcotone::LoopCommand::Overdub);
+        else if (action == "play") processor.loop_command(calcotone::LoopCommand::Play);
+        else if (action == "clear") processor.loop_command(calcotone::LoopCommand::Clear);
+        else return R"({"error":"unknown loop command"})";
+        return R"({"ok":true,"command":"loop"})";
+      }
+      if (name == "loopParam") {
+        std::string parameter; float value = 0.F; command >> parameter >> value;
+        if (!command || !std::isfinite(value)) return R"({"error":"expected loopParam parameter value"})";
+        if (parameter == "enabled") processor.set_loop_enabled(value >= .5F);
+        else if (parameter == "track") processor.set_loop_selected_track(static_cast<unsigned>(std::max(0.F, value)));
+        else if (parameter == "masterLevel") processor.set_loop_master_level(value);
+        else if (parameter == "overdub") processor.set_loop_overdub(value);
+        else if (parameter == "fade") processor.set_loop_fade(value);
+        else return R"({"error":"unknown loop parameter"})";
+        return R"({"ok":true,"command":"loopParam"})";
+      }
+      if (name == "loopTrackLevel") {
+        unsigned track = 0U; float value = 0.F; command >> track >> value;
+        if (!command || !std::isfinite(value) || track >= calcotone::kLoopTrackCount) return R"({"error":"expected loopTrackLevel track value"})";
+        processor.set_loop_track_level(track, value);
+        return R"({"ok":true,"command":"loopTrackLevel"})";
+      }
       if (name == "param") {
         std::string module_name, parameter; float value = 0.F;
         command >> module_name >> parameter >> value;
