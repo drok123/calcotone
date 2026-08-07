@@ -12,20 +12,26 @@ const ascii = read('src/components/ascii/AsciiArtEngine.tsx');
 const spectrum = read('src/components/meters/SpectrumWaterfall.tsx');
 const hdCss = read('src/highDefinition1440.css');
 const faceplateCss = read('src/approvedFaceplate.css');
+const powerCss = read('src/components/effects/ModulePowerState.css');
 
 for (const token of [
   "import './highDefinition1440.css'",
   "import { installDisplayProfile } from './ui/displayProfile'",
   'installDisplayProfile()',
   "import './approvedFaceplate.css'",
+  "import './components/effects/ModulePowerState.css'",
 ]) {
   if (!main.includes(token)) failures.push(`main entry is missing ${token}`);
 }
 
 const appImport = main.indexOf("import App from './App.tsx'");
 const faceplateImport = main.indexOf("import './approvedFaceplate.css'");
+const powerImport = main.indexOf("import './components/effects/ModulePowerState.css'");
 if (appImport < 0 || faceplateImport < appImport) {
   failures.push('approved faceplate stylesheet must load after the App dependency graph');
+}
+if (powerImport < faceplateImport) {
+  failures.push('module power-state material layer must load after the approved faceplate without replacing its geometry');
 }
 
 for (const token of [
@@ -108,10 +114,35 @@ for (const token of [
   if (hdCss.includes(token)) failures.push(`1440p raster stylesheet must not own approved faceplate geometry via ${token}`);
 }
 
+// Power selection should read like the Live/Balanced/Studio hardware buttons:
+// dark/white standby -> gray/white selected, with the display waking on power.
+for (const token of [
+  '.effect-module:not(.enabled)',
+  '.effect-module.enabled',
+  '--module-power-on-top: #a19d90',
+  '--module-power-on-mid: #89867b',
+  '--module-power-on-bottom: #74726a',
+  '--module-power-on-ink: #fffaf0',
+  '.effect-module .knob-indicator',
+  'background: #fffaf0 !important',
+  'opacity: 0.055 !important',
+  'filter: brightness(0.18) saturate(0.18) !important',
+  'filter: none !important',
+]) {
+  if (!powerCss.includes(token)) failures.push(`module power-state stylesheet is missing ${token}`);
+}
+const powerCssWithoutComments = powerCss.replace(/\/\*[\s\S]*?\*\//g, '');
+for (const property of ['width', 'height', 'min-width', 'max-width', 'min-height', 'max-height', 'position', 'inset', 'top', 'right', 'bottom', 'left', 'transform', 'margin', 'padding']) {
+  const escaped = property.replace('-', '\\-');
+  if (new RegExp(`(?:^|[;{]\\s*)${escaped}\\s*:`, 'm').test(powerCssWithoutComments)) {
+    failures.push(`module power-state stylesheet must not own approved geometry via ${property}`);
+  }
+}
+
 if (failures.length) {
   console.error(`1440p UI audit failed (${failures.length})`);
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
 
-console.log('1440p UI fidelity audit passed · adaptive DPI/FPS separated from the unconditional uploaded faceplate contract');
+console.log('1440p UI fidelity audit passed · adaptive DPI/FPS and gray module power states are separated from the unconditional uploaded faceplate contract');
