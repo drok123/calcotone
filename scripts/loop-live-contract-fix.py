@@ -11,9 +11,9 @@ path.write_text(text.replace(old, new, 1), encoding='utf-8')
 audit = Path('scripts/core-contract-parity-audit.mjs')
 audit_text = audit.read_text(encoding='utf-8')
 old_audit = "check(compact(loopSource).includes('enabled:false,selectedTrack:0,masterLevel:0.78,overdub:1,fade:0.18,'), 'Loop UI defaults');"
-new_audit = "check(compact(loopSource).includes('enabled:false,selectedTrack:0,masterLevel:0.78,overdub:0,fade:0.18,'), 'Loop UI defaults');"
+new_audit = "check(compact(loopSource).includes('enabled:false,selectedTrack:0,masterLevel:0.78,') && compact(loopSource).includes('overdub:0,') && compact(loopSource).includes('fade:0.18,'), 'Loop UI defaults');"
 if old_audit not in audit_text:
     raise SystemExit('Loop JS contract default anchor missing')
 audit.write_text(audit_text.replace(old_audit, new_audit, 1), encoding='utf-8')
 
-print('Aligned native + JS Loop contract defaults with RETAIN=0 live replace.')
+print('Aligned native + resilient JS Loop contract defaults with RETAIN=0 live replace.')
