@@ -29,6 +29,39 @@ inline void split_dual_mono(
   }
 }
 
+// Sum the two processed interface lanes without applying the final output gain
+// or safety knee. LOOP captures this exact post-rack signal, then its return is
+// mixed before one final safety/output stage.
+inline void sum_dual_mono(
+    const float* lane_one_stereo,
+    const float* lane_two_stereo,
+    float* output_stereo,
+    std::size_t frames) noexcept {
+  constexpr float kEqualPowerSum = 0.70710678F;
+  for (std::size_t sample = 0; sample < frames * 2; ++sample)
+    output_stereo[sample] = (lane_one_stereo[sample] + lane_two_stereo[sample]) * kEqualPowerSum;
+}
+
+inline void apply_output_safety(
+    float* output_stereo,
+    std::size_t frames,
+    float gain,
+    std::uint64_t* limited_samples = nullptr,
+    float* pre_limit_peak = nullptr) noexcept {
+  for (std::size_t sample = 0; sample < frames * 2; ++sample) {
+    const float raw = output_stereo[sample] * gain;
+    const float magnitude = std::abs(raw);
+    if (pre_limit_peak) *pre_limit_peak = std::max(*pre_limit_peak, magnitude);
+    if (magnitude <= .9F) {
+      output_stereo[sample] = raw;
+      continue;
+    }
+    if (limited_samples) ++*limited_samples;
+    const float shaped = std::min(.999999F, .9F + .1F * std::tanh((magnitude - .9F) * 10.F));
+    output_stereo[sample] = std::copysign(shaped, raw);
+  }
+}
+
 inline void mix_dual_mono(
     const float* lane_one_stereo,
     const float* lane_two_stereo,
@@ -37,20 +70,8 @@ inline void mix_dual_mono(
     float gain,
     std::uint64_t* limited_samples = nullptr,
     float* pre_limit_peak = nullptr) noexcept {
-  constexpr float kEqualPowerSum = 0.70710678F;
-  for (std::size_t sample = 0; sample < frames * 2; ++sample) {
-    const float raw = (lane_one_stereo[sample] + lane_two_stereo[sample]) * kEqualPowerSum * gain;
-    const float magnitude = std::abs(raw);
-    if (pre_limit_peak) *pre_limit_peak = std::max(*pre_limit_peak, magnitude);
-    if (magnitude <= .9F) {
-      output_stereo[sample] = raw;
-      continue;
-    }
-    if (limited_samples) ++*limited_samples;
-    // Unity-slope 0.9 knee avoids the flat edges and harmonics of a hard clamp.
-    const float shaped = std::min(.999999F, .9F + .1F * std::tanh((magnitude - .9F) * 10.F));
-    output_stereo[sample] = std::copysign(shaped, raw);
-  }
+  sum_dual_mono(lane_one_stereo, lane_two_stereo, output_stereo, frames);
+  apply_output_safety(output_stereo, frames, gain, limited_samples, pre_limit_peak);
 }
 
 }  // namespace calcotone
