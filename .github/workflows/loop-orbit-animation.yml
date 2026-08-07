@@ -1,0 +1,52 @@
+name: Loop orbital animation
+
+on:
+  push:
+    branches: [agent/native-dsp-core]
+    paths:
+      - scripts/loop-orbit-animation-patch.py
+      - .github/workflows/loop-orbit-animation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-check-land:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/native-dsp-core
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply Loop orbit animation
+        run: python scripts/loop-orbit-animation-patch.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Loop artwork
+        run: |
+          npm run audit:loop
+          npm run audit:visual
+          npm run build
+
+      - name: Run full Calcotone diagnostics
+        run: npm run check
+
+      - name: Commit validated artwork
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f scripts/loop-orbit-animation-patch.py .github/workflows/loop-orbit-animation.yml
+          git add -A
+          git diff --cached --quiet || git commit -m "Give Loop an ASCII clip-orbit animation"
+          git push origin HEAD:agent/native-dsp-core
