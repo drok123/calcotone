@@ -46,10 +46,14 @@ requireText(rail, "{ key: 'auto', label: 'AUTO'", 'Loop auto-trim button');
 requireText(rail, "{ key: 'reset', label: 'RESET'", 'Loop reset-trim button');
 requireText(display, 'TRANSIENT MEMORY // NON-DESTRUCTIVE TRIM', 'ASCII transient trim view');
 requireText(display, 'Loopy-inspired motion language', 'Loop circular clip-orbit motion language');
-requireText(display, 'CLIP ORBITS // 8 TRACK MEMORY', 'Loop eight-orbit memory bank footer');
-requireText(display, "accents[column] = selected ? '●' : '○'", 'Loop all-track ASCII wipers');
+requireText(display, 'SELECTED CLOCK // TRACK RAIL // TRUE PLAYHEAD', 'Loop readable transport footer');
+requireText(display, 'One large selected-track clock carries the real transient and real', 'Loop readable selected-track clock');
+requireText(display, "accents[column] = '*'", 'Loop truthful selected-track playhead');
+requireText(display, "const activityMark = active ? ((pulse + track) % 2 === 0 ? '>' : '*')", 'Loop all-track activity rail');
 requireText(display, 'const denseLoopTrim', 'Loop dense transient editor grid');
-requireText(display, "accents[column] = '┃'", 'ASCII trim markers');
+requireText(display, "accents[column] = '['", 'ASCII trim IN marker');
+requireText(display, "accents[column] = ']'", 'ASCII trim OUT marker');
+forbidText(display, "glyphs: ' ·◦○●█'", 'retired alien Loop glyph palette');
 requireText(random, "RAIL_C_RANDOM_ORDER = ['stomp', 'chaos']", 'Loop excluded from RANDOM registry');
 
 if (failures.length) {

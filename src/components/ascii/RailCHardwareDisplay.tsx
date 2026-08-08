@@ -48,7 +48,7 @@ const PROFILES: Record<RailCHardwareKind, HardwareProfile> = {
     subtitle: 'MEMORY TRANSPORT',
     meterLabel: 'BUF',
     primary: '#d7c8ff',
-    glyphs: ' ·◦○●█',
+    glyphs: ' .-|*#',
   },
 };
 
@@ -114,20 +114,29 @@ function draw(
   const profile = PROFILES[props.kind];
   const highDefinition = getDisplayProfile().reference1440p;
   const denseLoopTrim = props.kind === 'loop' && props.trimEditing;
+  const readableLoop = props.kind === 'loop' && !props.trimEditing;
   const columns = denseLoopTrim
     ? (highDefinition
         ? Math.max(88, Math.min(112, Math.floor(width / 3.15)))
         : Math.max(80, Math.min(104, Math.floor(width / 3.35))))
-    : highDefinition
-      ? Math.max(44, Math.min(76, Math.floor(width / 5.05)))
-      : Math.max(42, Math.min(72, Math.floor(width / 5.25)));
+    : readableLoop
+      ? (highDefinition
+          ? Math.max(68, Math.min(92, Math.floor(width / 4.05)))
+          : Math.max(62, Math.min(86, Math.floor(width / 4.25))))
+      : highDefinition
+        ? Math.max(44, Math.min(76, Math.floor(width / 5.05)))
+        : Math.max(42, Math.min(72, Math.floor(width / 5.25)));
   const fontSize = denseLoopTrim
     ? (highDefinition
         ? Math.max(4.4, Math.min(6.2, width / columns * 1.42))
         : Math.max(4.2, Math.min(5.9, width / columns * 1.38)))
-    : highDefinition
-      ? Math.max(6.2, Math.min(8.9, width / columns * 1.54))
-      : Math.max(5.8, Math.min(8.4, width / columns * 1.5));
+    : readableLoop
+      ? (highDefinition
+          ? Math.max(5.0, Math.min(7.0, width / columns * 1.46))
+          : Math.max(4.8, Math.min(6.7, width / columns * 1.42)))
+      : highDefinition
+        ? Math.max(6.2, Math.min(8.9, width / columns * 1.54))
+        : Math.max(5.8, Math.min(8.4, width / columns * 1.5));
   const lineHeight = fontSize * 1.08;
   const rows = Math.max(16, Math.floor(height / lineHeight));
   const innerWidth = columns - 2;
@@ -197,80 +206,97 @@ function draw(
             : 0;
           const amplitude = clamp01(waveform[waveformIndex] ?? 0);
           const inside = normalizedX >= trimStart && normalizedX <= trimEnd;
-          if (vertical <= amplitude * 0.92) chars[column] = inside ? (amplitude > 0.72 ? '┆' : '│') : '·';
-          else if (Math.abs(localRow - center) < 0.6) chars[column] = inside ? '─' : '·';
-          if (column === inColumn || column === outColumn) accents[column] = '┃';
-          if (column === playColumn && inside && localRow === Math.round(center)) accents[column] = '●';
+          if (vertical <= amplitude * 0.92) chars[column] = inside ? (amplitude > 0.72 ? '|' : ':') : '.';
+          else if (Math.abs(localRow - center) < 0.6) chars[column] = inside ? '-' : '.';
+          if (column === inColumn) accents[column] = '[';
+          if (column === outColumn) accents[column] = ']';
+          if (column === playColumn && inside && localRow === Math.round(center)) accents[column] = '^';
           intensity = Math.max(intensity, amplitude);
         }
       } else if (props.kind === 'loop') {
+        // The Loop screen is a transport instrument first and artwork second.
+        // One large selected-track clock carries the real transient and real
+        // playhead. The eight-track rail only communicates occupancy/activity;
+        // it never invents positional motion for background loops.
+        const waveform = props.loopWaveform ?? [];
         const localRow = row - graphStart;
-        const y = ((localRow) / Math.max(1, graphRows - 1)) * 2 - 1;
         const recording = loopTransport === 'recording';
         const overdubbing = loopTransport === 'overdubbing';
-        const playing = loopTransport === 'playing' || overdubbing;
-        const selectedWiper = recording ? ((phase / TAU) % 1) : loopSelectedProgress;
+        const playing = loopTransport === 'playing' || recording || overdubbing;
+        const selectedOccupied = (loopTrackMask & (1 << loopSelectedTrack)) !== 0;
+        const selectedProgress = recording ? ((stamp / 1000) % 4) / 4 : loopSelectedProgress;
+        const selectedState = recording ? 'REC' : overdubbing ? 'DUB' : selectedOccupied ? (playing ? 'PLAY' : 'STOP') : 'EMPTY';
+        const railRows = Math.min(2, Math.max(0, graphRows - 7));
+        const clockRows = Math.max(5, graphRows - railRows);
+        const clockCenterRow = (clockRows - 1) * 0.5;
+        const clockCenterColumn = (innerWidth - 1) * 0.5;
+        const radiusX = Math.max(8, innerWidth * 0.31);
+        const radiusY = Math.max(2.5, clockRows * 0.43);
 
-        for (let column = 0; column < innerWidth; column += 1) {
-          const x = (column / Math.max(1, innerWidth - 1)) * 2 - 1;
-          for (let track = 0; track < LOOP_TRACK_COUNT; track += 1) {
-            const gridColumn = track % 4;
-            const gridRow = Math.floor(track / 4);
-            const centerX = -0.75 + gridColumn * 0.5;
-            const centerY = -0.5 + gridRow;
-            const ellipseX = (x - centerX) / 0.205;
-            const ellipseY = (y - centerY) / 0.335;
-            const radius = Math.sqrt(ellipseX * ellipseX + ellipseY * ellipseY);
+        if (localRow < clockRows) {
+          for (let column = 0; column < innerWidth; column += 1) {
+            const nx = (column - clockCenterColumn) / radiusX;
+            const ny = (localRow - clockCenterRow) / radiusY;
+            const radius = Math.sqrt(nx * nx + ny * ny);
             const ringDistance = Math.abs(radius - 1);
-            const occupied = (loopTrackMask & (1 << track)) !== 0;
-            const selected = track === loopSelectedTrack;
-            const selectedActive = selected && (occupied || recording);
-            const angle = Math.atan2(ellipseY, ellipseX);
+            const angle = Math.atan2(ny, nx);
             const orbitPosition = ((angle + Math.PI * 0.5 + TAU) % TAU) / TAU;
-            // Selected track follows its real transport position. Other occupied
-            // tracks keep their own subtle moving orbit so every playing loop stays alive.
-            const trackWiper = selected ? selectedWiper : ((phase / TAU + track * 0.137) % 1);
-            const wiperDelta = Math.abs(((orbitPosition - trackWiper + 1.5) % 1) - 0.5);
+            const wiperDelta = Math.abs(((orbitPosition - selectedProgress + 1.5) % 1) - 0.5);
 
-            if (ringDistance < 0.17) {
-              if (!occupied && !selectedActive) {
-                if ((column + localRow + track) % 2 === 0) chars[column] = '·';
-              } else if (selected) {
-                const passed = playing && orbitPosition <= loopSelectedProgress;
-                chars[column] = recording ? (orbitPosition <= selectedWiper ? '█' : '◦') : passed ? '●' : '○';
-              } else {
-                const passed = playing && orbitPosition <= trackWiper;
-                chars[column] = passed ? '○' : '◦';
-              }
-              intensity = Math.max(intensity, selected ? 0.9 : occupied ? 0.67 : 0.48);
+            if (ringDistance < 0.11) {
+              const passed = selectedOccupied && playing && orbitPosition <= selectedProgress;
+              chars[column] = recording ? (orbitPosition <= selectedProgress ? '#' : '.') : passed ? '=' : '-';
+              intensity = Math.max(intensity, selectedOccupied || recording ? 0.86 : 0.5);
+            }
+            if ((selectedOccupied || recording) && ringDistance < 0.19 && wiperDelta < 0.022) {
+              accents[column] = '*';
+              intensity = 1;
             }
 
-            // Every occupied playing track keeps a moving clip-orbit wiper; the
-            // selected track remains the brightest Calcotone accent.
-            const orbitActive = (occupied && playing) || (selected && recording);
-            if (orbitActive && ringDistance < 0.27 && wiperDelta < 0.035) {
-              accents[column] = selected ? '●' : '○';
-              intensity = selected ? 1 : Math.max(intensity, 0.78);
-            }
-
-            // DUB grows a second inner memory orbit so layering is visible
-            // without turning the screen into a busy waveform visualizer.
-            if (selected && overdubbing && Math.abs(radius - 0.70) < 0.11) {
-              chars[column] = (column + localRow) % 2 === 0 ? '◦' : '·';
-              if ((column + localRow) % 7 === 0) accents[column] = '○';
-              intensity = Math.max(intensity, 0.88);
+            // Real selected-track transient lives inside the clock instead of
+            // becoming decorative orbit texture. ASCII stays intentionally plain.
+            const waveLeft = clockCenterColumn - radiusX * 0.78;
+            const waveRight = clockCenterColumn + radiusX * 0.78;
+            if (column >= waveLeft && column <= waveRight && waveform.length > 0) {
+              const normalizedX = (column - waveLeft) / Math.max(1, waveRight - waveLeft);
+              const waveformIndex = Math.min(waveform.length - 1, Math.floor(normalizedX * waveform.length));
+              const amplitude = clamp01(waveform[waveformIndex] ?? 0);
+              const distance = Math.abs(localRow - clockCenterRow) / Math.max(1, radiusY * 0.58);
+              if (distance <= amplitude && radius < 0.82) chars[column] = amplitude > 0.68 ? '|' : ':';
+              else if (Math.abs(localRow - clockCenterRow) < 0.5 && radius < 0.82 && chars[column] === ' ') chars[column] = '-';
             }
           }
-        }
 
-        // Put the track number inside every clip orbit. Selected track number
-        // uses the sparse accent layer; all others remain Calcotone off-white.
-        for (let track = 0; track < LOOP_TRACK_COUNT; track += 1) {
-          const centerColumn = Math.round(((0.125 + (track % 4) * 0.25)) * Math.max(1, innerWidth - 1));
-          const centerRow = Math.round((0.25 + Math.floor(track / 4) * 0.5) * Math.max(1, graphRows - 1));
-          if (localRow !== centerRow || centerColumn < 0 || centerColumn >= innerWidth) continue;
-          chars[centerColumn] = String(track + 1);
-          if (track === loopSelectedTrack) accents[centerColumn] = String(track + 1);
+          const centerLabel = `T${loopSelectedTrack + 1} ${selectedState}`;
+          const labelStart = Math.max(0, Math.round(clockCenterColumn - centerLabel.length / 2));
+          if (localRow === Math.round(clockCenterRow)) {
+            for (let index = 0; index < centerLabel.length && labelStart + index < innerWidth; index += 1) {
+              chars[labelStart + index] = centerLabel[index]!;
+              accents[labelStart + index] = centerLabel[index]!;
+            }
+          }
+        } else {
+          // Two rows of four tracks. A moving >/* pulse means PLAYING; '=' means
+          // memory exists but transport is stopped; '.' means EMPTY. Selection
+          // is wrapped in [] so the target is obvious before touching REC/DUB.
+          const railRow = localRow - clockRows;
+          const firstTrack = railRow * 4;
+          const cellWidth = Math.max(8, Math.floor(innerWidth / 4));
+          const pulse = Math.floor(stamp / 260);
+          for (let cell = 0; cell < 4; cell += 1) {
+            const track = firstTrack + cell;
+            if (track >= LOOP_TRACK_COUNT) continue;
+            const occupied = (loopTrackMask & (1 << track)) !== 0;
+            const selected = track === loopSelectedTrack;
+            const active = occupied && playing;
+            const activityMark = active ? ((pulse + track) % 2 === 0 ? '>' : '*') : occupied ? '=' : '.';
+            const label = selected ? `[T${track + 1}${activityMark}]` : ` T${track + 1}${activityMark} `;
+            const startColumn = cell * cellWidth + Math.max(0, Math.floor((cellWidth - label.length) / 2));
+            for (let index = 0; index < label.length && startColumn + index < innerWidth; index += 1) {
+              chars[startColumn + index] = label[index]!;
+              if (selected || active) accents[startColumn + index] = label[index]!;
+            }
+          }
         }
       } else {
         const y = ((row - graphStart) / Math.max(1, graphRows - 1)) * 2 - 1;
@@ -291,7 +317,7 @@ function draw(
       const footer = props.kind === 'loop'
         ? props.trimEditing
           ? 'TRANSIENT MEMORY // NON-DESTRUCTIVE TRIM'
-          : (props.enabled ? 'CLIP ORBITS // 8 TRACK MEMORY' : 'MEMORY HELD // STANDBY')
+          : (props.enabled ? 'SELECTED CLOCK // TRACK RAIL // TRUE PLAYHEAD' : 'MEMORY HELD // STANDBY')
         : (props.enabled ? 'ONLINE // SIGNAL LOCK' : 'BYPASS // STANDBY');
       line = `║${centerText(footer, innerWidth)}║`;
     } else if (row === rows - 1) line = `╚${'═'.repeat(innerWidth)}╝`;
