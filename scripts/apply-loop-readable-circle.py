@@ -4,7 +4,6 @@ from pathlib import Path
 display_path = Path('src/components/ascii/RailCHardwareDisplay.tsx')
 s = display_path.read_text()
 
-s = s.replace("    title: 'L O O P',", "    title: 'LOOP',")
 s = s.replace("    glyphs: ' ·◦○●█',", "    glyphs: ' .-|*#',")
 
 old = """  const denseLoopTrim = props.kind === 'loop' && props.trimEditing;
