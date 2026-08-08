@@ -200,15 +200,17 @@ requireText(ember, 'if (curveCache.size >= MAX_CURVE_CACHE)', 'Ember curve cache
  // sleeps while offscreen, and never owns a decoder or animation loop.
 forbidText(main, "import './videoStabilityPatch'", 'Removed video repair monkey patch');
 forbidText(main, "import './components/effects/VideoColorStability.css'", 'Retired video stylesheet');
-requireText(viewport, '<PressureStyleDisplay module={module}', 'Module ASCII wiring');
+requireText(viewport, '<AsciiArtEngine kind="module" module={module}', 'High-fidelity module ASCII wiring');
+requireText(viewport, 'module-spectacle-ascii', 'Dedicated spectacle module surface');
+forbidText(viewport, 'PressureStyleDisplay', 'Retired low-density module renderer');
 requireText(ascii, 'subscribeViewportAnimation(render)', 'ASCII shared scheduler');
 requireText(ascii, 'IntersectionObserver', 'ASCII offscreen suspension');
 requireText(ascii, 'profile.reference1440p ? 30 : 24', 'ASCII adaptive active cadence');
 requireText(ascii, 'canvasPixelRatio(width, height, 6_400_000)', 'ASCII bounded high-DPI budget');
-requireText(pressureDisplay, 'display.reference1440p ? 30 : 24', 'Module display adaptive cadence');
-requireText(pressureDisplay, 'canvasPixelRatio(width, height, 5_400_000)', 'Module display bounded high-DPI budget');
-requireText(pressureDisplay, 'subscribeViewportAnimation(render)', 'Module display shared scheduler');
-requireText(pressureDisplay, 'if (canvas.width !== pixelWidth)', 'Module display resize allocation guard');
+requireText(ascii, "const MODULE_SHADE_RAMP = ' .:-=+*#%@'", 'Module spectacle density ramp');
+requireText(ascii, 'const MODULE_BAYER_4', 'Module spectacle ordered dithering');
+requireText(ascii, 'function moduleEdgeGlyph', 'Module spectacle edge reconstruction');
+requireText(ascii, 'const supersampled = (center * 3 + left + right + up + down) / 7', 'Module spectacle supersampling');
 forbidText(ascii, 'requestAnimationFrame(', 'Independent ASCII animation loop');
 forbidText(viewport, '<video', 'Module decoder');
 forbidText(viewport, '.mp4', 'Module video payload');
