@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/rail-spectacle.yml
       - scripts/apply-rail-spectacle.py
+      - scripts/patch-runtime-spectacle-audit.py
 
 permissions:
   contents: write
@@ -23,6 +24,8 @@ jobs:
           node-version: 22
       - name: Apply Stomp and Stack spectacle
         run: python scripts/apply-rail-spectacle.py
+      - name: Update permanent spectacle runtime guard
+        run: python scripts/patch-runtime-spectacle-audit.py
       - name: Install dependencies
         run: npm ci
       - name: Run visual and Loop audits
@@ -34,9 +37,9 @@ jobs:
       - name: Commit validated Rail C renderer
         shell: bash
         run: |
-          rm -f .github/workflows/rail-spectacle.yml scripts/apply-rail-spectacle.py
+          rm -f .github/workflows/rail-spectacle.yml scripts/apply-rail-spectacle.py scripts/patch-runtime-spectacle-audit.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/components/ascii/RailCHardwareDisplay.tsx scripts/visual-audit.mjs .github/workflows/rail-spectacle.yml scripts/apply-rail-spectacle.py
+          git add src/components/ascii/RailCHardwareDisplay.tsx scripts/visual-audit.mjs scripts/runtime-audit.mjs .github/workflows/rail-spectacle.yml scripts/apply-rail-spectacle.py scripts/patch-runtime-spectacle-audit.py
           git commit -m "Turn Stomp and Stack ASCII into spectacle art"
           git push origin HEAD:agent/native-dsp-core
