@@ -18,7 +18,9 @@ const random = read('src/features/random/railCRandomRegistry.ts');
 // selected-track properties, never a hidden master length inherited from T1.
 // DUB is continuous live replacement at zero RETAIN and feedback overdub above it.
 // Large track buffers are lazy, REC/DUB targets are latched, and every occupied
-// orbit stays visibly alive while the global Loop transport is playing.
+// track stays visibly alive while the global Loop transport is playing.
+// Loop remains transport-first and readable even while the other modules use
+// the denser spectacle renderer; decorative motion must never replace true state.
 requireText(store, 'export const LOOP_TRACK_COUNT = 8', 'Loop hard track limit');
 requireText(worklet, 'this.rawFrames = new Uint32Array(TRACKS)', 'browser independent track lengths');
 requireText(worklet, 'this.positions = new Uint32Array(TRACKS)', 'browser independent playheads');
