@@ -14,6 +14,7 @@ import {
 } from '../models/Bcm10Calibration';
 import { AnalogSignalChainStage } from '../models/AnalogSignalChainStage';
 import { BaseEffect } from './Effect';
+import { SignalLab, SIGNAL_LAB_STYLES, type SignalLabMode } from '../SignalLab';
 
 export type MediaMode =
   | 'cassette'
@@ -29,7 +30,15 @@ export type MediaMode =
   | 'SSL 4000E'
   | 'API 1608'
   | 'Ampex ATR-102'
-  | 'Neve BCM10';
+  | 'Neve BCM10'
+  | 'compressor-fet'
+  | 'compressor-opto'
+  | 'compressor-varimu'
+  | 'compressor-vca';
+
+export const ARTIFACT_DYNAMICS_MODES = [
+  'compressor-fet','compressor-opto','compressor-varimu','compressor-vca',
+] as const satisfies readonly MediaMode[];
 
 export const ARTIFACT_CONSOLE_MODES = [
   'tascam424','Neve 1073','SSL 4000E','API 1608','Neve BCM10',
@@ -39,6 +48,7 @@ export const ARTIFACT_CONSOLE_MODES = [
 export const MEDIA_MODE_ORDER: MediaMode[] = [
   'cassette','reel','vinyl','vhs','radio','wax','broken','archive',
   'tascam424','Neve 1073','SSL 4000E','API 1608','Ampex ATR-102','Neve BCM10',
+  ...ARTIFACT_DYNAMICS_MODES,
 ];
 
 export const MEDIA_MODE_GROUPS = [
@@ -46,6 +56,7 @@ export const MEDIA_MODE_GROUPS = [
   { label: 'TRANSMISSION', modes: ['radio'] },
   { label: 'CONSOLE PATHS', modes: ARTIFACT_CONSOLE_MODES },
   { label: 'TAPE MACHINES', modes: ['Ampex ATR-102'] },
+  { label: 'DYNAMICS', modes: ARTIFACT_DYNAMICS_MODES },
 ] as const satisfies ReadonlyArray<{ label: string; modes: readonly MediaMode[] }>;
 
 const MODE = { id: 'mode', label: 'Mode', min: 0, max: MEDIA_MODE_ORDER.length - 1, defaultValue: 0, step: 1 };
@@ -85,6 +96,8 @@ export class MediaEffect extends BaseEffect {
   private readonly crossfeedRtoL: GainNode;
   private readonly merger: ChannelMergerNode;
   private readonly mediaGain: GainNode;
+  private readonly dynamics: SignalLab;
+  private readonly dynamicsGain: GainNode;
   private readonly wowLfo: OscillatorNode;
   private readonly flutterLfo: OscillatorNode;
   private readonly leftDepth: GainNode;
@@ -123,6 +136,8 @@ export class MediaEffect extends BaseEffect {
     this.crossfeedRtoL = context.createGain();
     this.merger = context.createChannelMerger(2);
     this.mediaGain = context.createGain();
+    this.dynamics = new SignalLab(context);
+    this.dynamicsGain = context.createGain();
     this.wowLfo = context.createOscillator();
     this.flutterLfo = context.createOscillator();
     this.leftDepth = context.createGain();
@@ -147,6 +162,7 @@ export class MediaEffect extends BaseEffect {
     this.crossfeedLtoR.gain.value = 0;
     this.crossfeedRtoL.gain.value = 0;
     this.mediaGain.gain.value = 1;
+    this.dynamicsGain.gain.value = 0;
     this.wowLfo.type = 'sine';
     this.flutterLfo.type = 'triangle';
 
@@ -171,6 +187,9 @@ export class MediaEffect extends BaseEffect {
     this.crossfeedRtoL.connect(this.merger, 0, 0);
     this.merger.connect(this.mediaGain);
     this.mediaGain.connect(this.wetGain);
+    this.input.connect(this.dynamics.input);
+    this.dynamics.connect(this.dynamicsGain);
+    this.dynamicsGain.connect(this.wetGain);
 
     this.wowLfo.connect(this.leftDepth);
     this.flutterLfo.connect(this.rightDepth);
@@ -255,12 +274,13 @@ export class MediaEffect extends BaseEffect {
     try { this.vinylNoise.stop(); } catch { /* already stopped */ }
     this.tascamPreamp.dispose();
     this.tascamChannel.dispose();
+    this.dynamics.dispose();
     [
       this.modelInputGain, this.preampStage, this.lowShelf, this.highShelf, this.modelOutputGain,
       this.highpass, this.lowpass, this.saturator, this.splitter, this.leftDelay, this.rightDelay,
       this.crossfeedLtoR, this.crossfeedRtoL, this.merger, this.wowLfo, this.flutterLfo,
       this.leftDepth, this.rightDepth, this.cassetteNoise, this.vinylNoise,
-      this.cassetteNoiseGain, this.vinylNoiseGain, this.mediaGain,
+      this.cassetteNoiseGain, this.vinylNoiseGain, this.mediaGain, this.dynamicsGain,
     ].forEach((node) => node.disconnect());
     super.dispose();
   }
@@ -290,6 +310,26 @@ export class MediaEffect extends BaseEffect {
   private applyCharacter(): void {
     const now = this.context.currentTime;
     this.mediaGain.gain.setTargetAtTime(1, now, 0.025);
+    const dynamicsMode = artifactDynamicsMode(this.mode);
+    if (dynamicsMode) {
+      this.setTransportAttached(false);
+      this.disableTransport(now);
+      this.setCrossfeed(0, now);
+      this.mediaGain.gain.setTargetAtTime(0, now, 0.018);
+      this.dynamicsGain.gain.setTargetAtTime(1, now, 0.018);
+      this.dynamics.setState({
+        enabled: true,
+        mode: dynamicsMode,
+        style: SIGNAL_LAB_STYLES[Math.min(SIGNAL_LAB_STYLES.length - 1, Math.floor(this.noise * SIGNAL_LAB_STYLES.length))]!,
+        drive: this.wear,
+        time: this.wow,
+        character: this.tone,
+        mix: 1,
+      });
+      return;
+    }
+    this.dynamics.setState({ enabled: false });
+    this.dynamicsGain.gain.setTargetAtTime(0, now, 0.018);
     this.setTransportAttached(!ARTIFACT_CONSOLE_MODES.some((mode) => mode === this.mode));
 
     if (this.mode === 'tascam424') {
@@ -484,8 +524,18 @@ export class MediaEffect extends BaseEffect {
   }
 }
 
+function artifactDynamicsMode(mode: MediaMode): SignalLabMode | null {
+  if (mode === 'compressor-fet') return 'fet';
+  if (mode === 'compressor-opto') return 'opto';
+  if (mode === 'compressor-varimu') return 'varimu';
+  if (mode === 'compressor-vca') return 'vca';
+  return null;
+}
+
 function isInsertMode(mode: MediaMode): boolean {
-  return mode === 'Ampex ATR-102' || ARTIFACT_CONSOLE_MODES.some((candidate) => candidate === mode);
+  return mode === 'Ampex ATR-102'
+    || ARTIFACT_CONSOLE_MODES.some((candidate) => candidate === mode)
+    || ARTIFACT_DYNAMICS_MODES.some((candidate) => candidate === mode);
 }
 
 export const atr102Speed = calibratedAtr102Speed;

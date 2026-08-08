@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { ModuleState } from '../../ui/types';
 import type { VisualAudioState } from '../../visual/VisualEngine';
+import { canvasPixelRatio, getDisplayProfile, subscribeDisplayProfile } from '../../ui/displayProfile';
 import { moduleModeKey, moduleModeLabel } from './AsciiArtEngine';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
 import './PressureStyleDisplay.css';
@@ -211,8 +212,13 @@ function drawDisplay(
   const sceneKey = moduleModeKey(module);
   const seed = hashText(sceneKey);
   const phase = ((stamp / 1000) % LOOP_SECONDS) / LOOP_SECONDS * TAU;
-  const columns = Math.max(42, Math.min(72, Math.floor(width / 5.25)));
-  const fontSize = Math.max(5.8, Math.min(8.4, width / columns * 1.5));
+  const highDefinition = getDisplayProfile().reference1440p;
+  const columns = highDefinition
+    ? Math.max(44, Math.min(76, Math.floor(width / 5.05)))
+    : Math.max(42, Math.min(72, Math.floor(width / 5.25)));
+  const fontSize = highDefinition
+    ? Math.max(6.2, Math.min(8.9, width / columns * 1.54))
+    : Math.max(5.8, Math.min(8.4, width / columns * 1.5));
   const lineHeight = fontSize * 1.08;
   const rows = Math.max(16, Math.floor(height / lineHeight));
   const innerWidth = columns - 2;
@@ -230,7 +236,7 @@ function drawDisplay(
   context.setTransform(dpr * width / textWidth, 0, 0, dpr * height / textHeight, 0, 0);
   context.textBaseline = 'top';
   context.shadowColor = profile.primary;
-  context.shadowBlur = enabled ? 3 : 1;
+  context.shadowBlur = enabled ? (highDefinition ? 2.4 : 3) : 1;
 
   const activity = enabled ? clamp01(audio.level * 0.72 + audio.transient * 0.28) : 0;
   const mode = moduleModeLabel(module);
@@ -325,7 +331,7 @@ export function PressureStyleDisplay({ module, visualState }: PressureStyleDispl
 
     let width = 1;
     let height = 1;
-    let dpr = Math.min(1.35, window.devicePixelRatio || 1);
+    let dpr = canvasPixelRatio(1, 1, 5_400_000);
     let visible = true;
     let lastDraw = Number.NEGATIVE_INFINITY;
 
@@ -333,7 +339,7 @@ export function PressureStyleDisplay({ module, visualState }: PressureStyleDispl
       const bounds = canvas.getBoundingClientRect();
       width = Math.max(1, bounds.width);
       height = Math.max(1, bounds.height);
-      dpr = Math.min(1.35, window.devicePixelRatio || 1);
+      dpr = canvasPixelRatio(width, height, 5_400_000);
       const pixelWidth = Math.max(1, Math.round(width * dpr));
       const pixelHeight = Math.max(1, Math.round(height * dpr));
       if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
@@ -351,11 +357,13 @@ export function PressureStyleDisplay({ module, visualState }: PressureStyleDispl
         }, { rootMargin: '80px' })
       : null;
     visibilityObserver?.observe(canvas);
+    const unsubscribeProfile = subscribeDisplayProfile(resize);
 
     const render: ViewportRenderCallback = (stamp) => {
       if (!visible) return;
       const active = moduleRef.current.enabled && moduleRef.current.available;
-      const interval = active ? 1000 / 18 : 250;
+      const display = getDisplayProfile();
+      const interval = active ? 1000 / (display.reference1440p ? 30 : 24) : 250;
       if (stamp - lastDraw < interval) return;
       lastDraw = stamp;
       drawDisplay(context, width, height, dpr, moduleRef.current, audioRef.current, stamp);
@@ -364,6 +372,7 @@ export function PressureStyleDisplay({ module, visualState }: PressureStyleDispl
     const unsubscribe = subscribeViewportAnimation(render);
     return () => {
       unsubscribe();
+      unsubscribeProfile();
       resizeObserver.disconnect();
       visibilityObserver?.disconnect();
     };

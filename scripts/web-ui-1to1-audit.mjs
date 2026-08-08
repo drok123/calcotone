@@ -30,9 +30,9 @@ const viewportIndex = effect.indexOf('className={`faceplate-viewport-shell');
 const controlsIndex = effect.indexOf('className={`knob-row faceplate-control-surface');
 require(viewportIndex >= 0 && controlsIndex > viewportIndex, 'viewport/knob DOM order drifted from the web build');
 
-require(layout.includes("const FACTORY_LAYOUT_REVISION = '2026-08-05-web-ui-1to1-restoration';"), '1:1 layout migration revision is missing');
-require(layout.includes("pressure: {\n      viewportHeight: 168,\n      stageHeight: 292,\n      knobs: [\n        { x: 0.14, y: 240 },\n        { x: 0.38, y: 240 },\n        { x: 0.62, y: 240 },\n        { x: 0.86, y: 240 },"), 'Pressure geometry does not match the web reference');
-require(layout.includes('{ x: 0.07, y: 246 }') && layout.includes('{ x: 0.93, y: 246 }'), 'core six-knob geometry drifted');
+require(layout.includes("const FACTORY_LAYOUT_REVISION = '2026-08-06-uploaded-approved-faceplate-1440p-v1';"), 'uploaded approved layout migration revision is missing');
+require(layout.includes("pressure: {\n      viewportHeight: 168,\n      stageHeight: 304,\n      knobs: [\n        { x: 0.3391812865497076, y: 216 },\n        { x: 0.4444444444444444, y: 216 },\n        { x: 0.5497076023391813, y: 216 },\n        { x: 0.6549707602339181, y: 216 },"), 'Pressure geometry does not match the uploaded approved faceplate');
+require(layout.includes('{ x: 0.09523809523809523, y: 224 }') && layout.includes('{ x: 0.9166666666666666, y: 224 }'), 'uploaded approved core six-knob geometry drifted');
 
 require(railC.includes('.rail-c-control-surface .faceplate-knob-slot'), 'Rail C reference sizing was accidentally removed');
 require(railC.includes('grid-template-rows: 18px 58px 16px;'), 'Rail C labels/value rows drifted');
@@ -46,4 +46,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('Web UI 1:1 parity audit passed · canonical 76px knobs, text rows, viewport flow, and Pressure geometry are locked for Windows.');
+console.log('Web UI 1:1 parity audit passed · uploaded approved 304px faceplate, canonical 76px knobs, text rows, and 1440p viewport flow are locked for Windows.');

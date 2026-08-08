@@ -3,6 +3,8 @@
 
 CMakeFiles/native_processor_test.dir/tests/native_processor_test.cpp.o
  /home/runner/work/calcotone/calcotone/native/tests/native_processor_test.cpp
+ /home/runner/work/calcotone/calcotone/native/include/calcotone/dsp_core.hpp
+ /home/runner/work/calcotone/calcotone/native/include/calcotone/loop_processor.hpp
  /home/runner/work/calcotone/calcotone/native/include/calcotone/native_processor.hpp
  /home/runner/work/calcotone/calcotone/native/include/calcotone/native_rack.hpp
  /home/runner/work/calcotone/calcotone/native/include/calcotone/stack_amp.hpp
@@ -91,6 +93,7 @@ CMakeFiles/native_processor_test.dir/tests/native_processor_test.cpp.o
  /usr/include/c++/13/bits/stl_iterator_base_types.h
  /usr/include/c++/13/bits/stl_pair.h
  /usr/include/c++/13/bits/stl_raw_storage_iter.h
+ /usr/include/c++/13/bits/stl_relops.h
  /usr/include/c++/13/bits/stl_tempbuf.h
  /usr/include/c++/13/bits/stl_uninitialized.h
  /usr/include/c++/13/bits/stl_vector.h
@@ -169,6 +172,7 @@ CMakeFiles/native_processor_test.dir/tests/native_processor_test.cpp.o
  /usr/include/c++/13/tuple
  /usr/include/c++/13/type_traits
  /usr/include/c++/13/typeinfo
+ /usr/include/c++/13/utility
  /usr/include/c++/13/vector
  /usr/include/ctype.h
  /usr/include/endian.h

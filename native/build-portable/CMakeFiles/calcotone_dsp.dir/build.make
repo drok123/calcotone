@@ -296,10 +296,24 @@ CMakeFiles/calcotone_dsp.dir/src/pressure_parity_processor.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/calcotone_dsp.dir/src/pressure_parity_processor.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/runner/work/calcotone/calcotone/native/src/pressure_parity_processor.cpp -o CMakeFiles/calcotone_dsp.dir/src/pressure_parity_processor.cpp.s
 
+CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.o: CMakeFiles/calcotone_dsp.dir/flags.make
+CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.o: /home/runner/work/calcotone/calcotone/native/src/loop_processor.cpp
+CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.o: CMakeFiles/calcotone_dsp.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_17) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.o -MF CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.o.d -o CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.o -c /home/runner/work/calcotone/calcotone/native/src/loop_processor.cpp
+
+CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/runner/work/calcotone/calcotone/native/src/loop_processor.cpp > CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.i
+
+CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/runner/work/calcotone/calcotone/native/src/loop_processor.cpp -o CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.s
+
 CMakeFiles/calcotone_dsp.dir/src/dream_buffer_parity_processor.cpp.o: CMakeFiles/calcotone_dsp.dir/flags.make
 CMakeFiles/calcotone_dsp.dir/src/dream_buffer_parity_processor.cpp.o: /home/runner/work/calcotone/calcotone/native/src/dream_buffer_parity_processor.cpp
 CMakeFiles/calcotone_dsp.dir/src/dream_buffer_parity_processor.cpp.o: CMakeFiles/calcotone_dsp.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_17) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/dream_buffer_parity_processor.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_18) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/dream_buffer_parity_processor.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/calcotone_dsp.dir/src/dream_buffer_parity_processor.cpp.o -MF CMakeFiles/calcotone_dsp.dir/src/dream_buffer_parity_processor.cpp.o.d -o CMakeFiles/calcotone_dsp.dir/src/dream_buffer_parity_processor.cpp.o -c /home/runner/work/calcotone/calcotone/native/src/dream_buffer_parity_processor.cpp
 
 CMakeFiles/calcotone_dsp.dir/src/dream_buffer_parity_processor.cpp.i: cmake_force
@@ -313,7 +327,7 @@ CMakeFiles/calcotone_dsp.dir/src/dream_buffer_parity_processor.cpp.s: cmake_forc
 CMakeFiles/calcotone_dsp.dir/src/native_dream_engine.cpp.o: CMakeFiles/calcotone_dsp.dir/flags.make
 CMakeFiles/calcotone_dsp.dir/src/native_dream_engine.cpp.o: /home/runner/work/calcotone/calcotone/native/src/native_dream_engine.cpp
 CMakeFiles/calcotone_dsp.dir/src/native_dream_engine.cpp.o: CMakeFiles/calcotone_dsp.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_18) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/native_dream_engine.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_19) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/native_dream_engine.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/calcotone_dsp.dir/src/native_dream_engine.cpp.o -MF CMakeFiles/calcotone_dsp.dir/src/native_dream_engine.cpp.o.d -o CMakeFiles/calcotone_dsp.dir/src/native_dream_engine.cpp.o -c /home/runner/work/calcotone/calcotone/native/src/native_dream_engine.cpp
 
 CMakeFiles/calcotone_dsp.dir/src/native_dream_engine.cpp.i: cmake_force
@@ -327,7 +341,7 @@ CMakeFiles/calcotone_dsp.dir/src/native_dream_engine.cpp.s: cmake_force
 CMakeFiles/calcotone_dsp.dir/src/halo_dual_grain_pitch_processor.cpp.o: CMakeFiles/calcotone_dsp.dir/flags.make
 CMakeFiles/calcotone_dsp.dir/src/halo_dual_grain_pitch_processor.cpp.o: /home/runner/work/calcotone/calcotone/native/src/halo_dual_grain_pitch_processor.cpp
 CMakeFiles/calcotone_dsp.dir/src/halo_dual_grain_pitch_processor.cpp.o: CMakeFiles/calcotone_dsp.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_19) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/halo_dual_grain_pitch_processor.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_20) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/halo_dual_grain_pitch_processor.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/calcotone_dsp.dir/src/halo_dual_grain_pitch_processor.cpp.o -MF CMakeFiles/calcotone_dsp.dir/src/halo_dual_grain_pitch_processor.cpp.o.d -o CMakeFiles/calcotone_dsp.dir/src/halo_dual_grain_pitch_processor.cpp.o -c /home/runner/work/calcotone/calcotone/native/src/halo_dual_grain_pitch_processor.cpp
 
 CMakeFiles/calcotone_dsp.dir/src/halo_dual_grain_pitch_processor.cpp.i: cmake_force
@@ -341,7 +355,7 @@ CMakeFiles/calcotone_dsp.dir/src/halo_dual_grain_pitch_processor.cpp.s: cmake_fo
 CMakeFiles/calcotone_dsp.dir/src/native_processor.cpp.o: CMakeFiles/calcotone_dsp.dir/flags.make
 CMakeFiles/calcotone_dsp.dir/src/native_processor.cpp.o: /home/runner/work/calcotone/calcotone/native/src/native_processor.cpp
 CMakeFiles/calcotone_dsp.dir/src/native_processor.cpp.o: CMakeFiles/calcotone_dsp.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_20) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/native_processor.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_21) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/native_processor.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/calcotone_dsp.dir/src/native_processor.cpp.o -MF CMakeFiles/calcotone_dsp.dir/src/native_processor.cpp.o.d -o CMakeFiles/calcotone_dsp.dir/src/native_processor.cpp.o -c /home/runner/work/calcotone/calcotone/native/src/native_processor.cpp
 
 CMakeFiles/calcotone_dsp.dir/src/native_processor.cpp.i: cmake_force
@@ -355,7 +369,7 @@ CMakeFiles/calcotone_dsp.dir/src/native_processor.cpp.s: cmake_force
 CMakeFiles/calcotone_dsp.dir/src/audio_device_config.cpp.o: CMakeFiles/calcotone_dsp.dir/flags.make
 CMakeFiles/calcotone_dsp.dir/src/audio_device_config.cpp.o: /home/runner/work/calcotone/calcotone/native/src/audio_device_config.cpp
 CMakeFiles/calcotone_dsp.dir/src/audio_device_config.cpp.o: CMakeFiles/calcotone_dsp.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_21) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/audio_device_config.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_22) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/audio_device_config.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/calcotone_dsp.dir/src/audio_device_config.cpp.o -MF CMakeFiles/calcotone_dsp.dir/src/audio_device_config.cpp.o.d -o CMakeFiles/calcotone_dsp.dir/src/audio_device_config.cpp.o -c /home/runner/work/calcotone/calcotone/native/src/audio_device_config.cpp
 
 CMakeFiles/calcotone_dsp.dir/src/audio_device_config.cpp.i: cmake_force
@@ -369,7 +383,7 @@ CMakeFiles/calcotone_dsp.dir/src/audio_device_config.cpp.s: cmake_force
 CMakeFiles/calcotone_dsp.dir/src/elastic_stereo_fifo.cpp.o: CMakeFiles/calcotone_dsp.dir/flags.make
 CMakeFiles/calcotone_dsp.dir/src/elastic_stereo_fifo.cpp.o: /home/runner/work/calcotone/calcotone/native/src/elastic_stereo_fifo.cpp
 CMakeFiles/calcotone_dsp.dir/src/elastic_stereo_fifo.cpp.o: CMakeFiles/calcotone_dsp.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_22) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/elastic_stereo_fifo.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_23) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/elastic_stereo_fifo.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/calcotone_dsp.dir/src/elastic_stereo_fifo.cpp.o -MF CMakeFiles/calcotone_dsp.dir/src/elastic_stereo_fifo.cpp.o.d -o CMakeFiles/calcotone_dsp.dir/src/elastic_stereo_fifo.cpp.o -c /home/runner/work/calcotone/calcotone/native/src/elastic_stereo_fifo.cpp
 
 CMakeFiles/calcotone_dsp.dir/src/elastic_stereo_fifo.cpp.i: cmake_force
@@ -383,7 +397,7 @@ CMakeFiles/calcotone_dsp.dir/src/elastic_stereo_fifo.cpp.s: cmake_force
 CMakeFiles/calcotone_dsp.dir/src/stream_recovery.cpp.o: CMakeFiles/calcotone_dsp.dir/flags.make
 CMakeFiles/calcotone_dsp.dir/src/stream_recovery.cpp.o: /home/runner/work/calcotone/calcotone/native/src/stream_recovery.cpp
 CMakeFiles/calcotone_dsp.dir/src/stream_recovery.cpp.o: CMakeFiles/calcotone_dsp.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_23) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/stream_recovery.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_24) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/stream_recovery.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/calcotone_dsp.dir/src/stream_recovery.cpp.o -MF CMakeFiles/calcotone_dsp.dir/src/stream_recovery.cpp.o.d -o CMakeFiles/calcotone_dsp.dir/src/stream_recovery.cpp.o -c /home/runner/work/calcotone/calcotone/native/src/stream_recovery.cpp
 
 CMakeFiles/calcotone_dsp.dir/src/stream_recovery.cpp.i: cmake_force
@@ -397,7 +411,7 @@ CMakeFiles/calcotone_dsp.dir/src/stream_recovery.cpp.s: cmake_force
 CMakeFiles/calcotone_dsp.dir/src/adaptive_fifo_safety.cpp.o: CMakeFiles/calcotone_dsp.dir/flags.make
 CMakeFiles/calcotone_dsp.dir/src/adaptive_fifo_safety.cpp.o: /home/runner/work/calcotone/calcotone/native/src/adaptive_fifo_safety.cpp
 CMakeFiles/calcotone_dsp.dir/src/adaptive_fifo_safety.cpp.o: CMakeFiles/calcotone_dsp.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_24) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/adaptive_fifo_safety.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_25) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/adaptive_fifo_safety.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/calcotone_dsp.dir/src/adaptive_fifo_safety.cpp.o -MF CMakeFiles/calcotone_dsp.dir/src/adaptive_fifo_safety.cpp.o.d -o CMakeFiles/calcotone_dsp.dir/src/adaptive_fifo_safety.cpp.o -c /home/runner/work/calcotone/calcotone/native/src/adaptive_fifo_safety.cpp
 
 CMakeFiles/calcotone_dsp.dir/src/adaptive_fifo_safety.cpp.i: cmake_force
@@ -411,7 +425,7 @@ CMakeFiles/calcotone_dsp.dir/src/adaptive_fifo_safety.cpp.s: cmake_force
 CMakeFiles/calcotone_dsp.dir/src/audio_client_property_plan.cpp.o: CMakeFiles/calcotone_dsp.dir/flags.make
 CMakeFiles/calcotone_dsp.dir/src/audio_client_property_plan.cpp.o: /home/runner/work/calcotone/calcotone/native/src/audio_client_property_plan.cpp
 CMakeFiles/calcotone_dsp.dir/src/audio_client_property_plan.cpp.o: CMakeFiles/calcotone_dsp.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_25) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/audio_client_property_plan.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_26) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/audio_client_property_plan.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/calcotone_dsp.dir/src/audio_client_property_plan.cpp.o -MF CMakeFiles/calcotone_dsp.dir/src/audio_client_property_plan.cpp.o.d -o CMakeFiles/calcotone_dsp.dir/src/audio_client_property_plan.cpp.o -c /home/runner/work/calcotone/calcotone/native/src/audio_client_property_plan.cpp
 
 CMakeFiles/calcotone_dsp.dir/src/audio_client_property_plan.cpp.i: cmake_force
@@ -425,7 +439,7 @@ CMakeFiles/calcotone_dsp.dir/src/audio_client_property_plan.cpp.s: cmake_force
 CMakeFiles/calcotone_dsp.dir/src/audio_restart_policy.cpp.o: CMakeFiles/calcotone_dsp.dir/flags.make
 CMakeFiles/calcotone_dsp.dir/src/audio_restart_policy.cpp.o: /home/runner/work/calcotone/calcotone/native/src/audio_restart_policy.cpp
 CMakeFiles/calcotone_dsp.dir/src/audio_restart_policy.cpp.o: CMakeFiles/calcotone_dsp.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_26) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/audio_restart_policy.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_27) "Building CXX object CMakeFiles/calcotone_dsp.dir/src/audio_restart_policy.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/calcotone_dsp.dir/src/audio_restart_policy.cpp.o -MF CMakeFiles/calcotone_dsp.dir/src/audio_restart_policy.cpp.o.d -o CMakeFiles/calcotone_dsp.dir/src/audio_restart_policy.cpp.o -c /home/runner/work/calcotone/calcotone/native/src/audio_restart_policy.cpp
 
 CMakeFiles/calcotone_dsp.dir/src/audio_restart_policy.cpp.i: cmake_force
@@ -454,6 +468,7 @@ calcotone_dsp_OBJECTS = \
 "CMakeFiles/calcotone_dsp.dir/src/artifact_parity_processor.cpp.o" \
 "CMakeFiles/calcotone_dsp.dir/src/stomp_parity_processor.cpp.o" \
 "CMakeFiles/calcotone_dsp.dir/src/pressure_parity_processor.cpp.o" \
+"CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.o" \
 "CMakeFiles/calcotone_dsp.dir/src/dream_buffer_parity_processor.cpp.o" \
 "CMakeFiles/calcotone_dsp.dir/src/native_dream_engine.cpp.o" \
 "CMakeFiles/calcotone_dsp.dir/src/halo_dual_grain_pitch_processor.cpp.o" \
@@ -484,6 +499,7 @@ libcalcotone_dsp.a: CMakeFiles/calcotone_dsp.dir/src/grain_parity_processor.cpp.
 libcalcotone_dsp.a: CMakeFiles/calcotone_dsp.dir/src/artifact_parity_processor.cpp.o
 libcalcotone_dsp.a: CMakeFiles/calcotone_dsp.dir/src/stomp_parity_processor.cpp.o
 libcalcotone_dsp.a: CMakeFiles/calcotone_dsp.dir/src/pressure_parity_processor.cpp.o
+libcalcotone_dsp.a: CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.o
 libcalcotone_dsp.a: CMakeFiles/calcotone_dsp.dir/src/dream_buffer_parity_processor.cpp.o
 libcalcotone_dsp.a: CMakeFiles/calcotone_dsp.dir/src/native_dream_engine.cpp.o
 libcalcotone_dsp.a: CMakeFiles/calcotone_dsp.dir/src/halo_dual_grain_pitch_processor.cpp.o
@@ -496,7 +512,7 @@ libcalcotone_dsp.a: CMakeFiles/calcotone_dsp.dir/src/audio_client_property_plan.
 libcalcotone_dsp.a: CMakeFiles/calcotone_dsp.dir/src/audio_restart_policy.cpp.o
 libcalcotone_dsp.a: CMakeFiles/calcotone_dsp.dir/build.make
 libcalcotone_dsp.a: CMakeFiles/calcotone_dsp.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_27) "Linking CXX static library libcalcotone_dsp.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/runner/work/calcotone/calcotone/native/build-portable/CMakeFiles --progress-num=$(CMAKE_PROGRESS_28) "Linking CXX static library libcalcotone_dsp.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/calcotone_dsp.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/calcotone_dsp.dir/link.txt --verbose=$(VERBOSE)
 

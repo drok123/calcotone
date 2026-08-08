@@ -153,6 +153,19 @@ core_contract_test/fast:
 .PHONY : core_contract_test/fast
 
 #=============================================================================
+# Target rules for targets named dsp_core_test
+
+# Build rule for target.
+dsp_core_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 dsp_core_test
+.PHONY : dsp_core_test
+
+# fast build rule for target.
+dsp_core_test/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/dsp_core_test.dir/build.make CMakeFiles/dsp_core_test.dir/build
+.PHONY : dsp_core_test/fast
+
+#=============================================================================
 # Target rules for targets named stack_amp_test
 
 # Build rule for target.
@@ -203,6 +216,19 @@ native_processor_test: cmake_check_build_system
 native_processor_test/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/native_processor_test.dir/build.make CMakeFiles/native_processor_test.dir/build
 .PHONY : native_processor_test/fast
+
+#=============================================================================
+# Target rules for targets named loop_processor_test
+
+# Build rule for target.
+loop_processor_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 loop_processor_test
+.PHONY : loop_processor_test
+
+# fast build rule for target.
+loop_processor_test/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/loop_processor_test.dir/build.make CMakeFiles/loop_processor_test.dir/build
+.PHONY : loop_processor_test/fast
 
 #=============================================================================
 # Target rules for targets named audio_device_config_test
@@ -1113,6 +1139,30 @@ src/halo_space_echo_processor.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/calcotone_dsp.dir/build.make CMakeFiles/calcotone_dsp.dir/src/halo_space_echo_processor.cpp.s
 .PHONY : src/halo_space_echo_processor.cpp.s
 
+src/loop_processor.o: src/loop_processor.cpp.o
+.PHONY : src/loop_processor.o
+
+# target to build an object file
+src/loop_processor.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/calcotone_dsp.dir/build.make CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.o
+.PHONY : src/loop_processor.cpp.o
+
+src/loop_processor.i: src/loop_processor.cpp.i
+.PHONY : src/loop_processor.i
+
+# target to preprocess a source file
+src/loop_processor.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/calcotone_dsp.dir/build.make CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.i
+.PHONY : src/loop_processor.cpp.i
+
+src/loop_processor.s: src/loop_processor.cpp.s
+.PHONY : src/loop_processor.s
+
+# target to generate assembly for a file
+src/loop_processor.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/calcotone_dsp.dir/build.make CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.s
+.PHONY : src/loop_processor.cpp.s
+
 src/native_dream_engine.o: src/native_dream_engine.cpp.o
 .PHONY : src/native_dream_engine.o
 
@@ -1569,6 +1619,30 @@ tests/drift_standard_processor_test.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/drift_standard_processor_test.dir/build.make CMakeFiles/drift_standard_processor_test.dir/tests/drift_standard_processor_test.cpp.s
 .PHONY : tests/drift_standard_processor_test.cpp.s
 
+tests/dsp_core_test.o: tests/dsp_core_test.cpp.o
+.PHONY : tests/dsp_core_test.o
+
+# target to build an object file
+tests/dsp_core_test.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/dsp_core_test.dir/build.make CMakeFiles/dsp_core_test.dir/tests/dsp_core_test.cpp.o
+.PHONY : tests/dsp_core_test.cpp.o
+
+tests/dsp_core_test.i: tests/dsp_core_test.cpp.i
+.PHONY : tests/dsp_core_test.i
+
+# target to preprocess a source file
+tests/dsp_core_test.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/dsp_core_test.dir/build.make CMakeFiles/dsp_core_test.dir/tests/dsp_core_test.cpp.i
+.PHONY : tests/dsp_core_test.cpp.i
+
+tests/dsp_core_test.s: tests/dsp_core_test.cpp.s
+.PHONY : tests/dsp_core_test.s
+
+# target to generate assembly for a file
+tests/dsp_core_test.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/dsp_core_test.dir/build.make CMakeFiles/dsp_core_test.dir/tests/dsp_core_test.cpp.s
+.PHONY : tests/dsp_core_test.cpp.s
+
 tests/elastic_stereo_fifo_discontinuity_test.o: tests/elastic_stereo_fifo_discontinuity_test.cpp.o
 .PHONY : tests/elastic_stereo_fifo_discontinuity_test.o
 
@@ -1808,6 +1882,30 @@ tests/halo_space_echo_processor_test.s: tests/halo_space_echo_processor_test.cpp
 tests/halo_space_echo_processor_test.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/halo_space_echo_processor_test.dir/build.make CMakeFiles/halo_space_echo_processor_test.dir/tests/halo_space_echo_processor_test.cpp.s
 .PHONY : tests/halo_space_echo_processor_test.cpp.s
+
+tests/loop_processor_test.o: tests/loop_processor_test.cpp.o
+.PHONY : tests/loop_processor_test.o
+
+# target to build an object file
+tests/loop_processor_test.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/loop_processor_test.dir/build.make CMakeFiles/loop_processor_test.dir/tests/loop_processor_test.cpp.o
+.PHONY : tests/loop_processor_test.cpp.o
+
+tests/loop_processor_test.i: tests/loop_processor_test.cpp.i
+.PHONY : tests/loop_processor_test.i
+
+# target to preprocess a source file
+tests/loop_processor_test.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/loop_processor_test.dir/build.make CMakeFiles/loop_processor_test.dir/tests/loop_processor_test.cpp.i
+.PHONY : tests/loop_processor_test.cpp.i
+
+tests/loop_processor_test.s: tests/loop_processor_test.cpp.s
+.PHONY : tests/loop_processor_test.s
+
+# target to generate assembly for a file
+tests/loop_processor_test.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/loop_processor_test.dir/build.make CMakeFiles/loop_processor_test.dir/tests/loop_processor_test.cpp.s
+.PHONY : tests/loop_processor_test.cpp.s
 
 tests/native_artifact_live_parity_test.o: tests/native_artifact_live_parity_test.cpp.o
 .PHONY : tests/native_artifact_live_parity_test.o
@@ -2192,6 +2290,7 @@ help:
 	@echo "... drift_classic_processor_test"
 	@echo "... drift_parity_processor_test"
 	@echo "... drift_standard_processor_test"
+	@echo "... dsp_core_test"
 	@echo "... elastic_stereo_fifo_discontinuity_test"
 	@echo "... elastic_stereo_fifo_test"
 	@echo "... ember_digital_capture_processor_test"
@@ -2202,6 +2301,7 @@ help:
 	@echo "... halo_dual_grain_pitch_processor_test"
 	@echo "... halo_parity_processor_test"
 	@echo "... halo_space_echo_processor_test"
+	@echo "... loop_processor_test"
 	@echo "... native_artifact_live_parity_test"
 	@echo "... native_atmos_live_parity_test"
 	@echo "... native_dream_engine_test"
@@ -2277,6 +2377,9 @@ help:
 	@echo "... src/halo_space_echo_processor.o"
 	@echo "... src/halo_space_echo_processor.i"
 	@echo "... src/halo_space_echo_processor.s"
+	@echo "... src/loop_processor.o"
+	@echo "... src/loop_processor.i"
+	@echo "... src/loop_processor.s"
 	@echo "... src/native_dream_engine.o"
 	@echo "... src/native_dream_engine.i"
 	@echo "... src/native_dream_engine.s"
@@ -2334,6 +2437,9 @@ help:
 	@echo "... tests/drift_standard_processor_test.o"
 	@echo "... tests/drift_standard_processor_test.i"
 	@echo "... tests/drift_standard_processor_test.s"
+	@echo "... tests/dsp_core_test.o"
+	@echo "... tests/dsp_core_test.i"
+	@echo "... tests/dsp_core_test.s"
 	@echo "... tests/elastic_stereo_fifo_discontinuity_test.o"
 	@echo "... tests/elastic_stereo_fifo_discontinuity_test.i"
 	@echo "... tests/elastic_stereo_fifo_discontinuity_test.s"
@@ -2364,6 +2470,9 @@ help:
 	@echo "... tests/halo_space_echo_processor_test.o"
 	@echo "... tests/halo_space_echo_processor_test.i"
 	@echo "... tests/halo_space_echo_processor_test.s"
+	@echo "... tests/loop_processor_test.o"
+	@echo "... tests/loop_processor_test.i"
+	@echo "... tests/loop_processor_test.s"
 	@echo "... tests/native_artifact_live_parity_test.o"
 	@echo "... tests/native_artifact_live_parity_test.i"
 	@echo "... tests/native_artifact_live_parity_test.s"

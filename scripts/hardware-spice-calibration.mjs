@@ -496,19 +496,19 @@ function opAmpExpression(drive, asymmetry) {
   const asym = Math.round(asymmetry * 512) / 512;
   const positiveDrive = safeDrive * (1 + asym);
   const negativeDrive = safeDrive * (1 - asym * 0.62);
-  return `if(v(in)>=0,tanh(v(in)*${spiceNumber(positiveDrive)})/tanh(${spiceNumber(positiveDrive)}),tanh(v(in)*${spiceNumber(negativeDrive)})/tanh(${spiceNumber(negativeDrive)}))`;
+  return `(u(v(in))*tanh(v(in)*${spiceNumber(positiveDrive)})/tanh(${spiceNumber(positiveDrive)}))+(u(-v(in))*tanh(v(in)*${spiceNumber(negativeDrive)})/tanh(${spiceNumber(negativeDrive)}))`;
 }
 
 function summingExpression(compression, asymmetry) {
   const comp = Math.max(0, Math.min(0.12, Math.round(compression * 512) / 512));
   const asym = Math.max(-0.08, Math.min(0.08, Math.round(asymmetry * 512) / 512));
-  return `min(1,max(-1,v(in)-${spiceNumber(comp)}*v(in)^3+${spiceNumber(asym)}*v(in)^2*(1-abs(v(in)))))`;
+  return `min(1,max(-1,v(in)-${spiceNumber(comp)}*v(in)*v(in)*v(in)+${spiceNumber(asym)}*v(in)*v(in)*(1-abs(v(in)))))`;
 }
 
 function transformerExpression(drive, asymmetry) {
   const safeDrive = Math.max(1, Math.round(drive * 128) / 128);
   const asym = Math.round(asymmetry * 512) / 512;
-  return `min(1,max(-1,0.985*tanh((v(in)+${spiceNumber(asym)}*v(in)^2*if(v(in)>=0,1,-0.42))*${spiceNumber(safeDrive)})/tanh(${spiceNumber(safeDrive)})))`;
+  return `min(1,max(-1,0.985*tanh((v(in)+${spiceNumber(asym)}*v(in)^2*(1.42*u(v(in))-0.42))*${spiceNumber(safeDrive)})/tanh(${spiceNumber(safeDrive)})))`;
 }
 
 function atrTapeExpression(drive, bias) {

@@ -3,6 +3,7 @@
 
 CMakeFiles/stack_amp_test.dir/tests/stack_amp_test.cpp.o
  /home/runner/work/calcotone/calcotone/native/tests/stack_amp_test.cpp
+ /home/runner/work/calcotone/calcotone/native/include/calcotone/dsp_core.hpp
  /home/runner/work/calcotone/calcotone/native/include/calcotone/input_router.hpp
  /home/runner/work/calcotone/calcotone/native/include/calcotone/stack_amp.hpp
  /usr/include/alloca.h
@@ -77,6 +78,7 @@ CMakeFiles/stack_amp_test.dir/tests/stack_amp_test.cpp.o
  /usr/include/c++/13/bits/stl_iterator_base_funcs.h
  /usr/include/c++/13/bits/stl_iterator_base_types.h
  /usr/include/c++/13/bits/stl_pair.h
+ /usr/include/c++/13/bits/stl_relops.h
  /usr/include/c++/13/bits/stl_tempbuf.h
  /usr/include/c++/13/bits/stl_uninitialized.h
  /usr/include/c++/13/bits/stl_vector.h
@@ -143,6 +145,7 @@ CMakeFiles/stack_amp_test.dir/tests/stack_amp_test.cpp.o
  /usr/include/c++/13/tuple
  /usr/include/c++/13/type_traits
  /usr/include/c++/13/typeinfo
+ /usr/include/c++/13/utility
  /usr/include/c++/13/vector
  /usr/include/ctype.h
  /usr/include/endian.h

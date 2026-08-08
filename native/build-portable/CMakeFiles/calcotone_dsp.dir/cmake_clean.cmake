@@ -39,6 +39,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/calcotone_dsp.dir/src/halo_parity_processor.cpp.o.d"
   "CMakeFiles/calcotone_dsp.dir/src/halo_space_echo_processor.cpp.o"
   "CMakeFiles/calcotone_dsp.dir/src/halo_space_echo_processor.cpp.o.d"
+  "CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.o"
+  "CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.o.d"
   "CMakeFiles/calcotone_dsp.dir/src/native_dream_engine.cpp.o"
   "CMakeFiles/calcotone_dsp.dir/src/native_dream_engine.cpp.o.d"
   "CMakeFiles/calcotone_dsp.dir/src/native_processor.cpp.o"

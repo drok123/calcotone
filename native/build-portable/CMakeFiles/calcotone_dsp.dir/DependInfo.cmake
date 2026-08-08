@@ -28,6 +28,7 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/runner/work/calcotone/calcotone/native/src/halo_dual_grain_pitch_processor.cpp" "CMakeFiles/calcotone_dsp.dir/src/halo_dual_grain_pitch_processor.cpp.o" "gcc" "CMakeFiles/calcotone_dsp.dir/src/halo_dual_grain_pitch_processor.cpp.o.d"
   "/home/runner/work/calcotone/calcotone/native/src/halo_parity_processor.cpp" "CMakeFiles/calcotone_dsp.dir/src/halo_parity_processor.cpp.o" "gcc" "CMakeFiles/calcotone_dsp.dir/src/halo_parity_processor.cpp.o.d"
   "/home/runner/work/calcotone/calcotone/native/src/halo_space_echo_processor.cpp" "CMakeFiles/calcotone_dsp.dir/src/halo_space_echo_processor.cpp.o" "gcc" "CMakeFiles/calcotone_dsp.dir/src/halo_space_echo_processor.cpp.o.d"
+  "/home/runner/work/calcotone/calcotone/native/src/loop_processor.cpp" "CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.o" "gcc" "CMakeFiles/calcotone_dsp.dir/src/loop_processor.cpp.o.d"
   "/home/runner/work/calcotone/calcotone/native/src/native_dream_engine.cpp" "CMakeFiles/calcotone_dsp.dir/src/native_dream_engine.cpp.o" "gcc" "CMakeFiles/calcotone_dsp.dir/src/native_dream_engine.cpp.o.d"
   "/home/runner/work/calcotone/calcotone/native/src/native_processor.cpp" "CMakeFiles/calcotone_dsp.dir/src/native_processor.cpp.o" "gcc" "CMakeFiles/calcotone_dsp.dir/src/native_processor.cpp.o.d"
   "/home/runner/work/calcotone/calcotone/native/src/pressure_parity_processor.cpp" "CMakeFiles/calcotone_dsp.dir/src/pressure_parity_processor.cpp.o" "gcc" "CMakeFiles/calcotone_dsp.dir/src/pressure_parity_processor.cpp.o.d"

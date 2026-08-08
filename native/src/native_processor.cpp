@@ -34,7 +34,7 @@ struct NativeProcessor::Impl {
   explicit Impl(float sample_rate)
       : rate(std::clamp(sample_rate, 8'000.F, 384'000.F)), tuner(rate),
         stack_one(rate), stack_two(rate), rack_one(rate), rack_two(rate),
-        pressure_one(rate), pressure_two(rate), dream(rate, kBlockFrames) {
+        pressure_one(rate), pressure_two(rate), loop(rate), dream(rate, kBlockFrames) {
     std::array<unsigned, kOrderSlots> initial{};
     for (unsigned slot = 0; slot < kOrderSlots; ++slot) initial[slot] = slot;
     packed_order.store(pack_order(initial));
@@ -87,16 +87,15 @@ struct NativeProcessor::Impl {
         dream.capture_module(rack_module, lane_one_output.data(), lane_two_output.data(), frames, enabled);
       }
     }
-    pressure_one.process(lane_one_output.data(), frames);
-    pressure_two.process(lane_two_output.data(), frames);
-    const bool pressure_active = !pressure_bypassed.load(std::memory_order_relaxed);
     dream.finish_block(lane_one_output.data(), lane_two_output.data(), frames,
-                       any_rack_active || !stack_off || pressure_active);
-    const float gain = active.load(std::memory_order_relaxed)
-        ? output_gain.load(std::memory_order_relaxed) : 0.F;
+                       any_rack_active || !stack_off);
+    const bool host_active = active.load(std::memory_order_relaxed);
+    sum_dual_mono(lane_one_output.data(), lane_two_output.data(), output, frames);
+    if (host_active) loop.process(output, frames);
+    const float gain = host_active ? output_gain.load(std::memory_order_relaxed) : 0.F;
     std::uint64_t limited = 0;
     float peak = 0.F;
-    mix_dual_mono(lane_one_output.data(), lane_two_output.data(), output, frames, gain, &limited, &peak);
+    apply_output_safety(output, frames, gain, &limited, &peak);
     output_limited_samples.fetch_add(limited, std::memory_order_relaxed);
     publish_peak(pre_limiter_peak, peak);
   }
@@ -107,6 +106,7 @@ struct NativeProcessor::Impl {
   StackAmp stack_one, stack_two;
   NativeRack rack_one, rack_two;
   NativePressure pressure_one, pressure_two;
+  LoopProcessor loop;
   NativeDreamEngine dream;
   std::array<float, kBlockFrames * 2> lane_one_input{}, lane_two_input{};
   std::array<float, kBlockFrames * 2> lane_one_output{}, lane_two_output{};
@@ -148,6 +148,25 @@ void NativeProcessor::set_pressure_bypassed(bool bypassed) noexcept {
   impl_->pressure_bypassed.store(bypassed, std::memory_order_relaxed);
   impl_->pressure_one.set_bypassed(bypassed); impl_->pressure_two.set_bypassed(bypassed);
 }
+void NativeProcessor::set_loop_enabled(bool value) noexcept { impl_->loop.set_enabled(value); }
+void NativeProcessor::set_loop_selected_track(unsigned track) noexcept { impl_->loop.set_selected_track(track); }
+void NativeProcessor::set_loop_master_level(float value) noexcept { impl_->loop.set_master_level(value); }
+void NativeProcessor::set_loop_track_level(unsigned track, float value) noexcept { impl_->loop.set_track_level(track, value); }
+void NativeProcessor::set_loop_overdub(float value) noexcept { impl_->loop.set_overdub(value); }
+void NativeProcessor::set_loop_fade(float value) noexcept { impl_->loop.set_fade(value); }
+void NativeProcessor::loop_command(LoopCommand command) noexcept { impl_->loop.command(command); }
+void NativeProcessor::set_loop_trim(float start, float end) noexcept { impl_->loop.set_trim(start, end); }
+void NativeProcessor::auto_trim_loop() noexcept { impl_->loop.auto_trim(); }
+void NativeProcessor::reset_loop_trim() noexcept { impl_->loop.reset_trim(); }
+LoopTransport NativeProcessor::loop_transport() const noexcept { return impl_->loop.transport(); }
+unsigned NativeProcessor::loop_selected_track() const noexcept { return impl_->loop.selected_track(); }
+std::uint32_t NativeProcessor::loop_track_mask() const noexcept { return impl_->loop.track_mask(); }
+std::uint64_t NativeProcessor::loop_frames() const noexcept { return impl_->loop.loop_frames(); }
+std::uint64_t NativeProcessor::loop_raw_frames() const noexcept { return impl_->loop.raw_frames(); }
+std::uint64_t NativeProcessor::loop_position() const noexcept { return impl_->loop.position(); }
+float NativeProcessor::loop_trim_start() const noexcept { return impl_->loop.trim_start(); }
+float NativeProcessor::loop_trim_end() const noexcept { return impl_->loop.trim_end(); }
+std::array<float, kLoopWaveformBins> NativeProcessor::loop_waveform() const noexcept { return impl_->loop.waveform(); }
 bool NativeProcessor::set_serial_order(std::span<const std::string_view> stages) noexcept {
   std::array<unsigned, kOrderSlots> next{};
   std::array<bool, kOrderSlots> used{};

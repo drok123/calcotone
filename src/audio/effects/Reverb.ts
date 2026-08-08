@@ -258,7 +258,7 @@ class ReverbNetwork {
       : Math.max(0.25, decay * this.config.decayBias);
     const colorCutoff = 1700 * Math.pow(10.2, color) * this.config.dampingBias;
     const freeze = this.config.id === 'freeze';
-    const loopBudget = freeze ? 0.958 : 0.875;
+    const loopBudget = freeze ? 0.997 : 0.992;
     const crossMagnitude = Math.min(freeze ? 0.016 : 0.034, this.config.crossAmount * (0.14 + diffusion * 0.22));
     if (this.config.converterLowpass) this.converterLowpass.frequency.setTargetAtTime(this.config.converterLowpass * (0.80 + color * 0.20), now, 0.08);
 
@@ -294,7 +294,8 @@ class ReverbNetwork {
       const spectralDecayScale = 1 + split * ((index / Math.max(1, this.delays.length - 1)) - 0.5) * (0.7 + (1 - color) * 0.6);
       const lineDecay = Math.pow(0.001, lineTime / Math.max(0.18, effectiveDecay * spectralDecayScale));
       const spread = 0.988 - index * 0.0019;
-      const safeSelfFeedback = Math.min(loopBudget - crossMagnitude - 0.042, Math.max(0.18, lineDecay * spread));
+      const feedbackHeadroom = freeze ? 0.004 : 0.010;
+      const safeSelfFeedback = Math.min(loopBudget - crossMagnitude - feedbackHeadroom, Math.max(0.18, lineDecay * spread));
       this.feedback[index].gain.setTargetAtTime(safeSelfFeedback, now, 0.065);
       const polarity = index % 4 < 2 ? 1 : -1;
       this.crossGains[index]?.gain.setTargetAtTime(crossMagnitude * polarity, now, 0.075);

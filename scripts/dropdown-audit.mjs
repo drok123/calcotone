@@ -47,6 +47,10 @@ const grain = read('src/audio/effects/Bitcrusher.ts');
 const grainProcessor = read('public/grain-processor.js');
 const artifact = read('src/audio/effects/Media.ts');
 const emberDigitalCapture = read('public/ember-digital-capture-processor.js');
+const app = read('src/App.tsx');
+const railC = read('src/components/effects/RailCModules.tsx');
+const loopStore = read('src/components/signal/loopStore.ts');
+const railCArtwork = read('src/components/ascii/RailCHardwareDisplay.tsx');
 
 const EMBER = ['velvet','tube','console','transformer','furnace','exciter','broken','goldlion','mullard','telefunken','bugleboy','rcablack','sp1200','mpc60','mirage','s950','emulator2','fairlightiix'];
 const DRIFT = ['chorus','ensemble','dimension','vibrato','rotary','doppler','liquid','orbit','ce1','dimensiond','mxrflanger','electricmistress','adaflanger','bf2','biphase','smallstone','univibe','leslie','phase90','instantphaser','schulte','pn2'];
@@ -54,6 +58,7 @@ const HALO = ['clean','tape','bbd','pingpong','diffuse','scatter','constellation
 const ATMOS = ['room','plate','hall','cinema','cloud','freeze','celestial','aurora','nebula','abyss','emt140','lexicon224'];
 const GRAIN = ['mosaic','scatter','smear','prism','slice','freeze','clouds','beads','morphagene','arbhar','particle2','microcosm'];
 const ARTIFACT = ['cassette','reel','vinyl','vhs','radio','wax','broken','archive','tascam424','Neve 1073','SSL 4000E','API 1608','Ampex ATR-102','Neve BCM10'];
+const ARTIFACT_DYNAMICS = ['compressor-fet','compressor-opto','compressor-varimu','compressor-vca'];
 
 requireOrder(ember, 'EMBER_MODE_ORDER', EMBER, 'Ember dropdown');
 requireOrder(drift, 'DRIFT_MODE_ORDER', DRIFT, 'Drift dropdown');
@@ -128,6 +133,22 @@ requireText(artifact, 'getSummingCurve(point.busCompression, point.busAsymmetry)
 forbidText(artifact, 'AudioWorkletNode', 'Artifact digital-capture ownership');
 requireText(artifact, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve caches');
 
+// RANDOM must keep controlled dropdown state synchronized with native DSP and visibly move when alternatives exist.
+requireText(app, 'chooseMusicalDifferent(MUSICAL_EMBER_MODES, module.emberMode)', 'Core random mode changes');
+requireText(app, 'Native DSP receives the new values immediately', 'Native RANDOM UI synchronization');
+requireText(app, 'window.setTimeout(() => revealRandomUiModule(effectId), 48 + index * 96)', 'Native RANDOM serial reveal');
+requireText(railC, 'chooseDifferent(pool, mode)', 'Stomp random mode changes');
+requireText(railC, 'chooseDifferent(modelPool, model)', 'Stack random model changes');
+requireText(loopStore, 'export const LOOP_TRACK_COUNT = 8', 'Loop eight-track selector contract');
+forbidText(railC, "useRailCRandomController('pressure'", 'Loop RANDOM isolation');
+for (const mode of ARTIFACT_DYNAMICS) requireText(artifact, `'${mode}'`, `Artifact ${mode} dynamics dropdown`);
+
+// Stomp, Stack, and Loop share the same high-DPI animated hardware-art language as the core rack.
+for (const kind of ['stomp', 'stack', 'loop']) requireText(railCArtwork, `${kind}: {`, `Rail C ${kind} artwork profile`);
+for (const kind of ['stomp', 'stack', 'loop']) requireText(railC, `kind="${kind}"`, `Rail C ${kind} artwork mount`);
+requireText(railCArtwork, 'subscribeViewportAnimation(render)', 'Rail C artwork shared scheduler');
+requireText(railCArtwork, 'canvasPixelRatio(width, height, 5_400_000)', 'Rail C artwork high-DPI backing');
+
 if (failures.length) {
   console.error('\nCALCOTONE dropdown audit failed:\n');
   for (const failure of failures) console.error(` - ${failure}`);
@@ -135,4 +156,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`CALCOTONE dropdown audit passed (${EMBER.length + DRIFT.length + HALO.length + ATMOS.length + GRAIN.length + ARTIFACT.length} modes checked).`);
+console.log(`CALCOTONE dropdown audit passed (${EMBER.length + DRIFT.length + HALO.length + ATMOS.length + GRAIN.length + ARTIFACT.length + ARTIFACT_DYNAMICS.length} modes checked).`);

@@ -14,6 +14,7 @@ const forbidText = (source, needle, label) => { if (source.includes(needle)) fai
 const worklet = read('public/dream-buffer-processor.js');
 const owner = read('src/audio/DreamBuffer.ts');
 const engine = read('src/audio/AudioEngine.ts');
+const loopBridge = read('src/loopBridge.tsx');
 const nativeCore = read('native/src/dream_buffer_parity_processor.cpp');
 const nativeDream = read('native/src/native_dream_engine.cpp');
 const nativeProcessor = read('native/src/native_processor.cpp');
@@ -84,6 +85,12 @@ requireText(engine, 'if (!this.hasActiveProcessing())', 'Dream RAW isolation bra
 requireText(engine, 'this.graph.output.connect(this.analyser)', 'Dream RAW direct graph route');
 requireText(engine, 'this.dreamBuffer.connectReturn(this.dcBlock)', 'Dream return stays processed-only');
 
+// LOOP is deliberately outside Dream: it captures the already-processed rack
+// result and its playback is returned after the creative chain. Dream must never
+// remember/reprocess Loop playback or use Loop power as a RAW-gate condition.
+requireText(loopBridge, 'graph.output.connect(loop.input)', 'Loop capture occurs after the web rack/Dream path');
+requireText(loopBridge, 'loop.output.connect(dcBlock)', 'Loop playback returns directly to master safety');
+
 // The Windows engine must implement the same architecture, not the retired fixed
 // per-lane tap approximation.
 requireText(nativeCore, 'kHistorySeconds = 8.F', 'native Dream bounded history');
@@ -107,7 +114,10 @@ requireText(nativeProcessor, 'NativeDreamEngine dream;', 'native Dream one share
 requireText(nativeProcessor, 'dream.begin_block(frames)', 'native Dream block preparation');
 requireText(nativeProcessor, 'dream.inject_route(rack_module', 'native Dream route injection');
 requireText(nativeProcessor, 'dream.capture_module(rack_module', 'native Dream weighted capture');
-requireText(nativeProcessor, 'any_rack_active || !stack_off || pressure_active', 'native Dream RAW isolation gate');
+requireText(nativeProcessor, 'any_rack_active || !stack_off', 'native Dream RAW isolation gate excludes standalone Loop');
+requireText(nativeProcessor, 'dream.finish_block(lane_one_output.data(), lane_two_output.data(), frames,', 'native Dream completes before final stereo Loop sum');
+requireText(nativeProcessor, 'loop.process(output, frames)', 'native Loop runs after Dream and stereo rack sum');
+forbidText(nativeProcessor, 'pressure_active', 'retired Pressure state must not affect Dream RAW gate');
 forbidText(nativeProcessor, 'dream_one', 'native Dream retired lane-one insert');
 forbidText(nativeProcessor, 'dream_two', 'native Dream retired lane-two insert');
 forbidText(nativeRack, 'NativeDreamBuffer', 'native Dream retired fixed-tap processor');
@@ -119,4 +129,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE Dream Buffer V12 web/native audit passed.');
+console.log('CALCOTONE Dream Buffer V12 web/native audit passed · Loop remains a post-rack sidecar.');

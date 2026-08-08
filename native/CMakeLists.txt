@@ -84,6 +84,7 @@ add_library(calcotone_dsp STATIC
   src/artifact_parity_processor.cpp
   src/stomp_parity_processor.cpp
   src/pressure_parity_processor.cpp
+  src/loop_processor.cpp
   src/dream_buffer_parity_processor.cpp
   src/native_dream_engine.cpp
   src/halo_dual_grain_pitch_processor.cpp
@@ -102,6 +103,8 @@ target_include_directories(calcotone_dsp PUBLIC
 
 add_executable(core_contract_test tests/core_contract_test.cpp)
 target_link_libraries(core_contract_test PRIVATE calcotone_dsp)
+add_executable(dsp_core_test tests/dsp_core_test.cpp)
+target_link_libraries(dsp_core_test PRIVATE calcotone_dsp)
 add_executable(stack_amp_test tests/stack_amp_test.cpp)
 target_link_libraries(stack_amp_test PRIVATE calcotone_dsp)
 add_executable(native_rack_test tests/native_rack_test.cpp)
@@ -110,6 +113,8 @@ add_executable(pitch_tracker_test tests/pitch_tracker_test.cpp)
 target_link_libraries(pitch_tracker_test PRIVATE calcotone_dsp)
 add_executable(native_processor_test tests/native_processor_test.cpp)
 target_link_libraries(native_processor_test PRIVATE calcotone_dsp)
+add_executable(loop_processor_test tests/loop_processor_test.cpp)
+target_link_libraries(loop_processor_test PRIVATE calcotone_dsp)
 add_executable(audio_device_config_test tests/audio_device_config_test.cpp)
 target_link_libraries(audio_device_config_test PRIVATE calcotone_dsp)
 add_executable(audio_client_property_plan_test tests/audio_client_property_plan_test.cpp)
@@ -179,10 +184,12 @@ target_link_libraries(halo_dual_grain_pitch_processor_test PRIVATE calcotone_dsp
 
 enable_testing()
 add_test(NAME core_contract_test COMMAND core_contract_test)
+add_test(NAME dsp_core_test COMMAND dsp_core_test)
 add_test(NAME stack_amp_test COMMAND stack_amp_test)
 add_test(NAME native_rack_test COMMAND native_rack_test)
 add_test(NAME pitch_tracker_test COMMAND pitch_tracker_test)
 add_test(NAME native_processor_test COMMAND native_processor_test)
+add_test(NAME loop_processor_test COMMAND loop_processor_test)
 add_test(NAME audio_device_config_test COMMAND audio_device_config_test)
 add_test(NAME audio_client_property_plan_test COMMAND audio_client_property_plan_test)
 add_test(NAME audio_restart_policy_test COMMAND audio_restart_policy_test)

@@ -206,14 +206,15 @@ CMakeFiles/calcotone_dsp.dir/src/ember_magnetic_core_processor.cpp.o: \
  /usr/include/c++/13/bits/ranges_uninitialized.h \
  /usr/include/c++/13/bits/ranges_algobase.h \
  /usr/include/c++/13/pstl/glue_memory_defs.h \
- /usr/include/c++/13/pstl/execution_defs.h /usr/include/c++/13/algorithm \
- /usr/include/c++/13/bits/stl_algo.h \
+ /usr/include/c++/13/pstl/execution_defs.h \
+ /home/runner/work/calcotone/calcotone/native/include/calcotone/dsp_core.hpp \
+ /usr/include/c++/13/algorithm /usr/include/c++/13/bits/stl_algo.h \
  /usr/include/c++/13/bits/algorithmfwd.h \
  /usr/include/c++/13/bits/stl_heap.h \
  /usr/include/c++/13/bits/uniform_int_dist.h \
  /usr/include/c++/13/bits/ranges_algo.h \
  /usr/include/c++/13/pstl/glue_algorithm_defs.h /usr/include/c++/13/array \
- /usr/include/c++/13/atomic /usr/include/c++/13/cmath /usr/include/math.h \
+ /usr/include/c++/13/cmath /usr/include/math.h \
  /usr/include/x86_64-linux-gnu/bits/math-vector.h \
  /usr/include/x86_64-linux-gnu/bits/libm-simd-decl-stubs.h \
  /usr/include/x86_64-linux-gnu/bits/flt-eval-method.h \
@@ -235,4 +236,5 @@ CMakeFiles/calcotone_dsp.dir/src/ember_magnetic_core_processor.cpp.o: \
  /usr/include/c++/13/tr1/modified_bessel_func.tcc \
  /usr/include/c++/13/tr1/poly_hermite.tcc \
  /usr/include/c++/13/tr1/poly_laguerre.tcc \
- /usr/include/c++/13/tr1/riemann_zeta.tcc
+ /usr/include/c++/13/tr1/riemann_zeta.tcc /usr/include/c++/13/utility \
+ /usr/include/c++/13/bits/stl_relops.h /usr/include/c++/13/atomic

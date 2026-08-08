@@ -1,0 +1,90 @@
+/* 2560x1440 reference rendering.
+   This stylesheet may improve rasterization and focus treatment only. Physical
+   faceplate geometry is owned unconditionally by approvedFaceplate.css so
+   Windows DPI scaling cannot select a different control or viewport layout. */
+
+:root {
+  --ui-hairline: 1px;
+  --ui-text-edge: 0 1px 1px rgba(0, 0, 0, 0.78);
+  --ui-focus-ring: 0 0 0 2px rgba(247, 244, 230, 0.9), 0 0 0 4px rgba(10, 14, 12, 0.9);
+  font-kerning: normal;
+  font-optical-sizing: auto;
+  text-rendering: geometricPrecision;
+}
+
+button,
+select,
+input,
+textarea {
+  font-kerning: normal;
+  font-variant-numeric: tabular-nums lining-nums;
+  text-rendering: geometricPrecision;
+}
+
+svg {
+  shape-rendering: geometricPrecision;
+  text-rendering: geometricPrecision;
+}
+
+canvas,
+img {
+  image-rendering: auto;
+}
+
+:where(button, select, input, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring) !important;
+}
+
+.effect-module,
+.module-card,
+.module-faceplate,
+.io-panel,
+.performance-panel,
+.spectrum-unit,
+.recorder-panel,
+.motion-pad,
+.xy-pad {
+  background-clip: padding-box;
+}
+
+html[data-display-profile='1440p'] {
+  --ui-hairline: 1px;
+  -webkit-font-smoothing: subpixel-antialiased;
+  -moz-osx-font-smoothing: auto;
+}
+
+html[data-display-profile='1440p'] body {
+  min-width: 1180px;
+}
+
+html[data-display-profile='1440p'] :where(
+  .brand small,
+  .status-item span:not(.status-dot),
+  .status-item strong,
+  .panel-heading h2,
+  .section-header h2,
+  .footer-bar
+) {
+  text-rendering: geometricPrecision;
+  text-shadow: var(--ui-text-edge);
+}
+
+html[data-display-profile='1440p'] :where(
+  .effect-module,
+  .io-panel,
+  .performance-panel,
+  .spectrum-unit,
+  .recorder-panel
+) {
+  border-width: var(--ui-hairline);
+}
+
+@media (min-width: 2200px) and (min-height: 1200px) {
+  .footer-bar,
+  .panel-heading,
+  .section-header,
+  .module-header {
+    text-rendering: geometricPrecision;
+  }
+}

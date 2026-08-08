@@ -1,6 +1,8 @@
 import type { RandomizationProfile } from './randomProfiles';
 
-export const RAIL_C_RANDOM_ORDER = ['stomp', 'chaos', 'pressure'] as const;
+// LOOP is deliberately absent: it is a standalone performance recorder and
+// RANDOM must never mutate its track selection, levels, transport, or memory.
+export const RAIL_C_RANDOM_ORDER = ['stomp', 'chaos'] as const;
 
 export type RailCRandomModuleId = (typeof RAIL_C_RANDOM_ORDER)[number];
 
