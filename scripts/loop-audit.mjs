@@ -21,6 +21,8 @@ const random = read('src/features/random/railCRandomRegistry.ts');
 // track stays visibly alive while the global Loop transport is playing.
 // Loop remains transport-first and readable even while the other modules use
 // the denser spectacle renderer; decorative motion must never replace true state.
+// Spectacle detail may increase, but cream structure and purple truthful motion
+// remain separate so the selected clock never turns back into decorative noise.
 requireText(store, 'export const LOOP_TRACK_COUNT = 8', 'Loop hard track limit');
 requireText(worklet, 'this.rawFrames = new Uint32Array(TRACKS)', 'browser independent track lengths');
 requireText(worklet, 'this.positions = new Uint32Array(TRACKS)', 'browser independent playheads');
