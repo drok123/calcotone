@@ -29,7 +29,9 @@ const faceplate = read('src/ui/faceplateLayout.ts');
 const vite = read('vite.config.ts');
 const main = read('src/main.tsx');
 
-requireText(viewport, '<PressureStyleDisplay module={module}', 'Pressure-style module ASCII surface');
+requireText(viewport, '<AsciiArtEngine kind="module" module={module}', 'High-fidelity module ASCII surface');
+requireText(viewport, 'module-spectacle-ascii', 'Dedicated module spectacle surface');
+forbidText(viewport, 'PressureStyleDisplay', 'Retired low-density core module renderer');
 requireText(viewport, 'moduleModeKey(module)', 'Dropdown-driven module scene');
 requireText(viewport, 'is-reconfiguring', 'Dropdown reconfiguration transition');
 forbidText(viewport, 'viewport-caption', 'Duplicate module artwork label');
@@ -56,6 +58,12 @@ requireText(ascii, '1000 / profile.visualFps', 'Responsive landscape dragging ca
 requireText(ascii, 'canvasPixelRatio(width, height, 6_400_000)', 'High-DPI ASCII canvas');
 requireText(ascii, 'const horizontalScale = width / gridWidth', 'Edge-to-edge ASCII width fit');
 requireText(ascii, 'const verticalScale = height / gridHeight', 'Edge-to-edge ASCII height fit');
+requireText(ascii, "const MODULE_SHADE_RAMP = ' .:-=+*#%@'", 'High-fidelity ASCII density ramp');
+requireText(ascii, 'const MODULE_BAYER_4', 'Ordered module ASCII dithering');
+requireText(ascii, 'function moduleEdgeGlyph', 'Edge-aware ASCII reconstruction');
+requireText(ascii, 'const supersampled = (center * 3 + left + right + up + down) / 7', 'Five-tap module supersampling');
+requireText(ascii, "MODULE_ART_OFF_WHITE = '#f2ead8'", 'Calcotone off-white spectacle base');
+requireText(ascii, 'Math.max(84, Math.min(136, Math.floor(width / 3.15)))', '1440p high-density module grid');
 requireText(ascii, 'dpr * horizontalScale', 'Measured ASCII canvas transform');
 requireText(pressureDisplay, 'subscribeViewportAnimation(render)', 'Shared module display scheduler');
 requireText(pressureDisplay, 'display.reference1440p ? 30 : 24', 'Adaptive module display cadence');

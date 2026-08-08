@@ -94,7 +94,8 @@ requireText(pressureDisplay, 'display.reference1440p ? 30 : 24', 'Adaptive activ
 forbidText(pressureDisplay, 'requestAnimationFrame(', 'Per-surface module animation loop');
 forbidText(pressureDisplay, 'Math.random()', 'Nondeterministic module display');
 forbidText(viewport, 'viewport-caption', 'Duplicate module artwork label');
-requireText(viewport, '<PressureStyleDisplay module={module}', 'Pressure-style module renderer');
+requireText(viewport, '<AsciiArtEngine kind="module" module={module}', 'High-fidelity module renderer');
+forbidText(viewport, 'PressureStyleDisplay', 'Retired low-density core module renderer');
 requireText(field, 'kind="landscape"', 'XY ASCII landscape renderer');
 requireText(scheduler, 'function frameBudget(): number', 'Adaptive shared visual frame budget');
 requireText(scheduler, 'const HEAVY_FRAME_MS = 10.5', 'Visual overload fallback threshold');
@@ -140,4 +141,4 @@ if (failures.length) {
   console.error('');
   process.exit(1);
 }
-console.log(`CALCOTONE ASCII landscape audit passed (${dropdownModeCount} deterministic dropdown identities; Pressure-style module displays; zero decoders).`);
+console.log(`CALCOTONE ASCII landscape audit passed (${dropdownModeCount} deterministic dropdown identities; high-fidelity spectacle module displays; zero decoders).`);
