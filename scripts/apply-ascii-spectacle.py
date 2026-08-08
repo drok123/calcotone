@@ -235,3 +235,15 @@ summary_old = "console.log(`CALCOTONE ASCII landscape audit passed (${dropdownMo
 summary_new = "console.log(`CALCOTONE ASCII landscape audit passed (${dropdownModeCount} deterministic dropdown identities; high-fidelity spectacle module displays; zero decoders).`);"
 audit = audit.replace(summary_old, summary_new)
 ascii_audit_path.write_text(audit)
+
+runtime_path = Path('scripts/runtime-audit.mjs')
+runtime = runtime_path.read_text()
+runtime = runtime.replace(
+    "requireText(viewport, '<PressureStyleDisplay module={module}', 'Module ASCII wiring');",
+    "requireText(viewport, '<AsciiArtEngine kind=\"module\" module={module}', 'High-fidelity module ASCII wiring');\nrequireText(viewport, 'module-spectacle-ascii', 'Dedicated spectacle module surface');\nforbidText(viewport, 'PressureStyleDisplay', 'Retired low-density module renderer');",
+)
+runtime = runtime.replace(
+    "requireText(pressureDisplay, 'display.reference1440p ? 30 : 24', 'Module display adaptive cadence');\nrequireText(pressureDisplay, 'canvasPixelRatio(width, height, 5_400_000)', 'Module display bounded high-DPI budget');\nrequireText(pressureDisplay, 'subscribeViewportAnimation(render)', 'Module display shared scheduler');\nrequireText(pressureDisplay, 'if (canvas.width !== pixelWidth)', 'Module display resize allocation guard');",
+    "requireText(ascii, \"const MODULE_SHADE_RAMP = ' .:-=+*#%@'\", 'Module spectacle density ramp');\nrequireText(ascii, 'const MODULE_BAYER_4', 'Module spectacle ordered dithering');\nrequireText(ascii, 'function moduleEdgeGlyph', 'Module spectacle edge reconstruction');\nrequireText(ascii, 'const supersampled = (center * 3 + left + right + up + down) / 7', 'Module spectacle supersampling');",
+)
+runtime_path.write_text(runtime)
