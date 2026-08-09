@@ -194,7 +194,12 @@
         "nebula",
         "abyss",
         "emt140",
-        "lexicon224"
+        "lexicon224",
+        "rmx16",
+        "quantec",
+        "springtank",
+        "bloom",
+        "veil"
       ],
       "controls": [
         {
