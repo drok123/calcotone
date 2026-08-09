@@ -55,7 +55,7 @@ const railCArtwork = read('src/components/ascii/RailCHardwareDisplay.tsx');
 const EMBER = ['velvet','tube','console','transformer','furnace','exciter','broken','goldlion','mullard','telefunken','bugleboy','rcablack','sp1200','mpc60','mirage','s950','emulator2','fairlightiix'];
 const DRIFT = ['chorus','ensemble','dimension','vibrato','rotary','doppler','liquid','orbit','ce1','dimensiond','mxrflanger','electricmistress','adaflanger','bf2','biphase','smallstone','univibe','leslie','phase90','instantphaser','schulte','pn2'];
 const HALO = ['clean','tape','bbd','pingpong','diffuse','scatter','constellation','re201','EP-3 Echoplex','Binson Echorec','Deluxe Memory Man','AMS DMX 15-80 S'];
-const ATMOS = ['room','plate','hall','cinema','cloud','freeze','celestial','aurora','nebula','abyss','emt140','lexicon224'];
+const ATMOS = ['room','plate','hall','cinema','cloud','freeze','celestial','aurora','nebula','abyss','emt140','lexicon224','rmx16','quantec','springtank','bloom','veil'];
 const GRAIN = ['mosaic','scatter','smear','prism','slice','freeze','clouds','beads','morphagene','arbhar','particle2','microcosm'];
 const ARTIFACT = ['cassette','reel','vinyl','vhs','radio','wax','broken','archive','tascam424','Neve 1073','SSL 4000E','API 1608','Ampex ATR-102','Neve BCM10'];
 const ARTIFACT_DYNAMICS = ['compressor-fet','compressor-opto','compressor-varimu','compressor-vca'];
@@ -145,7 +145,7 @@ for (const mode of ARTIFACT_DYNAMICS) requireText(artifact, `'${mode}'`, `Artifa
 
 // Stomp, Stack, and Loop share the same high-DPI animated hardware-art language as the core rack.
 for (const kind of ['stomp', 'stack', 'loop']) requireText(railCArtwork, `${kind}: {`, `Rail C ${kind} artwork profile`);
-for (const kind of ['stomp', 'stack', 'loop']) requireText(railC, `kind="${kind}"`, `Rail C ${kind} artwork mount`);
+for (const kind of ['stomp', 'stack', 'loop']) requireText(railC, `kind=\"${kind}\"`, `Rail C ${kind} artwork mount`);
 requireText(railCArtwork, 'subscribeViewportAnimation(render)', 'Rail C artwork shared scheduler');
 requireText(railCArtwork, 'canvasPixelRatio(width, height, 5_400_000)', 'Rail C artwork high-DPI backing');
 
