@@ -41,7 +41,7 @@ struct AtmosEarlyProfile {
 
 // Exact model identity, ordering, and canonical calibration data copied from
 // src/audio/effects/Reverb.ts. Native Atmos consumes this table directly.
-inline constexpr std::array<AtmosParityProfile, 12> kAtmosParityProfiles{{
+inline constexpr std::array<AtmosParityProfile, 17> kAtmosParityProfiles{{
   {"room", {0.0137F,0.0173F,0.0199F,0.0239F,0.0293F,0.0317F}, 6,
     {0.19F,0.27F,0.31F,0.37F,0.43F,0.53F}, {0.004F,0.006F}, {0.58F,1.42F},
     0.72F,1.08F,0.72F,0.00022F,0.035F,0.42F,0.82F,150.F},
@@ -78,9 +78,24 @@ inline constexpr std::array<AtmosParityProfile, 12> kAtmosParityProfiles{{
   {"lexicon224", {0.0247F,0.0311F,0.0389F,0.0473F,0.0571F,0.0683F,0.0811F,0.0953F,0.1117F,0.1301F}, 10,
     {0.071F,0.089F,0.113F,0.137F,0.173F,0.211F,0.257F,0.307F,0.367F,0.433F}, {0.024F,0.031F}, {0.78F,2.20F},
     1.12F,0.72F,1.24F,0.00082F,0.120F,0.21F,0.58F,145.F,12,8800.F,0.34F,0.F},
+  {"rmx16", {0.0089F,0.0117F,0.0153F,0.0197F,0.0251F,0.0311F,0.0383F,0.0461F}, 8,
+    {0.11F,0.17F,0.19F,0.23F,0.29F,0.31F,0.37F,0.41F}, {0.006F,0.009F}, {0.55F,1.45F},
+    0.78F,0.95F,1.42F,0.00028F,0.075F,0.25F,0.62F,170.F,16,18000.F,0.18F,0.F},
+  {"quantec", {0.0127F,0.0169F,0.0217F,0.0271F,0.0331F,0.0397F,0.0473F,0.0557F,0.0649F,0.0751F,0.0863F,0.0983F}, 12,
+    {0.071F,0.083F,0.101F,0.127F,0.149F,0.173F,0.199F,0.227F,0.257F,0.283F,0.313F,0.347F}, {0.0045F,0.0065F}, {0.62F,2.05F},
+    0.88F,1.02F,1.48F,0.00018F,0.095F,0.205F,0.68F,125.F},
+  {"springtank", {0.0067F,0.0091F,0.0127F,0.0173F,0.0239F,0.0323F,0.0437F,0.0581F,0.0757F,0.0971F}, 10,
+    {0.13F,0.17F,0.23F,0.29F,0.37F,0.43F,0.53F,0.61F,0.71F,0.83F}, {0.0025F,0.0041F}, {0.82F,1.22F},
+    1.05F,0.58F,1.36F,0.00065F,0.085F,0.205F,0.58F,180.F,0,11200.F,0.45F,1.55F},
+  {"bloom", {0.0317F,0.0413F,0.0529F,0.0661F,0.0811F,0.0983F,0.1177F,0.1393F,0.1631F,0.1891F,0.2173F,0.2477F}, 12,
+    {0.037F,0.049F,0.067F,0.089F,0.113F,0.143F,0.179F,0.221F,0.269F,0.323F,0.383F,0.449F}, {0.030F,0.044F}, {0.90F,2.90F},
+    2.40F,1.15F,1.58F,0.0048F,0.185F,0.135F,0.43F,220.F,0,0.F,0.28F,0.F},
+  {"veil", {0.0277F,0.0361F,0.0463F,0.0583F,0.0721F,0.0877F,0.1051F,0.1243F,0.1453F,0.1681F,0.1927F,0.2191F}, 12,
+    {0.041F,0.057F,0.073F,0.097F,0.127F,0.157F,0.193F,0.233F,0.281F,0.337F,0.397F,0.463F}, {0.020F,0.034F}, {0.85F,2.70F},
+    1.85F,0.42F,1.50F,0.0022F,0.160F,0.145F,0.46F,120.F,0,6200.F,0.22F,0.F},
 }};
 
-inline constexpr std::array<AtmosEarlyProfile, 12> kAtmosEarlyProfiles{{
+inline constexpr std::array<AtmosEarlyProfile, 17> kAtmosEarlyProfiles{{
   {{0.0032F,0.0068F,0.0114F,0.0179F,0.0256F},5,0.76F,0.63F,13200.F,-25.F,3.4F,0.002F,0.13F},
   {{0.0048F,0.0097F,0.0163F,0.0248F},4,0.42F,0.76F,11800.F,-21.F,2.6F,0.0015F,0.16F},
   {{0.0065F,0.0138F,0.0229F,0.0344F,0.0481F},5,0.58F,0.67F,12400.F,-24.F,3.8F,0.0025F,0.19F},
@@ -93,7 +108,14 @@ inline constexpr std::array<AtmosEarlyProfile, 12> kAtmosEarlyProfiles{{
   {{0.014F,0.030F,0.051F,0.076F},4,0.24F,0.66F,7600.F,-26.F,5.2F,0.004F,0.33F},
   {{0.0037F,0.0076F,0.0128F,0.0196F},4,0.31F,0.79F,10600.F,-20.F,2.4F,0.0012F,0.15F},
   {{0.007F,0.0148F,0.0245F,0.037F,0.052F},5,0.45F,0.72F,8400.F,-23.F,3.4F,0.002F,0.22F},
+  {{0.0028F,0.0059F,0.0101F,0.0163F,0.0247F},5,0.72F,0.52F,14200.F,-22.F,3.0F,0.0015F,0.13F},
+  {{0.0036F,0.0079F,0.0137F,0.0211F,0.0307F},5,0.70F,0.60F,15000.F,-24.F,3.2F,0.0018F,0.16F},
+  {{0.0029F,0.0067F,0.0129F,0.0221F},4,0.25F,0.80F,9000.F,-22.F,2.8F,0.0012F,0.21F},
+  {{0.012F,0.029F,0.051F},3,0.20F,0.78F,12000.F,-28.F,5.4F,0.0045F,0.40F},
+  {{0.010F,0.024F,0.043F,0.066F},4,0.28F,0.72F,7000.F,-27.F,4.9F,0.004F,0.36F},
 }};
+
+static_assert(kAtmosParityProfiles.size() == kAtmosEarlyProfiles.size());
 
 inline constexpr const AtmosParityProfile& atmos_parity_profile(std::size_t index) noexcept {
   return kAtmosParityProfiles[index < kAtmosParityProfiles.size() ? index : 0];
