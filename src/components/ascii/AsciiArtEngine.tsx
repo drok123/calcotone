@@ -65,8 +65,8 @@ interface ModeArtVariant {
 }
 
 // Each dropdown is a named visual variation inside its parent module's art
-// language. The explicit table makes semantic coverage auditable for all 86
-// modes instead of relying on a seed to make nominally different noise.
+// language. The explicit table makes semantic coverage auditable for every
+// dropdown mode instead of relying on a seed to make nominally different noise.
 export const MODE_ART_VARIANTS = {
   'saturation:velvet': { motif: 'bloom', scale: 3.2, amount: 0.34, bias: 0.08 },
   'saturation:tube': { motif: 'tubes', scale: 2.0, amount: 0.38, bias: 0.14 },
@@ -135,6 +135,11 @@ export const MODE_ART_VARIANTS = {
   'reverb:abyss': { motif: 'void', scale: 5.0, amount: 0.40, bias: 0.76 },
   'reverb:emt140': { motif: 'plate', scale: 10.0, amount: 0.38, bias: 0.84 },
   'reverb:lexicon224': { motif: 'digital', scale: 7.0, amount: 0.39, bias: 0.92 },
+  'reverb:rmx16': { motif: 'digital', scale: 12.0, amount: 0.41, bias: 1.00 },
+  'reverb:quantec': { motif: 'room', scale: 7.0, amount: 0.38, bias: 1.08 },
+  'reverb:springtank': { motif: 'coil', scale: 9.0, amount: 0.41, bias: 1.16 },
+  'reverb:bloom': { motif: 'bloom', scale: 4.5, amount: 0.42, bias: 1.24 },
+  'reverb:veil': { motif: 'void', scale: 6.5, amount: 0.39, bias: 1.32 },
 
   'bitcrusher:mosaic': { motif: 'blocks', scale: 6.0, amount: 0.38, bias: 0.03 },
   'bitcrusher:scatter': { motif: 'scatter', scale: 8.0, amount: 0.42, bias: 0.11 },
@@ -172,7 +177,6 @@ export function loopAngleForTime(time: number): number {
   const wrapped = ((time % ASCII_LOOP_SECONDS) + ASCII_LOOP_SECONDS) % ASCII_LOOP_SECONDS;
   return (wrapped / ASCII_LOOP_SECONDS) * TAU;
 }
-
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
@@ -257,7 +261,6 @@ function prepareScene(props: AsciiArtEngineProps): PreparedScene {
     ? `pressure:${props.pressure.mode}:${props.pressure.style}`
     : 'pressure:off';
   const sceneKey = [...layers.map((layer) => layer.key), pressureKey].join('|') || 'landscape:idle';
-
   return {
     ...props,
     active: layers.length > 0 || Boolean(props.pressure?.enabled),
@@ -1110,7 +1113,7 @@ export function AsciiArtEngine(props: AsciiArtEngineProps) {
       dpr = canvasPixelRatio(width, height, 6_400_000);
       const pixelWidth = Math.max(1, Math.round(width * dpr));
       const pixelHeight = Math.max(1, Math.round(height * dpr));
-      if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) canvas.width = pixelWidth;
+      if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
       if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
       lastDraw = Number.NEGATIVE_INFINITY;
     };
