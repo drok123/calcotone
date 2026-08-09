@@ -41,7 +41,7 @@ int main() {
   if (!ember || ember->name != "Ember" || ember->model_count != 18 || ember->control_count != 6) return EXIT_FAILURE;
   if (!drift || drift->name != "Drift" || drift->model_count != 22 || drift->control_count != 6) return EXIT_FAILURE;
   if (!halo || halo->name != "Halo" || halo->model_count != 12 || halo->default_model_index != 1) return EXIT_FAILURE;
-  if (!atmos || atmos->name != "Atmos" || atmos->model_count != 12 || atmos->default_model_index != 2) return EXIT_FAILURE;
+  if (!atmos || atmos->name != "Atmos" || atmos->model_count != 17 || atmos->default_model_index != 2) return EXIT_FAILURE;
   if (!grain || grain->name != "Grain" || grain->model_count != 12 || grain->default_model_index != 2) return EXIT_FAILURE;
   if (!artifact || artifact->name != "Artifact" || artifact->model_count != 18 || artifact->control_count != 5) return EXIT_FAILURE;
   if (!stomp || stomp->name != "Stomp" || stomp->rail != 'C' || stomp->model_count != 14 || stomp->default_model_index != 0) return EXIT_FAILURE;
@@ -51,7 +51,8 @@ int main() {
   if (kSaturationModels.front() != "velvet" || kSaturationModels.back() != "fairlightiix") return EXIT_FAILURE;
   if (kChorusModels[8] != "ce1" || kChorusModels.back() != "pn2") return EXIT_FAILURE;
   if (kDelayModels[1] != "tape" || kDelayModels.back() != "AMS DMX 15-80 S") return EXIT_FAILURE;
-  if (kReverbModels[2] != "hall" || kReverbModels.back() != "lexicon224") return EXIT_FAILURE;
+  if (kReverbModels[2] != "hall" || kReverbModels[12] != "rmx16" || kReverbModels[13] != "quantec"
+      || kReverbModels[14] != "springtank" || kReverbModels[15] != "bloom" || kReverbModels.back() != "veil") return EXIT_FAILURE;
   if (kBitcrusherModels[2] != "smear" || kBitcrusherModels.back() != "microcosm") return EXIT_FAILURE;
   if (kMediaModels.front() != "cassette" || kMediaModels.back() != "compressor-vca") return EXIT_FAILURE;
   if (kStompModels.front() != "808 Overdrive" || kStompModels.back() != "Dyna Comp") return EXIT_FAILURE;
