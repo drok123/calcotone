@@ -5,6 +5,8 @@ const compact = (source) => source.replace(/\s+/g, '');
 const manifest = JSON.parse(read('contracts/calcotone-core-manifest.json'));
 const app = read('src/App.tsx');
 const nativeRack = read('native/src/native_rack.cpp');
+const atmosNative = read('native/src/atmos_parity_processor.cpp');
+const atmosProfiles = read('native/include/calcotone/atmos_parity_profiles.hpp');
 const railC = read('src/components/effects/RailCModules.tsx');
 const stackSource = read('src/audio/effects/StackAmp.ts');
 const loopSource = read('src/components/signal/loopStore.ts');
@@ -35,7 +37,7 @@ const modelFieldByModule = {
   reverb: 'algorithm', bitcrusher: 'grainMode', media: 'mediaMode',
 };
 const nativeStructByModule = {
-  saturation: 'Ember', chorus: 'Drift', delay: 'Halo', reverb: 'Atmos',
+  saturation: 'Ember', chorus: 'Drift', delay: 'Halo', reverb: 'AtmosState',
   bitcrusher: 'Grain', media: 'Artifact',
 };
 
@@ -115,9 +117,19 @@ for (const module of manifest.modules) {
     }
     const nativeStruct = nativeStructByModule[module.id];
     check(nativeRack.includes(`struct ${nativeStruct}`), `${module.name} native processor exists`);
-    check(nativeRack.includes(`std::min(${module.models.length - 1}U`)
-      || nativeRack.includes(`std::min(${module.models.length - 1}u`),
-      `${module.name} native model-index ceiling ${module.models.length - 1}`);
+    if (module.id === 'reverb') {
+      check(nativeRack.includes('AtmosParityProcessor atmos_parity'), 'Atmos NativeRack owns canonical parity processor');
+      check(nativeRack.includes('case RackModule::Atmos: atmos_parity.process(data, frames);'), 'Atmos NativeRack delegates audio to parity processor');
+      check(nativeRack.includes('if (module == RackModule::Atmos) return impl_->atmos_parity.set_parameter(name, value);'), 'Atmos NativeRack delegates controls to parity processor');
+      check(!nativeRack.includes('struct Atmos {'), 'legacy duplicate NativeRack Atmos DSP is absent');
+      check(atmosNative.includes('max_model_index()') && atmosNative.includes('kAtmosParityProfiles.size() - 1U'), 'Atmos native model ceiling is profile-driven');
+      check(atmosProfiles.includes(`std::array<AtmosParityProfile, ${module.models.length}>`), `Atmos native profile count ${module.models.length}`);
+      check(atmosProfiles.includes(`std::array<AtmosEarlyProfile, ${module.models.length}>`), `Atmos native early-profile count ${module.models.length}`);
+    } else {
+      check(nativeRack.includes(`std::min(${module.models.length - 1}U`)
+        || nativeRack.includes(`std::min(${module.models.length - 1}u`),
+        `${module.name} native model-index ceiling ${module.models.length - 1}`);
+    }
     continue;
   }
 
