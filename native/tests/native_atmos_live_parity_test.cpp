@@ -1,3 +1,4 @@
+#include "calcotone/atmos_parity_profiles.hpp"
 #include "calcotone/native_rack.hpp"
 
 #include <algorithm>
@@ -14,7 +15,7 @@ int main() {
   impulse[0] = 0.6F;
   impulse[1] = -0.4F;
 
-  std::array<double, 12> signatures{};
+  std::array<double, calcotone::kAtmosParityProfiles.size()> signatures{};
   for (unsigned mode = 0; mode < signatures.size(); ++mode) {
     calcotone::NativeRack rack(rate);
     rack.set_bypassed(calcotone::RackModule::Atmos, false);
