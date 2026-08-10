@@ -1,0 +1,124 @@
+name: Realtime crackle hardening
+
+on:
+  push:
+    branches: [agent/realtime-crackle-hardening]
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply allocation-free discrete model handoffs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_required(source, old, new, label, count=None):
+              actual = source.count(old)
+              if actual == 0:
+                  raise SystemExit(f'missing patch contract: {label}')
+              if count is not None and actual != count:
+                  raise SystemExit(f'unexpected patch contract count for {label}: {actual}')
+              return source.replace(old, new, 1 if count == 1 else -1)
+
+          atmos_path = Path('native/src/atmos_parity_processor.cpp')
+          atmos = atmos_path.read_text()
+          atmos = replace_required(
+              atmos,
+              '''  void reset() noexcept {\n    for (auto& line : lines_) std::fill(line.begin(), line.end(), 0.F);\n''',
+              '''  void set_model(std::size_t requested) noexcept {\n    model_ = std::min(requested, max_model_index());\n    reset();\n  }\n\n  void reset() noexcept {\n    for (auto& line : lines_) std::fill(line.begin(), line.end(), 0.F);\n''',
+              'Atmos reusable network model setter', 1)
+          atmos = replace_required(
+              atmos,
+              '''  explicit Impl(float requested_rate)\n      : rate(std::clamp(requested_rate, 8'000.F, 384'000.F)),\n        active(std::make_unique<AtmosNetwork>(rate, 2U)),\n        fade_total(std::max<std::size_t>(1U, static_cast<std::size_t>(std::lround(rate * .82F)))) {}\n''',
+              '''  explicit Impl(float requested_rate)\n      : rate(std::clamp(requested_rate, 8'000.F, 384'000.F)),\n        network_a(rate, 2U), network_b(rate, 2U), active(&network_a),\n        fade_total(std::max<std::size_t>(1U, static_cast<std::size_t>(std::lround(rate * .08F)))) {}\n''',
+              'Atmos preallocated network pair', 1)
+          atmos = replace_required(
+              atmos,
+              '''    active_model = std::min(max_model_index(), static_cast<std::size_t>(std::max(0.F, std::round(smooth[0]))));\n    active = std::make_unique<AtmosNetwork>(rate, active_model);\n    retiring.reset();\n    fade_position = 0U;\n''',
+              '''    active_model = std::min(max_model_index(), static_cast<std::size_t>(std::max(0.F, std::round(smooth[0]))));\n    network_a.set_model(active_model);\n    network_b.set_model(active_model);\n    active = &network_a;\n    retiring = nullptr;\n    fade_position = 0U;\n''',
+              'Atmos reset without heap allocation', 1)
+          atmos = replace_required(
+              atmos,
+              '''  void switch_model(std::size_t requested, const AtmosControls& current) {\n    requested = std::min(max_model_index(), requested);\n    if (requested == active_model) return;\n    if (processed_frames == 0U) {\n      active = std::make_unique<AtmosNetwork>(rate, requested);\n      retiring.reset();\n    } else {\n      retiring = std::move(active);\n      retiring_controls = current;\n      active = std::make_unique<AtmosNetwork>(rate, requested);\n      fade_position = 0U;\n    }\n    active_model = requested;\n  }\n''',
+              '''  void switch_model(std::size_t requested, const AtmosControls& current) noexcept {\n    requested = std::min(max_model_index(), requested);\n    if (requested == active_model) return;\n    if (processed_frames == 0U) {\n      active->set_model(requested);\n      retiring = nullptr;\n    } else {\n      AtmosNetwork* next = active == &network_a ? &network_b : &network_a;\n      retiring = active;\n      retiring_controls = current;\n      next->set_model(requested);\n      active = next;\n      fade_position = 0U;\n    }\n    active_model = requested;\n  }\n''',
+              'Atmos allocation-free switch', 1)
+          atmos = replace_required(
+              atmos,
+              '        if (++fade_position >= fade_total) retiring.reset();\n',
+              '        if (++fade_position >= fade_total) retiring = nullptr;\n',
+              'Atmos retiring pointer release', 1)
+          atmos = replace_required(
+              atmos,
+              '''  std::unique_ptr<AtmosNetwork> active;\n  std::unique_ptr<AtmosNetwork> retiring;\n  AtmosControls retiring_controls{};\n''',
+              '''  AtmosNetwork network_a;\n  AtmosNetwork network_b;\n  AtmosNetwork* active;\n  AtmosNetwork* retiring{};\n  AtmosControls retiring_controls{};\n''',
+              'Atmos preallocated network storage', 1)
+          atmos_path.write_text(atmos)
+
+          rack_path = Path('native/src/native_rack.cpp')
+          rack = rack_path.read_text()
+          rack = replace_required(
+              rack,
+              '''struct Params {\n  std::array<std::atomic<float>, 7> target{};\n  std::array<float, 7> value{};\n  std::atomic<bool> bypassed{true};\n  float active{};\n  Params(std::initializer_list<float> defaults) noexcept {\n    std::size_t i = 0;\n    for (float v : defaults) { target[i].store(v); value[i++] = v; }\n  }\n  void glide(float amount) noexcept {\n    for (std::size_t i = 0; i < value.size(); ++i)\n      value[i] += (target[i].load(std::memory_order_relaxed) - value[i]) * amount;\n  }\n};\n''',
+              '''struct Params {\n  std::array<std::atomic<float>, 7> target{};\n  std::array<float, 7> value{};\n  std::atomic<bool> bypassed{true};\n  float active{};\n  float mode_mix{1.F};\n  unsigned mode_transition{};\n  Params(std::initializer_list<float> defaults) noexcept {\n    std::size_t i = 0;\n    for (float v : defaults) { target[i].store(v); value[i++] = v; }\n  }\n  void glide(float amount) noexcept {\n    // Slot zero is a discrete hardware/model selector. Smoothing it numerically\n    // walks through unrelated machines and creates topology clicks. Continuous\n    // controls retain their normal parameter glide.\n    for (std::size_t i = 1; i < value.size(); ++i)\n      value[i] += (target[i].load(std::memory_order_relaxed) - value[i]) * amount;\n  }\n  unsigned target_mode() const noexcept {\n    return static_cast<unsigned>(std::max(0.F, std::round(target[0].load(std::memory_order_relaxed))));\n  }\n  unsigned current_mode() const noexcept {\n    return static_cast<unsigned>(std::max(0.F, std::round(value[0])));\n  }\n  void sync_mode(unsigned requested) noexcept { value[0] = static_cast<float>(requested); }\n};\n''',
+              'Native rack discrete selector state', 1)
+          rack = replace_required(
+              rack,
+              '''void NativeRack::process_module(RackModule module, float* data, std::size_t frames) noexcept {\n  if (module >= RackModule::Count) return;\n  auto& params = impl_->params(module);\n  const float target = params.bypassed.load(std::memory_order_relaxed) ? 0.F : 1.F;\n  if (target == 0.F && params.active < 1e-5F) { params.active = 0.F; return; }\n  const float fade = 1.F - std::exp(-1.F / (impl_->sample_rate * .006F));\n  for (std::size_t offset = 0; offset < frames; offset += kRackBlockFrames) {\n    const std::size_t block = std::min(kRackBlockFrames, frames - offset);\n    float* block_output = data + offset * 2;\n    std::copy_n(block_output, block * 2, impl_->dry.data());\n    impl_->run(module, block_output, block);\n    for (std::size_t frame = 0; frame < block; ++frame) {\n      params.active += (target - params.active) * fade;\n      for (unsigned ch = 0; ch < 2; ++ch) {\n        const auto i = frame * 2 + ch;\n        block_output[i] = impl_->dry[i] + (block_output[i] - impl_->dry[i]) * params.active;\n      }\n    }\n  }\n}\n''',
+              '''void NativeRack::process_module(RackModule module, float* data, std::size_t frames) noexcept {\n  if (module >= RackModule::Count) return;\n  auto& params = impl_->params(module);\n  const float target = params.bypassed.load(std::memory_order_relaxed) ? 0.F : 1.F;\n  if (target == 0.F && params.active < 1e-5F) {\n    params.active = 0.F;\n    params.sync_mode(params.target_mode());\n    params.mode_mix = 1.F;\n    params.mode_transition = 0U;\n    return;\n  }\n  const float fade = 1.F - std::exp(-1.F / (impl_->sample_rate * .006F));\n  const float mode_fade_step = 1.F / std::max(1.F, impl_->sample_rate * .003F);\n  const std::size_t mode_fade_frames = std::max<std::size_t>(1U,\n      static_cast<std::size_t>(std::lround(impl_->sample_rate * .003F)));\n  std::size_t offset = 0U;\n  while (offset < frames) {\n    const unsigned requested_mode = params.target_mode();\n    const unsigned current_mode = params.current_mode();\n    if (params.mode_transition == 0U && requested_mode != current_mode)\n      params.mode_transition = 1U;\n    else if (params.mode_transition == 2U && requested_mode != current_mode)\n      params.mode_transition = 1U;\n\n    const std::size_t block_limit = params.mode_transition != 0U\n        ? mode_fade_frames : kRackBlockFrames;\n    const std::size_t block = std::min(block_limit, frames - offset);\n    float* block_output = data + offset * 2U;\n    std::copy_n(block_output, block * 2U, impl_->dry.data());\n    impl_->run(module, block_output, block);\n    for (std::size_t frame = 0; frame < block; ++frame) {\n      params.active += (target - params.active) * fade;\n      if (params.mode_transition == 1U)\n        params.mode_mix = std::max(0.F, params.mode_mix - mode_fade_step);\n      else if (params.mode_transition == 2U)\n        params.mode_mix = std::min(1.F, params.mode_mix + mode_fade_step);\n      const float blend = params.active * params.mode_mix;\n      for (unsigned ch = 0; ch < 2; ++ch) {\n        const auto i = frame * 2U + ch;\n        block_output[i] = impl_->dry[i] + (block_output[i] - impl_->dry[i]) * blend;\n      }\n    }\n    offset += block;\n\n    if (params.mode_transition == 1U && params.mode_mix <= 0.F) {\n      params.sync_mode(params.target_mode());\n      params.mode_transition = 2U;\n    } else if (params.mode_transition == 2U && params.mode_mix >= 1.F) {\n      params.mode_mix = 1.F;\n      params.mode_transition = 0U;\n    }\n  }\n}\n''',
+              'Native rack click-safe model handoff', 1)
+          rack_path.write_text(rack)
+
+          test_path = Path('native/tests/native_rack_test.cpp')
+          test = test_path.read_text()
+          marker = '''  assert(calcotone::rack_module_from_name("saturation") == calcotone::RackModule::Ember);\n'''
+          insertion = '''  // Live hardware/model changes must reach a true dry crossing rather than\n  // numerically gliding through unrelated model indices. At 48 kHz the native\n  // handoff uses a 3 ms / 144-frame fade-out before committing the new model.\n  {\n    calcotone::NativeRack transition(kRate);\n    transition.set_bypassed(calcotone::RackModule::Stomp, false);\n    assert(transition.set_parameter(calcotone::RackModule::Stomp, "mode", 0.F));\n    assert(transition.set_parameter(calcotone::RackModule::Stomp, "drive", .82F));\n    assert(transition.set_parameter(calcotone::RackModule::Stomp, "mix", 1.F));\n    std::vector<float> warmup(4096U * 2U);\n    for (std::size_t frame = 0; frame < 4096U; ++frame) {\n      const float sample = .22F * std::sin(static_cast<float>(frame) * 6.283185307F * 173.F / kRate);\n      warmup[frame * 2U] = sample; warmup[frame * 2U + 1U] = sample;\n    }\n    transition.process(warmup.data(), warmup.data(), 4096U);\n    assert(transition.set_parameter(calcotone::RackModule::Stomp, "mode", 13.F));\n    std::vector<float> changing(512U * 2U);\n    for (std::size_t frame = 0; frame < 512U; ++frame) {\n      const float sample = .22F * std::sin(static_cast<float>(frame + 4096U) * 6.283185307F * 173.F / kRate);\n      changing[frame * 2U] = sample; changing[frame * 2U + 1U] = sample;\n    }\n    const auto dry_change = changing;\n    transition.process(changing.data(), changing.data(), 512U);\n    require_safe(changing);\n    constexpr std::size_t dry_crossing = 143U;\n    assert(std::abs(changing[dry_crossing * 2U] - dry_change[dry_crossing * 2U]) < 1e-5F);\n    assert(std::abs(changing[dry_crossing * 2U + 1U] - dry_change[dry_crossing * 2U + 1U]) < 1e-5F);\n  }\n\n'''
+          if test.count(marker) != 1:
+              raise SystemExit('missing native rack transition test insertion point')
+          test = test.replace(marker, insertion + marker, 1)
+          test_path.write_text(test)
+
+          package_path = Path('package.json')
+          package = package_path.read_text()
+          package = replace_required(
+              package,
+              '    "audit:native-control": "node scripts/native-control-audit.mjs",\n',
+              '    "audit:native-control": "node scripts/native-control-audit.mjs",\n    "audit:native-realtime-safety": "node scripts/native-realtime-safety-audit.mjs",\n',
+              'native realtime audit package script', 1)
+          package = replace_required(
+              package,
+              'npm run audit:native-control && npm run audit:no-xy',
+              'npm run audit:native-control && npm run audit:native-realtime-safety && npm run audit:no-xy',
+              'native realtime audit check chain', 1)
+          package_path.write_text(package)
+          PY
+
+          git rm .github/workflows/realtime-crackle-hardening.yml
+          git add native/src/atmos_parity_processor.cpp native/src/native_rack.cpp native/tests/native_rack_test.cpp package.json scripts/native-realtime-safety-audit.mjs
+          git diff --cached --check
+
+      - name: Validate complete Calcotone tree
+        run: npm run check
+      - name: Commit crackle hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          git commit -m "Harden realtime model transitions against crackle"
+          git push origin HEAD:agent/realtime-crackle-hardening
