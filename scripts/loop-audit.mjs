@@ -56,6 +56,18 @@ for (const token of [
 ]) requireText(store, token, 'Loop settings control-rate contract');
 forbidText(store, 'detail: getLoopState()', 'Loop settings event deep waveform snapshot');
 
+// Native health packets arrive faster than the visual layer needs new envelopes. Reuse
+// the selected waveform when bins are unchanged and suppress identical idle/stopped
+// runtime packets before they can wake React subscribers.
+for (const token of [
+  'function normalizeWaveform(values: readonly number[] | undefined, current?: number[]): number[]',
+  'if (unchanged) return current',
+  'const waveform = patch.waveform ? normalizeWaveform(patch.waveform, state.waveform) : state.waveform',
+  'const unchanged = transport === state.transport',
+  '&& waveform === state.waveform',
+  'if (unchanged) return;',
+]) requireText(store, token, 'Loop runtime telemetry suppression contract');
+
 // Browser bridge only posts fields that changed. The worklet already accepts partial
 // settings packets, so unchanged controls must never be structured-cloned every tick.
 for (const token of [
@@ -69,17 +81,26 @@ forbidText(loopDeck, "this.node.port.postMessage({ type: 'settings', ...settings
 
 // Native App still publishes a complete Loop settings snapshot for simple ownership,
 // but NativeAudioBridge dedupes each idempotent setter in strict queue order. Failed
-// requests clear their key so a later identical value remains retryable.
+// requests clear their key so a later identical value remains retryable. Classification
+// must take the cheap prefix path because commandLine is shared by every native knob.
 for (const token of [
   'private readonly loopCommandState = new Map<string, string>()',
   'private loopStateKey(line: string): string | null',
-  "return `loopParam:${parts[1]}`",
-  "return `loopTrackLevel:${parts[1]}`",
+  "const paramPrefix = 'loopParam '",
+  'line.startsWith(paramPrefix)',
+  'return `loopParam:${line.slice(paramPrefix.length, end)}`',
+  "const levelPrefix = 'loopTrackLevel '",
+  'line.startsWith(levelPrefix)',
+  'return `loopTrackLevel:${line.slice(levelPrefix.length, end)}`',
   'if (loopKey && this.loopCommandState.get(loopKey) === trimmed) return true',
   'if (loopKey) this.loopCommandState.set(loopKey, trimmed)',
   'this.loopCommandState.delete(loopKey)',
   'this.loopCommandState.clear()',
 ]) requireText(nativeBridge, token, 'Native Loop command dedupe contract');
+const loopKeyStart = nativeBridge.indexOf('private loopStateKey(');
+const loopKeyEnd = nativeBridge.indexOf('private rememberDesiredState(', loopKeyStart);
+if (loopKeyStart < 0 || loopKeyEnd < 0) failures.push('Native Loop command classifier: function boundaries missing');
+else forbidText(nativeBridge.slice(loopKeyStart, loopKeyEnd), '.split(', 'Native Loop command classifier allocation path');
 
 // Browser fallback must keep the render path fixed-capacity. Commands may arrive via
 // MessagePort, but quantized scheduling itself must never grow/shrink JS arrays.
@@ -233,4 +254,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('Loop audit passed · fixed realtime scheduling, diffed settings transport, throttled persistence, bounded undo, decimated telemetry and direct V3 controls are intact');
+console.log('Loop audit passed · fixed realtime scheduling, diffed settings transport, allocation-light native controls, suppressed idle telemetry, bounded undo, decimated waveform and direct V3 controls are intact');
