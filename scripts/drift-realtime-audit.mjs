@@ -7,11 +7,13 @@ const BLOCK_SIZE = 128;
 const source = readFileSync(resolve(process.cwd(), 'public/drift-classic-processor.js'), 'utf8');
 const nativeWrapper = readFileSync(resolve(process.cwd(), 'native/src/drift_parity_processor.cpp'), 'utf8');
 const nativeStandard = readFileSync(resolve(process.cwd(), 'native/src/drift_standard_processor.cpp'), 'utf8');
+const nativeClassic = readFileSync(resolve(process.cwd(), 'native/src/drift_classic_processor.cpp'), 'utf8');
 const failures = [];
 const reports = [];
 const requireText = (needle) => { if (!source.includes(needle)) failures.push(`Drift realtime contract: missing ${JSON.stringify(needle)}`); };
 const requireNative = (needle) => { if (!nativeWrapper.includes(needle)) failures.push(`Native Drift realtime contract: missing ${JSON.stringify(needle)}`); };
 const requireStandard = (needle) => { if (!nativeStandard.includes(needle)) failures.push(`Native Drift Standard contract: missing ${JSON.stringify(needle)}`); };
+const requireClassic = (needle) => { if (!nativeClassic.includes(needle)) failures.push(`Native Drift Classic contract: missing ${JSON.stringify(needle)}`); };
 
 for (const token of [
   'const DRIFT_TANH_LUT = new Float32Array(2048)',
@@ -50,6 +52,18 @@ for (const token of [
   'if (++write == delay[0].size()) write = 0U',
 ]) requireStandard(token);
 
+for (const token of [
+  'constexpr std::size_t kTanhTableSize = 4097U',
+  'constexpr int kLeslieControlPeriod = 32',
+  'double fast_tanh(double value) noexcept',
+  'return fast_tanh(input * drive) / std::max(1e-6, drive)',
+  'void refresh_leslie_control(double depth, double shape, double spread) noexcept',
+  'leslie_crossover = 1.0 - std::exp',
+  'leslie_offset_sine[index] = std::sin(offsets[index])',
+  'leslie_offset_cosine[index] = std::cos(offsets[index])',
+  'if (++delay_index == delay_l.size()) delay_index = 0U',
+]) requireClassic(token);
+
 const nativeProcessStart = nativeWrapper.indexOf('  void process(float* data, std::size_t frames) noexcept');
 const nativeProcessEnd = nativeWrapper.indexOf('\n  }\n};', nativeProcessStart);
 const nativeProcess = nativeProcessStart >= 0 && nativeProcessEnd > nativeProcessStart
@@ -80,6 +94,21 @@ else {
 if (nativeStandard.includes('std::asin(std::sin(phase))')) failures.push('Native Drift Standard triangle LFO still uses sin+asin');
 if (nativeStandard.includes('write = (write + 1U) % delay[0].size()')) failures.push('Native Drift Standard write cursor still uses modulo');
 if (nativeStandard.includes('std::tanh(shifted * gain)')) failures.push('Native Drift Standard preamp still uses runtime tanh');
+
+const classicLeslieStart = nativeClassic.indexOf('  std::array<float, 2> process_leslie(');
+const classicLeslieEnd = nativeClassic.indexOf('\n  }\n\n  std::array<float, 2> process_phase90', classicLeslieStart);
+const classicLeslie = classicLeslieStart >= 0 && classicLeslieEnd > classicLeslieStart
+  ? nativeClassic.slice(classicLeslieStart, classicLeslieEnd)
+  : '';
+if (!classicLeslie) failures.push('Native Drift Classic Leslie boundary missing');
+else {
+  if (classicLeslie.includes('std::exp(')) failures.push('Native Drift Classic Leslie still computes crossover exp per sample');
+  if (classicLeslie.includes('std::sin(rotor_horn_phase +')) failures.push('Native Drift Classic Leslie repeats horn phase-offset sin per sample');
+  if (classicLeslie.includes('std::sin(rotor_drum_phase +')) failures.push('Native Drift Classic Leslie repeats drum phase-offset sin per sample');
+}
+if (nativeClassic.includes('std::tanh(input * drive)')) failures.push('Native Drift Classic phaser clipping still uses runtime tanh');
+if (nativeClassic.includes('delay_index = (delay_index + 1U) % delay_l.size()')) failures.push('Native Drift Classic delay cursor still uses modulo');
+if (nativeClassic.includes('static_cast<std::size_t>(floored) % buffer.size()')) failures.push('Native Drift Classic delay read still uses modulo');
 
 const clipStart = source.indexOf('  normalizedSoftClip(');
 const clipEnd = source.indexOf('  leslieCrossoverCoefficient(', clipStart);
@@ -165,4 +194,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('Drift realtime audit passed · browser nonlinear hot paths and native wrapper/Standard control traffic are amortized');
+console.log('Drift realtime audit passed · browser and native wrapper/Standard/Classic hot paths are amortized');
