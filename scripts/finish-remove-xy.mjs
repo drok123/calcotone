@@ -120,7 +120,8 @@ function filterCss(source) {
     const leading = rawHeader.match(/^\s*/)?.[0] ?? '';
     const header = rawHeader.slice(leading.length).trimEnd();
     const body = source.slice(open + 1, close);
-    const lowerHeader = header.toLowerCase();
+    const headerCode = header.replace(/\/\*[\s\S]*?\*\//g, '').trim();
+    const lowerHeader = headerCode.toLowerCase();
 
     if (lowerHeader.startsWith('@media') || lowerHeader.startsWith('@supports') || lowerHeader.startsWith('@layer')) {
       out += `${leading}${header}{${filterCss(body)}}`;
@@ -128,7 +129,7 @@ function filterCss(source) {
       if (!lowerHeader.includes('cursor-life') && !lowerHeader.includes('cable-flow')) {
         out += `${leading}${header}{${body}}`;
       }
-    } else if (header.startsWith('@')) {
+    } else if (lowerHeader.startsWith('@')) {
       out += `${leading}${header}{${body}}`;
     } else {
       const selectors = header
@@ -146,14 +147,10 @@ function filterCss(source) {
   return out;
 }
 
-// Sweep every stylesheet, because the legacy patch system accumulated defensive
-// selectors in several unrelated component stylesheets over time.
 for (const cssPath of walkFiles('src', /\.css$/i)) {
   write(cssPath, filterCss(read(cssPath)));
 }
 
-// These files are the retired Dream/XY pad implementation itself. The app no longer
-// renders them, so keeping them would preserve exactly the dead subsystem being removed.
 const retiredFiles = [
   'src/ui/motion.ts',
   'src/components/motion/MotionPad.tsx',
@@ -168,8 +165,6 @@ if (fs.existsSync('src/components/motion') && fs.readdirSync('src/components/mot
   fs.rmdirSync('src/components/motion');
 }
 
-// Treat any surviving named XY API or cable/modulation plumbing as a failure.
-// Lowercase x/y coordinate math is intentionally not banned; only the retired subsystem vocabulary is.
 const forbiddenSource = /\bXY(?:Assignment|Axis|SignalField)\b|\bMotionCurve\b|\bMotionSmoothing\b|INITIAL_XY_ASSIGNMENTS|xyAssignments|xyPosition|xyPadRef|xy-pad|xy-patch|patchDraft|persistentPatchLines|patchDraftRef|motionValueRef|applyXYAssignments|beginPatch|movePatch|finishPatch|disconnectPatch|detectPatchAxis|refreshPersistentPatchLines|createPatchPath|getEffectiveMotionValue|shapeMotionSource|onPatchStart|onPatchMove|onPatchEnd|onPatchDisconnect|patchTarget|knob-patch-jack|persistent-patch-layer|live-patch-layer|patch-cable-overlay|patch-cable-layer|xy-jack-panel|motion-jack-panel|data-patch-target|motion-route|route-axis|route-options|\bMotionPad\b|components\/motion|ui\/motion|\bPATCHES\b/;
 for (const filePath of walkFiles('src', /\.(?:ts|tsx|js|jsx|css|json)$/i)) {
   const hit = read(filePath).match(forbiddenSource);
