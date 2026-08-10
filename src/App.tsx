@@ -813,7 +813,7 @@ export default function App() {
     setRailAOrder(next.A);
     setRailBOrder(next.B);
     setRailCOrder(next.C);
-    void applyRoutingOrder(next.A, nextB = next.B, nextC = next.C);
+    void applyRoutingOrder(next.A, next.B, next.C);
   }
 
   function resetRailOrder(rail: RoutingRail): void {
@@ -1369,7 +1369,7 @@ export default function App() {
         if (modeModule.id === 'bitcrusher' && parameter.id === 'chaos') {
           next = Math.min(next, 0.52);
         }
-        if (modeModule.id === 'media' && modeModule.mediaMode === 'Neve BCM10') {
+        if (modeModule.id === 'media' && module.mediaMode === 'Neve BCM10') {
           if (parameter.id === 'tone') next = Math.min(next, 0.68);
           if (parameter.id === 'wear') next = Math.min(next, 0.72);
           if (parameter.id === 'mix') next = Math.min(next, 0.38);
@@ -1801,8 +1801,7 @@ export default function App() {
             <span>STOMP OS <b>2× MIDPOINT</b></span>
             <span>MODELS <b>14</b></span>
             <span title={profiler ? `Requested ${profiler.requestedRenderSize}; context API ${profiler.renderSizeHintSupported ? 'available' : 'unavailable'}` : undefined}>
-              QUANTUM <b>{profiler?.renderQuantumFrames ? `${profiler.renderQuantumFrames}f` : '—'}</b>
-            </span>
+              QUANTUM <b>{profiler?.renderQuantumFrames ? `${profiler.renderQuantumFrames}f` : '—'}</b></span>
             <span>DEVICE MEMORY <b>ACTIVE</b></span>
             <span>GUARD <b>{profiler ? `${profiler.grain.effectiveVoiceLimit}/${profiler.grain.maxVoices}` : '0/0'}</b></span>
             <span>OVERRUN <b className={profiler && profiler.grain.overruns > 0 ? 'warn' : ''}>{profiler?.grain.overruns ?? 0}</b></span>
