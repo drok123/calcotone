@@ -22,6 +22,9 @@ enum class LoopCommand : unsigned {
   TrackStop = 8U,
   Mute = 9U,
   Solo = 10U,
+  Undo = 11U,
+  Redo = 12U,
+  Bounce = 13U,
 };
 enum class LoopTransport : unsigned { Empty = 0U, Stopped = 1U, Playing = 2U, Recording = 3U, Overdubbing = 4U };
 
