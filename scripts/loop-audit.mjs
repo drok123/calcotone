@@ -103,7 +103,9 @@ if (loopKeyStart < 0 || loopKeyEnd < 0) failures.push('Native Loop command class
 else forbidText(nativeBridge.slice(loopKeyStart, loopKeyEnd), '.split(', 'Native Loop command classifier allocation path');
 
 // Browser fallback must keep the render path fixed-capacity. Commands may arrive via
-// MessagePort, but quantized scheduling itself must never grow/shrink JS arrays.
+// MessagePort, but quantized scheduling itself must never grow/shrink JS arrays. Masks
+// are expanded to compact preallocated track lists only when state changes, never once
+// per track per rendered sample.
 for (const token of [
   'this.rawFrames = new Uint32Array(TRACKS)',
   'this.lengths = new Uint32Array(TRACKS)',
@@ -112,13 +114,23 @@ for (const token of [
   'this.activeMask = 0',
   'this.muteMask = 0',
   'this.soloMask = 0',
+  'this.playbackMask = 0',
+  'this.advanceMask = 0',
+  'this.playbackTracks = new Uint8Array(TRACKS)',
+  'this.advanceTracks = new Uint8Array(TRACKS)',
+  'this.playbackTrackCount = 0',
+  'this.advanceTrackCount = 0',
+  'this.playbackTracks[this.playbackTrackCount++] = track',
+  'this.advanceTracks[this.advanceTrackCount++] = track',
+  'for (let active = 0; active < this.playbackTrackCount; active += 1)',
+  'const track = this.playbackTracks[active]',
+  'for (let active = 0; active < this.advanceTrackCount; active += 1)',
+  'const track = this.advanceTracks[active]',
   'this.scheduledActive = new Uint8Array(SCHEDULED_SLOTS)',
   'this.scheduledDue = new Float64Array(SCHEDULED_SLOTS)',
   'this.scheduledCode = new Uint8Array(SCHEDULED_SLOTS)',
   'this.nextScheduledDue = NO_DUE',
   'if (this.nextScheduledDue <= this.clockFrame) this.runScheduledCommands()',
-  'this.playbackMask',
-  'this.advanceMask',
   'this.waveformCache = new Float32Array(WAVEFORM_BINS)',
   'this.runtimePeriod = Math.max(1024, Math.floor(sampleRate / 10))',
   'this.applyJournalSwaps(leftOut.length)',
@@ -133,11 +145,14 @@ for (const token of [
   'this.scheduledCommands = []',
   'this.scheduledCommands.filter(',
   'this.scheduledCommands.splice(',
-]) forbidText(worklet, token, 'Browser Loop dynamic scheduler');
+  'if (!(this.playbackMask & this.bit(track))) continue',
+  'if (!(this.advanceMask & this.bit(track))) continue',
+]) forbidText(worklet, token, 'Browser Loop retired render-path scan');
 forbidText(worklet, 'masterFrames', 'Browser retired shared master length');
 
 // Native Loop uses cached lengths/masks, a fixed SPSC control queue, a fixed quantize
-// scheduler and segment processing between due sample-clock boundaries.
+// scheduler and segment processing between due sample-clock boundaries. Each segment
+// compacts the active masks once, so the inner sample loop touches only working tracks.
 for (const token of [
   'std::array<std::size_t, kLoopTrackCount> raw_frames{}',
   'std::array<std::size_t, kLoopTrackCount> lengths{}',
@@ -152,6 +167,16 @@ for (const token of [
   'std::array<ScheduledCommand, kScheduledSlots> scheduled{}',
   'std::uint64_t next_scheduled_due{kNoDue}',
   'void process_segment(float* data, std::size_t frames',
+  'std::array<unsigned, kLoopTrackCount> playback_tracks{}',
+  'std::array<unsigned, kLoopTrackCount> advance_tracks{}',
+  'std::size_t playback_count = 0U',
+  'std::size_t advance_count = 0U',
+  'playback_tracks[playback_count++] = track',
+  'advance_tracks[advance_count++] = track',
+  'for (std::size_t active = 0U; active < playback_count; ++active)',
+  'const unsigned track = playback_tracks[active]',
+  'for (std::size_t active = 0U; active < advance_count; ++active)',
+  'advance_track(advance_tracks[active])',
   'const auto until_due = next_scheduled_due - clock_frame',
   'apply_journal_swaps(frames)',
   'frames * kUndoScanPerAudioFrame',
@@ -178,6 +203,8 @@ for (const token of [
   'std::array<bool, kLoopTrackCount> muted',
   'std::array<bool, kLoopTrackCount> soloed',
   'master_frames',
+  'if ((playback_mask & bit(track)) == 0U) continue',
+  'if ((advance_mask & bit(track)) != 0U) advance_track(track)',
 ]) forbidText(native, token, 'Native Loop retired hot-path state');
 
 for (const token of [
@@ -254,4 +281,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('Loop audit passed · fixed realtime scheduling, diffed settings transport, allocation-light native controls, suppressed idle telemetry, bounded undo, decimated waveform and direct V3 controls are intact');
+console.log('Loop audit passed · compact realtime track iteration, diffed settings transport, allocation-light native controls, suppressed idle telemetry, bounded undo, decimated waveform and direct V3 controls are intact');
