@@ -10,6 +10,7 @@ const store = read('src/components/signal/loopStore.ts');
 const worklet = read('public/loop-processor.js');
 const native = read('native/src/loop_processor.cpp');
 const nativeHeader = read('native/include/calcotone/loop_processor.hpp');
+const nativeTest = read('native/tests/loop_processor_test.cpp');
 const rail = read('src/components/effects/RailCModules.tsx');
 const railCss = read('src/components/effects/RailCModules.css');
 const controls505 = read('src/loop505Controls.ts');
@@ -22,17 +23,24 @@ const random = read('src/features/random/railCRandomRegistry.ts');
 
 // Loop keeps the proven eight-buffer backend as its storage/capacity contract while
 // exposing the first four tracks as a deliberate RC-style performance faceplate.
-// Each visible track owns cached runtime/waveform state, a REC/PLAY/DUB pad and a
-// permanent channel fader backed by the realtime per-track gain array.
 requireText(store, 'export const LOOP_TRACK_COUNT = 8', 'Loop backend hard track limit');
 requireText(store, 'export const LOOP_VISIBLE_TRACK_COUNT = 4', 'Loop four-track performance faceplate');
 requireText(store, "LOOP_PERFORMANCE_COMMAND_EVENT = 'calcotone:loop-performance-command'", 'Dedicated per-track performance command bus');
+requireText(store, "export type LoopQuantize = 'off' | 'beat' | 'bar'", 'Loop quantize contract');
+requireText(store, "export type LoopUtilityCommand = 'undo' | 'redo' | 'bounce'", 'Loop 505 edit command contract');
+requireText(store, 'bpm: 120', 'Loop 120 BPM default');
+requireText(store, "quantize: 'bar'", 'Loop bar quantize default');
+requireText(store, 'export function setLoopBpm(value: number): void', 'Loop BPM state control');
+requireText(store, 'export function cycleLoopQuantize()', 'Loop quantize cycling control');
+requireText(store, 'export function bounceLoopMix(): boolean', 'Loop bounce destination helper');
 requireText(store, 'trackActiveMask: number', 'UI owns independent active-track mask');
 requireText(store, 'trackMuteMask: number', 'UI owns independent mute mask');
 requireText(store, 'trackSoloMask: number', 'UI owns independent solo mask');
 requireText(store, 'export function toggleLoopTrackPlayback(track: number): boolean', 'Per-track start/stop gesture path');
 requireText(store, 'export function toggleLoopTrackMute(track: number): boolean', 'Per-track mute gesture path');
 requireText(store, 'export function toggleLoopTrackSolo(track: number): boolean', 'Per-track solo gesture path');
+requireText(store, "state.transport === 'recording' || state.transport === 'overdubbing'", 'Writing transport remains explicit');
+
 requireText(worklet, 'this.rawFrames = new Uint32Array(TRACKS)', 'browser independent track lengths');
 requireText(worklet, 'this.positions = new Uint32Array(TRACKS)', 'browser independent playheads');
 requireText(worklet, 'this.active = new Uint8Array(TRACKS)', 'browser independent track run state');
@@ -42,27 +50,64 @@ requireText(worklet, "command === 'trackPlay'", 'browser per-track start command
 requireText(worklet, "command === 'trackStop'", 'browser per-track stop command');
 requireText(worklet, "command === 'mute'", 'browser per-track mute command');
 requireText(worklet, "command === 'solo'", 'browser per-track solo command');
+requireText(worklet, 'this.quantizeFrames()', 'browser sample-clock quantize path');
+requireText(worklet, 'this.clockFrame = 0', 'browser Loop-owned sample clock');
+requireText(worklet, 'this.scheduledCommands = []', 'browser quantized command scheduler');
+requireText(worklet, "this.quantize === 'bar' ? beat * 4 : beat", 'browser four-beat bar boundary');
+requireText(worklet, "command === 'record' && !this.anyOccupied() && !this.recording", 'first browser REC establishes phase immediately');
+requireText(worklet, 'this.undoBuffers = Array.from({ length: TRACKS }, () => null)', 'browser lazy undo journal');
+requireText(worklet, 'this.undoTags = Array.from({ length: TRACKS }, () => null)', 'browser generation-tag undo map');
+requireText(worklet, 'journalBeforeWrite(track, absolute, write, selected)', 'browser per-sample overdub journal');
+requireText(worklet, 'applyJournalSwapStep(track)', 'browser incremental undo redo swap');
+requireText(worklet, "command === 'undo'", 'browser undo command');
+requireText(worklet, "command === 'redo'", 'browser redo command');
+requireText(worklet, 'startBounce(track)', 'browser bounce engine');
+requireText(worklet, 'target[write] = loopL', 'browser bounce records loop bus instead of live input');
+requireText(worklet, 'this.active[track] = 0;', 'browser bounce lands stopped');
 requireText(worklet, 'if (!this.occupied[track] || !this.active[track] || this.muted[track]', 'browser mixer gates stopped and muted tracks');
 requireText(worklet, 'if (soloing && !this.soloed[track]) continue', 'browser mixer resolves solo at sum stage');
 requireText(worklet, 'this.occupied[trackIndex] && this.active[trackIndex]', 'browser muted tracks remain phase locked while active');
 forbidText(worklet, 'masterFrames', 'browser retired shared master length');
+
 requireText(native, 'std::array<std::size_t, kLoopTrackCount> raw_frames{}', 'native independent track lengths');
 requireText(native, 'std::array<std::size_t, kLoopTrackCount> positions{}', 'native independent playheads');
 requireText(native, 'std::array<bool, kLoopTrackCount> active{}', 'native independent track run state');
 requireText(native, 'std::array<bool, kLoopTrackCount> muted{}', 'native independent track mute state');
 requireText(native, 'std::array<bool, kLoopTrackCount> soloed{}', 'native independent track solo state');
 requireText(native, 'std::array<std::atomic<unsigned>, kLoopTrackCount> pending_performance{}', 'native allocation-free per-track command queue');
-requireText(native, 'value >= 4.5F', 'native solo sentinel');
-requireText(native, 'value >= 3.5F', 'native mute sentinel');
-requireText(native, 'value >= 2.5F', 'native stop sentinel');
+requireText(native, 'std::array<ScheduledCommand, kScheduledSlots> scheduled{}', 'native fixed allocation-free quantize scheduler');
+requireText(native, 'std::atomic<float> bpm{120.F}', 'native Loop clock BPM');
+requireText(native, 'std::atomic<unsigned> quantize_mode{kQuantizeOff}', 'native Loop quantize mode');
+requireText(native, 'clock_frame = 0U', 'native first REC establishes phase');
+requireText(native, 'begin_overdub_journal(unsigned track)', 'native undo journal prepared outside sample copy path');
+requireText(native, 'journal_before_write(overdub_track, absolute, write, overdub_buffer)', 'native per-sample overdub journal');
+requireText(native, 'apply_journal_swap_step(track)', 'native bounded realtime undo redo swap');
+requireText(native, 'std::array<std::vector<float>, kLoopTrackCount> undo_tracks', 'native lazy undo audio journal');
+requireText(native, 'std::array<std::vector<std::uint16_t>, kLoopTrackCount> undo_tags', 'native undo generation tags');
+requireText(native, 'start_bounce(unsigned track)', 'native bounce engine');
+requireText(native, 'target[write] = loop_left', 'native bounce records loop bus');
+requireText(native, "value >= 2'000.F", 'native private quantize control frame');
+requireText(native, "value >= 1'000.F", 'native private BPM control frame');
+requireText(native, 'sentinel == 6L', 'native undo control sentinel');
+requireText(native, 'sentinel == 7L', 'native redo control sentinel');
+requireText(native, 'sentinel == 8L', 'native bounce control sentinel');
 requireText(native, 'if (soloing && !soloed[track]) continue', 'native mixer resolves solo at sum stage');
 forbidText(native, 'master_frames', 'native retired shared master length');
 requireText(nativeHeader, 'TrackPlay = 7U', 'native track-play command keeps trim command ids reserved');
 requireText(nativeHeader, 'TrackStop = 8U', 'native track-stop command');
 requireText(nativeHeader, 'Mute = 9U', 'native mute command');
 requireText(nativeHeader, 'Solo = 10U', 'native solo command');
+requireText(nativeHeader, 'Undo = 11U', 'native undo command');
+requireText(nativeHeader, 'Redo = 12U', 'native redo command');
+requireText(nativeHeader, 'Bounce = 13U', 'native bounce command');
 requireText(nativeHeader, 'kLoopEnvelopeBins = 16\'384U', 'native transient envelope resolution');
 requireText(nativeHeader, 'kLoopWaveformBins = 256U', 'native high-resolution transient preview');
+requireText(nativeTest, "quantized_loop.set_track_level(7U, 1120.F)", 'native 120 BPM quantize regression');
+requireText(nativeTest, "quantized_loop.raw_frames() == 24'000U", 'native beat boundary lands sample accurately');
+requireText(nativeTest, 'private UNDO sentinel', 'native audible undo regression');
+requireText(nativeTest, 'private REDO sentinel', 'native audible redo regression');
+requireText(nativeTest, 'private BOUNCE sentinel', 'native audible bounce regression');
+
 requireText(store, 'LOOP_WAVEFORM_BINS = 256', 'UI high-resolution transient preview');
 requireText(worklet, 'const ENVELOPE_BINS = 16384', 'browser transient envelope resolution');
 requireText(worklet, 'autoTrim(track)', 'browser auto trim');
@@ -103,15 +148,25 @@ forbidText(rail, "['Track', 'Loop', 'RETAIN', 'Fade']", 'Retired modal macro kno
 forbidText(rail, 'aria-label="Loop track"', 'Retired selected-track dropdown');
 requireText(railCss, '.loop-track-fader', 'Loop fader hardware styling');
 requireText(railCss, "transform: rotate(-90deg)", 'Loop vertical fader orientation');
+
 requireText(controls505, "document.addEventListener('contextmenu', handleContextMenu, true)", 'Right-click track stop/start gesture');
 requireText(controls505, 'event.ctrlKey || event.metaKey', 'Control-click mute gesture');
 requireText(controls505, 'event.altKey', 'Alt-click solo gesture');
-requireText(controls505, 'loopTrackLevel ${detail.track} ${sentinel}', 'Native performance commands reuse stable per-track control transport');
-requireText(controls505, 'setLoopRuntime({', 'ALL transport keeps UI track activity synchronized');
+requireText(controls505, 'sendNativeControl(detail.track, sentinel)', 'Native performance commands reuse stable per-track control transport');
+requireText(controls505, '1000 + state.bpm', 'Native BPM control synchronized');
+requireText(controls505, '2000 + QUANTIZE_CODES[state.quantize]', 'Native quantize mode synchronized');
+requireText(controls505, "[['undo', 'UNDO'], ['redo', 'REDO'], ['bounce', 'BNC']]", '505 edit tools exposed in utility row');
+requireText(controls505, 'cycleLoopQuantize()', 'Clock bank cycles quantize');
+requireText(controls505, "document.addEventListener('wheel', handleWheel", 'Clock bank mouse-wheel BPM');
+requireText(controls505, 'setLoopBpm(state.bpm + direction', 'Clock bank writes BPM');
 requireText(controls505Css, '.loop-track-pad.is-muted', 'Mute state hardware illumination');
 requireText(controls505Css, '.loop-track-pad.is-solo', 'Solo state hardware illumination');
+requireText(controls505Css, '.loop-clock-bank', 'Loop clock hardware styling');
+requireText(controls505Css, '.loop-505-tools', 'Loop edit utility styling');
 requireText(nativeBridge, 'export function isNativeBackendEngaged()', 'Performance bridge only targets the engaged native engine');
 requireText(main, "import './loop505Controls'", 'RC-style Loop gesture bridge installed');
+
+// The approved physical geometry is immutable in this feature pass.
 requireText(faceplate, '{ x: 0.14327485380116955, y: 216 }', 'Centered T1 fader position');
 requireText(faceplate, '{ x: 0.38888888888888884, y: 216 }', 'Centered T2 fader position');
 requireText(faceplate, '{ x: 0.6345029239766081, y: 216 }', 'Centered T3 fader position');
@@ -143,4 +198,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('CALCOTONE Loop audit passed · 8-buffer backend, centered 4-track RC-style faders/pads, independent stop/mute/solo, utility transport, trim, and four orbital ASCII clocks locked');
+console.log('CALCOTONE Loop audit passed · centered 4-track 505 performance surface, sample-clock quantize, realtime journal undo/redo, bounce, trim and orbital displays locked');
