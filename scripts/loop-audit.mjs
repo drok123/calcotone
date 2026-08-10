@@ -1,204 +1,192 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const read = (path) => readFileSync(resolve(process.cwd(), path), 'utf8');
+const read = (path) => readFileSync(resolve(process.cwd(), path), 'utf8').replace(/\r\n?/g, '\n');
 const failures = [];
-const requireText = (source, needle, label) => { if (!source.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`); };
-const forbidText = (source, needle, label) => { if (source.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`); };
+const requireText = (source, needle, label) => {
+  if (!source.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
+};
+const forbidText = (source, needle, label) => {
+  if (source.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`);
+};
 
 const store = read('src/components/signal/loopStore.ts');
 const worklet = read('public/loop-processor.js');
 const native = read('native/src/loop_processor.cpp');
 const nativeHeader = read('native/include/calcotone/loop_processor.hpp');
+const nativeProcessorHeader = read('native/include/calcotone/native_processor.hpp');
 const nativeTest = read('native/tests/loop_processor_test.cpp');
-const rail = read('src/components/effects/RailCModules.tsx');
-const railCss = read('src/components/effects/RailCModules.css');
-const loopRefinementCss = read('src/loopRefinement.css');
-const controls505 = read('src/loop505Controls.ts');
-const controls505Css = read('src/loop505Controls.css');
-const nativeBridge = read('src/audio/NativeAudioBridge.ts');
-const main = read('src/main.tsx');
 const display = read('src/components/ascii/LoopTrackMatrixDisplay.tsx');
-const random = read('src/features/random/railCRandomRegistry.ts');
+const controls505 = read('src/loop505Controls.ts');
+const surface = read('src/loopSurfaceV3.ts');
+const surfaceCss = read('src/loopSurfaceV3.css');
 
-// Loop keeps the proven eight-buffer backend as its storage/capacity contract while
-// exposing the first four tracks as a deliberate RC-style performance faceplate.
-requireText(store, 'export const LOOP_TRACK_COUNT = 8', 'Loop backend hard track limit');
-requireText(store, 'export const LOOP_VISIBLE_TRACK_COUNT = 4', 'Loop four-track performance faceplate');
-requireText(store, "LOOP_PERFORMANCE_COMMAND_EVENT = 'calcotone:loop-performance-command'", 'Dedicated per-track performance command bus');
-requireText(store, "export type LoopQuantize = 'off' | 'beat' | 'bar'", 'Loop quantize contract');
-requireText(store, "export type LoopUtilityCommand = 'undo' | 'redo' | 'bounce'", 'Loop 505 edit command contract');
-requireText(store, 'bpm: 120', 'Loop 120 BPM default');
-requireText(store, "quantize: 'bar'", 'Loop bar quantize default');
-requireText(store, 'export function setLoopBpm(value: number): void', 'Loop BPM state control');
-requireText(store, 'export function cycleLoopQuantize()', 'Loop quantize cycling control');
-requireText(store, 'export function bounceLoopMix(): boolean', 'Loop bounce destination helper');
-requireText(store, 'trackActiveMask: number', 'UI owns independent active-track mask');
-requireText(store, 'trackMuteMask: number', 'UI owns independent mute mask');
-requireText(store, 'trackSoloMask: number', 'UI owns independent solo mask');
-requireText(store, 'export function toggleLoopTrackPlayback(track: number): boolean', 'Per-track start/stop gesture path');
-requireText(store, 'export function toggleLoopTrackMute(track: number): boolean', 'Per-track mute gesture path');
-requireText(store, 'export function toggleLoopTrackSolo(track: number): boolean', 'Per-track solo gesture path');
-requireText(store, "state.transport === 'recording' || state.transport === 'overdubbing'", 'Writing transport remains explicit');
+// Public/state contract: eight backend tracks, four performance controls, independent
+// run/mute/solo state, 30-300 BPM clock and non-destructive trim runtime.
+for (const token of [
+  'export const LOOP_TRACK_COUNT = 8',
+  'export const LOOP_VISIBLE_TRACK_COUNT = 4',
+  'export const LOOP_MIN_BPM = 30',
+  'export const LOOP_MAX_BPM = 300',
+  "export type LoopQuantize = 'off' | 'beat' | 'bar'",
+  "quantize: 'bar'",
+  'trackActiveMask: number',
+  'trackMuteMask: number',
+  'trackSoloMask: number',
+  'export function pressLoopTrack(track: number): boolean',
+  'export function toggleLoopTrackPlayback(track: number): boolean',
+  'export function toggleLoopTrackMute(track: number): boolean',
+  'export function toggleLoopTrackSolo(track: number): boolean',
+  'export function loopTrackProgress(track: number',
+]) requireText(store, token, 'Loop state contract');
 
-requireText(worklet, 'this.rawFrames = new Uint32Array(TRACKS)', 'browser independent track lengths');
-requireText(worklet, 'this.positions = new Uint32Array(TRACKS)', 'browser independent playheads');
-requireText(worklet, 'this.active = new Uint8Array(TRACKS)', 'browser independent track run state');
-requireText(worklet, 'this.muted = new Uint8Array(TRACKS)', 'browser independent track mute state');
-requireText(worklet, 'this.soloed = new Uint8Array(TRACKS)', 'browser independent track solo state');
-requireText(worklet, "command === 'trackPlay'", 'browser per-track start command');
-requireText(worklet, "command === 'trackStop'", 'browser per-track stop command');
-requireText(worklet, "command === 'mute'", 'browser per-track mute command');
-requireText(worklet, "command === 'solo'", 'browser per-track solo command');
-requireText(worklet, 'this.quantizeFrames()', 'browser sample-clock quantize path');
-requireText(worklet, 'this.clockFrame = 0', 'browser Loop-owned sample clock');
-requireText(worklet, 'this.scheduledCommands = []', 'browser quantized command scheduler');
-requireText(worklet, "this.quantize === 'bar' ? beat * 4 : beat", 'browser four-beat bar boundary');
-requireText(worklet, "command === 'record' && !this.anyOccupied() && !this.recording", 'first browser REC establishes phase immediately');
-requireText(worklet, 'this.undoBuffers = Array.from({ length: TRACKS }, () => null)', 'browser lazy undo journal');
-requireText(worklet, 'this.undoTags = Array.from({ length: TRACKS }, () => null)', 'browser generation-tag undo map');
-requireText(worklet, 'journalBeforeWrite(track, absolute, write, selected)', 'browser per-sample overdub journal');
-requireText(worklet, 'applyJournalSwapStep(track)', 'browser incremental undo redo swap');
-requireText(worklet, "command === 'undo'", 'browser undo command');
-requireText(worklet, "command === 'redo'", 'browser redo command');
-requireText(worklet, 'startBounce(track)', 'browser bounce engine');
-requireText(worklet, 'target[write] = loopL', 'browser bounce records loop bus instead of live input');
-requireText(worklet, 'this.active[track] = 0;', 'browser bounce lands stopped');
-requireText(worklet, 'if (!this.occupied[track] || !this.active[track] || this.muted[track]', 'browser mixer gates stopped and muted tracks');
-requireText(worklet, 'if (soloing && !this.soloed[track]) continue', 'browser mixer resolves solo at sum stage');
-requireText(worklet, 'this.occupied[trackIndex] && this.active[trackIndex]', 'browser muted tracks remain phase locked while active');
-forbidText(worklet, 'masterFrames', 'browser retired shared master length');
+// Browser fallback must keep the render path fixed-capacity. Commands may arrive via
+// MessagePort, but quantized scheduling itself must never grow/shrink JS arrays.
+for (const token of [
+  'this.rawFrames = new Uint32Array(TRACKS)',
+  'this.lengths = new Uint32Array(TRACKS)',
+  'this.fadeFrames = new Uint32Array(TRACKS)',
+  'this.occupiedMask = 0',
+  'this.activeMask = 0',
+  'this.muteMask = 0',
+  'this.soloMask = 0',
+  'this.scheduledActive = new Uint8Array(SCHEDULED_SLOTS)',
+  'this.scheduledDue = new Float64Array(SCHEDULED_SLOTS)',
+  'this.scheduledCode = new Uint8Array(SCHEDULED_SLOTS)',
+  'this.nextScheduledDue = NO_DUE',
+  'if (this.nextScheduledDue <= this.clockFrame) this.runScheduledCommands()',
+  'this.playbackMask',
+  'this.advanceMask',
+  'this.waveformCache = new Float32Array(WAVEFORM_BINS)',
+  'this.runtimePeriod = Math.max(1024, Math.floor(sampleRate / 10))',
+  'this.applyJournalSwaps(leftOut.length)',
+  'UNDO_SCAN_PER_AUDIO_FRAME = 64',
+  'this.updateEnvelope(track, absolute, nextL, nextR, this.overdub <= 0.001)',
+  'target[write] = loopL',
+  "command === 'record' && !this.anyOccupied() && !this.recording",
+  "this.quantize === 'bar' ? beat * 4 : beat",
+]) requireText(worklet, token, 'Browser Loop realtime contract');
 
-requireText(native, 'std::array<std::size_t, kLoopTrackCount> raw_frames{}', 'native independent track lengths');
-requireText(native, 'std::array<std::size_t, kLoopTrackCount> positions{}', 'native independent playheads');
-requireText(native, 'std::array<bool, kLoopTrackCount> active{}', 'native independent track run state');
-requireText(native, 'std::array<bool, kLoopTrackCount> muted{}', 'native independent track mute state');
-requireText(native, 'std::array<bool, kLoopTrackCount> soloed{}', 'native independent track solo state');
-requireText(native, 'std::array<std::atomic<unsigned>, kLoopTrackCount> pending_performance{}', 'native allocation-free per-track command queue');
-requireText(native, 'std::array<ScheduledCommand, kScheduledSlots> scheduled{}', 'native fixed allocation-free quantize scheduler');
-requireText(native, 'std::atomic<float> bpm{120.F}', 'native Loop clock BPM');
-requireText(native, 'std::atomic<unsigned> quantize_mode{kQuantizeOff}', 'native Loop quantize mode');
-requireText(native, 'clock_frame = 0U', 'native first REC establishes phase');
-requireText(native, 'begin_overdub_journal(unsigned track)', 'native undo journal prepared outside sample copy path');
-requireText(native, 'journal_before_write(overdub_track, absolute, write, overdub_buffer)', 'native per-sample overdub journal');
-requireText(native, 'apply_journal_swap_step(track)', 'native bounded realtime undo redo swap');
-requireText(native, 'std::array<std::vector<float>, kLoopTrackCount> undo_tracks', 'native lazy undo audio journal');
-requireText(native, 'std::array<std::vector<std::uint16_t>, kLoopTrackCount> undo_tags', 'native undo generation tags');
-requireText(native, 'start_bounce(unsigned track)', 'native bounce engine');
-requireText(native, 'target[write] = loop_left', 'native bounce records loop bus');
-requireText(native, "value >= 2'000.F", 'native private quantize control frame');
-requireText(native, "value >= 1'000.F", 'native private BPM control frame');
-requireText(native, 'sentinel == 6L', 'native undo control sentinel');
-requireText(native, 'sentinel == 7L', 'native redo control sentinel');
-requireText(native, 'sentinel == 8L', 'native bounce control sentinel');
-requireText(native, 'if (soloing && !soloed[track]) continue', 'native mixer resolves solo at sum stage');
-forbidText(native, 'master_frames', 'native retired shared master length');
-requireText(nativeHeader, 'TrackPlay = 7U', 'native track-play command keeps trim command ids reserved');
-requireText(nativeHeader, 'TrackStop = 8U', 'native track-stop command');
-requireText(nativeHeader, 'Mute = 9U', 'native mute command');
-requireText(nativeHeader, 'Solo = 10U', 'native solo command');
-requireText(nativeHeader, 'Undo = 11U', 'native undo command');
-requireText(nativeHeader, 'Redo = 12U', 'native redo command');
-requireText(nativeHeader, 'Bounce = 13U', 'native bounce command');
-requireText(nativeHeader, 'kLoopEnvelopeBins = 16\'384U', 'native transient envelope resolution');
-requireText(nativeHeader, 'kLoopWaveformBins = 256U', 'native high-resolution transient preview');
-requireText(nativeTest, "quantized_loop.set_track_level(7U, 1120.F)", 'native 120 BPM quantize regression');
-requireText(nativeTest, "quantized_loop.raw_frames() == 24'000U", 'native beat boundary lands sample accurately');
-requireText(nativeTest, 'private UNDO sentinel', 'native audible undo regression');
-requireText(nativeTest, 'private REDO sentinel', 'native audible redo regression');
-requireText(nativeTest, 'private BOUNCE sentinel', 'native audible bounce regression');
+for (const token of [
+  'this.scheduledCommands = []',
+  'this.scheduledCommands.filter(',
+  'this.scheduledCommands.splice(',
+]) forbidText(worklet, token, 'Browser Loop dynamic scheduler');
+forbidText(worklet, 'masterFrames', 'Browser retired shared master length');
 
-requireText(store, 'LOOP_WAVEFORM_BINS = 256', 'UI high-resolution transient preview');
-requireText(worklet, 'const ENVELOPE_BINS = 16384', 'browser transient envelope resolution');
-requireText(worklet, 'autoTrim(track)', 'browser auto trim');
-requireText(worklet, 'this.buffers = Array.from({ length: TRACKS }, () => null)', 'browser lazy Loop audio allocation');
-requireText(worklet, 'this.recordTrack = 0', 'browser REC target latch');
-requireText(native, 'ensure_track_buffer(unsigned track)', 'native lazy Loop audio allocation');
-requireText(native, 'pending_track{0U}', 'native command target latch');
-requireText(store, 'overdub: 0', 'Loop live-replace default');
-requireText(worklet, 'rolling tape-style replacement pass', 'browser continuous live replace');
-requireText(native, 'previous performance is completely gone after one full orbit', 'native continuous live replace');
-requireText(native, 'auto_trim_window(unsigned track)', 'native auto trim');
-requireText(rail, 'className={`loop-trim-toggle ${trimEditing ? \'active\' : \'\'}`}', 'Loop trim mode control');
-requireText(store, "{ type: 'autoTrim' }", 'Loop auto-trim command retained');
-requireText(store, "{ type: 'resetTrim' }", 'Loop reset-trim command retained');
-requireText(store, 'export interface LoopTrackRuntime', 'Per-track UI runtime cache');
-requireText(store, 'trackRuntime: LoopTrackRuntime[]', 'Loop state owns per-track runtime');
-requireText(store, 'export function pressLoopTrack(track: number): boolean', 'One-button track transport');
-requireText(store, "if (state.transport === 'recording') sendLoopCommand('record')", 'REC closes into playback');
-requireText(store, "else if (!occupied) sendLoopCommand('record')", 'Empty track starts REC');
-requireText(store, "else if (!active || state.transport === 'stopped') sendLoopCommand('trackPlay')", 'Stopped track restarts independently');
-requireText(store, "else sendLoopCommand('overdub')", 'Occupied playing track enters DUB');
-requireText(store, 'writing && target !== state.selectedTrack', 'Write-target theft guard');
-requireText(store, 'export function clearLoopTrack(track: number): boolean', 'Per-track clear path');
-requireText(store, 'export function loopTrackProgress(track: number', 'Independent Loop phase extrapolation');
-requireText(rail, 'Array.from({ length: LOOP_VISIBLE_TRACK_COUNT }', 'Four physical track controls/faders');
-requireText(rail, 'button.action(event.shiftKey)', 'Track-control shift clear gesture');
-requireText(rail, 'function LoopTrackFader(', 'Dedicated Loop channel fader');
-requireText(rail, 'onDoubleClick={() => onChange(0.72)}', 'Loop fader unity reset gesture');
-requireText(rail, 'levels[track] = clamp01(value)', 'Independent track fader write');
-requireText(rail, 'label="MSTR"', 'Master level remains in utility bank');
-requireText(rail, 'label="RET"', 'Retain remains in utility bank');
-requireText(rail, 'label="FADE"', 'Loop seam fade remains in utility bank');
-requireText(rail, 'toggleAllTransport', 'All-track play/stop utility');
-requireText(rail, 'sendLoopCommand({ type: \'autoTrim\' })', 'Auto trim surfaced in faceplate');
-requireText(rail, 'sendLoopCommand({ type: \'resetTrim\' })', 'Reset trim surfaced in faceplate');
-requireText(rail, '<LoopTrackMatrixDisplay', 'Transient trim utility is wired into Loop viewport');
-forbidText(rail, "['Track', 'Loop', 'RETAIN', 'Fade']", 'Retired modal macro knobs');
-forbidText(rail, 'aria-label="Loop track"', 'Retired selected-track dropdown');
-requireText(railCss, '.loop-track-fader', 'Loop fader hardware styling');
-requireText(railCss, "transform: rotate(-90deg)", 'Loop vertical fader orientation');
+// Native Loop uses cached lengths/masks, a fixed SPSC control queue, a fixed quantize
+// scheduler and segment processing between due sample-clock boundaries.
+for (const token of [
+  'std::array<std::size_t, kLoopTrackCount> raw_frames{}',
+  'std::array<std::size_t, kLoopTrackCount> lengths{}',
+  'std::array<std::size_t, kLoopTrackCount> fade_frames{}',
+  'std::uint32_t occupied_mask{}',
+  'std::uint32_t active_mask{}',
+  'std::uint32_t mute_mask{}',
+  'std::uint32_t solo_mask{}',
+  'std::array<PendingAction, kCommandQueueSlots> command_queue{}',
+  'std::atomic<unsigned> command_write{}',
+  'std::atomic<unsigned> command_read{}',
+  'std::array<ScheduledCommand, kScheduledSlots> scheduled{}',
+  'std::uint64_t next_scheduled_due{kNoDue}',
+  'void process_segment(float* data, std::size_t frames',
+  'const auto until_due = next_scheduled_due - clock_frame',
+  'apply_journal_swaps(frames)',
+  'frames * kUndoScanPerAudioFrame',
+  "static_cast<std::size_t>(rate / 10.F)",
+  'published_active_mask.store(active_mask & occupied_mask',
+  'published_mute_mask.store(mute_mask & occupied_mask',
+  'published_solo_mask.store(solo_mask & occupied_mask',
+  'clock_frame = 0U',
+  'begin_overdub_journal(unsigned track)',
+  'journal_before_write(overdub_track, absolute, write, buffer)',
+  'start_bounce(unsigned track)',
+  'target[write] = loop_left',
+  "value >= 2'000.F",
+  "value >= 1'000.F",
+  'sentinel == 6L',
+  'sentinel == 7L',
+  'sentinel == 8L',
+]) requireText(native, token, 'Native Loop realtime contract');
 
-requireText(controls505, "document.addEventListener('contextmenu', handleContextMenu, true)", 'Right-click track stop/start gesture');
-requireText(controls505, 'event.ctrlKey || event.metaKey', 'Control-click mute gesture');
-requireText(controls505, 'event.altKey', 'Alt-click solo gesture');
-requireText(controls505, 'sendNativeControl(detail.track, sentinel)', 'Native performance commands reuse stable per-track control transport');
-requireText(controls505, '1000 + state.bpm', 'Native BPM control synchronized');
-requireText(controls505, '2000 + QUANTIZE_CODES[state.quantize]', 'Native quantize mode synchronized');
-requireText(controls505, "[['undo', 'UNDO'], ['redo', 'REDO'], ['bounce', 'BNC']]", '505 edit tools exposed in utility row');
-requireText(controls505, 'cycleLoopQuantize()', 'Clock bank cycles quantize');
-requireText(controls505, "document.addEventListener('wheel', handleWheel", 'Clock bank mouse-wheel BPM');
-requireText(controls505, 'setLoopBpm(state.bpm + direction', 'Clock bank writes BPM');
-requireText(controls505Css, '.loop-track-pad.is-muted', 'Mute state hardware illumination remains connected');
-requireText(controls505Css, '.loop-track-pad.is-solo', 'Solo state hardware illumination remains connected');
-requireText(controls505Css, '.loop-clock-bank', 'Loop clock hardware class remains connected');
-requireText(controls505Css, '.loop-505-tools', 'Loop edit utility styling remains connected');
-requireText(nativeBridge, 'export function isNativeBackendEngaged()', 'Performance bridge only targets the engaged native engine');
-requireText(main, "import './loop505Controls'", 'RC-style Loop gesture bridge installed');
-requireText(main, "import './loopRefinement.css'", 'Loop fixed utility surface loaded last');
+for (const token of [
+  'pending_command',
+  'pending_performance',
+  'std::array<bool, kLoopTrackCount> active',
+  'std::array<bool, kLoopTrackCount> muted',
+  'std::array<bool, kLoopTrackCount> soloed',
+  'master_frames',
+]) forbidText(native, token, 'Native Loop retired hot-path state');
 
-// Loop's visual geometry is now deliberately fixed by the final refinement layer,
-// not by freeform faceplate coordinates. Every strip uses the same quarter-grid.
-requireText(loopRefinementCss, '--loop-trim-height: 88px', 'Compact transient editor height');
-requireText(loopRefinementCss, '--loop-fader-y: 151px', 'All faders share one Y coordinate');
-requireText(loopRefinementCss, '--loop-knob-y: 220px', 'All Loop knobs share one Y coordinate');
-requireText(loopRefinementCss, '.faceplate-knob-slot:nth-of-type(1) { left: 12.5% !important; }', 'T1 fader quarter-grid center');
-requireText(loopRefinementCss, '.faceplate-knob-slot:nth-of-type(4) { left: 87.5% !important; }', 'T4 fader quarter-grid center');
-requireText(loopRefinementCss, '.faceplate-pressure-slot:nth-child(1) { left: 12.5% !important; }', 'T1 Loop knob aligned to fader');
-requireText(loopRefinementCss, '.faceplate-pressure-slot:nth-child(4) { left: 87.5% !important; }', 'T4 Loop knob aligned to fader');
-requireText(loopRefinementCss, 'repeating-conic-gradient(', '505 segmented indicator ring');
-requireText(loopRefinementCss, 'rgba(248, 244, 232, .98)', '505 ring is off-white');
-requireText(loopRefinementCss, '.module-pressure.faceplate-layout-editing .faceplate-knob-slot', 'Loop strip geometry cannot be free-dragged out of alignment');
+for (const token of [
+  'TrackPlay = 7U',
+  'TrackStop = 8U',
+  'Mute = 9U',
+  'Solo = 10U',
+  'Undo = 11U',
+  'Redo = 12U',
+  'Bounce = 13U',
+  "kLoopEnvelopeBins = 16'384U",
+  'kLoopWaveformBins = 256U',
+  'track_active_mask() const noexcept',
+  'track_mute_mask() const noexcept',
+  'track_solo_mask() const noexcept',
+]) requireText(nativeHeader, token, 'Native Loop public contract');
 
-// The old ornamental ASCII matrix is intentionally retired. The screen now has
-// one job: accurately display and manipulate the selected track transient trim.
-requireText(display, 'function drawTransientEditor(', 'Real transient trim renderer');
-requireText(display, 'const waveform = runtime?.waveform ?? state.waveform', 'Selected-track transient data source');
-requireText(display, 'context.lineTo(bounds.left + x, bounds.mid - amplitude * halfHeight)', 'Continuous transient envelope geometry');
-requireText(display, 'sendLoopCommand({', 'Direct trim edit command path');
-requireText(display, "type: 'trim'", 'Non-destructive trim command');
-requireText(display, 'onPointerDown={beginTrimDrag}', 'Direct draggable trim boundaries');
-requireText(display, 'onPointerMove={moveTrimDrag}', 'Continuous trim dragging');
-requireText(display, 'loopTrackProgress(state.selectedTrack, stamp)', 'Truthful selected-track playhead');
-requireText(display, "context.fillText('DRAG I / O · • FADE'", 'Trim and fade affordance text');
-forbidText(display, 'SHADE_RAMP', 'ASCII shading retired from Loop utility screen');
-forbidText(display, 'L O O P  //  4 TRACK MEMORY', 'Hero Loop display identity retired');
-forbidText(display, 'const outerRim = clamp01', 'Orbital spectacle retired from utility screen');
-requireText(random, "RAIL_C_RANDOM_ORDER = ['stomp', 'chaos']", 'Loop excluded from RANDOM registry');
+for (const token of [
+  'loop_track_active_mask() const noexcept',
+  'loop_track_mute_mask() const noexcept',
+  'loop_track_solo_mask() const noexcept',
+]) requireText(nativeProcessorHeader, token, 'Native processor Loop telemetry contract');
+
+// Keep the audible/native regressions: independent lengths, replace DUB, trim,
+// undo/redo, bounce and sample-accurate beat quantization.
+for (const token of [
+  "quantized_loop.set_track_level(7U, 1120.F)",
+  "quantized_loop.set_track_level(7U, 2001.F)",
+  "quantized_loop.raw_frames() == 24'000U",
+  'private UNDO sentinel',
+  'private REDO sentinel',
+  'private BOUNCE sentinel',
+  'loop.set_overdub(0.F)',
+  'loop.set_trim(.25F, .75F)',
+]) requireText(nativeTest, token, 'Native Loop audible regression');
+
+// V3 faceplate stays direct-manipulation: transient trim/fade + audio-clocked phase
+// rings and readable header controls. These are UI contracts, not transport clocks.
+for (const token of [
+  "type DragHandle = 'start' | 'end' | 'fadeIn' | 'fadeOut'",
+  "sendLoopCommand({ type: 'trim'",
+  "sendLoopCommand({ type: 'autoTrim' })",
+  "sendLoopCommand({ type: 'resetTrim' })",
+  "context.fillText('DRAG I / O · • FADE'",
+]) requireText(display, token, 'Loop transient editor');
+
+for (const token of [
+  "makeButton('loop-all-toggle loop-header-all', 'ALL'",
+  "makeButton('loop-505-action loop-505-undo', 'UNDO'",
+  "makeButton('loop-505-action loop-505-redo', 'REDO'",
+  "makeButton('loop-505-action loop-505-bounce', 'BNC'",
+  'loopTrackProgress(track, stamp)',
+]) requireText(surface, token, 'Loop V3 performance surface');
+
+for (const token of [
+  '.loop-header-actions',
+  '.loop-track-pad::before',
+  '.loop-track-pad::after',
+  '--loop-phase-angle',
+]) requireText(surfaceCss, token, 'Loop V3 styling');
+
+for (const token of [
+  'sendNativeControl(detail.track, sentinel)',
+  '1000 + state.bpm',
+  '2000 + QUANTIZE_CODES[state.quantize]',
+]) requireText(controls505, token, 'Native Loop control bridge');
 
 if (failures.length) {
-  console.error(`Loop usability audit failed (${failures.length})`);
+  console.error(`Loop audit failed (${failures.length})`);
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('CALCOTONE Loop audit passed · fixed four-strip 505 surface, transient trim editor, off-white knob indicators, sample-clock quantize, realtime undo/redo and bounce locked');
+
+console.log('Loop audit passed · fixed-capacity scheduling, cached realtime state, bounded undo, decimated telemetry and direct V3 controls are intact');
