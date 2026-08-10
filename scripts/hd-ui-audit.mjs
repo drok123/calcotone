@@ -79,6 +79,11 @@ for (const [name, source, tokens] of [
     'canvasPixelRatio(cssWidth, cssHeight, 5_600_000)',
     'const pointCount = 48',
     'subscribeViewportAnimation(render)',
+    'const rowDepth = new Float32Array(historyLength)',
+    'const rowLineWidth = new Float32Array(historyLength)',
+    'const rowStrokeStyle = new Array<string>(historyLength)',
+    'const x = centerX + (frequencyPosition - 0.5) * halfWidth * 2',
+    'const y = baseY - amplitudeScale * row[pointIndex]',
   ]],
 ]) {
   for (const token of tokens) {
@@ -91,6 +96,12 @@ for (const retired of [
   "const accents = Array.from({ length: innerWidth }, () => ' ')",
 ]) {
   if (moduleDisplay.includes(retired)) failures.push(`module display must not allocate a graph-row array via ${retired}`);
+}
+for (const retired of [
+  'function projectPoint(',
+  'const point = projectPoint(',
+]) {
+  if (spectrum.includes(retired)) failures.push(`spectrum must not allocate projected point objects via ${retired}`);
 }
 
 for (const token of [
@@ -166,4 +177,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('1440p UI fidelity audit passed · sharp raster targets remain intact while animated graph rows reuse buffers and shared canvases stay audio-safe');
+console.log('1440p UI fidelity audit passed · sharp raster targets remain intact while animated rows reuse buffers and spectrum projection stays allocation-free');
