@@ -1,6 +1,6 @@
 /* Readability pass: keep the hardware aesthetic while making small UI text crisp. */
 
-:root {
+:root{
   text-rendering: auto;
   -webkit-font-smoothing: auto;
   -moz-osx-font-smoothing: auto;
@@ -9,11 +9,22 @@
 body,
 button,
 select,
-input {
+input{
   font-synthesis: weight style;
 }
 
-#root :where(button, select, input, label, small, strong, p, h1, h2, h3, .knob-label, .knob-value) {
+#root :where(button,
+select,
+input,
+label,
+small,
+strong,
+p,
+h1,
+h2,
+h3,
+.knob-label,
+.knob-value){
   text-shadow: none;
 }
 
@@ -28,54 +39,54 @@ input {
 .knob-value,
 select,
 button,
-input {
+input{
   -webkit-font-smoothing: auto;
   font-kerning: normal;
 }
 
-.brand small {
+.brand small{
   color: #c4ccc6;
   font-size: 0.74rem;
   letter-spacing: 0.11em;
 }
 
-.status-item span:not(.status-dot) {
+.status-item span:not(.status-dot){
   color: #9ca79f;
   font-size: 0.66rem;
   letter-spacing: 0.08em;
 }
 
-.status-item strong {
+.status-item strong{
   color: #d4dbd6;
   font-size: 0.78rem;
   font-weight: 800;
 }
 
-.power-button {
+.power-button{
   font-size: 0.8rem;
   letter-spacing: 0.09em;
 }
 
 .panel-heading h2,
-.section-header h2 {
+.section-header h2{
   font-size: 0.98rem;
   letter-spacing: 0.13em;
 }
 
-.knob-label {
+.knob-label{
   font-size: max(0.72rem, 1em);
   font-weight: 800;
   letter-spacing: 0.045em;
 }
 
-.knob-value {
+.knob-value{
   font-size: max(0.72rem, 1em);
   font-weight: 800;
 }
 
 select,
 button,
-input {
+input{
   font-weight: 700;
 }
 
@@ -85,28 +96,38 @@ input {
    their own palette. */
 .effect-module :where(
   .module-header h3,
-  .module-number,
-  .module-route-cue,
-  .module-header-control,
-  .knob-label,
-  .knob-value,
-  .coming-soon,
-  .pressure-style-strip button,
-  .synth-header-controls,
-  .synth-header-controls label,
-  .synth-header-controls span
+.module-number,
+.module-route-cue,
+.module-header-control,
+.knob-label,
+.knob-value,
+.coming-soon,
+.pressure-style-strip button,
+.synth-header-controls,
+.synth-header-controls label,
+.synth-header-controls span
 ),
-.io-panel :where(.panel-heading, .panel-heading h2, label, button),
-.performance-panel :where(.panel-heading, .panel-heading h2, label, button),
-.footer-bar :where(p, span, button),
-.rail-track :where(.rail-id, strong, button) {
+.io-panel :where(.panel-heading,
+.panel-heading h2,
+label,
+button),
+.performance-panel :where(.panel-heading,
+.panel-heading h2,
+label,
+button),
+.footer-bar :where(p,
+span,
+button),
+.rail-track :where(.rail-id,
+strong,
+button){
   color: #fff !important;
   -webkit-text-fill-color: #fff;
   text-shadow: 0 1px 1px rgba(0,0,0,.72) !important;
 }
 
 .effect-module select,
-.effect-module select option {
+.effect-module select option{
   color: #fff !important;
   -webkit-text-fill-color: #fff;
 }
@@ -117,14 +138,14 @@ input {
 .module-faceplate,
 .io-panel,
 .performance-panel,
-.modules-section {
+.modules-section{
   backface-visibility: hidden;
   transform-style: flat;
 }
 
-@media (max-width: 900px) {
-  .status-item span:not(.status-dot) { font-size: 0.7rem; }
-  .status-item strong { font-size: 0.82rem; }
+@media (max-width: 900px){
+  .status-item span:not(.status-dot){ font-size: 0.7rem; }
+  .status-item strong{ font-size: 0.82rem; }
   .knob-label,
-  .knob-value { font-size: 0.76rem; }
+.knob-value{ font-size: 0.76rem; }
 }

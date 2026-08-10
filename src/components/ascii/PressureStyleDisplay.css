@@ -1,4 +1,4 @@
-.pressure-style-display {
+.pressure-style-display{
   position: absolute;
   inset: 0;
   width: 100%;
@@ -10,25 +10,26 @@
   image-rendering: auto;
 }
 
-.pressure-style-display.is-active {
+.pressure-style-display.is-active{
   filter: saturate(0.96) contrast(1.1);
 }
 
-.pressure-style-display.is-standby {
+.pressure-style-display.is-standby{
   opacity: 0.42;
   filter: saturate(0.42) brightness(0.7);
 }
 
-.dsp-viewport.ascii-viewport .pressure-style-display {
+.dsp-viewport.ascii-viewport .pressure-style-display{
   isolation: isolate;
 }
 
-.dsp-viewport.ascii-viewport.is-reconfiguring .pressure-style-display {
+.dsp-viewport.ascii-viewport.is-reconfiguring .pressure-style-display{
   animation: pressure-display-reconfigure 360ms steps(4, end);
 }
 
-/* STACK keeps the historical Chaos faceplate slot, now as a circuit/cab readout. */
-.module-chaos .chaos-pad-shell {
+/* STACK keeps the historical Chaos faceplate slot,
+now as a circuit/cab readout. */
+.module-chaos .chaos-pad-shell{
   position: relative;
   overflow: hidden;
   pointer-events: none;
@@ -45,15 +46,11 @@
   box-shadow: inset 0 0 28px rgba(0, 0, 0, 0.86);
 }
 
-.module-chaos .chaos-pad-shell > .xy-pad {
-  display: none !important;
-}
-
-.module-chaos .chaos-pad-shell::before {
+.module-chaos .chaos-pad-shell::before{
   content: none;
 }
 
-.module-chaos .chaos-pad-shell::after {
+.module-chaos .chaos-pad-shell::after{
   content: "";
   position: absolute;
   inset: 0;
@@ -63,7 +60,7 @@
   animation: chaos-processor-scan 4.8s linear infinite;
 }
 
-.module-chaos .stack-amp-readout {
+.module-chaos .stack-amp-readout{
   position: relative;
   z-index: 2;
   display: grid !important;
@@ -74,14 +71,14 @@
   text-shadow: 0 0 7px rgba(231, 225, 211, 0.22);
 }
 
-.module-chaos .stack-amp-readout strong {
+.module-chaos .stack-amp-readout strong{
   color: #9de8f2;
   font-size: clamp(8px, 0.6vw, 11px);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
-.module-chaos .stack-amp-readout pre {
+.module-chaos .stack-amp-readout pre{
   margin: 0;
   overflow: hidden;
   color: #e7e1d3;
@@ -89,7 +86,7 @@
   white-space: pre;
 }
 
-.module-chaos .stack-amp-readout i {
+.module-chaos .stack-amp-readout i{
   display: block;
   width: 100%;
   height: 3px;
@@ -97,31 +94,25 @@
   box-shadow: 0 0 8px rgba(157, 232, 242, 0.36);
 }
 
-/* Belt-and-suspenders cleanup for legacy patch UI while declarations migrate. */
-.knob-patch-jack,
-.patch-cable-overlay,
-.patch-cable-layer,
-.xy-jack-panel,
-.motion-jack-panel,
-[data-patch-target] {
+[data-control-target]{
   display: none !important;
 }
 
-@keyframes pressure-display-reconfigure {
+@keyframes pressure-display-reconfigure{
   0% { opacity: 0.18; transform: translateY(-1px); }
   42% { opacity: 0.88; transform: translateY(1px); }
   100% { opacity: 0.96; transform: translateY(0); }
 }
 
-@keyframes chaos-processor-scan {
+@keyframes chaos-processor-scan{
   from { transform: translateY(-6%); }
   to { transform: translateY(6%); }
 }
 
-@media (prefers-reduced-motion: reduce) {
+@media (prefers-reduced-motion: reduce){
   .pressure-style-display,
-  .dsp-viewport.ascii-viewport.is-reconfiguring .pressure-style-display,
-  .module-chaos .chaos-pad-shell::after {
+.dsp-viewport.ascii-viewport.is-reconfiguring .pressure-style-display,
+.module-chaos .chaos-pad-shell::after{
     transition: none;
     animation: none;
   }

@@ -1,6 +1,6 @@
 /* Unified neutral palette: all non-cream gray hardware uses the I/O inset material. */
 
-:root {
+:root{
   --neutral-gray: #16191b;
   --neutral-gray-deep: #101315;
   --neutral-gray-border: rgba(244, 239, 220, 0.42);
@@ -10,7 +10,7 @@
 .workstation,
 .modules-section,
 .dsp-profiler,
-.faceplate-editor-panel {
+.faceplate-editor-panel{
   background:
     linear-gradient(180deg, rgba(255,255,255,.012), transparent 26%),
     linear-gradient(180deg, var(--neutral-gray), var(--neutral-gray-deep)) !important;
@@ -21,20 +21,13 @@ select,
 input[type="text"],
 .sample-name,
 .performance-mode button:not(.active),
-.route-axis button:not(.active),
-.route-options button:not(.active),
-.motion-route header button,
-.motion-route,
 .empty-routes,
-.xy-patch-bay,
-.xy-patch-destination,
 .meter-pair,
 .output-meter,
 .input-matrix,
 .algorithm-selector,
-.motion-route details,
 .faceplate-editor-readout,
-.status-item {
+.status-item{
   background:
     linear-gradient(180deg, rgba(255,255,255,.012), transparent 26%),
     linear-gradient(180deg, var(--neutral-gray), var(--neutral-gray-deep)) !important;
@@ -42,7 +35,7 @@ input[type="text"],
 }
 
 /* Remove stray blue/graphite rail support grays without touching the cream rail face. */
-.rail-modules::before {
+.rail-modules::before{
   background: var(--neutral-gray) !important;
   border-top-color: rgba(244,239,220,.28) !important;
   border-bottom-color: #080a09 !important;
@@ -51,8 +44,7 @@ input[type="text"],
 /* Gray sub-surfaces inside the recorder and routing UI. */
 .take-preview,
 .take-preview div,
-.route-controls,
-.motion-route-list {
+.route-controls{
   background-color: transparent !important;
 }
 
@@ -60,10 +52,9 @@ input[type="text"],
 .spectrum-screen,
 .dsp-viewport,
 .dream-pad,
-.xy-pad,
 .module-viewport,
 .module-viewport-shell,
 .module-screen,
-.module-display {
+.module-display{
   background-color: #111311 !important;
 }

@@ -1,5 +1,5 @@
 /* Structural viewport rules only. Scene art lives in ModuleViewport.tsx; physical glass lives in ViewportOptics.css. */
-.dsp-viewport {
+.dsp-viewport{
   position: relative;
   overflow: hidden;
   isolation: isolate;
@@ -8,7 +8,7 @@
     linear-gradient(180deg, #05080a 0%, #020405 58%, #010203 100%);
 }
 
-.dsp-viewport canvas {
+.dsp-viewport canvas{
   position: absolute;
   inset: 0;
   width: 100%;
@@ -18,14 +18,14 @@
   filter: saturate(1.06) brightness(1.035) contrast(1.025);
 }
 
-.dsp-viewport .viewport-glass {
+.dsp-viewport .viewport-glass{
   position: absolute;
   inset: 3px 7px;
   z-index: 3;
   pointer-events: none;
 }
 
-.dsp-viewport .viewport-caption {
+.dsp-viewport .viewport-caption{
   position: relative;
   z-index: 4;
   text-shadow:
@@ -34,12 +34,12 @@
 }
 
 /* The faceplate editor's shell is the sole source of truth for viewport geometry. */
-.faceplate-layout-custom .faceplate-viewport-shell {
+.faceplate-layout-custom .faceplate-viewport-shell{
   position: absolute;
   overflow: visible;
 }
 
-.faceplate-layout-custom .faceplate-viewport-shell > .dsp-viewport {
+.faceplate-layout-custom .faceplate-viewport-shell > .dsp-viewport{
   position: absolute !important;
   inset: 0 !important;
   width: 100% !important;
@@ -50,7 +50,7 @@
   flex: none !important;
 }
 
-.faceplate-layout-custom .faceplate-viewport-shell > .faceplate-viewport-resize {
+.faceplate-layout-custom .faceplate-viewport-shell > .faceplate-viewport-resize{
   z-index: 100;
   pointer-events: auto;
 }

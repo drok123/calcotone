@@ -1,4 +1,4 @@
-:root {
+:root{
   font-family: Inter, "Segoe UI", Arial, sans-serif;
   color: #edf2ed;
   background: #080b0a;
@@ -10,17 +10,17 @@
 
 *,
 *::before,
-*::after {
+*::after{
   box-sizing: border-box;
 }
 
-html {
+html{
   min-width: 320px;
   min-height: 100%;
   background: #080b0a;
 }
 
-body {
+body{
   margin: 0;
   min-width: 320px;
   min-height: 100dvh;
@@ -30,27 +30,30 @@ body {
 
 button,
 select,
-input {
+input{
   min-width: 0;
   font: inherit;
 }
 
-button { color: inherit; }
+button{ color: inherit; }
 
 button:focus-visible,
 select:focus-visible,
 input:focus-visible,
-[role="slider"]:focus-visible {
+[role="slider"]:focus-visible{
   outline: 2px solid rgba(101, 255, 154, 0.65);
   outline-offset: 2px;
 }
 
-#root {
+#root{
   width: 100%;
   min-height: 100dvh;
 }
 
 /* V7.2: maximize crisp rendering without sacrificing legibility. */
-svg, canvas { shape-rendering: geometricPrecision; }
-img { image-rendering: auto; }
-select, button, input { -webkit-tap-highlight-color: transparent; }
+svg,
+canvas{ shape-rendering: geometricPrecision; }
+img{ image-rendering: auto; }
+select,
+button,
+input{ -webkit-tap-highlight-color: transparent; }

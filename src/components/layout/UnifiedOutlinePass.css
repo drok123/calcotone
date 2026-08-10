@@ -1,4 +1,4 @@
-:root {
+:root{
   --ui-outline: rgba(237, 242, 237, 0.34);
   --ui-outline-strong: rgba(237, 242, 237, 0.5);
 }
@@ -15,9 +15,6 @@
 .spectrum-screen,
 .sample-recorder,
 .media-transport,
-.xy-pad,
-.xy-values > div,
-.motion-route,
 .empty-routes,
 select,
 input[type='text'],
@@ -26,22 +23,19 @@ input[type='text'],
 .knob-value,
 .polarity-row button,
 .performance-mode button,
-.route-axis button,
-.route-options button,
 .recorder-controls button,
-.motion-route header button,
-.module-toggle {
+.module-toggle{
   border-color: var(--ui-outline) !important;
 }
 
-/* Primary shells/readout windows get a slightly firmer edge, still the same hue. */
+/* Primary shells/readout windows get a slightly firmer edge,
+still the same hue. */
 .workstation,
 .io-panel,
 .performance-panel,
 .modules-section,
 .effect-module,
-.spectrum-screen,
-.xy-pad {
+.spectrum-screen{
   border-color: var(--ui-outline-strong) !important;
 }
 
@@ -49,12 +43,12 @@ input[type='text'],
 select:hover,
 input[type='text']:hover,
 .sample-name:hover,
-.effect-module:hover {
+.effect-module:hover{
   border-color: rgba(237, 242, 237, 0.62) !important;
 }
 
 select:focus,
 input[type='text']:focus,
-.sample-name:focus {
+.sample-name:focus{
   border-color: rgba(237, 242, 237, 0.72) !important;
 }

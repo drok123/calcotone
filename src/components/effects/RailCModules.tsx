@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { VisualAudioState } from '../../visual/VisualEngine';
-import type { ModuleState, XYAssignment } from '../../ui/types';
+import type { ModuleState } from '../../ui/types';
 import { Knob } from '../controls/Knob';
 import {
   SIGNAL_LAB_LABELS,
@@ -440,7 +440,7 @@ function StompModule({ engineRunning, onEnabledChange, onModeChange, onInputSour
         moduleId="stomp"
         knobRowClass="synth-knob-row stomp-knob-row"
         viewport={<div className={`stomp-display dsp-viewport ${enabled?'active':'is-off'}`}><span className="stomp-led"/><strong>STOMP</strong><small>{STOMP_MODE_LABELS[mode]}</small><div className="stomp-circuit-lines" aria-hidden="true"/></div>}
-        knobs={controls.map((label,index)=><Knob key={`${mode}-${label}`} label={label} value={values[index]!} effectiveValue={values[index]!} display={`${Math.round(values[index]!*100)}%`} patchTarget={`stomp.${index}`} onChange={(value)=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?value:item));}} onReset={()=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?0.5:item));}} onPatchStart={()=>undefined} onPatchMove={()=>undefined} onPatchEnd={()=>undefined} onPatchDisconnect={()=>undefined}/>) }
+        knobs={controls.map((label,index)=><Knob key={`${mode}-${label}`} label={label} value={values[index]!} display={`${Math.round(values[index]!*100)}%`} onChange={(value)=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?value:item));}} onReset={()=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?0.5:item));}}/>) }
       />
     </RailModuleFrame>
   );
@@ -621,15 +621,9 @@ function ChaosModule({
             key={label}
             label={label}
             value={values[index]}
-            effectiveValue={values[index]}
             display={`${Math.round(values[index] * 100)}%`}
-            patchTarget={`chaos.${index}`}
             onChange={(value) => setValues((current) => current.map((item, valueIndex) => valueIndex === index ? value : item))}
             onReset={() => setValues((current) => current.map((item, valueIndex) => valueIndex === index ? [0.36, 0.52, 0.34, 0.62][index]! : item))}
-            onPatchStart={() => undefined}
-            onPatchMove={() => undefined}
-            onPatchEnd={() => undefined}
-            onPatchDisconnect={() => undefined}
           />
         ))}
       />
@@ -703,15 +697,9 @@ function PressureModule({
             key={key}
             label={label}
             value={state[key]}
-            effectiveValue={state[key]}
             display={`${Math.round(state[key] * 100)}%`}
-            patchTarget={`pressure.${key}`}
             onChange={(value) => setPressureState({ [key]: value })}
             onReset={() => setPressureState({ [key]: key === 'mix' ? 0.72 : key === 'time' ? 0.46 : key === 'drive' ? 0.42 : 0.38 })}
-            onPatchStart={() => undefined}
-            onPatchMove={() => undefined}
-            onPatchEnd={() => undefined}
-            onPatchDisconnect={() => undefined}
           />
         ))}
         buttons={SIGNAL_LAB_STYLES.map((style) => (
@@ -727,7 +715,6 @@ function PressureModule({
 export function RailCModule({
   moduleId,
   modules,
-  assignments,
   visualState,
   running,
   onStompEnabledChange,
@@ -746,7 +733,6 @@ export function RailCModule({
 }: RailInteractionProps & {
   moduleId: string;
   modules: ModuleState[];
-  assignments: XYAssignment[];
   visualState: VisualAudioState;
   running: boolean;
   onStompEnabledChange: (enabled: boolean) => void;
@@ -763,7 +749,6 @@ export function RailCModule({
   tunerLevel: number;
 }) {
   void modules;
-  void assignments;
   if (moduleId === 'stomp') {
     return <StompModule {...interaction} engineRunning={running} onEnabledChange={onStompEnabledChange} onModeChange={onStompModeChange} onInputSourceChange={onStompInputSourceChange} onParametersChange={onStompParametersChange} />;
   }

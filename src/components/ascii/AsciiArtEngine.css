@@ -1,4 +1,4 @@
-.ascii-art-engine {
+.ascii-art-engine{
   position: absolute;
   inset: 0;
   width: 100%;
@@ -10,17 +10,16 @@
   image-rendering: auto;
 }
 
-.ascii-art-engine.is-standby {
+.ascii-art-engine.is-standby{
   opacity: 0.34;
   filter: saturate(0.45) brightness(0.72);
 }
 
-.ascii-art-engine.is-active {
+.ascii-art-engine.is-active{
   filter: saturate(0.92) contrast(1.08);
 }
 
-.dsp-viewport.ascii-viewport::after,
-.xy-visual-stack.ascii-only::after {
+.dsp-viewport.ascii-viewport::after{
   content: '';
   position: absolute;
   inset: 0;
@@ -38,26 +37,19 @@
   opacity: 0.42;
 }
 
-.dsp-viewport.ascii-viewport.is-reconfiguring .ascii-art-engine {
+.dsp-viewport.ascii-viewport.is-reconfiguring .ascii-art-engine{
   animation: ascii-reconfigure 360ms steps(4, end);
 }
 
-.xy-visual-stack.ascii-only {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  background: #050706;
-}
-
-@keyframes ascii-reconfigure {
+@keyframes ascii-reconfigure{
   0% { opacity: 0.22; transform: translateY(-1px); }
   45% { opacity: 0.82; transform: translateY(1px); }
   100% { opacity: 0.94; transform: translateY(0); }
 }
 
-@media (prefers-reduced-motion: reduce) {
+@media (prefers-reduced-motion: reduce){
   .ascii-art-engine,
-  .dsp-viewport.ascii-viewport.is-reconfiguring .ascii-art-engine {
+.dsp-viewport.ascii-viewport.is-reconfiguring .ascii-art-engine{
     transition: none;
     animation: none;
   }

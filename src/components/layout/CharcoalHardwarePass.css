@@ -1,6 +1,6 @@
 /* Final neutral-material pass: use the I/O inset charcoal for knob rings and spectrum hardware. */
 
-:root {
+:root{
   --calcotone-charcoal: #101315;
   --calcotone-cream-ink: #101315;
   --calcotone-cream-outline: #d7d0bd;
@@ -17,14 +17,14 @@
 .effect-module .module-route-cue,
 .effect-module .knob-label,
 .effect-module .coming-soon,
-.effect-module .knob-control:hover .knob-label {
+.effect-module .knob-control:hover .knob-label{
   color: var(--calcotone-cream-ink) !important;
   text-shadow: none !important;
 }
 
 
 /* Outer knob ring/bezel only. Keep the cream knob face itself intact. */
-.knob-shell::before {
+.knob-shell::before{
   background: var(--calcotone-charcoal) !important;
   border-color: rgba(244,239,220,.30) !important;
   box-shadow:
@@ -33,12 +33,7 @@
     inset 0 -2px rgba(0,0,0,.72) !important;
 }
 
-/* Patch hardware stays in the knob-ring charcoal family, with just enough
-   directional highlight to read as machined dark metal. Route identity remains
-   in the labels/glow instead of changing the socket material. */
-.knob-patch-jack,
-.knob-patch-jack.assigned,
-.knob-patch-jack.axis-y {
+/* Patch hardware stays in the knob-ring charcoal family{
   border-color: #666c6e !important;
   color: #ddd7c7 !important;
   background:
@@ -49,31 +44,9 @@
     inset 0 -2px rgba(0,0,0,.68) !important;
 }
 
-.knob-patch-jack > span {
-  background: #07090a !important;
-  border-color: #3e4446 !important;
-  box-shadow: inset 0 2px 4px #000 !important;
-}
-
-.knob-patch-jack b {
-  color: #ddd7c7 !important;
-  text-shadow: 0 1px 2px #000;
-}
-
-.xy-patch-destination i,
-.xy-patch-destination.axis-x i,
-.xy-patch-destination.axis-y i {
-  border-color: #666c6e !important;
-  background:
-    radial-gradient(circle at 50% 50%, #07090a 0 36%, #252a2c 38% 48%, var(--calcotone-metal-mid) 50% 66%, var(--calcotone-metal-top) 68% 77%, var(--calcotone-metal-bottom) 80% 100%) !important;
-  box-shadow:
-    inset 0 1px 2px rgba(255,255,255,.14),
-    inset 0 -2px 4px rgba(0,0,0,.82),
-    0 2px 5px rgba(0,0,0,.48) !important;
-}
-
-/* Spectrum housing stays charcoal, now with a clear cream hardware outline. */
-.spectrum-unit {
+/* Spectrum housing stays charcoal,
+now with a clear cream hardware outline. */
+.spectrum-unit{
   background: var(--calcotone-charcoal) !important;
   border-color: var(--calcotone-cream-outline) !important;
   box-shadow:
@@ -83,7 +56,7 @@
     0 3px 8px rgba(0,0,0,.26) !important;
 }
 
-.spectrum-header {
+.spectrum-header{
   min-height: 32px;
   padding: 7px 9px;
   border: 1px solid var(--cream-outline, rgba(244,239,220,.62));
@@ -97,14 +70,14 @@
 
 .spectrum-header strong,
 .spectrum-status,
-.spectrum-status.active {
+.spectrum-status.active{
   color: var(--calcotone-cream-ink) !important;
   text-shadow: none !important;
 }
 
 /* Give the I/O meters the same cream-framed hardware treatment as the spectrum. */
 .io-panel .meter-pair,
-.io-panel .output-meter {
+.io-panel .output-meter{
   border-color: var(--calcotone-cream-outline) !important;
   box-shadow:
     inset 0 2px 8px rgba(0,0,0,.72),
@@ -114,7 +87,7 @@
 /* Meter illumination uses the Pressure chassis cream instead of green/amber. */
 .level-meter span.lit,
 .level-meter span.lit:nth-last-child(-n + 3),
-.output-meter span.lit {
+.output-meter span.lit{
   border-color: rgba(244,239,220,.52) !important;
   background: linear-gradient(90deg, var(--cream-bottom,#77756d), var(--cream-mid,#8c897e) 52%, var(--cream-top,#a39f91)) !important;
   box-shadow:
@@ -122,22 +95,17 @@
     inset 0 1px rgba(255,250,228,.24) !important;
 }
 
-/* Nudge the PATCHES heading right without moving the route count or the box itself. */
-.motion-route-inspector .route-inspector-heading > strong {
-  position: relative;
-  left: 20px;
-}
-
 /* RAW / CLEAN / LOUD now occupy the selector row directly; the old MASTER label is gone. */
-.recorder-master-selector-buttons-only {
+.recorder-master-selector-buttons-only{
   display: grid !important;
   grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   gap: 6px !important;
 }
 
 /* Recorder now uses the same cream chassis as Pressure. Its inset time/name/
-   preview hardware stays charcoal, so light text remains correct inside those wells. */
-.sample-recorder {
+   preview hardware stays charcoal,
+so light text remains correct inside those wells. */
+.sample-recorder{
   border-color: var(--cream-outline, rgba(244,239,220,.62)) !important;
   background: linear-gradient(145deg, var(--cream-top,#a39f91) 0%, var(--cream-mid,#8c897e) 48%, var(--cream-bottom,#77756d) 100%) !important;
   color: var(--calcotone-cream-ink) !important;
@@ -148,19 +116,19 @@
 }
 
 .recorder-title strong,
-.recorder-title small {
+.recorder-title small{
   color: var(--calcotone-cream-ink) !important;
   text-shadow: none !important;
 }
 
 .sample-recorder .recorder-controls button:not(.record-stop),
-.sample-recorder .recorder-master-selector button {
+.sample-recorder .recorder-master-selector button{
   color: var(--calcotone-cream-ink) !important;
   text-shadow: none !important;
 }
 
 /* PRESSURE uses the same cream chassis / charcoal hardware language as the rack modules. */
-.pressure-panel {
+.pressure-panel{
   border-color: var(--cream-outline, rgba(244,239,220,.62)) !important;
   background: linear-gradient(145deg, var(--cream-top,#a39f91) 0%, var(--cream-mid,#8c897e) 48%, var(--cream-bottom,#77756d) 100%) !important;
   color: var(--calcotone-cream-ink) !important;
@@ -170,12 +138,12 @@
 .pressure-heading strong,
 .pressure-heading small,
 .pressure-panel .knob-label,
-.pressure-panel .knob-value {
+.pressure-panel .knob-value{
   color: var(--calcotone-cream-ink) !important;
   text-shadow: none !important;
 }
 
-.pressure-machine {
+.pressure-machine{
   display: grid;
   grid-template-columns: auto minmax(120px,1fr);
   gap: 10px;
@@ -186,7 +154,7 @@
   text-transform: uppercase;
 }
 
-.pressure-machine select {
+.pressure-machine select{
   min-height: 34px;
   border-radius: 8px !important;
   background: var(--calcotone-charcoal) !important;
@@ -194,7 +162,7 @@
   border-color: rgba(244,239,220,.36) !important;
 }
 
-.pressure-knobs {
+.pressure-knobs{
   display: grid;
   grid-template-columns: repeat(4, minmax(0,1fr));
   gap: 10px;
@@ -202,13 +170,7 @@
   align-items: end;
 }
 
-.pressure-panel .knob-patch-jack,
-.pressure-panel .knob-modulation-ring,
-.pressure-panel .knob-effective-marker {
-  display: none !important;
-}
-
-.pressure-styles {
+.pressure-styles{
   display: grid;
   grid-template-columns: repeat(4,1fr);
   gap: 6px;
@@ -216,14 +178,14 @@
 }
 
 .pressure-panel button,
-.pressure-styles button {
+.pressure-styles button{
   color: var(--calcotone-cream-ink) !important;
   border-color: var(--cream-outline,rgba(244,239,220,.62)) !important;
   background: linear-gradient(145deg, var(--cream-top,#a39f91), var(--cream-mid,#8c897e) 52%, var(--cream-bottom,#77756d)) !important;
 }
 
 .pressure-styles button.active,
-.pressure-heading button.active {
+.pressure-heading button.active{
   box-shadow: inset 0 2px 5px rgba(35,32,27,.42), 0 2px 5px rgba(0,0,0,.22) !important;
   color: var(--calcotone-cream-ink) !important;
 }

@@ -1,9 +1,11 @@
 /* CALCOTONE viewport optics.
-   The canvas owns scenery, module identity, parallax and audio-reactive motion.
+   The canvas owns scenery,
+module identity,
+parallax and audio-reactive motion.
    CSS is restricted to the physical display glass and its edge treatment. */
 
 .effect-module .dsp-viewport,
-.effect-module .dsp-viewport.active {
+.effect-module .dsp-viewport.active{
   --glass-accent: var(--module-accent);
   background:
     linear-gradient(180deg, rgba(255,255,255,.006), transparent 20%),
@@ -14,7 +16,7 @@
     0 5px 13px rgba(0,0,0,.28) !important;
 }
 
-.effect-module .dsp-viewport::before {
+.effect-module .dsp-viewport::before{
   content: '';
   position: absolute;
   inset: 0;
@@ -34,7 +36,7 @@
 }
 
 .effect-module .dsp-viewport .viewport-glass,
-.effect-module .dsp-viewport.active .viewport-glass {
+.effect-module .dsp-viewport.active .viewport-glass{
   opacity: .30 !important;
   background:
     linear-gradient(116deg,
@@ -54,10 +56,13 @@
   animation: viewport-glass-drift 22s cubic-bezier(.45,0,.25,1) infinite alternate !important;
 }
 
-/* EMBER is a dense industrial illustration, not a luminous HUD.
-   Keep the physical glass, but let iron, soot and the furnace mouth retain separation. */
+/* EMBER is a dense industrial illustration,
+not a luminous HUD.
+   Keep the physical glass,
+but let iron,
+soot and the furnace mouth retain separation. */
 .effect-module .viewport-saturation,
-.effect-module .viewport-saturation.active {
+.effect-module .viewport-saturation.active{
   background:
     linear-gradient(180deg, rgba(255,228,210,.004), transparent 18%),
     linear-gradient(180deg, #090405 0%, #040203 58%, #020102 100%) !important;
@@ -67,11 +72,11 @@
     0 5px 13px rgba(0,0,0,.30) !important;
 }
 
-.effect-module .viewport-saturation canvas {
+.effect-module .viewport-saturation canvas{
   filter: saturate(.96) brightness(1.005) contrast(1.115);
 }
 
-.effect-module .viewport-saturation::before {
+.effect-module .viewport-saturation::before{
   opacity: .18;
   background:
     linear-gradient(112deg,
@@ -85,7 +90,7 @@
 }
 
 .effect-module .viewport-saturation .viewport-glass,
-.effect-module .viewport-saturation.active .viewport-glass {
+.effect-module .viewport-saturation.active .viewport-glass{
   opacity: .17 !important;
   background:
     linear-gradient(116deg,
@@ -104,25 +109,25 @@
   animation-duration: 30s !important;
 }
 
-.effect-module:not(.enabled) .dsp-viewport .viewport-glass {
+.effect-module:not(.enabled) .dsp-viewport .viewport-glass{
   opacity: .15 !important;
   animation: none !important;
 }
 
 /* Never let an old CSS animation move the artwork itself. */
 .dsp-viewport canvas,
-.dsp-viewport.active canvas {
+.dsp-viewport.active canvas{
   animation: none !important;
   transform: none !important;
   will-change: auto;
 }
 
-@keyframes viewport-glass-drift {
+@keyframes viewport-glass-drift{
   from { background-position: 15% 0, 0 0; }
   to { background-position: 85% 0, 0 0; }
 }
 
-@media (prefers-reduced-motion: reduce) {
+@media (prefers-reduced-motion: reduce){
   .dsp-viewport .viewport-glass,
-  .dsp-viewport.active .viewport-glass { animation: none !important; }
+.dsp-viewport.active .viewport-glass{ animation: none !important; }
 }

@@ -1,4 +1,4 @@
-:root {
+:root{
   --case: #15191d;
   --case-2: #1e2328;
   --panel: #171b20;
@@ -11,7 +11,7 @@
 }
 
 .io-panel,
-.performance-panel {
+.performance-panel{
   border-color: #616a70;
   border-top-color: #7b858b;
   background:
@@ -23,7 +23,7 @@
     inset 0 -1px rgba(0, 0, 0, 0.88);
 }
 
-.effect-module {
+.effect-module{
   border-color: #515a61;
   border-top-color: #68737a;
   background:
@@ -35,23 +35,23 @@
     inset 0 -1px rgba(0, 0, 0, 0.84);
 }
 
-.effect-module.enabled {
+.effect-module.enabled{
   border-color: #657078;
   border-top-color: #7b878e;
 }
 
-.effect-module:not(.enabled) {
+.effect-module:not(.enabled){
   filter: none;
   opacity: 0.84;
 }
 
 .input-matrix,
 .meter-pair,
-.signal-lamps {
+.signal-lamps{
   border-color: #3b444a;
 }
 
 .panel-heading,
-.section-header {
+.section-header{
   border-bottom-color: #4a5258;
 }

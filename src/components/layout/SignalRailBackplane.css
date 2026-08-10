@@ -1,26 +1,26 @@
 /* Decorative signal routing lives behind the physical module chassis. */
-.rail-modules {
+.rail-modules{
   position: relative;
   isolation: isolate;
 }
 
-.rail-modules::before {
+.rail-modules::before{
   z-index: 0 !important;
   pointer-events: none !important;
 }
 
-.rail-modules > .effect-module {
+.rail-modules > .effect-module{
   position: relative;
   z-index: 2 !important;
   opacity: 1;
 }
 
 /* Preserve the bypassed look without making the chassis translucent to the rail. */
-.rail-modules > .effect-module:not(.enabled) {
+.rail-modules > .effect-module:not(.enabled){
   opacity: 1;
   filter: saturate(.55) brightness(.78);
 }
 
-.rail-modules > .effect-module.faceplate-layout-editing {
+.rail-modules > .effect-module.faceplate-layout-editing{
   z-index: 4 !important;
 }
