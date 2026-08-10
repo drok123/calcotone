@@ -75,6 +75,40 @@ jobs:
             return source.replace(search, replacement);
           }
 
+          // Retire the last inert XY-era knob compatibility seam while preserving the
+          // generic control identifier used by hardware-specific UI labels.
+          {
+            const file = 'src/components/controls/Knob.tsx';
+            let source = fs.readFileSync(file, 'utf8');
+            source = replaceRequired(source, '  effectiveValue,\n', '  controlTarget,\n', 'Knob effectiveValue destructure');
+            source = replaceRequired(source, '  effectiveValue: number;\n', '  controlTarget?: string;\n', 'Knob effectiveValue type');
+            source = replaceRequired(source, '  const effectiveRotation = -135 + effectiveValue * 270;\n', '', 'Knob effective rotation');
+            source = replaceRequired(source, '        className="knob-shell"\n', '        className="knob-shell"\n        data-control-target={controlTarget}\n', 'Knob generic control target');
+            source = replaceRequired(source, '        style={{ \'--effective-rotation\': `${effectiveRotation}deg`, \'--base-rotation\': `${rotation}deg` } as CSSProperties}\n', '', 'Knob XY rotation custom properties');
+            source = replaceRequired(source, '        <span className="knob-effective-marker" aria-hidden="true" />\n', '', 'Knob effective marker');
+            fs.writeFileSync(file, source);
+          }
+
+          {
+            const file = 'src/components/effects/EffectModule.tsx';
+            let source = fs.readFileSync(file, 'utf8');
+            source = replaceRequired(
+              source,
+              '        effectiveValue={parameter.value}\n        display={presentation.display}\n',
+              '        display={presentation.display}\n        controlTarget={`${module.id}.${parameter.id}`}\n',
+              'EffectModule retired effective value prop',
+            );
+            fs.writeFileSync(file, source);
+          }
+
+          {
+            const file = 'src/components/effects/RailCModules.tsx';
+            let source = fs.readFileSync(file, 'utf8');
+            source = replaceRequired(source, ' effectiveValue={values[index]!}', '', 'Rail C compact effective value prop');
+            source = replaceRequired(source, '            effectiveValue={values[index]}\n', '', 'Rail C expanded effective value prop');
+            fs.writeFileSync(file, source);
+          }
+
           // Keep #49's high-density ASCII contracts while removing its stale reference
           // to the already-retired XY landscape file.
           {
@@ -105,7 +139,7 @@ jobs:
             source = replaceRequired(
               source,
               "  'xy-worlds',\n];",
-              "  'xy-worlds',\n  'XYSignalField',\n  'MotionPad',\n  'xy-pad',\n  'knob-patch-jack',\n  'knob-modulation-ring',\n  'knob-effective-marker',\n  'motion-route',\n  'route-inspector',\n  'patch-target-active',\n  'hover-axis-',\n];",
+              "  'xy-worlds',\n  'XYSignalField',\n  'MotionPad',\n  'xy-pad',\n  'knob-patch-jack',\n  'knob-modulation-ring',\n  'knob-effective-marker',\n  'effectiveValue',\n  'motion-route',\n  'route-inspector',\n  'patch-target-active',\n  'hover-axis-',\n];",
               'no-XY retired CSS/source tokens',
             );
             source = replaceRequired(
@@ -117,8 +151,8 @@ jobs:
             fs.writeFileSync(file, source);
           }
 
-          // Remove dead selectors from the one stylesheet where the native branch and
-          // main's retirement pass overlap. Running over all CSS makes the gate idempotent.
+          // Remove dead selectors across all CSS so main's complete XY retirement stays
+          // authoritative while #49's newer native/HD styles remain intact.
           const retiredSelectorTokens = [
             'xy-',
             'knob-patch-jack',
