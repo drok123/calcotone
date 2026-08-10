@@ -198,12 +198,14 @@ function drawTransientEditor(
   const progress = occupied ? loopTrackProgress(state.selectedTrack, stamp) : 0;
   if (occupied) {
     const playheadX = bounds.left + bounds.width * progress;
-    context.strokeStyle = 'rgba(255, 190, 114, .72)';
+    context.strokeStyle = PLAYHEAD;
+    context.globalAlpha = 0.72;
     context.lineWidth = 1;
     context.beginPath();
     context.moveTo(Math.round(playheadX) + 0.5, bounds.top + 9);
     context.lineTo(Math.round(playheadX) + 0.5, bounds.bottom);
     context.stroke();
+    context.globalAlpha = 1;
   }
 
   context.shadowBlur = 0;
