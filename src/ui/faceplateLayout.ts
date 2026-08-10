@@ -57,7 +57,7 @@ export interface FaceplateEditorSnapshot {
 const STORAGE_KEY = 'calcotone.faceplate-layout.v2';
 const LEGACY_STORAGE_KEY = 'calcotone.faceplate-layout.v1';
 const FACTORY_LAYOUT_REVISION_KEY = 'calcotone.faceplate-layout.factory-revision';
-const FACTORY_LAYOUT_REVISION = '2026-08-09-loop505-centered-fader-faceplate-v3';
+const FACTORY_LAYOUT_REVISION = '2026-08-09-railc-latest-loop-centered-v4';
 const KNOB_COUNT = 6;
 const listeners = new Set<() => void>();
 const CORE_FACEPLATE_IDS: readonly CoreFaceplateId[] = ['saturation', 'chorus', 'delay', 'reverb', 'bitcrusher', 'media'];
@@ -93,7 +93,7 @@ export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
       viewportHeight: 168,
       stageHeight: 304,
       knobs: [
-        { x: 0.0935672514619883, y: 224 },
+        { x: 0.08187134502923976, y: 224 },
         { x: 0.21052631578947367, y: 224 },
         { x: 0.32748538011695905, y: 224 },
         { x: 0.6549707602339181, y: 224 },
@@ -106,10 +106,10 @@ export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
       viewportHeight: 168,
       stageHeight: 304,
       knobs: [
-        { x: 0.3157894736842105, y: 216 },
-        { x: 0.4327485380116959, y: 216 },
-        { x: 0.5497076023391813, y: 216 },
-        { x: 0.6666666666666666, y: 216 },
+        { x: 0.11695906432748537, y: 240 },
+        { x: 0.3742690058479532, y: 240 },
+        { x: 0.6432748538011696, y: 240 },
+        { x: 0.8888888888888888, y: 240 },
       ],
       buttons: [],
     },
@@ -117,16 +117,16 @@ export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
       viewportHeight: 168,
       stageHeight: 304,
       knobs: [
-        { x: 0.13742690058479534, y: 216 },
-        { x: 0.3830409356725146, y: 216 },
-        { x: 0.6286549707602339, y: 216 },
-        { x: 0.8508771929824561, y: 216 },
+        { x: 0.14327485380116955, y: 216 },
+        { x: 0.38888888888888884, y: 216 },
+        { x: 0.6345029239766081, y: 216 },
+        { x: 0.8567251461988303, y: 216 },
       ],
       buttons: [
-        { x: 0.13742690058479534, y: 272 },
-        { x: 0.3830409356725146, y: 272 },
-        { x: 0.6286549707602339, y: 272 },
-        { x: 0.8508771929824561, y: 272 },
+        { x: 0.14327485380116955, y: 272 },
+        { x: 0.38888888888888884, y: 272 },
+        { x: 0.6345029239766081, y: 272 },
+        { x: 0.8567251461988303, y: 272 },
       ],
     },
   },
