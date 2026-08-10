@@ -40,16 +40,26 @@ function edgeGlyph(gx: number, gy: number): string {
 }
 
 function trackStateLabel(state: LoopState, track: number): string {
-  const occupied = (state.trackMask & (1 << track)) !== 0;
+  const bit = 1 << track;
+  const occupied = (state.trackMask & bit) !== 0;
   if (track === state.selectedTrack && state.transport === 'recording') return 'REC';
   if (track === state.selectedTrack && state.transport === 'overdubbing') return 'DUB';
   if (!occupied) return 'EMPTY';
-  return state.transport === 'stopped' ? 'STOP' : 'PLAY';
+  if ((state.trackMuteMask & bit) !== 0) return 'MUTE';
+  if ((state.trackSoloMask & bit) !== 0) return 'SOLO';
+  return (state.trackActiveMask & bit) !== 0 ? 'PLAY' : 'STOP';
 }
 
 function trackMoving(state: LoopState, track: number): boolean {
   if (track === state.selectedTrack && (state.transport === 'recording' || state.transport === 'overdubbing')) return true;
-  return (state.trackMask & (1 << track)) !== 0 && state.transport !== 'stopped' && state.transport !== 'empty';
+  const bit = 1 << track;
+  return (state.trackMask & bit) !== 0
+    && (state.trackActiveMask & bit) !== 0
+    && state.transport === 'playing';
+}
+
+function fourBitMask(value: number): string {
+  return value.toString(2).padStart(4, '0').slice(-4);
 }
 
 function drawMatrix(
@@ -85,7 +95,7 @@ function drawMatrix(
   const title = 'L O O P  //  4 TRACK MEMORY';
   const status = trimEditing
     ? `TRIM T${state.selectedTrack + 1}  IN ${(state.trimStart * 100).toFixed(1)}%  OUT ${(state.trimEnd * 100).toFixed(1)}%`
-    : 'REC > PLAY > DUB  //  SHIFT + TRACK = CLEAR';
+    : 'CLICK REC/DUB  RMB STOP  CTRL MUTE  ALT SOLO  SHIFT CLEAR';
   const writeCentered = (row: number, text: string): void => {
     const value = text.slice(0, columns);
     const start = Math.max(0, Math.floor((columns - value.length) / 2));
@@ -191,7 +201,7 @@ function drawMatrix(
     }
   }
 
-  const footer = `${state.transport.toUpperCase()}  //  ${state.trackMask.toString(2).padStart(4, '0').slice(-4)}  //  ${enabled ? 'MEMORY ONLINE' : 'STANDBY'}`;
+  const footer = `${state.transport.toUpperCase()} // A:${fourBitMask(state.trackActiveMask)} M:${fourBitMask(state.trackMuteMask)} S:${fourBitMask(state.trackSoloMask)} // ${enabled ? 'ONLINE' : 'STANDBY'}`;
   writeCentered(rows - 1, footer);
 
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
