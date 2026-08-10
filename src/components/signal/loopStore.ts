@@ -8,12 +8,19 @@ export const LOOP_VISIBLE_TRACK_COUNT = 4;
 export const LOOP_MAX_SECONDS = 60;
 export const LOOP_WAVEFORM_BINS = 256;
 export const LOOP_COMMAND_EVENT = 'calcotone:loop-command';
+export const LOOP_PERFORMANCE_COMMAND_EVENT = 'calcotone:loop-performance-command';
 export const LOOP_CHANGE_EVENT = 'calcotone:loop-change';
 
 export type LoopTransport = 'empty' | 'stopped' | 'playing' | 'recording' | 'overdubbing';
 export type LoopTransportCommand = 'record' | 'overdub' | 'play' | 'clear';
+export type LoopPerformanceCommandName = 'trackPlay' | 'trackStop' | 'mute' | 'solo';
+export interface LoopPerformanceCommand {
+  command: LoopPerformanceCommandName;
+  track: number;
+}
 export type LoopCommand =
   | LoopTransportCommand
+  | LoopPerformanceCommandName
   | { type: 'trim'; start: number; end: number }
   | { type: 'autoTrim' }
   | { type: 'resetTrim' };
@@ -30,6 +37,9 @@ export interface LoopSettings {
 export interface LoopRuntime {
   transport: LoopTransport;
   trackMask: number;
+  trackActiveMask: number;
+  trackMuteMask: number;
+  trackSoloMask: number;
   loopFrames: number;
   rawFrames: number;
   position: number;
@@ -56,6 +66,7 @@ export interface LoopState extends LoopSettings, LoopRuntime {
 const STORAGE_KEY = 'calcotone.loop-state.v2';
 const LEGACY_STORAGE_KEY = 'calcotone.loop-state.v1';
 const listeners = new Set<() => void>();
+const PERFORMANCE_COMMANDS = new Set<LoopPerformanceCommandName>(['trackPlay', 'trackStop', 'mute', 'solo']);
 
 const DEFAULT_SETTINGS: LoopSettings = {
   enabled: false,
@@ -71,6 +82,9 @@ const DEFAULT_SETTINGS: LoopSettings = {
 const DEFAULT_RUNTIME: LoopRuntime = {
   transport: 'empty',
   trackMask: 0,
+  trackActiveMask: 0,
+  trackMuteMask: 0,
+  trackSoloMask: 0,
   loopFrames: 0,
   rawFrames: 0,
   position: 0,
@@ -110,6 +124,10 @@ function clampTrack(value: number): number {
 
 function clampVisibleTrack(value: number): number {
   return Math.max(0, Math.min(LOOP_VISIBLE_TRACK_COUNT - 1, Math.round(Number.isFinite(value) ? value : 0)));
+}
+
+function clampMask(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(Number.isFinite(value) ? value : 0)));
 }
 
 function normalizeTrackLevels(values: readonly number[] | undefined): number[] {
@@ -205,6 +223,8 @@ export function setLoopRuntime(patch: Partial<LoopRuntime>): void {
   const rawFrames = Math.max(0, Math.round(patch.rawFrames ?? state.rawFrames));
   const position = Math.max(0, Math.round(patch.position ?? state.position));
   const waveform = patch.waveform ? normalizeWaveform(patch.waveform) : state.waveform;
+  const nextTrackMask = clampMask(patch.trackMask ?? state.trackMask);
+  const clearingAll = patch.transport === 'empty' && nextTrackMask === 0;
   const trackRuntime = [...state.trackRuntime];
   trackRuntime[state.selectedTrack] = {
     loopFrames,
@@ -218,7 +238,10 @@ export function setLoopRuntime(patch: Partial<LoopRuntime>): void {
   state = {
     ...state,
     ...patch,
-    trackMask: Math.max(0, Math.min(255, Math.round(patch.trackMask ?? state.trackMask))),
+    trackMask: nextTrackMask,
+    trackActiveMask: clearingAll ? 0 : clampMask(patch.trackActiveMask ?? state.trackActiveMask),
+    trackMuteMask: clearingAll ? 0 : clampMask(patch.trackMuteMask ?? state.trackMuteMask),
+    trackSoloMask: clearingAll ? 0 : clampMask(patch.trackSoloMask ?? state.trackSoloMask),
     loopFrames,
     rawFrames,
     position,
@@ -229,6 +252,58 @@ export function setLoopRuntime(patch: Partial<LoopRuntime>): void {
     trackRuntime,
   };
   emit();
+}
+
+function optimisticPerformanceCommand(command: LoopPerformanceCommandName, track: number): void {
+  const bit = 1 << track;
+  if (command === 'trackPlay') {
+    setLoopRuntime({ trackActiveMask: state.trackActiveMask | bit, transport: state.trackMask ? 'playing' : state.transport });
+  } else if (command === 'trackStop') {
+    const nextActive = state.trackActiveMask & ~bit;
+    const nextTransport = state.transport === 'recording' || state.transport === 'overdubbing'
+      ? state.transport
+      : (nextActive & state.trackMask) !== 0 ? 'playing' : state.trackMask ? 'stopped' : 'empty';
+    setLoopRuntime({ trackActiveMask: nextActive, position: track === state.selectedTrack ? 0 : state.position, transport: nextTransport });
+  } else if (command === 'mute') {
+    setLoopRuntime({ trackMuteMask: state.trackMuteMask ^ bit });
+  } else if (command === 'solo') {
+    setLoopRuntime({ trackSoloMask: state.trackSoloMask ^ bit });
+  }
+}
+
+function optimisticTransportCommand(command: LoopTransportCommand): void {
+  const track = state.selectedTrack;
+  const bit = 1 << track;
+  if (command === 'record') {
+    setLoopRuntime({ trackActiveMask: state.trackActiveMask | bit });
+  } else if (command === 'overdub') {
+    setLoopRuntime({ trackActiveMask: state.trackActiveMask | bit });
+  } else if (command === 'play') {
+    if (state.transport === 'stopped') {
+      setLoopRuntime({
+        trackActiveMask: state.trackActiveMask || state.trackMask,
+        transport: state.trackMask ? 'playing' : 'empty',
+      });
+    } else if (state.transport === 'playing') {
+      setLoopRuntime({ transport: state.trackMask ? 'stopped' : 'empty' });
+    }
+  } else if (command === 'clear') {
+    const nextMask = state.trackMask & ~bit;
+    const nextActive = state.trackActiveMask & ~bit;
+    setLoopRuntime({
+      trackMask: nextMask,
+      trackActiveMask: nextActive,
+      trackMuteMask: state.trackMuteMask & ~bit,
+      trackSoloMask: state.trackSoloMask & ~bit,
+      transport: nextMask === 0 ? 'empty' : (nextActive & nextMask) !== 0 ? 'playing' : 'stopped',
+      loopFrames: 0,
+      rawFrames: 0,
+      position: 0,
+      trimStart: 0,
+      trimEnd: 1,
+      waveform: Array.from({ length: LOOP_WAVEFORM_BINS }, () => 0),
+    });
+  }
 }
 
 export function sendLoopCommand(command: LoopCommand): void {
@@ -245,6 +320,17 @@ export function sendLoopCommand(command: LoopCommand): void {
     setLoopRuntime({ trimStart: boundedStart, trimEnd: boundedEnd, loopFrames, position: Math.min(state.position, Math.max(0, loopFrames - 1)) });
   } else if (typeof command !== 'string' && command.type === 'resetTrim') {
     setLoopRuntime({ trimStart: 0, trimEnd: 1, loopFrames: state.rawFrames, position: Math.min(state.position, Math.max(0, state.rawFrames - 1)) });
+  } else if (typeof command === 'string' && PERFORMANCE_COMMANDS.has(command as LoopPerformanceCommandName)) {
+    const performanceCommand = command as LoopPerformanceCommandName;
+    optimisticPerformanceCommand(performanceCommand, state.selectedTrack);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent<LoopPerformanceCommand>(LOOP_PERFORMANCE_COMMAND_EVENT, {
+        detail: { command: performanceCommand, track: state.selectedTrack },
+      }));
+    }
+    return;
+  } else if (typeof command === 'string') {
+    optimisticTransportCommand(command as LoopTransportCommand);
   }
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent<LoopCommand>(LOOP_COMMAND_EVENT, { detail: normalized }));
 }
@@ -252,6 +338,7 @@ export function sendLoopCommand(command: LoopCommand): void {
 /**
  * RC-style one-button track transport for the four-track faceplate.
  * Empty -> REC, REC -> PLAY, PLAY -> DUB, DUB -> PLAY.
+ * A stopped individual track starts from its own beginning before DUB is available.
  * Switching tracks is intentionally blocked while a write pass is active so a
  * recording target can never be stolen underneath the realtime thread.
  */
@@ -261,13 +348,46 @@ export function pressLoopTrack(track: number): boolean {
   if (writing && target !== state.selectedTrack) return false;
 
   const occupied = (state.trackMask & (1 << target)) !== 0;
+  const active = (state.trackActiveMask & (1 << target)) !== 0;
   if (target !== state.selectedTrack) setLoopState({ selectedTrack: target });
 
   if (state.transport === 'recording') sendLoopCommand('record');
   else if (state.transport === 'overdubbing') sendLoopCommand('overdub');
   else if (!occupied) sendLoopCommand('record');
-  else if (state.transport === 'stopped') sendLoopCommand('play');
+  else if (!active || state.transport === 'stopped') sendLoopCommand('trackPlay');
   else sendLoopCommand('overdub');
+  return true;
+}
+
+export function toggleLoopTrackPlayback(track: number): boolean {
+  const target = clampVisibleTrack(track);
+  const writing = state.transport === 'recording' || state.transport === 'overdubbing';
+  if (writing && target !== state.selectedTrack) return false;
+  const occupied = (state.trackMask & (1 << target)) !== 0;
+  if (!occupied && !(writing && target === state.selectedTrack)) return false;
+  if (target !== state.selectedTrack) setLoopState({ selectedTrack: target });
+  const active = (state.trackActiveMask & (1 << target)) !== 0;
+  sendLoopCommand(active ? 'trackStop' : 'trackPlay');
+  return true;
+}
+
+export function toggleLoopTrackMute(track: number): boolean {
+  const target = clampVisibleTrack(track);
+  const writing = state.transport === 'recording' || state.transport === 'overdubbing';
+  if (writing && target !== state.selectedTrack) return false;
+  if ((state.trackMask & (1 << target)) === 0) return false;
+  if (target !== state.selectedTrack) setLoopState({ selectedTrack: target });
+  sendLoopCommand('mute');
+  return true;
+}
+
+export function toggleLoopTrackSolo(track: number): boolean {
+  const target = clampVisibleTrack(track);
+  const writing = state.transport === 'recording' || state.transport === 'overdubbing';
+  if (writing && target !== state.selectedTrack) return false;
+  if ((state.trackMask & (1 << target)) === 0) return false;
+  if (target !== state.selectedTrack) setLoopState({ selectedTrack: target });
+  sendLoopCommand('solo');
   return true;
 }
 
@@ -285,8 +405,10 @@ export function loopTrackProgress(track: number, atMs = nowMilliseconds()): numb
   const runtime = state.trackRuntime[target];
   if (!runtime || runtime.loopFrames <= 0) return 0;
   let position = runtime.position;
-  const moving = state.transport === 'playing' || state.transport === 'recording' || state.transport === 'overdubbing';
-  if (moving && (state.trackMask & (1 << target)) !== 0) {
+  const writingTarget = target === state.selectedTrack && (state.transport === 'recording' || state.transport === 'overdubbing');
+  const active = (state.trackActiveMask & (1 << target)) !== 0;
+  const moving = writingTarget || (state.transport === 'playing' && active);
+  if (moving && ((state.trackMask & (1 << target)) !== 0 || writingTarget)) {
     const elapsedFrames = Math.max(0, atMs - runtime.updatedAtMs) * state.sampleRate / 1000;
     position = (position + elapsedFrames) % runtime.loopFrames;
   }
