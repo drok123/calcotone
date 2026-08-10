@@ -102,6 +102,17 @@ export class SynthEngine {
   private readonly captureAbortController = new AbortController();
   private enabled = false;
   private disposed = false;
+  private machine: SynthMachine = 'model-d';
+  private archetype: SynthArchetype = 'panel';
+  private qualityFactor = 2;
+  private renderMode: SynthRenderMode = 'auto';
+  private readonly parameterValues = [Number.NaN, Number.NaN, Number.NaN, Number.NaN, Number.NaN, Number.NaN];
+  private parameterMorphSeconds = Number.NaN;
+  private readonly parameterMessage = {
+    type: 'parameters' as const,
+    values: [0, 0, 0, 0, 0, 0],
+    morphSeconds: 0.04,
+  };
   private telemetry: SynthTelemetryStats = { ...EMPTY_TELEMETRY };
   private sequencerStepListener: ((position: SynthSequencerStep) => void) | null = null;
 
@@ -148,6 +159,7 @@ export class SynthEngine {
   }
 
   public setEnabled(enabled: boolean): void {
+    if (enabled === this.enabled) return;
     this.enabled = enabled;
     const now = this.context.currentTime;
     this.output.gain.cancelScheduledValues(now);
@@ -156,27 +168,42 @@ export class SynthEngine {
   }
 
   public setMachine(machine: SynthMachine): void {
+    if (machine === this.machine) return;
+    this.machine = machine;
     this.processor.port.postMessage({ type: 'machine', value: machine });
   }
 
   public setArchetype(archetype: SynthArchetype): void {
+    if (archetype === this.archetype) return;
+    this.archetype = archetype;
     this.processor.port.postMessage({ type: 'archetype', value: archetype });
   }
 
   public setParameters(values: readonly number[], morphSeconds = 0.04): void {
-    this.processor.port.postMessage({
-      type: 'parameters',
-      values: Array.from({ length: 6 }, (_, index) => clamp01(values[index] ?? .5)),
-      morphSeconds: Math.min(0.5, Math.max(0, Number.isFinite(morphSeconds) ? morphSeconds : 0.04)),
-    });
+    const morph = Math.min(0.5, Math.max(0, Number.isFinite(morphSeconds) ? morphSeconds : 0.04));
+    let changed = morph !== this.parameterMorphSeconds;
+    for (let index = 0; index < 6; index += 1) {
+      const value = clamp01(values[index] ?? .5);
+      if (value !== this.parameterValues[index]) changed = true;
+      this.parameterValues[index] = value;
+      this.parameterMessage.values[index] = value;
+    }
+    if (!changed) return;
+    this.parameterMorphSeconds = morph;
+    this.parameterMessage.morphSeconds = morph;
+    this.processor.port.postMessage(this.parameterMessage);
   }
 
   public setQualityMode(mode: SynthQualityMode): void {
     const factor = mode === 'studio' ? 4 : mode === 'balanced' ? 2 : 1;
+    if (factor === this.qualityFactor) return;
+    this.qualityFactor = factor;
     this.processor.port.postMessage({ type: 'quality', factor });
   }
 
   public setRenderMode(mode: SynthRenderMode): void {
+    if (mode === this.renderMode) return;
+    this.renderMode = mode;
     this.processor.port.postMessage({ type: 'render-mode', value: mode });
   }
 
