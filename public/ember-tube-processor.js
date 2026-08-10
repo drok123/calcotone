@@ -1,3 +1,33 @@
+const TUBE_TANH_MIN = -8;
+const TUBE_TANH_MAX = 8;
+const TUBE_TANH_LUT = new Float32Array(4096);
+const TUBE_TANH_SCALE = (TUBE_TANH_LUT.length - 1) / (TUBE_TANH_MAX - TUBE_TANH_MIN);
+for (let index = 0; index < TUBE_TANH_LUT.length; index += 1) {
+  const x = TUBE_TANH_MIN + index / TUBE_TANH_SCALE;
+  TUBE_TANH_LUT[index] = Math.tanh(x);
+}
+
+function tubeHermite(y0, y1, y2, y3, mu) {
+  const mu2 = mu * mu;
+  const a0 = -0.5 * y0 + 1.5 * y1 - 1.5 * y2 + 0.5 * y3;
+  const a1 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+  const a2 = -0.5 * y0 + 0.5 * y2;
+  return a0 * mu * mu2 + a1 * mu2 + a2 * mu + y1;
+}
+
+function tubeTanh(value) {
+  if (value <= TUBE_TANH_MIN) return -1;
+  if (value >= TUBE_TANH_MAX) return 1;
+  const position = (value - TUBE_TANH_MIN) * TUBE_TANH_SCALE;
+  const index = Math.floor(position);
+  const mu = position - index;
+  const last = TUBE_TANH_LUT.length - 1;
+  const i0 = index > 0 ? index - 1 : 0;
+  const i2 = index < last ? index + 1 : last;
+  const i3 = index + 2 < last ? index + 2 : last;
+  return tubeHermite(TUBE_TANH_LUT[i0], TUBE_TANH_LUT[index], TUBE_TANH_LUT[i2], TUBE_TANH_LUT[i3], mu);
+}
+
 class CalcotoneEmberTubeProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
@@ -117,9 +147,9 @@ class CalcotoneEmberTubeProcessor extends AudioWorkletProcessor {
       const recoveryBias = Math.min(profile.blockingCeiling, blockingMemory * profile.blocking * profile.blockingBias);
 
       const effectiveBias = characterBias - dynamicBias - cathodeShift - recoveryBias;
-      const zero = Math.tanh(effectiveBias * curve);
+      const zero = tubeTanh(effectiveBias * curve);
       const localSlope = Math.max(0.34, inputGain * curve * (1 - zero * zero));
-      let shaped = (Math.tanh((stageInput + effectiveBias) * curve) - zero) / localSlope;
+      let shaped = (tubeTanh((stageInput + effectiveBias) * curve) - zero) / localSlope;
 
       const plateCurrent = Math.max(0, Math.abs(stageInput) * profile.plateCurrentScale + cathodeMemory * profile.plateCathodeCoupling);
       const plateTarget = Math.min(1.2, plateCurrent * loadScale / Math.max(0.75, voltageScale));
@@ -134,7 +164,7 @@ class CalcotoneEmberTubeProcessor extends AudioWorkletProcessor {
         + this.supplySag * profile.localSagSupply);
       shaped *= 1 - localSag;
 
-      const harmonicTilt = Math.tanh(shaped * (1 + profile.harmonicDrive * (0.4 + drive)))
+      const harmonicTilt = tubeTanh(shaped * (1 + profile.harmonicDrive * (0.4 + drive)))
         + profile.evenHarmonic * shaped * shaped * Math.sign(shaped);
       const harmonicNorm = 1 + profile.evenHarmonic * 0.28;
       shaped = harmonicTilt / harmonicNorm;
