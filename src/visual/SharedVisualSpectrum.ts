@@ -1,6 +1,8 @@
 export interface VisualSpectrumSource {
   readonly frequencyBinCount: number;
   getByteFrequencyData(target: Uint8Array): void;
+  /** Audio time corresponding to what is being presented to the listener now. */
+  getPresentationTimeSeconds?(): number;
 }
 
 const HEADER_WORDS = 4;
@@ -14,6 +16,7 @@ const FFT_BINS = FFT_SIZE / 2;
 export class SharedVisualSpectrum implements VisualSpectrumSource {
   public readonly frequencyBinCount = FFT_BINS;
 
+  private readonly context: AudioContext;
   private readonly node: AudioWorkletNode;
   private readonly silentSink: GainNode;
   private readonly header: Int32Array;
@@ -26,6 +29,7 @@ export class SharedVisualSpectrum implements VisualSpectrumSource {
   private readonly cosine = new Float32Array(FFT_SIZE / 2);
   private readonly sine = new Float32Array(FFT_SIZE / 2);
   private hasSnapshot = false;
+  private lastSnapshotSequence = -1;
 
   public static create(context: AudioContext): SharedVisualSpectrum | null {
     if (!globalThis.crossOriginIsolated || typeof SharedArrayBuffer === 'undefined') return null;
@@ -38,6 +42,7 @@ export class SharedVisualSpectrum implements VisualSpectrumSource {
   }
 
   private constructor(context: AudioContext) {
+    this.context = context;
     const byteLength = HEADER_WORDS * Int32Array.BYTES_PER_ELEMENT
       + RING_CAPACITY * Float32Array.BYTES_PER_ELEMENT;
     const sharedBuffer = new SharedArrayBuffer(byteLength);
@@ -80,6 +85,24 @@ export class SharedVisualSpectrum implements VisualSpectrumSource {
     source.connect(this.node);
   }
 
+  public getPresentationTimeSeconds(): number {
+    try {
+      const timestamp = this.context.getOutputTimestamp?.();
+      if (
+        timestamp
+        && Number.isFinite(timestamp.contextTime)
+        && Number.isFinite(timestamp.performanceTime)
+        && timestamp.contextTime >= 0
+      ) {
+        return Math.max(0, timestamp.contextTime + (performance.now() - timestamp.performanceTime) / 1000);
+      }
+    } catch { /* browser may expose the method before the output clock is ready */ }
+
+    const baseLatency = Number.isFinite(this.context.baseLatency) ? this.context.baseLatency : 0;
+    const outputLatency = Number.isFinite(this.context.outputLatency) ? this.context.outputLatency : 0;
+    return Math.max(0, this.context.currentTime - baseLatency - outputLatency);
+  }
+
   public getByteFrequencyData(target: Uint8Array): void {
     if (this.readLatestSamples()) {
       this.transform();
@@ -109,6 +132,7 @@ export class SharedVisualSpectrum implements VisualSpectrumSource {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const sequenceBefore = Atomics.load(this.header, WRITE_SEQUENCE);
       if (sequenceBefore & 1) continue;
+      if (sequenceBefore === this.lastSnapshotSequence) return false;
       const writeIndex = Atomics.load(this.header, WRITE_INDEX);
       let readIndex = writeIndex - FFT_SIZE;
       if (readIndex < 0) readIndex += this.ring.length;
@@ -118,7 +142,10 @@ export class SharedVisualSpectrum implements VisualSpectrumSource {
         if (readIndex === this.ring.length) readIndex = 0;
       }
       const sequenceAfter = Atomics.load(this.header, WRITE_SEQUENCE);
-      if (sequenceBefore === sequenceAfter && !(sequenceAfter & 1)) return true;
+      if (sequenceBefore === sequenceAfter && !(sequenceAfter & 1)) {
+        this.lastSnapshotSequence = sequenceAfter;
+        return true;
+      }
     }
     return false;
   }
