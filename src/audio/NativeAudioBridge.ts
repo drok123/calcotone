@@ -112,38 +112,60 @@ export class NativeAudioBridge {
   }
 
   private rememberDesiredState(line: string): void {
-    const parts = line.trim().split(/\s+/);
-    if (parts[0] === 'param' && parts.length >= 4) {
-      const moduleId = parts[1]!;
-      const parameterId = parts[2]!;
+    // Most native commands are neither module parameter writes nor Stack profile
+    // values. Keep them on a no-allocation prefix path instead of regex-splitting
+    // every knob/transport command into a temporary array.
+    const parameterPrefix = 'param ';
+    if (line.startsWith(parameterPrefix)) {
+      const moduleEnd = line.indexOf(' ', parameterPrefix.length);
+      if (moduleEnd < 0) return;
+      const parameterStart = moduleEnd + 1;
+      const parameterEnd = line.indexOf(' ', parameterStart);
+      if (parameterEnd < 0) return;
+      const moduleId = line.slice(parameterPrefix.length, moduleEnd);
+      const parameterId = line.slice(parameterStart, parameterEnd);
       if (PROFILE_SELECTOR_PARAMETERS.has(parameterId)) return;
+      const value = line.slice(parameterEnd + 1);
+      if (!value) return;
       let snapshot = this.parameterSnapshot.get(moduleId);
       if (!snapshot) {
         snapshot = new Map<string, string>();
         this.parameterSnapshot.set(moduleId, snapshot);
       }
-      snapshot.set(parameterId, parts.slice(3).join(' '));
+      snapshot.set(parameterId, value);
       return;
     }
 
-    const name = parts[0];
-    if (name && STACK_PROFILE_PARAMETERS.has(name) && parts.length >= 2) {
-      this.stackSnapshot.set(name, parts.slice(1).join(' '));
+    const separator = line.indexOf(' ');
+    if (separator <= 0) return;
+    const name = line.slice(0, separator);
+    if (STACK_PROFILE_PARAMETERS.has(name)) {
+      const value = line.slice(separator + 1);
+      if (value) this.stackSnapshot.set(name, value);
     }
   }
 
   private profileReplayLines(line: string): string[] {
-    const parts = line.trim().split(/\s+/);
-    if (parts[0] === 'param' && parts.length >= 4 && PROFILE_SELECTOR_PARAMETERS.has(parts[2]!)) {
-      const moduleId = parts[1]!;
+    const parameterPrefix = 'param ';
+    if (line.startsWith(parameterPrefix)) {
+      const moduleEnd = line.indexOf(' ', parameterPrefix.length);
+      if (moduleEnd < 0) return [];
+      const parameterStart = moduleEnd + 1;
+      const parameterEnd = line.indexOf(' ', parameterStart);
+      if (parameterEnd < 0) return [];
+      const parameterId = line.slice(parameterStart, parameterEnd);
+      if (!PROFILE_SELECTOR_PARAMETERS.has(parameterId)) return [];
+      const moduleId = line.slice(parameterPrefix.length, moduleEnd);
       const snapshot = this.parameterSnapshot.get(moduleId);
       return snapshot
-        ? [...snapshot.entries()].map(([parameterId, value]) => `param ${moduleId} ${parameterId} ${value}`)
+        ? [...snapshot.entries()].map(([storedParameterId, value]) => `param ${moduleId} ${storedParameterId} ${value}`)
         : [];
     }
 
-    const name = parts[0];
-    if (name && STACK_PROFILE_SELECTORS.has(name)) {
+    const separator = line.indexOf(' ');
+    if (separator <= 0) return [];
+    const name = line.slice(0, separator);
+    if (STACK_PROFILE_SELECTORS.has(name)) {
       return [...this.stackSnapshot.entries()].map(([parameterId, value]) => `${parameterId} ${value}`);
     }
     return [];
