@@ -190,7 +190,7 @@ requireText(display, "type: 'trim'", 'Non-destructive trim command');
 requireText(display, 'onPointerDown={beginTrimDrag}', 'Direct draggable trim boundaries');
 requireText(display, 'onPointerMove={moveTrimDrag}', 'Continuous trim dragging');
 requireText(display, 'loopTrackProgress(state.selectedTrack, stamp)', 'Truthful selected-track playhead');
-requireText(display, "context.fillText('DRAG I / O'", 'Trim affordance text');
+requireText(display, "context.fillText('DRAG I / O · • FADE'", 'Trim and fade affordance text');
 forbidText(display, 'SHADE_RAMP', 'ASCII shading retired from Loop utility screen');
 forbidText(display, 'L O O P  //  4 TRACK MEMORY', 'Hero Loop display identity retired');
 forbidText(display, 'const outerRim = clamp01', 'Orbital spectacle retired from utility screen');
