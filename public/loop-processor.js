@@ -48,15 +48,18 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
     this.replaceEnvelopeBin = new Int32Array(TRACKS);
     this.replaceEnvelopeBin.fill(-1);
 
-    // Bitmasks are the authoritative performance state. This removes repeated
-    // all-track scans from every rendered sample and prevents duplicate arrays
-    // from disagreeing about STOP/MUTE/SOLO state.
+    // Bitmasks are the authoritative performance state. Compact track lists mirror
+    // the masks so render frames iterate only tracks that can actually do work.
     this.occupiedMask = 0;
     this.activeMask = 0;
     this.muteMask = 0;
     this.soloMask = 0;
     this.playbackMask = 0;
     this.advanceMask = 0;
+    this.playbackTracks = new Uint8Array(TRACKS);
+    this.advanceTracks = new Uint8Array(TRACKS);
+    this.playbackTrackCount = 0;
+    this.advanceTrackCount = 0;
 
     this.undoBuffers = Array.from({ length: TRACKS }, () => null);
     this.undoTags = Array.from({ length: TRACKS }, () => null);
@@ -164,6 +167,12 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
       ? this.occupiedMask & this.activeMask & ~this.muteMask & (soloing ? this.soloMask : 0xff)
       : 0;
     this.advanceMask = this.enabled && this.playing ? this.occupiedMask & this.activeMask : 0;
+    this.playbackTrackCount = 0;
+    this.advanceTrackCount = 0;
+    for (let track = 0; track < TRACKS; track += 1) {
+      if (this.playbackMask & this.bit(track)) this.playbackTracks[this.playbackTrackCount++] = track;
+      if (this.advanceMask & this.bit(track)) this.advanceTracks[this.advanceTrackCount++] = track;
+    }
   }
 
   quantizeFrames() {
@@ -709,9 +718,9 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
       let loopL = 0;
       let loopR = 0;
 
-      if (this.enabled && this.playbackMask) {
-        for (let track = 0; track < TRACKS; track += 1) {
-          if (!(this.playbackMask & this.bit(track))) continue;
+      if (this.enabled && this.playbackTrackCount) {
+        for (let active = 0; active < this.playbackTrackCount; active += 1) {
+          const track = this.playbackTracks[active];
           const length = this.lengths[track];
           const buffer = this.buffers[track];
           if (!buffer || length <= 0) continue;
@@ -778,14 +787,12 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
           if (this.bounceCount >= this.bounceFrames) this.finishBounce();
         }
 
-        if (this.advanceMask) {
-          for (let track = 0; track < TRACKS; track += 1) {
-            if (!(this.advanceMask & this.bit(track))) continue;
-            const length = this.lengths[track];
-            if (length <= 0) { this.positions[track] = 0; continue; }
-            const next = this.positions[track] + 1;
-            this.positions[track] = next >= length ? 0 : next;
-          }
+        for (let active = 0; active < this.advanceTrackCount; active += 1) {
+          const track = this.advanceTracks[active];
+          const length = this.lengths[track];
+          if (length <= 0) { this.positions[track] = 0; continue; }
+          const next = this.positions[track] + 1;
+          this.positions[track] = next >= length ? 0 : next;
         }
       }
       this.clockFrame += 1;
