@@ -112,6 +112,22 @@ forbidText(appCss, '.motion-route', 'Retired motion-route styles');
   fs.writeFileSync(file, source);
 }
 
+{
+  const file = 'scripts/windows-ui-parity-audit.mjs';
+  let source = fs.readFileSync(file, 'utf8');
+  source = replaceRequired(source,
+`check(app.includes('applyXYAssignments'), 'xy', 'global XY assignment engine');
+check(app.includes("backendRef.current === 'native'") && app.includes('modulatedValue'), 'xy', 'global XY native backend branch');
+check(app.includes('commandLine(\`param \${moduleId} \${parameterId}'), 'xy', 'global XY native parameter command');
+`,
+`check(!app.includes('applyXYAssignments'), 'retired-xy', 'global XY assignment engine removed');
+check(!app.includes('xyAssignments'), 'retired-xy', 'global XY assignment state removed');
+check(!app.includes('modulatedValue'), 'retired-xy', 'global XY native modulation branch removed');
+check(app.includes('commandLine(\`param \${moduleId} \${parameterId}'), 'native-parameters', 'generic native parameter command preserved');
+`, 'Windows XY parity contracts');
+  fs.writeFileSync(file, source);
+}
+
 const failures = [];
 for (const file of walk('src', (name) => /\.(?:ts|tsx|js|jsx|css|json)$/i.test(name))) {
   const lower = fs.readFileSync(file, 'utf8').toLowerCase();
