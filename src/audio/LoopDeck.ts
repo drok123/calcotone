@@ -49,20 +49,14 @@ export class LoopDeck {
     const previous = this.lastSettings;
     const message: { type: 'settings' } & Partial<LoopSettings> = { type: 'settings' };
     let changed = false;
-    const assign = <K extends keyof Omit<LoopSettings, 'trackLevels'>>(key: K): void => {
-      if (!previous || previous[key] !== settings[key]) {
-        message[key] = settings[key];
-        changed = true;
-      }
-    };
 
-    assign('enabled');
-    assign('selectedTrack');
-    assign('masterLevel');
-    assign('overdub');
-    assign('fade');
-    assign('bpm');
-    assign('quantize');
+    if (!previous || previous.enabled !== settings.enabled) { message.enabled = settings.enabled; changed = true; }
+    if (!previous || previous.selectedTrack !== settings.selectedTrack) { message.selectedTrack = settings.selectedTrack; changed = true; }
+    if (!previous || previous.masterLevel !== settings.masterLevel) { message.masterLevel = settings.masterLevel; changed = true; }
+    if (!previous || previous.overdub !== settings.overdub) { message.overdub = settings.overdub; changed = true; }
+    if (!previous || previous.fade !== settings.fade) { message.fade = settings.fade; changed = true; }
+    if (!previous || previous.bpm !== settings.bpm) { message.bpm = settings.bpm; changed = true; }
+    if (!previous || previous.quantize !== settings.quantize) { message.quantize = settings.quantize; changed = true; }
 
     const levelsChanged = !previous
       || previous.trackLevels.length !== settings.trackLevels.length
