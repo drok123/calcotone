@@ -31,7 +31,6 @@ import {
   pressLoopTrack,
   sendLoopCommand,
   setLoopState,
-  setSelectedTrackLevel,
   useLoopState,
 } from '../signal/loopStore';
 import {
@@ -658,6 +657,65 @@ function ChaosModule({
   );
 }
 
+type LoopUtilitySliderProps = {
+  label: string;
+  value: number;
+  display: string;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+};
+
+function LoopUtilitySlider({ label, value, display, onChange, disabled = false }: LoopUtilitySliderProps) {
+  return (
+    <label className="loop-utility-slider" title={`${label} ${display}`}>
+      <span>{label}</span>
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.001"
+        value={value}
+        disabled={disabled}
+        aria-label={`Loop ${label}`}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <output>{display}</output>
+    </label>
+  );
+}
+
+type LoopTrackFaderProps = {
+  track: number;
+  value: number;
+  selected: boolean;
+  occupied: boolean;
+  locked: boolean;
+  onSelect: () => void;
+  onChange: (value: number) => void;
+};
+
+function LoopTrackFader({ track, value, selected, occupied, locked, onSelect, onChange }: LoopTrackFaderProps) {
+  return (
+    <label className={`loop-track-fader ${selected ? 'is-selected' : ''} ${occupied ? 'is-occupied' : 'is-empty'} ${locked ? 'is-locked' : ''}`}>
+      <span className="loop-fader-channel">T{track + 1}</span>
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.001"
+        value={value}
+        disabled={locked}
+        aria-label={`Loop track ${track + 1} level`}
+        onPointerDown={onSelect}
+        onFocus={onSelect}
+        onDoubleClick={() => onChange(0.72)}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <output>{Math.round(value * 100)}</output>
+    </label>
+  );
+}
+
 function LoopModule({
   running,
   visualState,
@@ -668,45 +726,44 @@ function LoopModule({
 }) {
   const state = useLoopState();
   const [trimEditing, setTrimEditing] = useState(false);
-  const trackLevel = state.trackLevels[state.selectedTrack] ?? 0.72;
   const selectedFilled = (state.trackMask & (1 << state.selectedTrack)) !== 0;
   const writing = state.transport === 'recording' || state.transport === 'overdubbing';
   const minimumTrim = state.rawFrames > 0 ? Math.min(0.25, 64 / state.rawFrames) : 0.001;
-  const knobLabels = trimEditing ? ['IN', 'OUT', 'Track', 'Fade'] as const : ['Track', 'Loop', 'RETAIN', 'Fade'] as const;
-  const knobValues = trimEditing
-    ? [state.trimStart, state.trimEnd, trackLevel, state.fade] as const
-    : [trackLevel, state.masterLevel, state.overdub, state.fade] as const;
 
   useEffect(() => {
     if ((!selectedFilled || writing) && trimEditing) setTrimEditing(false);
   }, [selectedFilled, trimEditing, writing]);
 
-  function setKnob(index: number, value: number): void {
-    if (trimEditing) {
-      if (index === 0) sendLoopCommand({ type: 'trim', start: Math.min(value, state.trimEnd - minimumTrim), end: state.trimEnd });
-      else if (index === 1) sendLoopCommand({ type: 'trim', start: state.trimStart, end: Math.max(value, state.trimStart + minimumTrim) });
-      else if (index === 2) setSelectedTrackLevel(value);
-      else setLoopState({ fade: value });
-      return;
-    }
-    if (index === 0) setSelectedTrackLevel(value);
-    else if (index === 1) setLoopState({ masterLevel: value });
-    else if (index === 2) setLoopState({ overdub: value });
-    else setLoopState({ fade: value });
+  function setTrackLevel(track: number, value: number): void {
+    const levels = [...state.trackLevels];
+    levels[track] = clamp01(value);
+    setLoopState({ trackLevels: levels });
   }
 
-  function resetKnob(index: number): void {
-    if (trimEditing) {
-      if (index === 0) sendLoopCommand({ type: 'trim', start: 0, end: state.trimEnd });
-      else if (index === 1) sendLoopCommand({ type: 'trim', start: state.trimStart, end: 1 });
-      else if (index === 2) setSelectedTrackLevel(0.72);
-      else setLoopState({ fade: 0.18 });
-      return;
-    }
-    if (index === 0) setSelectedTrackLevel(0.72);
-    else if (index === 1) setLoopState({ masterLevel: 0.78 });
-    else if (index === 2) setLoopState({ overdub: 0 });
-    else setLoopState({ fade: 0.18 });
+  function selectTrack(track: number): void {
+    if (writing && track !== state.selectedTrack) return;
+    if (track !== state.selectedTrack) setLoopState({ selectedTrack: track });
+  }
+
+  function setTrimStart(value: number): void {
+    sendLoopCommand({
+      type: 'trim',
+      start: Math.min(clamp01(value), state.trimEnd - minimumTrim),
+      end: state.trimEnd,
+    });
+  }
+
+  function setTrimEnd(value: number): void {
+    sendLoopCommand({
+      type: 'trim',
+      start: state.trimStart,
+      end: Math.max(clamp01(value), state.trimStart + minimumTrim),
+    });
+  }
+
+  function toggleAllTransport(): void {
+    if (writing || state.trackMask === 0) return;
+    sendLoopCommand('play');
   }
 
   const buttons = Array.from({ length: LOOP_VISIBLE_TRACK_COUNT }, (_, track) => {
@@ -744,6 +801,32 @@ function LoopModule({
           <span className="loop-track-bank" aria-label={`Four track Loop bank, track ${state.selectedTrack + 1} selected`}>
             4 TRK · T{state.selectedTrack + 1} · {running ? 'LIVE' : 'READY'}
           </span>
+          <div className="loop-utility-bank" aria-label={trimEditing ? 'Loop trim utilities' : 'Loop master utilities'}>
+            {trimEditing ? (
+              <>
+                <LoopUtilitySlider label="IN" value={state.trimStart} display={`${Math.round(state.trimStart * 100)}`} onChange={setTrimStart} disabled={writing} />
+                <LoopUtilitySlider label="OUT" value={state.trimEnd} display={`${Math.round(state.trimEnd * 100)}`} onChange={setTrimEnd} disabled={writing} />
+                <LoopUtilitySlider label="FADE" value={state.fade} display={`${Math.round(state.fade * 20)}ms`} onChange={(value) => setLoopState({ fade: value })} disabled={writing} />
+                <button type="button" className="loop-utility-button" disabled={writing || !selectedFilled} onClick={() => sendLoopCommand({ type: 'autoTrim' })}>AUTO</button>
+                <button type="button" className="loop-utility-button" disabled={writing || !selectedFilled} onClick={() => sendLoopCommand({ type: 'resetTrim' })}>RESET</button>
+              </>
+            ) : (
+              <>
+                <LoopUtilitySlider label="MSTR" value={state.masterLevel} display={`${Math.round(state.masterLevel * 100)}`} onChange={(value) => setLoopState({ masterLevel: value })} />
+                <LoopUtilitySlider label="RET" value={state.overdub} display={`${Math.round(state.overdub * 100)}`} onChange={(value) => setLoopState({ overdub: value })} />
+                <LoopUtilitySlider label="FADE" value={state.fade} display={`${Math.round(state.fade * 20)}ms`} onChange={(value) => setLoopState({ fade: value })} />
+                <button
+                  type="button"
+                  className={`loop-utility-button loop-all-toggle ${state.transport === 'playing' ? 'active' : ''}`}
+                  disabled={writing || state.trackMask === 0}
+                  onClick={toggleAllTransport}
+                  aria-label={state.transport === 'stopped' ? 'Play all Loop tracks' : 'Stop all Loop tracks'}
+                >
+                  {state.transport === 'stopped' ? 'ALL ▶' : 'ALL ■'}
+                </button>
+              </>
+            )}
+          </div>
           <button
             type="button"
             className={`loop-trim-toggle ${trimEditing ? 'active' : ''}`}
@@ -759,7 +842,7 @@ function LoopModule({
     >
       <RailCFaceplateSurface
         moduleId="pressure"
-        knobRowClass="pressure-rail-knobs"
+        knobRowClass="pressure-rail-faders"
         viewport={(
           <div className={`pressure-ascii dsp-viewport ${state.enabled ? 'active' : 'is-off'}`} aria-label="Four track Loop memory display">
             <LoopTrackMatrixDisplay
@@ -769,26 +852,23 @@ function LoopModule({
             />
           </div>
         )}
-        knobs={knobLabels.map((label, index) => (
-          <Knob
-            key={label}
-            label={label}
-            value={knobValues[index]}
-            effectiveValue={knobValues[index]}
-            display={trimEditing && index < 2
-              ? `${(knobValues[index] * 100).toFixed(1)}%`
-              : index === 3
-                ? `${Math.round(knobValues[index] * 20)} ms`
-                : `${Math.round(knobValues[index] * 100)}%`}
-            patchTarget={`pressure.loop-${index}`}
-            onChange={(value) => setKnob(index, value)}
-            onReset={() => resetKnob(index)}
-            onPatchStart={() => undefined}
-            onPatchMove={() => undefined}
-            onPatchEnd={() => undefined}
-            onPatchDisconnect={() => undefined}
-          />
-        ))}
+        knobs={Array.from({ length: LOOP_VISIBLE_TRACK_COUNT }, (_, track) => {
+          const selected = track === state.selectedTrack;
+          const occupied = (state.trackMask & (1 << track)) !== 0;
+          const locked = writing && !selected;
+          return (
+            <LoopTrackFader
+              key={`fader-${track}`}
+              track={track}
+              value={state.trackLevels[track] ?? 0.72}
+              selected={selected}
+              occupied={occupied}
+              locked={locked}
+              onSelect={() => selectTrack(track)}
+              onChange={(value) => setTrackLevel(track, value)}
+            />
+          );
+        })}
         buttons={buttons.map((button) => (
           <button
             type="button"
