@@ -1,4 +1,5 @@
 .module-pressure .loop-track-pad {
+  margin-inline: auto;
   transition: border-color 90ms linear, color 90ms linear, background 90ms linear, opacity 90ms linear, box-shadow 90ms linear;
 }
 
