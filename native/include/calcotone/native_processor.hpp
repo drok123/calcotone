@@ -1,5 +1,6 @@
 #pragma once
 
+#include "calcotone/input_router.hpp"
 #include "calcotone/native_rack.hpp"
 #include "calcotone/loop_processor.hpp"
 #include "calcotone/stack_amp.hpp"
@@ -55,6 +56,9 @@ class NativeProcessor final {
   void set_stack_bypassed(bool bypassed) noexcept;
   void set_stack_input(unsigned source) noexcept;
   void set_stomp_input(unsigned source) noexcept;
+  void set_input_mode(InputRoutingMode mode) noexcept;
+  void set_input_width(float width) noexcept;
+  void set_input_polarity(bool invert_left, bool invert_right) noexcept;
   void set_input_gain(float gain) noexcept;
   void set_output_gain(float gain) noexcept;
   void set_stack_drive(float value) noexcept;
