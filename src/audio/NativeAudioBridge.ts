@@ -72,6 +72,10 @@ export class NativeAudioBridge {
   // machine commits one coherent profile instead of waiting for the next knob write.
   private readonly parameterSnapshot = new Map<string, Map<string, string>>();
   private readonly stackSnapshot = new Map<string, string>();
+  // Loop settings are published as a complete UI snapshot, but each native bridge
+  // line is an idempotent setter. Remember the latest requested line per field so a
+  // fader move does not resend the other twelve unchanged Loop controls every tick.
+  private readonly loopCommandState = new Map<string, string>();
 
   public isConnected(): boolean { return this.connected; }
   public getLastProbeFailure(): string { return this.lastProbeFailure; }
@@ -87,6 +91,14 @@ export class NativeAudioBridge {
   private resetDesiredState(): void {
     this.parameterSnapshot.clear();
     this.stackSnapshot.clear();
+    this.loopCommandState.clear();
+  }
+
+  private loopStateKey(line: string): string | null {
+    const parts = line.trim().split(/\s+/);
+    if (parts[0] === 'loopParam' && parts.length >= 3) return `loopParam:${parts[1]}`;
+    if (parts[0] === 'loopTrackLevel' && parts.length >= 3) return `loopTrackLevel:${parts[1]}`;
+    return null;
   }
 
   private rememberDesiredState(line: string): void {
@@ -195,14 +207,24 @@ export class NativeAudioBridge {
   }
 
   public async commandLine(line: string): Promise<boolean> {
-    if (!this.connected || !line.trim()) return false;
+    const trimmed = line.trim();
+    if (!this.connected || !trimmed) return false;
+    const loopKey = this.loopStateKey(trimmed);
+    if (loopKey && this.loopCommandState.get(loopKey) === trimmed) return true;
+    if (loopKey) this.loopCommandState.set(loopKey, trimmed);
+
     // Remember synchronously, before the queued request runs. Random/preset flows enqueue
     // a selector followed by their knob values in one call stack, so the selector replay
     // sees the final desired snapshot rather than briefly restoring the previous recipe.
-    this.rememberDesiredState(line);
-    const operation = this.commandQueue.then(() => this.sendCommand(line)).then(async (sent) => {
-      if (!sent) return false;
-      for (const replay of this.profileReplayLines(line)) {
+    this.rememberDesiredState(trimmed);
+    const operation = this.commandQueue.then(() => this.sendCommand(trimmed)).then(async (sent) => {
+      if (!sent) {
+        // A failed setter must be retryable. Only clear it if no newer value for the
+        // same field has superseded this queued request.
+        if (loopKey && this.loopCommandState.get(loopKey) === trimmed) this.loopCommandState.delete(loopKey);
+        return false;
+      }
+      for (const replay of this.profileReplayLines(trimmed)) {
         if (!await this.sendCommand(replay)) return false;
       }
       return true;
