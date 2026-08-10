@@ -6,6 +6,7 @@ import {
   loopTrackProgress,
   useLoopState,
   type LoopState,
+  type LoopTrackRuntime,
 } from '../signal/loopStore';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
 import './PressureStyleDisplay.css';
@@ -53,9 +54,21 @@ function trackStateLabel(state: LoopState, track: number): string {
 function trackMoving(state: LoopState, track: number): boolean {
   if (track === state.selectedTrack && (state.transport === 'recording' || state.transport === 'overdubbing')) return true;
   const bit = 1 << track;
+  const transportRunning = state.transport === 'playing' || state.transport === 'recording' || state.transport === 'overdubbing';
   return (state.trackMask & bit) !== 0
     && (state.trackActiveMask & bit) !== 0
-    && state.transport === 'playing';
+    && transportRunning;
+}
+
+function runningTrackProgress(state: LoopState, track: number, runtime: LoopTrackRuntime | undefined, stamp: number): number {
+  if (!runtime || runtime.loopFrames <= 0) return 0;
+  const siblingDuringWrite = track !== state.selectedTrack
+    && (state.transport === 'recording' || state.transport === 'overdubbing')
+    && (state.trackMask & (1 << track)) !== 0
+    && (state.trackActiveMask & (1 << track)) !== 0;
+  if (!siblingDuringWrite) return loopTrackProgress(track, stamp);
+  const elapsedFrames = Math.max(0, stamp - runtime.updatedAtMs) * state.sampleRate / 1000;
+  return clamp01(((runtime.position + elapsedFrames) % runtime.loopFrames) / runtime.loopFrames);
 }
 
 function fourBitMask(value: number): string {
@@ -123,7 +136,7 @@ function drawMatrix(
     const moving = trackMoving(state, track);
     const runtime = state.trackRuntime[track];
     const waveform = runtime?.waveform ?? [];
-    const progress = recording ? ((stamp / 1000) % 4) / 4 : loopTrackProgress(track, stamp);
+    const progress = recording ? ((stamp / 1000) % 4) / 4 : runningTrackProgress(state, track, runtime, stamp);
     const selected = track === state.selectedTrack;
 
     for (let row = top; row < bottom; row += 1) {
