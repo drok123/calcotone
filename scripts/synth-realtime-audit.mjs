@@ -65,7 +65,9 @@ if (!halfBandMatch) {
 } else {
   const coefficients = halfBandMatch[1]
     .split(',')
-    .map((value) => Number(value.trim()))
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map(Number)
     .filter((value) => Number.isFinite(value));
   if (coefficients.length !== 15) failures.push(`Synth half-band contract: expected 15 taps, found ${coefficients.length}`);
   const sum = coefficients.reduce((total, value) => total + value, 0);
