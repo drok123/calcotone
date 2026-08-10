@@ -19,7 +19,6 @@ const ascii = read('src/components/ascii/AsciiArtEngine.tsx');
 const asciiCss = read('src/components/ascii/AsciiArtEngine.css');
 const pressureDisplay = read('src/components/ascii/PressureStyleDisplay.tsx');
 const viewport = read('src/components/effects/ModuleViewport.tsx');
-const field = read('src/components/motion/XYSignalField.tsx');
 const railC = read('src/components/effects/RailCModules.tsx');
 const railCCss = read('src/components/effects/RailCModules.css');
 const app = read('src/App.tsx');
@@ -29,18 +28,27 @@ const faceplate = read('src/ui/faceplateLayout.ts');
 const vite = read('vite.config.ts');
 const main = read('src/main.tsx');
 
+for (const retiredPath of [
+  'src/components/motion/MotionPad.tsx',
+  'src/components/motion/MotionPad.css',
+  'src/components/motion/XYSignalField.tsx',
+  'src/components/motion/UiPolish.css',
+  'src/ui/motion.ts',
+]) {
+  if (existsSync(resolve(root, retiredPath))) failures.push(`Retired XY path still exists: ${retiredPath}`);
+}
+forbidText(app, 'xyAssignments', 'Retired XY assignment state');
+forbidText(app, 'onPatchStart', 'Retired XY patch callbacks');
+forbidText(appCss, '.xy-', 'Retired XY styles');
+forbidText(appCss, '.knob-patch-jack', 'Retired patch-jack styles');
+forbidText(appCss, '.motion-route', 'Retired motion-route styles');
+
 requireText(viewport, '<PressureStyleDisplay module={module}', 'Pressure-style module ASCII surface');
 requireText(viewport, 'moduleModeKey(module)', 'Dropdown-driven module scene');
 requireText(viewport, 'is-reconfiguring', 'Dropdown reconfiguration transition');
 forbidText(viewport, 'viewport-caption', 'Duplicate module artwork label');
 forbidText(viewport, '<TemporalVideo', 'Module decoder');
 forbidText(viewport, '.mp4', 'Module media asset');
-
-requireText(field, '<AsciiArtEngine', 'XY ASCII surface');
-requireText(field, 'kind="landscape"', 'XY combined landscape');
-requireText(field, 'pressure={signalLab}', 'Existing Pressure state reaches ASCII world');
-forbidText(field, 'DreamFieldEngine', 'Retired Dream fallback');
-forbidText(field, 'VideoLandscapeEngine', 'XY decoder world');
 
 requireText(ascii, 'hashAsciiScene', 'Deterministic scene identity');
 requireText(ascii, 'moduleModeKey', 'Per-dropdown scene identity');
@@ -105,8 +113,6 @@ requireText(hardwarePalette, '.spectrum-header {', 'Cream Spectrum title/LIVE bo
 requireText(hardwarePalette, '.sample-recorder {', 'Cream Recorder chassis');
 requireText(hardwarePalette, '.level-meter span.lit', 'Cream level-meter illumination');
 requireText(hardwarePalette, '.output-meter span.lit', 'Cream output-meter illumination');
-requireText(hardwarePalette, '.knob-patch-jack.assigned', 'Dark metallic knob jacks');
-requireText(hardwarePalette, '.xy-patch-destination.axis-y i', 'Dark metallic XY sockets');
 requireText(hardwarePalette, '.pressure-panel .knob-label', 'Charcoal Pressure labels');
 requireText(hardwarePalette, '.effect-module .module-header h3', 'Charcoal module titles');
 requireText(hardwarePalette, '.effect-module .knob-label', 'Charcoal module control legends');

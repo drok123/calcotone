@@ -187,7 +187,6 @@
 .mode-led,
 .record-led,
 .status-dot,
-.route-count i,
 .footer-actions i {
   display: inline-block;
   border-radius: 50%;
@@ -257,7 +256,6 @@
 .status-dot { width: 7px; height: 7px; flex: 0 0 auto; }
 .status-dot.active,
 .jewel-light.active,
-.route-count i,
 .footer-actions i.active,
 .mode-led.active {
   background: var(--green);
@@ -313,7 +311,6 @@
 
 .panel-heading,
 .section-header,
-.route-inspector-heading,
 .recorder-heading,
 .spectrum-header {
   display: flex;
@@ -873,41 +870,6 @@ body.knob-is-dragging .knob-shell:focus { transform: translateY(1px) scale(.975)
   border-color: #91ffb4;
   box-shadow: 0 0 7px rgba(101,255,154,.65), inset 0 1px rgba(255,255,255,.65);
 }
-.route-inspector-heading {
-  min-height: 28px;
-  color: #aab3ac;
-  font: 900 .67rem/1 var(--mono);
-  letter-spacing: .13em;
-}
-.route-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: #8cffae;
-}
-.route-count i { width: 6px; height: 6px; }
-.empty-routes {
-  margin: 0;
-  padding: 12px;
-  border: 1px dashed #294332;
-  border-radius: 8px;
-  color: #899195;
-  background: rgba(4,15,8,.5);
-  font: 700 .65rem/1.35 var(--mono);
-  text-align: center;
-}
-.route-depth {
-  display: grid;
-  grid-template-columns: auto 1fr 26px;
-  align-items: center;
-  gap: 8px;
-}
-.route-depth span,
-.route-depth strong,
-.route-controls span { color: #7c8980; font: 800 .56rem/1 var(--mono); }
-.route-depth strong { color: #86ffab; text-align: right; }
-.route-controls { display: grid; gap: 8px; margin-top: 10px; }
-.route-controls label { display: grid; gap: 4px; }
 
 .sample-recorder {
   display: grid;
@@ -2171,7 +2133,6 @@ body {
 .status-dot,
 .mode-led,
 .record-led,
-.route-count i,
 .footer-actions i {
   background: #0d1215;
   border-color: #384147;

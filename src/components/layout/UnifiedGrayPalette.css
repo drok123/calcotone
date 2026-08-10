@@ -21,7 +21,6 @@ select,
 input[type="text"],
 .sample-name,
 .performance-mode button:not(.active),
-.empty-routes,
 .meter-pair,
 .output-meter,
 .input-matrix,
@@ -43,15 +42,13 @@ input[type="text"],
 
 /* Gray sub-surfaces inside the recorder and routing UI. */
 .take-preview,
-.take-preview div,
-.route-controls {
+.take-preview div {
   background-color: transparent !important;
 }
 
 /* Keep actual display glass / animation wells black rather than turning them gray. */
 .spectrum-screen,
 .dsp-viewport,
-.dream-pad,
 .module-viewport,
 .module-viewport-shell,
 .module-screen,

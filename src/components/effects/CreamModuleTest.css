@@ -170,8 +170,6 @@
 .input-matrix,
 .meter-pair,
 .output-meter,
-.empty-routes,
-.route-controls select,
 select,
 input[type="text"],
 .sample-name,
@@ -189,7 +187,6 @@ input[type="text"],
 .input-matrix,
 .meter-pair,
 .output-meter,
-.empty-routes,
 select,
 input[type="text"],
 .sample-name,
@@ -310,13 +307,6 @@ input[type="text"],
 
   .performance-mode { gap: 9px !important; }
   .performance-mode button { min-height: 40px !important; }
-
-  .performance-panel .empty-routes {
-    min-height: 58px;
-    display: grid;
-    place-items: center;
-    margin: 0;
-  }
 
   .performance-panel .sample-recorder {
     align-self: end;

@@ -10,8 +10,6 @@
 .knob-control:hover .knob-value,
 .knob-control:focus-within .knob-value,
 .performance-mode button.active,
-.route-count,
-.route-depth strong,
 .recorder-heading time,
 .spectrum-status.active {
   color: var(--ink, #edf2ed) !important;

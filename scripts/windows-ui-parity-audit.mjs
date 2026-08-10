@@ -122,9 +122,10 @@ check(app.includes('randomizeRailCModule'), 'randomization', 'rail-C randomizati
 check(app.includes('RANDOM_MUTATION_AMOUNT') || railC.includes('RANDOM_MUTATION_AMOUNT'), 'randomization', 'guarded mutate mode');
 check(railC.includes("useRailCRandomController('chaos'"), 'randomization', 'Stack randomization registration');
 
-check(app.includes('applyXYAssignments'), 'xy', 'global XY assignment engine');
-check(app.includes("backendRef.current === 'native'") && app.includes('modulatedValue'), 'xy', 'global XY native backend branch');
-check(app.includes('commandLine(`param ${moduleId} ${parameterId}'), 'xy', 'global XY native parameter command');
+check(!app.includes('applyXYAssignments'), 'retired-xy', 'global XY assignment engine removed');
+check(!app.includes('xyAssignments'), 'retired-xy', 'global XY assignment state removed');
+check(!app.includes('modulatedValue'), 'retired-xy', 'global XY native modulation branch removed');
+check(app.includes('commandLine(`param ${moduleId} ${parameterId}'), 'native-parameters', 'generic native parameter command preserved');
 
 for (const parameter of ['console', 'tube', 'chainOrder']) {
   check(!app.includes(`id: '${parameter}'`), 'artifact', `${parameter} UI state removed`);
