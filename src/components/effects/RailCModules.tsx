@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { VisualAudioState } from '../../visual/VisualEngine';
-import type { ModuleState, XYAssignment } from '../../ui/types';
+import type { ModuleState } from '../../ui/types';
 import { Knob } from '../controls/Knob';
 import { RailCHardwareDisplay } from '../ascii/RailCHardwareDisplay';
 import { LoopTrackMatrixDisplay } from '../ascii/LoopTrackMatrixDisplay';
@@ -458,7 +458,7 @@ function StompModule({ engineRunning, visualState, onEnabledChange, onModeChange
             />
           </div>
         )}
-        knobs={controls.map((label,index)=><Knob key={`${mode}-${label}`} label={label} value={values[index]!} effectiveValue={values[index]!} display={`${Math.round(values[index]!*100)}%`} patchTarget={`stomp.${index}`} onChange={(value)=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?value:item));}} onReset={()=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?0.5:item));}} onPatchStart={()=>undefined} onPatchMove={()=>undefined} onPatchEnd={()=>undefined} onPatchDisconnect={()=>undefined}/>) }
+        knobs={controls.map((label,index)=><Knob key={`${mode}-${label}`} label={label} value={values[index]!} effectiveValue={values[index]!} display={`${Math.round(values[index]!*100)}%`} onChange={(value)=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?value:item));}} onReset={()=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?0.5:item));}}/>) }
       />
     </RailModuleFrame>
   );
@@ -643,13 +643,8 @@ function ChaosModule({
             value={values[index]}
             effectiveValue={values[index]}
             display={`${Math.round(values[index] * 100)}%`}
-            patchTarget={`chaos.${index}`}
             onChange={(value) => setValues((current) => current.map((item, valueIndex) => valueIndex === index ? value : item))}
             onReset={() => setValues((current) => current.map((item, valueIndex) => valueIndex === index ? [0.36, 0.52, 0.34, 0.62][index]! : item))}
-            onPatchStart={() => undefined}
-            onPatchMove={() => undefined}
-            onPatchEnd={() => undefined}
-            onPatchDisconnect={() => undefined}
           />
         ))}
       />
@@ -888,12 +883,9 @@ function LoopModule({
   );
 }
 
-
-
 export function RailCModule({
   moduleId,
   modules,
-  assignments,
   visualState,
   running,
   onStompEnabledChange,
@@ -912,7 +904,6 @@ export function RailCModule({
 }: RailInteractionProps & {
   moduleId: string;
   modules: ModuleState[];
-  assignments: XYAssignment[];
   visualState: VisualAudioState;
   running: boolean;
   onStompEnabledChange: (enabled: boolean) => void;
@@ -929,7 +920,6 @@ export function RailCModule({
   tunerLevel: number;
 }) {
   void modules;
-  void assignments;
   if (moduleId === 'stomp') {
     return <StompModule {...interaction} engineRunning={running} visualState={visualState} onEnabledChange={onStompEnabledChange} onModeChange={onStompModeChange} onInputSourceChange={onStompInputSourceChange} onParametersChange={onStompParametersChange} />;
   }
