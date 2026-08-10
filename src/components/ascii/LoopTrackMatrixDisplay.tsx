@@ -172,10 +172,10 @@ function drawMatrix(
         }
 
         const onOuterMotionBand = Math.abs(radius - 1.025) < 0.19;
-        if ((occupied || recording) && moving && onOuterMotionBand && trailDelta < 0.115) {
-          accents[row]![column] = trailDelta < 0.030 || wiperDelta < 0.022 ? '*' : '+';
+        if ((occupied || recording) && moving && onOuterMotionBand && trailDelta < 0.105) {
+          accents[row]![column] = trailDelta < 0.025 || wiperDelta < 0.018 ? '*' : '+';
         }
-        if ((occupied || recording) && onOuterMotionBand && wiperDelta < 0.021) accents[row]![column] = '*';
+        if ((occupied || recording) && onOuterMotionBand && wiperDelta < 0.016) accents[row]![column] = '*';
 
         // TRIM stays on the selected orbit, but its active arc and boundary marks
         // are deliberately wider now so the display reads at a glance.
