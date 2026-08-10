@@ -149,5 +149,65 @@ int main() {
   consume(loop);
   assert((loop.track_mask() & 4U) == 0U);
   assert((loop.track_mask() & 3U) == 3U);
+
+  // RC-style performance commands are true engine state, not fader tricks.
+  // The Windows bridge encodes them above the physical 0..1 fader range; prove
+  // STOP/START, MUTE, SOLO and an ordinary fader write all produce distinct sums.
+  calcotone::LoopProcessor performance_loop(48'000.F);
+  performance_loop.set_enabled(true);
+  performance_loop.set_master_level(1.F);
+  performance_loop.set_fade(0.F);
+  performance_loop.set_track_level(0U, 1.F);
+  performance_loop.set_track_level(1U, 1.F);
+
+  std::vector<float> track_one(128U * 2U);
+  fill(track_one, .2F, .2F);
+  performance_loop.set_selected_track(0U);
+  performance_loop.command(calcotone::LoopCommand::Record);
+  performance_loop.process(track_one.data(), 128U);
+  performance_loop.command(calcotone::LoopCommand::Record);
+  consume(performance_loop);
+
+  std::vector<float> track_two(128U * 2U);
+  fill(track_two, .1F, .1F);
+  performance_loop.set_selected_track(1U);
+  performance_loop.command(calcotone::LoopCommand::Record);
+  performance_loop.process(track_two.data(), 128U);
+  performance_loop.command(calcotone::LoopCommand::Record);
+  consume(performance_loop);
+  performance_loop.set_selected_track(0U);
+
+  const auto render_peak = [](calcotone::LoopProcessor& processor) {
+    std::vector<float> block(64U * 2U, 0.F);
+    processor.process(block.data(), 64U);
+    float maximum = 0.F;
+    for (const float sample : block) maximum = std::max(maximum, std::abs(sample));
+    return maximum;
+  };
+
+  const float both_tracks = render_peak(performance_loop);
+  assert(both_tracks > .29F && both_tracks < .31F);
+
+  performance_loop.set_track_level(0U, 3.F);  // private TrackStop sentinel
+  const float track_one_stopped = render_peak(performance_loop);
+  assert(track_one_stopped > .09F && track_one_stopped < .11F);
+
+  performance_loop.set_track_level(0U, 2.F);  // private TrackPlay sentinel
+  const float track_one_restarted = render_peak(performance_loop);
+  assert(track_one_restarted > .29F && track_one_restarted < .31F);
+
+  performance_loop.set_track_level(0U, 4.F);  // private Mute sentinel
+  const float track_one_muted = render_peak(performance_loop);
+  assert(track_one_muted > .09F && track_one_muted < .11F);
+  performance_loop.set_track_level(0U, 4.F);
+
+  performance_loop.set_track_level(0U, 5.F);  // private Solo sentinel
+  const float track_one_solo = render_peak(performance_loop);
+  assert(track_one_solo > .19F && track_one_solo < .21F);
+  performance_loop.set_track_level(0U, 5.F);
+
+  performance_loop.set_track_level(0U, .5F);  // ordinary fader remains ordinary
+  const float half_track_one = render_peak(performance_loop);
+  assert(half_track_one > .19F && half_track_one < .21F);
   return 0;
 }
