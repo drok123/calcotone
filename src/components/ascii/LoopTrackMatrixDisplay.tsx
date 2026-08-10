@@ -87,18 +87,23 @@ function drawMatrix(
   stamp: number,
 ): void {
   const highDefinition = getDisplayProfile().reference1440p;
+
+  // The old matrix packed 84-112 columns and a forced 24 rows into this small
+  // display. That preserved detail but crushed the final glyphs after the canvas
+  // was scaled back into the physical viewport. Loop deliberately spends pixels
+  // on legibility instead: fewer, heavier cells with a bounded 16-20 row grid.
   const columns = highDefinition
-    ? Math.max(84, Math.min(112, Math.floor(width / 3.2)))
-    : Math.max(76, Math.min(104, Math.floor(width / 3.45)));
+    ? Math.max(62, Math.min(72, Math.floor(width / 5.4)))
+    : Math.max(58, Math.min(68, Math.floor(width / 5.8)));
   const fontSize = highDefinition
-    ? Math.max(4.2, Math.min(6.2, width / columns * 1.40))
-    : Math.max(4.2, Math.min(6.0, width / columns * 1.38));
-  const lineHeight = fontSize * 1.03;
-  const rows = Math.max(24, Math.floor(height / lineHeight));
+    ? Math.max(6.4, Math.min(9.2, width / columns * 1.55))
+    : Math.max(6.0, Math.min(8.6, width / columns * 1.50));
+  const lineHeight = fontSize * 1.08;
+  const rows = Math.max(16, Math.min(20, Math.floor(height / lineHeight)));
   const headerRows = 3;
   const footerRows = 1;
   const graphStart = headerRows;
-  const graphRows = Math.max(16, rows - headerRows - footerRows);
+  const graphRows = Math.max(10, rows - headerRows - footerRows);
   const cellWidth = Math.floor(columns / 2);
   const cellHeight = Math.floor(graphRows / 2);
   const chars = Array.from({ length: rows }, () => Array.from({ length: columns }, () => ' '));
@@ -126,11 +131,11 @@ function drawMatrix(
     const right = cellColumn === 1 ? columns : left + cellWidth;
     const bottom = cellRow === 1 ? graphStart + graphRows : top + cellHeight;
     const localWidth = Math.max(12, right - left);
-    const localHeight = Math.max(7, bottom - top);
+    const localHeight = Math.max(6, bottom - top);
     const centerColumn = left + (localWidth - 1) * 0.5;
     const centerRow = top + (localHeight - 1) * 0.5;
-    const radiusX = Math.max(6, localWidth * 0.315);
-    const radiusY = Math.max(2.4, localHeight * 0.40);
+    const radiusX = Math.max(5.5, localWidth * 0.315);
+    const radiusY = Math.max(2.0, localHeight * 0.37);
     const occupied = (state.trackMask & (1 << track)) !== 0;
     const recording = track === state.selectedTrack && state.transport === 'recording';
     const moving = trackMoving(state, track);
@@ -149,15 +154,13 @@ function drawMatrix(
         const wiperDelta = Math.abs(((orbitPosition - progress + 1.5) % 1) - 0.5);
         const trailDelta = (progress - orbitPosition + 1) % 1;
 
-        // This is the same three-band mechanical clock language as the original
-        // single Loop display: outer rim, shaded body, inner groove and index ticks.
-        const outerRim = clamp01(1 - Math.abs(radius - 1.025) / 0.115);
-        const rimBody = clamp01(1 - Math.abs(radius - 0.955) / 0.125) * 0.56;
-        const innerGroove = clamp01(1 - Math.abs(radius - 0.865) / 0.060) * 0.72;
-        const indexTick = Math.max(0, 1 - Math.abs(Math.sin(angle * 6)) / 0.115)
-          * clamp01(1 - Math.abs(radius - 1.13) / 0.075) * 0.92;
+        const outerRim = clamp01(1 - Math.abs(radius - 1.025) / 0.13);
+        const rimBody = clamp01(1 - Math.abs(radius - 0.955) / 0.14) * 0.56;
+        const innerGroove = clamp01(1 - Math.abs(radius - 0.855) / 0.075) * 0.72;
+        const indexTick = Math.max(0, 1 - Math.abs(Math.sin(angle * 6)) / 0.14)
+          * clamp01(1 - Math.abs(radius - 1.13) / 0.09) * 0.92;
         const ordered = BAYER_4[(row - top) & 3]![(column - left) & 3]! / 15 - 0.5;
-        const shellIntensity = clamp01(Math.max(outerRim * 0.96, rimBody, innerGroove, indexTick) + ordered * 0.045);
+        const shellIntensity = clamp01(Math.max(outerRim * 0.96, rimBody, innerGroove, indexTick) + ordered * 0.04);
 
         if (shellIntensity > 0.08) {
           chars[row]![column] = shellIntensity > 0.68
@@ -168,29 +171,28 @@ function drawMatrix(
               )] ?? '.';
         }
 
-        const onOuterMotionBand = Math.abs(radius - 1.025) < 0.17;
-        if ((occupied || recording) && moving && onOuterMotionBand && trailDelta < 0.105) {
-          accents[row]![column] = trailDelta < 0.025 || wiperDelta < 0.018 ? '*' : '+';
+        const onOuterMotionBand = Math.abs(radius - 1.025) < 0.19;
+        if ((occupied || recording) && moving && onOuterMotionBand && trailDelta < 0.115) {
+          accents[row]![column] = trailDelta < 0.030 || wiperDelta < 0.022 ? '*' : '+';
         }
-        if ((occupied || recording) && onOuterMotionBand && wiperDelta < 0.016) accents[row]![column] = '*';
+        if ((occupied || recording) && onOuterMotionBand && wiperDelta < 0.021) accents[row]![column] = '*';
 
-        // The selected trim range lives on the same orbit instead of replacing the
-        // four-track overview with a different screen.
+        // TRIM stays on the selected orbit, but its active arc and boundary marks
+        // are deliberately wider now so the display reads at a glance.
         if (trimEditing && selected && occupied && onOuterMotionBand) {
           const insideTrim = state.trimEnd >= state.trimStart
             ? orbitPosition >= state.trimStart && orbitPosition <= state.trimEnd
             : orbitPosition >= state.trimStart || orbitPosition <= state.trimEnd;
-          if (insideTrim && accents[row]![column] === ' ') accents[row]![column] = '.';
+          if (insideTrim && accents[row]![column] === ' ') accents[row]![column] = '+';
           const inDelta = Math.abs(((orbitPosition - state.trimStart + 1.5) % 1) - 0.5);
           const outDelta = Math.abs(((orbitPosition - state.trimEnd + 1.5) % 1) - 0.5);
-          if (inDelta < 0.012) accents[row]![column] = '[';
-          if (outDelta < 0.012) accents[row]![column] = ']';
+          if (inDelta < 0.022) accents[row]![column] = '[';
+          if (outDelta < 0.022) accents[row]![column] = ']';
         }
 
-        // Same inner transient trace as the original clock, scaled into each cell.
-        const waveLeft = centerColumn - radiusX * 0.74;
-        const waveRight = centerColumn + radiusX * 0.74;
-        if (column >= waveLeft && column <= waveRight && waveform.length > 0 && radius < 0.78) {
+        const waveLeft = centerColumn - radiusX * 0.72;
+        const waveRight = centerColumn + radiusX * 0.72;
+        if (column >= waveLeft && column <= waveRight && waveform.length > 0 && radius < 0.76) {
           const normalizedX = (column - waveLeft) / Math.max(1, waveRight - waveLeft);
           const waveformIndex = Math.min(waveform.length - 1, Math.floor(normalizedX * waveform.length));
           const amplitude = clamp01(waveform[waveformIndex] ?? 0);
@@ -209,8 +211,14 @@ function drawMatrix(
     const labelRow = Math.max(top, Math.min(bottom - 1, Math.round(centerRow)));
     const labelStart = Math.max(left, Math.round(centerColumn - label.length / 2));
     for (let index = 0; index < label.length && labelStart + index < right; index += 1) {
-      chars[labelRow]![labelStart + index] = label[index]!;
-      accents[labelRow]![labelStart + index] = ' ';
+      const column = labelStart + index;
+      if (selected) {
+        chars[labelRow]![column] = ' ';
+        accents[labelRow]![column] = label[index]!;
+      } else {
+        chars[labelRow]![column] = label[index]!;
+        accents[labelRow]![column] = ' ';
+      }
     }
   }
 
@@ -220,23 +228,23 @@ function drawMatrix(
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.fillStyle = '#050706';
   context.fillRect(0, 0, width, height);
-  context.font = `700 ${fontSize}px "IBM Plex Mono", "SFMono-Regular", Consolas, monospace`;
+  context.font = `800 ${fontSize}px "IBM Plex Mono", "SFMono-Regular", Consolas, monospace`;
   const textWidth = Math.max(1, context.measureText('M'.repeat(columns)).width);
   const textHeight = Math.max(1, (rows - 1) * lineHeight + fontSize);
   context.setTransform(dpr * width / textWidth, 0, 0, dpr * height / textHeight, 0, 0);
   context.textBaseline = 'top';
-  context.shadowBlur = enabled ? (highDefinition ? 2.2 : 2.8) : 1;
+  context.shadowBlur = enabled ? (highDefinition ? 1.4 : 1.8) : 0.6;
 
   for (let row = 0; row < rows; row += 1) {
     const structure = chars[row]!.join('');
     const motion = accents[row]!.join('');
     const textRow = row < headerRows || row === rows - 1;
-    context.globalAlpha = enabled ? (textRow ? 0.88 : 0.66 + activity * 0.18) : 0.28;
+    context.globalAlpha = enabled ? (textRow ? 0.94 : 0.72 + activity * 0.16) : 0.34;
     context.fillStyle = textRow ? LOOP_PURPLE : OFF_WHITE;
     context.shadowColor = textRow ? LOOP_PURPLE : OFF_WHITE;
     context.fillText(structure, 0, row * lineHeight);
     if (motion.trim()) {
-      context.globalAlpha = enabled ? 0.88 + activity * 0.10 : 0.18;
+      context.globalAlpha = enabled ? 0.94 + activity * 0.05 : 0.24;
       context.fillStyle = LOOP_PURPLE;
       context.shadowColor = LOOP_PURPLE;
       context.fillText(motion, 0, row * lineHeight);
