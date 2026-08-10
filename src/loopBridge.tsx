@@ -5,7 +5,9 @@ import {
   setLoopRuntime,
   LOOP_CHANGE_EVENT,
   LOOP_COMMAND_EVENT,
+  LOOP_PERFORMANCE_COMMAND_EVENT,
   type LoopCommand,
+  type LoopPerformanceCommand,
 } from './components/signal/loopStore';
 
 interface EngineInternals {
@@ -112,12 +114,21 @@ function onLoopCommand(event: Event): void {
   decks.get(activeEngine)?.command((event as CustomEvent<LoopCommand>).detail);
 }
 
+function onLoopPerformanceCommand(event: Event): void {
+  if (!activeEngine) return;
+  const detail = (event as CustomEvent<LoopPerformanceCommand>).detail;
+  if (!detail) return;
+  decks.get(activeEngine)?.command(detail.command);
+}
+
 window.addEventListener(LOOP_CHANGE_EVENT, onLoopChange);
 window.addEventListener(LOOP_COMMAND_EVENT, onLoopCommand);
+window.addEventListener(LOOP_PERFORMANCE_COMMAND_EVENT, onLoopPerformanceCommand);
 
 function uninstall(): void {
   window.removeEventListener(LOOP_CHANGE_EVENT, onLoopChange);
   window.removeEventListener(LOOP_COMMAND_EVENT, onLoopCommand);
+  window.removeEventListener(LOOP_PERFORMANCE_COMMAND_EVENT, onLoopPerformanceCommand);
   if (activeEngine) {
     detachLoop(activeEngine);
     try { originalConnectMasterChain.call(activeEngine); } catch { /* engine may already be stopped */ }
