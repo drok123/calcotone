@@ -1,0 +1,38 @@
+name: Validate XY orphan cleanup
+
+on:
+  push:
+    branches: [remove-xy-clean]
+
+permissions:
+  contents: write
+
+jobs:
+  clean-orphans:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: remove-xy-clean
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Remove orphaned XY inspector styles
+        run: node scripts/clean-xy-orphans.mjs
+      - run: npm run build
+      - run: npm run lint
+      - run: npm run audit:knobs
+      - name: Commit validated cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m "Remove orphaned XY inspector styles"
+            git push origin HEAD:remove-xy-clean
+          fi
