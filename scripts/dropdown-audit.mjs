@@ -48,9 +48,11 @@ const grainProcessor = read('public/grain-processor.js');
 const artifact = read('src/audio/effects/Media.ts');
 const emberDigitalCapture = read('public/ember-digital-capture-processor.js');
 const app = read('src/App.tsx');
+const nativeBridge = read('src/audio/NativeAudioBridge.ts');
 const railC = read('src/components/effects/RailCModules.tsx');
 const loopStore = read('src/components/signal/loopStore.ts');
 const railCArtwork = read('src/components/ascii/RailCHardwareDisplay.tsx');
+const loopArtwork = read('src/components/ascii/LoopTrackMatrixDisplay.tsx');
 
 const EMBER = ['velvet','tube','console','transformer','furnace','exciter','broken','goldlion','mullard','telefunken','bugleboy','rcablack','sp1200','mpc60','mirage','s950','emulator2','fairlightiix'];
 const DRIFT = ['chorus','ensemble','dimension','vibrato','rotary','doppler','liquid','orbit','ce1','dimensiond','mxrflanger','electricmistress','adaflanger','bf2','biphase','smallstone','univibe','leslie','phase90','instantphaser','schulte','pn2'];
@@ -139,15 +141,32 @@ requireText(app, 'Native DSP receives the new values immediately', 'Native RANDO
 requireText(app, 'window.setTimeout(() => revealRandomUiModule(effectId), 48 + index * 96)', 'Native RANDOM serial reveal');
 requireText(railC, 'chooseDifferent(pool, mode)', 'Stomp random mode changes');
 requireText(railC, 'chooseDifferent(modelPool, model)', 'Stack random model changes');
-requireText(loopStore, 'export const LOOP_TRACK_COUNT = 8', 'Loop eight-track selector contract');
+requireText(loopStore, 'export const LOOP_TRACK_COUNT = 8', 'Loop eight-buffer backend contract');
+requireText(loopStore, 'export const LOOP_VISIBLE_TRACK_COUNT = 4', 'Loop four-track faceplate contract');
 forbidText(railC, "useRailCRandomController('pressure'", 'Loop RANDOM isolation');
 for (const mode of ARTIFACT_DYNAMICS) requireText(artifact, `'${mode}'`, `Artifact ${mode} dynamics dropdown`);
 
-// Stomp, Stack, and Loop share the same high-DPI animated hardware-art language as the core rack.
-for (const kind of ['stomp', 'stack', 'loop']) requireText(railCArtwork, `${kind}: {`, `Rail C ${kind} artwork profile`);
-for (const kind of ['stomp', 'stack', 'loop']) requireText(railC, `kind=\"${kind}\"`, `Rail C ${kind} artwork mount`);
+// A selector is not allowed to leave native topology and controls in different generations.
+// The bridge snapshots the latest desired knob state and replays it immediately after mode,
+// algorithm, model, or cabinet changes while preserving the serialized command queue.
+requireText(nativeBridge, "const PROFILE_SELECTOR_PARAMETERS = new Set(['mode', 'algorithm'])", 'Native selector classification');
+requireText(nativeBridge, "const STACK_PROFILE_SELECTORS = new Set(['model', 'cab'])", 'Native Stack selector classification');
+requireText(nativeBridge, 'private readonly parameterSnapshot', 'Native module profile snapshot');
+requireText(nativeBridge, 'private readonly stackSnapshot', 'Native Stack profile snapshot');
+requireText(nativeBridge, 'this.rememberDesiredState(line)', 'Native desired-state capture');
+requireText(nativeBridge, 'this.profileReplayLines(line)', 'Native selector profile replay');
+requireText(nativeBridge, '.then(() => this.sendCommand(line))', 'Native FIFO selector commit');
+
+// Stomp/Stack retain the shared high-DPI hardware renderer. Loop owns a dedicated
+// four-clock matrix so all four performance tracks stay visible at the same time.
+for (const kind of ['stomp', 'stack']) requireText(railCArtwork, `${kind}: {`, `Rail C ${kind} artwork profile`);
+for (const kind of ['stomp', 'stack']) requireText(railC, `kind=\"${kind}\"`, `Rail C ${kind} artwork mount`);
 requireText(railCArtwork, 'subscribeViewportAnimation(render)', 'Rail C artwork shared scheduler');
 requireText(railCArtwork, 'canvasPixelRatio(width, height, 5_400_000)', 'Rail C artwork high-DPI backing');
+requireText(railC, '<LoopTrackMatrixDisplay', 'Loop four-track artwork mount');
+requireText(loopArtwork, 'LOOP_VISIBLE_TRACK_COUNT', 'Loop four-track artwork cardinality');
+requireText(loopArtwork, 'subscribeViewportAnimation(render)', 'Loop artwork shared scheduler');
+requireText(loopArtwork, 'canvasPixelRatio(width, height, 5_400_000)', 'Loop artwork high-DPI backing');
 
 if (failures.length) {
   console.error('\nCALCOTONE dropdown audit failed:\n');
@@ -156,4 +175,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`CALCOTONE dropdown audit passed (${EMBER.length + DRIFT.length + HALO.length + ATMOS.length + GRAIN.length + ARTIFACT.length + ARTIFACT_DYNAMICS.length} modes checked).`);
+console.log(`CALCOTONE dropdown audit passed (${EMBER.length + DRIFT.length + HALO.length + ATMOS.length + GRAIN.length + ARTIFACT.length + ARTIFACT_DYNAMICS.length} modes checked with immediate native profile commits).`);
