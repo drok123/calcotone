@@ -25,6 +25,9 @@ export class LoopDeck {
       onRuntime({
         transport: detail.transport ?? 'empty',
         trackMask: detail.trackMask ?? 0,
+        trackActiveMask: detail.trackActiveMask ?? 0,
+        trackMuteMask: detail.trackMuteMask ?? 0,
+        trackSoloMask: detail.trackSoloMask ?? 0,
         loopFrames: detail.loopFrames ?? 0,
         rawFrames: detail.rawFrames ?? detail.loopFrames ?? 0,
         position: detail.position ?? 0,
