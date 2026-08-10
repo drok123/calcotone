@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/stack_amp_test.dir/link.d CMakeFiles/stack_amp_test.dir/tests/stack_amp_test.cpp.o -o stack_amp_test  libcalcotone_dsp.a

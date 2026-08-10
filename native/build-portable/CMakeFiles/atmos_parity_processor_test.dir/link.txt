@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/atmos_parity_processor_test.dir/link.d CMakeFiles/atmos_parity_processor_test.dir/tests/atmos_parity_processor_test.cpp.o -o atmos_parity_processor_test  libcalcotone_dsp.a

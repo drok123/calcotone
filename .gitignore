@@ -3,3 +3,5 @@ dist/
 native/build/
 
 native/packages/
+
+native/build-portable/

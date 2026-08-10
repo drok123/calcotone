@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/pressure_parity_processor_test.dir/link.d CMakeFiles/pressure_parity_processor_test.dir/tests/pressure_parity_processor_test.cpp.o -o pressure_parity_processor_test  libcalcotone_dsp.a

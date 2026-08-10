@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/grain_parity_processor_test.dir/link.d CMakeFiles/grain_parity_processor_test.dir/tests/grain_parity_processor_test.cpp.o -o grain_parity_processor_test  libcalcotone_dsp.a
