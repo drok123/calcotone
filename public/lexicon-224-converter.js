@@ -1,3 +1,34 @@
+const LEXICON_TANH_MIN = -8;
+const LEXICON_TANH_MAX = 8;
+const LEXICON_TANH_LUT = new Float32Array(2048);
+const LEXICON_TANH_SCALE = (LEXICON_TANH_LUT.length - 1) / (LEXICON_TANH_MAX - LEXICON_TANH_MIN);
+for (let index = 0; index < LEXICON_TANH_LUT.length; index += 1) {
+  const x = LEXICON_TANH_MIN + index / LEXICON_TANH_SCALE;
+  LEXICON_TANH_LUT[index] = Math.tanh(x);
+}
+const LEXICON_TRANSFORMER_NORMALIZATION = 1 / Math.tanh(1.035);
+
+function lexiconHermite(y0, y1, y2, y3, mu) {
+  const mu2 = mu * mu;
+  const a0 = -0.5 * y0 + 1.5 * y1 - 1.5 * y2 + 0.5 * y3;
+  const a1 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+  const a2 = -0.5 * y0 + 0.5 * y2;
+  return a0 * mu * mu2 + a1 * mu2 + a2 * mu + y1;
+}
+
+function lexiconTanh(value) {
+  if (value <= LEXICON_TANH_MIN) return -1;
+  if (value >= LEXICON_TANH_MAX) return 1;
+  const position = (value - LEXICON_TANH_MIN) * LEXICON_TANH_SCALE;
+  const index = Math.floor(position);
+  const mu = position - index;
+  const last = LEXICON_TANH_LUT.length - 1;
+  const i0 = index > 0 ? index - 1 : 0;
+  const i2 = index < last ? index + 1 : last;
+  const i3 = index + 2 < last ? index + 2 : last;
+  return lexiconHermite(LEXICON_TANH_LUT[i0], LEXICON_TANH_LUT[index], LEXICON_TANH_LUT[i2], LEXICON_TANH_LUT[i3], mu);
+}
+
 class CalcotoneLexicon224Converter extends AudioWorkletProcessor {
   constructor(options) {
     super();
@@ -10,6 +41,8 @@ class CalcotoneLexicon224Converter extends AudioWorkletProcessor {
     this.inputFilterR = [0, 0];
     this.outputFilterL = [0, 0];
     this.outputFilterR = [0, 0];
+    this.inputFilterCoefficient = this.lowpassCoefficient(8200);
+    this.outputFilterCoefficient = this.lowpassCoefficient(8800);
     this.gainRangeL = 1;
     this.gainRangeR = 1;
     this.rangeHoldL = 0;
@@ -17,9 +50,12 @@ class CalcotoneLexicon224Converter extends AudioWorkletProcessor {
     this.result = [0, 0];
   }
 
-  lowpass(value, cutoff, state, stage) {
+  lowpassCoefficient(cutoff) {
     const safeCutoff = Math.max(80, Math.min(sampleRate * 0.44, cutoff));
-    const coefficient = 1 - Math.exp(-2 * Math.PI * safeCutoff / sampleRate);
+    return 1 - Math.exp(-2 * Math.PI * safeCutoff / sampleRate);
+  }
+
+  lowpassWithCoefficient(value, coefficient, state, stage) {
     state[stage] += (value - state[stage]) * coefficient;
     return state[stage];
   }
@@ -28,7 +64,7 @@ class CalcotoneLexicon224Converter extends AudioWorkletProcessor {
     // Very restrained transformer/input-amplifier rounding. The 224 identity should
     // come from the converter/algorithm, not from obvious saturation.
     const biased = value + Math.max(0, value) * 0.006;
-    return Math.tanh(biased * 1.035) / Math.tanh(1.035);
+    return lexiconTanh(biased * 1.035) * LEXICON_TRANSFORMER_NORMALIZATION;
   }
 
   selectGainRange(value, channel) {
@@ -61,8 +97,9 @@ class CalcotoneLexicon224Converter extends AudioWorkletProcessor {
     // band-limited sample/hold before the host-rate reverb network.
     left = this.transformer(left);
     right = this.transformer(right);
-    left = this.lowpass(this.lowpass(left, 8200, this.inputFilterL, 0), 8200, this.inputFilterL, 1);
-    right = this.lowpass(this.lowpass(right, 8200, this.inputFilterR, 0), 8200, this.inputFilterR, 1);
+    const coefficient = this.inputFilterCoefficient;
+    left = this.lowpassWithCoefficient(this.lowpassWithCoefficient(left, coefficient, this.inputFilterL, 0), coefficient, this.inputFilterL, 1);
+    right = this.lowpassWithCoefficient(this.lowpassWithCoefficient(right, coefficient, this.inputFilterR, 0), coefficient, this.inputFilterR, 1);
 
     this.phase += 20000 / sampleRate;
     if (this.phase >= 1) {
@@ -81,8 +118,9 @@ class CalcotoneLexicon224Converter extends AudioWorkletProcessor {
     // already been excited by the 20 kHz-domain input stream.
     left = this.quantizeGainStepped(left, 0);
     right = this.quantizeGainStepped(right, 1);
-    left = this.lowpass(this.lowpass(left, 8800, this.outputFilterL, 0), 8800, this.outputFilterL, 1);
-    right = this.lowpass(this.lowpass(right, 8800, this.outputFilterR, 0), 8800, this.outputFilterR, 1);
+    const coefficient = this.outputFilterCoefficient;
+    left = this.lowpassWithCoefficient(this.lowpassWithCoefficient(left, coefficient, this.outputFilterL, 0), coefficient, this.outputFilterL, 1);
+    right = this.lowpassWithCoefficient(this.lowpassWithCoefficient(right, coefficient, this.outputFilterR, 0), coefficient, this.outputFilterR, 1);
     this.result[0] = left;
     this.result[1] = right;
     return this.result;
