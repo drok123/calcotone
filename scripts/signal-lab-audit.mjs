@@ -23,6 +23,7 @@ const artifact = read('src/audio/effects/Media.ts');
 const effectModule = read('src/components/effects/EffectModule.tsx');
 const railC = read('src/components/effects/RailCModules.tsx');
 const loopArtwork = read('src/components/ascii/LoopTrackMatrixDisplay.tsx');
+const loopRefinement = read('src/loopRefinement.css');
 const loopBridge = read('src/loopBridge.tsx');
 const loopStore = read('src/components/signal/loopStore.ts');
 const loopWorklet = read('public/loop-processor.js');
@@ -65,11 +66,11 @@ requireText(nativeArtifact, 'requested_mode >= 14U', 'Native Artifact dynamics i
 requireText(nativeArtifact, 'requested_mode - 14U', 'Native Artifact dynamics model mapping');
 requireText(nativeArtifact, 'std::clamp(std::round(value), 0.F, 17.F)', 'Native Artifact eighteen-mode ceiling');
 
-// Rail C legacy layout id "pressure" now renders LOOP. Preserve the exact approved
-// geometry key while exposing the first four of the eight backend buffers as an
-// RC-style performance bank: one REC/PLAY/DUB pad, one channel fader and one clock per track.
+// Rail C legacy layout id "pressure" now renders LOOP. Its backend remains eight
+// fixed buffers while the performance surface exposes four uniform fader/knob
+// strips. The small canvas is intentionally only the selected-track trim utility.
 requireText(railC, 'name="Loop"', 'Loop rail module heading');
-requireText(railC, 'Array.from({ length: LOOP_VISIBLE_TRACK_COUNT }', 'Loop four-track pad and fader bank');
+requireText(railC, 'Array.from({ length: LOOP_VISIBLE_TRACK_COUNT }', 'Loop four-track knob and fader bank');
 requireText(railC, 'button.action(event.shiftKey)', 'Loop per-track clear gesture');
 requireText(railC, 'function LoopTrackFader(', 'Loop dedicated vertical fader control');
 requireText(railC, 'aria-label={`Loop track ${track + 1} level`}', 'Loop fader accessibility contract');
@@ -80,10 +81,19 @@ requireText(railC, 'label="FADE"', 'Loop fade utility retained');
 requireText(railC, 'sendLoopCommand({ type: \'autoTrim\' })', 'Loop auto trim surfaced');
 requireText(railC, 'sendLoopCommand({ type: \'resetTrim\' })', 'Loop trim reset surfaced');
 requireText(railC, 'toggleAllTransport', 'Loop global play-stop utility');
-requireText(railC, '<LoopTrackMatrixDisplay', 'Loop four-track artwork mount');
-requireText(loopArtwork, 'L O O P  //  4 TRACK MEMORY', 'Loop display identity');
-requireText(loopArtwork, 'LOOP_VISIBLE_TRACK_COUNT', 'Loop four-track artwork contract');
-requireText(loopArtwork, 'loopTrackProgress(track, stamp)', 'Loop per-track visual playhead');
+requireText(railC, '<LoopTrackMatrixDisplay', 'Loop transient trim utility mount');
+requireText(loopArtwork, 'function drawTransientEditor(', 'Loop selected-track transient editor');
+requireText(loopArtwork, 'const waveform = runtime?.waveform ?? state.waveform', 'Loop real transient envelope source');
+requireText(loopArtwork, 'loopTrackProgress(state.selectedTrack, stamp)', 'Loop selected-track visual playhead');
+requireText(loopArtwork, 'onPointerDown={beginTrimDrag}', 'Loop direct IN/OUT trim editing');
+requireText(loopArtwork, "type: 'trim'", 'Loop transient editor trim command path');
+forbidText(loopArtwork, 'L O O P  //  4 TRACK MEMORY', 'Loop hero screen identity stays retired');
+forbidText(loopArtwork, 'LOOP_VISIBLE_TRACK_COUNT', 'Loop utility canvas stays selected-track only');
+requireText(loopRefinement, '--loop-trim-height: 88px', 'Loop trim screen remains compact utility');
+requireText(loopRefinement, '--loop-fader-y: 151px', 'Loop four faders share one row');
+requireText(loopRefinement, '--loop-knob-y: 220px', 'Loop four knobs share one row');
+requireText(loopRefinement, 'repeating-conic-gradient(', 'Loop 505 knob indicator rings');
+requireText(loopRefinement, 'rgba(248, 244, 232, .98)', 'Loop indicator illumination remains off-white');
 requireText(loopStore, 'export const LOOP_TRACK_COUNT = 8', 'Loop eight-buffer backend contract');
 requireText(loopStore, 'export const LOOP_VISIBLE_TRACK_COUNT = 4', 'Loop four-track faceplate contract');
 requireText(loopStore, 'export function pressLoopTrack(track: number): boolean', 'Loop one-button track transport');
@@ -177,4 +187,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE Loop/Artifact dynamics audit passed (8-buffer backend + four track faders/pads + four Artifact compressor topologies).');
+console.log('CALCOTONE Loop/Artifact dynamics audit passed (8-buffer backend + fixed four-strip 505 surface + selected-track transient editor + four Artifact compressor topologies).');
