@@ -1,6 +1,7 @@
 import type { VisualSpectrumSource } from './SharedVisualSpectrum';
 
 const NATIVE_SPECTRUM_URL = 'http://127.0.0.1:48157/spectrum';
+const NATIVE_SPECTRUM_INTERVAL_MS = 50;
 
 export class NativeVisualSpectrum implements VisualSpectrumSource {
   public readonly frequencyBinCount = 128;
@@ -22,7 +23,7 @@ export class NativeVisualSpectrum implements VisualSpectrumSource {
     if (target.length > this.bins.length) target.fill(0, this.bins.length);
 
     const now = performance.now();
-    if (this.requestPending || now - this.lastRequestAt < 20) return;
+    if (this.requestPending || now - this.lastRequestAt < NATIVE_SPECTRUM_INTERVAL_MS) return;
     this.lastRequestAt = now;
     this.requestPending = true;
     void fetch(NATIVE_SPECTRUM_URL, { cache: 'no-store', mode: 'cors', credentials: 'omit' })
