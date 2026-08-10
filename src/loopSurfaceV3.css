@@ -1,6 +1,6 @@
-/* LOOP v3: the transient screen owns trim/clock editing; the header owns transport. */
+/* LOOP v3: the transient screen owns trim/clock editing; the header owns performance controls. */
 .module-pressure {
-  --loop-header-height: 54px;
+  --loop-header-height: 38px;
 }
 
 .module-pressure::after {
@@ -10,11 +10,12 @@
 .module-pressure .module-header {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) 42px !important;
-  grid-template-rows: 28px 22px !important;
+  grid-template-rows: 34px !important;
   min-height: var(--loop-header-height) !important;
   height: var(--loop-header-height) !important;
   flex-basis: var(--loop-header-height) !important;
   gap: 4px 6px !important;
+  align-items: center !important;
 }
 
 .module-pressure .module-title {
@@ -23,104 +24,62 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  overflow: visible;
 }
 
 .module-pressure .module-title h3 {
   flex: 0 0 auto;
-  margin-right: 2px;
+  margin-right: 3px;
 }
 
 .module-pressure .module-toggle {
   grid-column: 2;
   grid-row: 1;
+  align-self: center;
 }
 
-.module-pressure .module-header-control {
-  grid-column: 1 / -1;
-  grid-row: 2;
-  width: 100%;
-  min-width: 0;
-}
-
-/* The old clock and TRIM mode controls remain in React for compatibility but are
-   not part of the visible instrument anymore. */
+/* LOOP no longer has a second micro-control row. The transient screen owns
+   BPM/quantize/trim/fade and MSTR/RETAIN now live beside the transport. */
+.module-pressure .module-header-control,
 .module-pressure .loop-track-bank,
 .module-pressure .loop-clock-bank,
-.module-pressure .loop-trim-toggle {
-  display: none !important;
-}
-
-.module-pressure .loop-header-controls {
-  display: block !important;
-  width: 100% !important;
-  height: 22px !important;
-}
-
-/* Preserve MSTR and RETAIN without letting the retired utility strip take over
-   the module. Fade is edited on the transient bars; transport lives beside LOOP. */
+.module-pressure .loop-trim-toggle,
 .module-pressure .loop-utility-bank {
-  display: grid !important;
-  grid-template-columns: repeat(2, minmax(0, 86px)) !important;
-  justify-content: start;
-  align-items: stretch;
-  gap: 4px;
-  width: auto !important;
-  height: 22px;
-  overflow: visible;
-}
-
-.module-pressure .loop-utility-bank > .loop-utility-slider:nth-child(n + 3),
-.module-pressure .loop-utility-bank > .loop-all-toggle,
-.module-pressure .loop-utility-bank > .loop-505-tools {
   display: none !important;
-}
-
-.module-pressure .loop-utility-bank > .loop-utility-slider:nth-child(1),
-.module-pressure .loop-utility-bank > .loop-utility-slider:nth-child(2) {
-  display: grid !important;
-  height: 22px !important;
-  min-height: 22px !important;
-  grid-template-columns: minmax(0, 1fr) auto !important;
-  grid-template-rows: 9px 9px !important;
-  padding: 1px 4px !important;
-}
-
-.module-pressure .loop-utility-bank > .loop-utility-slider:nth-child(1) input[type='range'],
-.module-pressure .loop-utility-bank > .loop-utility-slider:nth-child(2) input[type='range'] {
-  height: 9px !important;
 }
 
 .module-pressure .loop-header-action-bank {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
   margin-left: 2px;
+  flex: 1 1 auto;
 }
 
 .module-pressure .loop-header-action {
   display: grid;
   place-items: center;
-  height: 20px;
-  min-height: 20px;
-  min-width: 29px;
-  padding: 0 5px;
-  border: 1px solid rgba(242, 234, 216, .20);
-  border-radius: 3px;
-  color: rgba(242, 234, 216, .72);
-  background: linear-gradient(180deg, rgba(255, 255, 255, .025), transparent 55%), #100c08;
-  box-shadow: inset 0 0 5px rgba(0, 0, 0, .38);
-  font: 900 .43rem/1 var(--mono);
-  letter-spacing: .02em;
+  height: 26px;
+  min-height: 26px;
+  min-width: 38px;
+  padding: 0 7px;
+  border: 1px solid rgba(242, 234, 216, .24);
+  border-radius: 4px;
+  color: rgba(242, 234, 216, .84);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .035), transparent 58%), #100c08;
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, .42);
+  font: 900 .54rem/1 var(--mono);
+  letter-spacing: .025em;
   white-space: nowrap;
 }
 
 .module-pressure .loop-header-action:not(:disabled):hover,
 .module-pressure .loop-header-action:focus-visible {
   color: #fffdf6;
-  border-color: rgba(242, 234, 216, .56);
-  box-shadow: 0 0 5px rgba(242, 234, 216, .08), inset 0 0 6px rgba(0, 0, 0, .28);
+  border-color: rgba(242, 234, 216, .64);
+  box-shadow: 0 0 7px rgba(242, 234, 216, .10), inset 0 0 6px rgba(0, 0, 0, .28);
 }
 
 .module-pressure .loop-header-action:disabled {
@@ -129,16 +88,96 @@
 
 .module-pressure .loop-header-track-action {
   color: #fffdf6;
-  border-color: rgba(242, 234, 216, .38);
+  border-color: rgba(242, 234, 216, .46);
 }
 
 .module-pressure .loop-header-action.loop-505-undo,
 .module-pressure .loop-header-action.loop-505-redo {
-  color: rgba(215, 200, 255, .78);
+  color: rgba(225, 216, 255, .92);
 }
 
 .module-pressure .loop-header-action.loop-505-bounce {
-  color: rgba(255, 190, 114, .78);
+  color: rgba(255, 201, 137, .92);
+}
+
+.module-pressure .loop-header-param {
+  display: grid;
+  grid-template-columns: auto 48px 21px;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  min-width: 96px;
+  padding: 0 5px;
+  border: 1px solid rgba(242, 234, 216, .20);
+  border-radius: 4px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .025), transparent 58%), #100c08;
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, .40);
+  color: rgba(242, 234, 216, .82);
+  cursor: ew-resize;
+}
+
+.module-pressure .loop-header-param-label,
+.module-pressure .loop-header-param-value {
+  font: 900 .49rem/1 var(--mono);
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+
+.module-pressure .loop-header-param-value {
+  text-align: right;
+  color: rgba(242, 234, 216, .64);
+  font-variant-numeric: tabular-nums;
+}
+
+.module-pressure .loop-header-param input[type='range'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 48px;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: ew-resize;
+}
+
+.module-pressure .loop-header-param input[type='range']::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(242, 234, 216, .24);
+  box-shadow: inset 0 0 2px rgba(0, 0, 0, .6);
+}
+
+.module-pressure .loop-header-param input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 8px;
+  height: 14px;
+  margin-top: -5px;
+  border: 1px solid rgba(255, 253, 246, .72);
+  border-radius: 2px;
+  background: #d9d1c2;
+  box-shadow: 0 0 4px rgba(242, 234, 216, .18);
+}
+
+.module-pressure .loop-header-param input[type='range']::-moz-range-track {
+  height: 3px;
+  border: 0;
+  border-radius: 2px;
+  background: rgba(242, 234, 216, .24);
+}
+
+.module-pressure .loop-header-param input[type='range']::-moz-range-thumb {
+  width: 8px;
+  height: 14px;
+  border: 1px solid rgba(255, 253, 246, .72);
+  border-radius: 2px;
+  background: #d9d1c2;
+  box-shadow: 0 0 4px rgba(242, 234, 216, .18);
+}
+
+.module-pressure .loop-header-param:focus-within,
+.module-pressure .loop-header-param:hover {
+  border-color: rgba(242, 234, 216, .46);
+  color: #fffdf6;
 }
 
 .module-pressure .module-route-cue {
@@ -158,7 +197,7 @@
 
 /* 505-style loop phase: a quiet segmented reference ring plus a single bright
    off-white phase packet. 0deg is twelve o'clock, so each revolution visibly
-   marks the exact start of that track's loop. */
+   marks the exact audible start of that track's loop. */
 .module-pressure .loop-track-pad {
   --loop-phase-angle: 0deg;
 }
@@ -171,11 +210,11 @@
   border-radius: 50% !important;
   opacity: var(--loop-ring-opacity) !important;
   background:
-    conic-gradient(from -90deg, rgba(255, 253, 246, .96) 0deg 3deg, transparent 3deg 360deg),
-    repeating-conic-gradient(from -90deg, rgba(248, 244, 232, .78) 0deg 4deg, transparent 4deg 30deg) !important;
+    conic-gradient(from -90deg, rgba(255, 253, 246, .98) 0deg 3deg, transparent 3deg 360deg),
+    repeating-conic-gradient(from -90deg, rgba(248, 244, 232, .80) 0deg 4deg, transparent 4deg 30deg) !important;
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)) !important;
   mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)) !important;
-  filter: drop-shadow(0 0 2px rgba(248, 244, 232, .12));
+  filter: drop-shadow(0 0 2px rgba(248, 244, 232, .14));
   pointer-events: none;
 }
 
@@ -189,14 +228,14 @@
   background: conic-gradient(
     from calc(-90deg + var(--loop-phase-angle)),
     rgba(255, 253, 246, 1) 0deg 12deg,
-    rgba(248, 244, 232, .46) 12deg 19deg,
+    rgba(248, 244, 232, .48) 12deg 19deg,
     transparent 19deg 360deg
   );
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 2px));
   mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 2px));
-  filter: drop-shadow(0 0 4px rgba(248, 244, 232, .66)) drop-shadow(0 0 8px rgba(248, 244, 232, .20));
+  filter: drop-shadow(0 0 4px rgba(248, 244, 232, .68)) drop-shadow(0 0 8px rgba(248, 244, 232, .22));
   pointer-events: none;
-  transition: opacity 90ms linear, filter 70ms linear;
+  transition: opacity 60ms linear, filter 60ms linear;
 }
 
 .module-pressure .loop-track-pad.is-playing::after,
@@ -211,21 +250,30 @@
 
 .module-pressure .loop-track-pad.is-recording::after,
 .module-pressure .loop-track-pad.is-overdubbing::after {
-  filter: drop-shadow(0 0 5px rgba(248, 244, 232, .82)) drop-shadow(0 0 10px rgba(248, 244, 232, .30));
+  filter: drop-shadow(0 0 5px rgba(248, 244, 232, .84)) drop-shadow(0 0 10px rgba(248, 244, 232, .32));
 }
 
 .module-pressure .loop-track-pad.is-loop-boundary::after {
-  filter: drop-shadow(0 0 7px rgba(255, 253, 246, .96)) drop-shadow(0 0 13px rgba(248, 244, 232, .38));
+  filter: drop-shadow(0 0 7px rgba(255, 253, 246, .98)) drop-shadow(0 0 13px rgba(248, 244, 232, .40));
 }
 
 @media (max-width: 1180px) {
-  .module-pressure .loop-header-action-bank { gap: 2px; }
+  .module-pressure .loop-header-action-bank { gap: 3px; }
   .module-pressure .loop-header-action {
-    min-width: 26px;
-    padding-inline: 3px;
-    font-size: .39rem;
+    min-width: 34px;
+    height: 25px;
+    min-height: 25px;
+    padding-inline: 5px;
+    font-size: .49rem;
   }
-  .module-pressure .loop-utility-bank {
-    grid-template-columns: repeat(2, minmax(0, 74px)) !important;
+  .module-pressure .loop-header-param {
+    min-width: 82px;
+    grid-template-columns: auto 38px 18px;
+    gap: 3px;
+    padding-inline: 4px;
   }
+  .module-pressure .loop-header-param input[type='range'] { width: 38px; }
+  .module-pressure .loop-header-param-label,
+  .module-pressure .loop-header-param-value { font-size: .45rem; }
+  .module-pressure .module-route-cue { display: none; }
 }
