@@ -6,25 +6,30 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace calcotone {
 namespace {
-constexpr unsigned kNoCommand = 0xffU;
-constexpr unsigned kTrimCommand = 4U;
-constexpr unsigned kAutoTrimCommand = 5U;
-constexpr unsigned kResetTrimCommand = 6U;
-constexpr unsigned kTrackPlayBit = 1U << 0U;
-constexpr unsigned kTrackStopBit = 1U << 1U;
-constexpr unsigned kTrackMuteBit = 1U << 2U;
-constexpr unsigned kTrackSoloBit = 1U << 3U;
 constexpr std::size_t kMinimumLoopFrames = 64U;
 constexpr unsigned kQuantizeOff = 0U;
 constexpr unsigned kQuantizeBeat = 1U;
 constexpr unsigned kQuantizeBar = 2U;
 constexpr unsigned kScheduledSlots = kLoopTrackCount + 4U;
-float clamp01(float value) noexcept { return std::clamp(std::isfinite(value) ? value : 0.F, 0.F, 1.F); }
-float clamp_bpm(float value) noexcept { return std::clamp(std::isfinite(value) ? value : 120.F, 30.F, 300.F); }
+constexpr unsigned kCommandQueueSlots = 64U;
+constexpr unsigned kAutoTrimAction = 100U;
+constexpr unsigned kResetTrimAction = 101U;
+constexpr std::uint64_t kNoDue = std::numeric_limits<std::uint64_t>::max();
+constexpr std::size_t kUndoScanPerAudioFrame = 64U;
+constexpr std::size_t kUndoScanMinimum = 4'096U;
+constexpr std::size_t kUndoScanMaximum = 131'072U;
+
+float clamp01(float value) noexcept {
+  return std::clamp(std::isfinite(value) ? value : 0.F, 0.F, 1.F);
+}
+float clamp_bpm(float value) noexcept {
+  return std::clamp(std::isfinite(value) ? value : 120.F, 30.F, 300.F);
+}
 }
 
 struct LoopProcessor::Impl {
@@ -35,14 +40,22 @@ struct LoopProcessor::Impl {
     unsigned track{};
   };
 
+  struct PendingAction {
+    unsigned code{};
+    unsigned track{};
+  };
+
   explicit Impl(float requested_rate)
       : rate(std::clamp(requested_rate, 8'000.F, 384'000.F)),
         max_frames(static_cast<std::size_t>(std::ceil(rate * kLoopMaxSeconds))),
-        envelope_scale(static_cast<float>(kLoopEnvelopeBins) / static_cast<float>(max_frames)) {
-    // Track audio is allocated on the control thread when REC is armed, not
-    // all eight tracks at host startup. The realtime process path stays allocation-free.
+        envelope_scale(static_cast<float>(kLoopEnvelopeBins) / static_cast<float>(max_frames)),
+        waveform_publish_period(std::max<std::size_t>(1U, static_cast<std::size_t>(rate / 10.F))) {
     for (auto& level : track_levels) level.store(.72F, std::memory_order_relaxed);
+    cached_fade = .18F;
+    refresh_fade_cache();
   }
+
+  static std::uint32_t bit(unsigned track) noexcept { return 1U << track; }
 
   bool ensure_track_buffer(unsigned track) noexcept {
     if (track >= kLoopTrackCount) return false;
@@ -69,27 +82,30 @@ struct LoopProcessor::Impl {
     }
   }
 
-  bool any_occupied() const noexcept {
-    for (const bool filled : occupied) if (filled) return true;
-    return false;
-  }
-
-  bool any_active_occupied() const noexcept {
-    for (unsigned track = 0U; track < kLoopTrackCount; ++track)
-      if (occupied[track] && active[track]) return true;
-    return false;
-  }
-
-  bool any_solo_occupied() const noexcept {
-    for (unsigned track = 0U; track < kLoopTrackCount; ++track)
-      if (occupied[track] && soloed[track]) return true;
-    return false;
-  }
+  bool any_occupied() const noexcept { return occupied_mask != 0U; }
+  bool any_active_occupied() const noexcept { return (occupied_mask & active_mask) != 0U; }
+  bool any_solo_occupied() const noexcept { return (occupied_mask & solo_mask) != 0U; }
 
   std::size_t active_length(unsigned track) const noexcept {
-    if (!occupied[track]) return 0U;
-    return trim_end_frames[track] > trim_start_frames[track]
-        ? trim_end_frames[track] - trim_start_frames[track] : 0U;
+    return track < kLoopTrackCount ? lengths[track] : 0U;
+  }
+
+  void update_length(unsigned track) noexcept {
+    if (track >= kLoopTrackCount || (occupied_mask & bit(track)) == 0U || trim_end_frames[track] <= trim_start_frames[track]) {
+      lengths[track] = 0U;
+      fade_frames[track] = 0U;
+      return;
+    }
+    lengths[track] = trim_end_frames[track] - trim_start_frames[track];
+    fade_frames[track] = std::min<std::size_t>(
+        lengths[track] / 4U,
+        static_cast<std::size_t>(std::round(cached_fade * .02F * rate)));
+  }
+
+  void refresh_fade_cache() noexcept {
+    cached_fade = clamp01(fade.load(std::memory_order_relaxed));
+    for (unsigned track = 0U; track < kLoopTrackCount; ++track) update_length(track);
+    fade_refresh_pending.store(false, std::memory_order_relaxed);
   }
 
   std::uint64_t quantize_frames() const noexcept {
@@ -114,32 +130,66 @@ struct LoopProcessor::Impl {
         || command == LoopCommand::Undo || command == LoopCommand::Redo || command == LoopCommand::Bounce;
   }
 
+  void recompute_next_scheduled_due() noexcept {
+    next_scheduled_due = kNoDue;
+    for (const auto& slot : scheduled)
+      if (slot.active) next_scheduled_due = std::min(next_scheduled_due, slot.due);
+  }
+
   void schedule_command(LoopCommand command, unsigned track) noexcept {
     const auto due = next_boundary();
     for (auto& slot : scheduled) {
       if (slot.active && slot.track == track) {
         slot = ScheduledCommand{true, due, command, track};
+        recompute_next_scheduled_due();
         return;
       }
     }
     for (auto& slot : scheduled) {
       if (!slot.active) {
         slot = ScheduledCommand{true, due, command, track};
+        next_scheduled_due = std::min(next_scheduled_due, due);
         return;
       }
     }
     scheduled[0] = ScheduledCommand{true, due, command, track};
+    recompute_next_scheduled_due();
+  }
+
+  bool enqueue_action(unsigned code, unsigned track) noexcept {
+    const unsigned write = command_write.load(std::memory_order_relaxed);
+    const unsigned next = (write + 1U) % kCommandQueueSlots;
+    if (next == command_read.load(std::memory_order_acquire)) return false;
+    command_queue[write] = PendingAction{code, std::min(track, kLoopTrackCount - 1U)};
+    command_write.store(next, std::memory_order_release);
+    return true;
+  }
+
+  bool dequeue_action(PendingAction& action) noexcept {
+    const unsigned read = command_read.load(std::memory_order_relaxed);
+    if (read == command_write.load(std::memory_order_acquire)) return false;
+    action = command_queue[read];
+    command_read.store((read + 1U) % kCommandQueueSlots, std::memory_order_release);
+    return true;
   }
 
   void clear_envelope(unsigned track) noexcept {
     envelopes[track].fill(0.F);
+    replace_envelope_bin[track] = kLoopEnvelopeBins;
+    waveform_refresh_pending.store(true, std::memory_order_relaxed);
   }
 
-  void update_envelope(unsigned track, std::size_t frame, float left, float right) noexcept {
+  void update_envelope(unsigned track, std::size_t frame, float left, float right, bool replace) noexcept {
     const auto bin = std::min<std::size_t>(kLoopEnvelopeBins - 1U,
         static_cast<std::size_t>(static_cast<float>(frame) * envelope_scale));
     const float peak = std::max(std::abs(left), std::abs(right));
-    envelopes[track][bin] = std::max(envelopes[track][bin], peak);
+    if (replace && replace_envelope_bin[track] != bin) {
+      envelopes[track][bin] = peak;
+      replace_envelope_bin[track] = bin;
+    } else {
+      envelopes[track][bin] = std::max(envelopes[track][bin], peak);
+    }
+    waveform_refresh_pending.store(true, std::memory_order_relaxed);
   }
 
   void invalidate_journal(unsigned track) noexcept {
@@ -162,6 +212,7 @@ struct LoopProcessor::Impl {
     undo_ready[track] = false;
     redo_ready[track] = false;
     swap_mode[track] = 0U;
+    replace_envelope_bin[track] = kLoopEnvelopeBins;
     return true;
   }
 
@@ -181,37 +232,41 @@ struct LoopProcessor::Impl {
     overdubbing = false;
     undo_ready[track] = undo_touched[track] > 0U;
     redo_ready[track] = false;
+    waveform_refresh_pending.store(true, std::memory_order_relaxed);
   }
 
   void begin_journal_swap(unsigned track, unsigned mode) noexcept {
-    if (track >= kLoopTrackCount || !occupied[track] || swap_mode[track] != 0U) return;
+    if (track >= kLoopTrackCount || (occupied_mask & bit(track)) == 0U || swap_mode[track] != 0U) return;
     if (mode == 1U && !undo_ready[track]) return;
     if (mode == 2U && !redo_ready[track]) return;
     const auto length = active_length(track);
     if (length == 0U || undo_tracks[track].empty() || undo_tags[track].empty()) return;
     swap_mode[track] = mode;
-    swap_cursor[track] = std::min(positions[track], length - 1U);
+    swap_cursor[track] = 0U;
     swap_remaining[track] = length;
   }
 
-  void apply_journal_swap_step(unsigned track) noexcept {
+  void apply_journal_swap_budget(unsigned track, std::size_t budget) noexcept {
     const unsigned mode = swap_mode[track];
-    if (mode == 0U) return;
+    if (mode == 0U || budget == 0U) return;
     const auto length = active_length(track);
     if (length == 0U || tracks[track].empty() || undo_tracks[track].empty() || undo_tags[track].empty()) {
       swap_mode[track] = 0U;
       swap_remaining[track] = 0U;
       return;
     }
-    const auto relative = std::min(swap_cursor[track], length - 1U);
-    const auto absolute = trim_start_frames[track] + relative;
-    if (undo_tags[track][absolute] == undo_generation[track]) {
-      const auto index = absolute * 2U;
-      std::swap(tracks[track][index], undo_tracks[track][index]);
-      std::swap(tracks[track][index + 1U], undo_tracks[track][index + 1U]);
+    auto remaining_budget = std::min(budget, swap_remaining[track]);
+    while (remaining_budget-- > 0U && swap_remaining[track] > 0U) {
+      const auto relative = std::min(swap_cursor[track], length - 1U);
+      const auto absolute = trim_start_frames[track] + relative;
+      if (undo_tags[track][absolute] == undo_generation[track]) {
+        const auto index = absolute * 2U;
+        std::swap(tracks[track][index], undo_tracks[track][index]);
+        std::swap(tracks[track][index + 1U], undo_tracks[track][index + 1U]);
+      }
+      swap_cursor[track] = relative + 1U >= length ? 0U : relative + 1U;
+      --swap_remaining[track];
     }
-    swap_cursor[track] = relative + 1U >= length ? 0U : relative + 1U;
-    if (swap_remaining[track] > 0U) --swap_remaining[track];
     if (swap_remaining[track] == 0U) {
       swap_mode[track] = 0U;
       if (mode == 1U) {
@@ -221,52 +276,71 @@ struct LoopProcessor::Impl {
         undo_ready[track] = true;
         redo_ready[track] = false;
       }
+      waveform_refresh_pending.store(true, std::memory_order_relaxed);
     }
   }
 
+  void apply_journal_swaps(std::size_t frames) noexcept {
+    const auto budget = std::clamp<std::size_t>(frames * kUndoScanPerAudioFrame, kUndoScanMinimum, kUndoScanMaximum);
+    for (unsigned track = 0U; track < kLoopTrackCount; ++track)
+      if (swap_mode[track] != 0U) apply_journal_swap_budget(track, budget);
+  }
+
   void start_recording(unsigned track) noexcept {
-    occupied[track] = false;
-    active[track] = true;
-    muted[track] = false;
-    soloed[track] = false;
+    const auto track_bit = bit(track);
+    occupied_mask &= ~track_bit;
+    active_mask |= track_bit;
+    mute_mask &= ~track_bit;
+    solo_mask &= ~track_bit;
     raw_frames[track] = 0U;
     trim_start_frames[track] = 0U;
     trim_end_frames[track] = 0U;
+    lengths[track] = 0U;
+    fade_frames[track] = 0U;
     positions[track] = 0U;
     invalidate_journal(track);
     clear_envelope(track);
     recording = true;
+    record_track = track;
     overdubbing = false;
     record_count = 0U;
     playing = true;
   }
 
   void finish_recording(unsigned track) noexcept {
+    const auto track_bit = bit(track);
     if (record_count >= kMinimumLoopFrames) {
       const auto frames = std::min(max_frames, record_count);
       raw_frames[track] = frames;
       trim_start_frames[track] = 0U;
       trim_end_frames[track] = frames;
+      occupied_mask |= track_bit;
+      active_mask |= track_bit;
+      update_length(track);
       positions[track] = 0U;
-      occupied[track] = true;
-      active[track] = true;
       playing = true;
     } else {
-      active[track] = false;
+      occupied_mask &= ~track_bit;
+      active_mask &= ~track_bit;
+      lengths[track] = 0U;
     }
     recording = false;
     record_count = 0U;
-    if (!any_active_occupied()) playing = false;
+    playing = playing && (any_active_occupied() || overdubbing);
+    waveform_refresh_pending.store(true, std::memory_order_relaxed);
   }
 
   void clear_track(unsigned track) noexcept {
-    occupied[track] = false;
-    active[track] = false;
-    muted[track] = false;
-    soloed[track] = false;
+    const auto track_bit = bit(track);
+    occupied_mask &= ~track_bit;
+    active_mask &= ~track_bit;
+    mute_mask &= ~track_bit;
+    solo_mask &= ~track_bit;
     raw_frames[track] = 0U;
     trim_start_frames[track] = 0U;
     trim_end_frames[track] = 0U;
+    lengths[track] = 0U;
+    fade_frames[track] = 0U;
     positions[track] = 0U;
     invalidate_journal(track);
     if (recording && record_track == track) {
@@ -276,11 +350,12 @@ struct LoopProcessor::Impl {
     if (overdubbing && overdub_track == track) finish_overdub();
     if (bouncing && bounce_track == track) bouncing = false;
     if (!any_active_occupied()) playing = false;
+    clear_envelope(track);
   }
 
   void set_trim_window(unsigned track, float requested_start, float requested_end) noexcept {
     const auto raw = raw_frames[track];
-    if (!occupied[track] || raw < kMinimumLoopFrames) return;
+    if ((occupied_mask & bit(track)) == 0U || raw < kMinimumLoopFrames) return;
     const auto minimum = std::min(raw, kMinimumLoopFrames);
     auto start = static_cast<std::size_t>(std::llround(clamp01(requested_start) * static_cast<float>(raw)));
     auto end = static_cast<std::size_t>(std::llround(clamp01(requested_end) * static_cast<float>(raw)));
@@ -288,13 +363,15 @@ struct LoopProcessor::Impl {
     end = std::clamp(end, start + minimum, raw);
     trim_start_frames[track] = start;
     trim_end_frames[track] = end;
-    positions[track] = std::min(positions[track], std::max<std::size_t>(1U, end - start) - 1U);
+    update_length(track);
+    positions[track] = std::min(positions[track], lengths[track] > 0U ? lengths[track] - 1U : 0U);
   }
 
   void reset_trim_window(unsigned track) noexcept {
-    if (!occupied[track]) return;
+    if ((occupied_mask & bit(track)) == 0U) return;
     trim_start_frames[track] = 0U;
     trim_end_frames[track] = raw_frames[track];
+    update_length(track);
     positions[track] = 0U;
   }
 
@@ -305,7 +382,7 @@ struct LoopProcessor::Impl {
   }
 
   void auto_trim_window(unsigned track) noexcept {
-    if (!occupied[track] || raw_frames[track] < kMinimumLoopFrames) return;
+    if ((occupied_mask & bit(track)) == 0U || raw_frames[track] < kMinimumLoopFrames) return;
     const auto used = used_envelope_bins(track);
     float peak = 0.F;
     for (std::size_t bin = 0; bin < used; ++bin) peak = std::max(peak, envelopes[track][bin]);
@@ -329,12 +406,13 @@ struct LoopProcessor::Impl {
     if (end - start < kMinimumLoopFrames) start = end > kMinimumLoopFrames ? end - kMinimumLoopFrames : 0U;
     trim_start_frames[track] = start;
     trim_end_frames[track] = end;
+    update_length(track);
     positions[track] = 0U;
   }
 
   void play_track(unsigned track) noexcept {
-    if (!occupied[track] || active_length(track) == 0U) return;
-    active[track] = true;
+    if ((occupied_mask & bit(track)) == 0U || active_length(track) == 0U) return;
+    active_mask |= bit(track);
     positions[track] = 0U;
     playing = true;
   }
@@ -342,32 +420,33 @@ struct LoopProcessor::Impl {
   void stop_track(unsigned track) noexcept {
     if (recording && record_track == track) finish_recording(track);
     if (overdubbing && overdub_track == track) finish_overdub();
-    active[track] = false;
+    active_mask &= ~bit(track);
     positions[track] = 0U;
     if (!any_active_occupied()) playing = false;
   }
 
   void start_bounce(unsigned track) noexcept {
-    if (track >= kLoopTrackCount || occupied[track] || tracks[track].size() != max_frames * 2U) return;
+    const auto track_bit = bit(track);
+    if (track >= kLoopTrackCount || (occupied_mask & track_bit) != 0U || tracks[track].size() != max_frames * 2U) return;
     const bool soloing = any_solo_occupied();
     std::size_t frames = 0U;
-    for (unsigned source = 0U; source < kLoopTrackCount; ++source) {
-      if (source == track || !occupied[source] || !active[source] || muted[source]) continue;
-      if (soloing && !soloed[source]) continue;
-      frames = std::max(frames, active_length(source));
-    }
+    const std::uint32_t source_mask = occupied_mask & active_mask & ~mute_mask & (soloing ? solo_mask : 0xffU);
+    for (unsigned source = 0U; source < kLoopTrackCount; ++source)
+      if ((source_mask & bit(source)) != 0U) frames = std::max(frames, active_length(source));
     if (frames < kMinimumLoopFrames) return;
     bounce_track = track;
     bounce_frames = std::min(max_frames, frames);
     bounce_count = 0U;
     bouncing = true;
-    occupied[track] = false;
-    active[track] = false;
-    muted[track] = false;
-    soloed[track] = false;
+    occupied_mask &= ~track_bit;
+    active_mask &= ~track_bit;
+    mute_mask &= ~track_bit;
+    solo_mask &= ~track_bit;
     raw_frames[track] = 0U;
     trim_start_frames[track] = 0U;
     trim_end_frames[track] = 0U;
+    lengths[track] = 0U;
+    fade_frames[track] = 0U;
     positions[track] = 0U;
     invalidate_journal(track);
     clear_envelope(track);
@@ -383,25 +462,25 @@ struct LoopProcessor::Impl {
     raw_frames[track] = frames;
     trim_start_frames[track] = 0U;
     trim_end_frames[track] = frames;
+    occupied_mask |= bit(track);
+    active_mask &= ~bit(track);
+    update_length(track);
     positions[track] = 0U;
-    occupied[track] = true;
-    // Bounce lands stopped so the rendered mix is never doubled automatically.
-    active[track] = false;
+    waveform_refresh_pending.store(true, std::memory_order_relaxed);
   }
 
   void execute_command(LoopCommand command, unsigned track) noexcept {
     if (command == LoopCommand::Record) {
       if (recording) finish_recording(record_track);
-      else if (tracks[track].size() == max_frames * 2U) { record_track = track; start_recording(record_track); }
+      else if (tracks[track].size() == max_frames * 2U) start_recording(track);
       return;
     }
     if (command == LoopCommand::Overdub) {
       if (overdubbing) {
         finish_overdub();
-      } else if (occupied[track] && active_length(track) > 0U) {
-        begin_overdub_journal(track);
+      } else if ((occupied_mask & bit(track)) != 0U && active_length(track) > 0U && begin_overdub_journal(track)) {
         overdub_track = track;
-        active[track] = true;
+        active_mask |= bit(track);
         overdubbing = true;
         recording = false;
         playing = true;
@@ -411,11 +490,10 @@ struct LoopProcessor::Impl {
     if (command == LoopCommand::Play) {
       if (any_occupied()) {
         const bool stop_all = any_active_occupied();
-        for (unsigned index = 0U; index < kLoopTrackCount; ++index) {
-          if (!occupied[index]) continue;
-          active[index] = !stop_all;
-          positions[index] = 0U;
-        }
+        for (unsigned index = 0U; index < kLoopTrackCount; ++index)
+          if ((occupied_mask & bit(index)) != 0U) positions[index] = 0U;
+        if (stop_all) active_mask &= ~occupied_mask;
+        else active_mask |= occupied_mask;
         playing = !stop_all;
         if (overdubbing) finish_overdub();
         recording = false;
@@ -426,63 +504,14 @@ struct LoopProcessor::Impl {
     if (command == LoopCommand::Clear) { clear_track(track); return; }
     if (command == LoopCommand::TrackPlay) { play_track(track); return; }
     if (command == LoopCommand::TrackStop) { stop_track(track); return; }
-    if (command == LoopCommand::Mute) { if (occupied[track]) muted[track] = !muted[track]; return; }
-    if (command == LoopCommand::Solo) { if (occupied[track]) soloed[track] = !soloed[track]; return; }
+    if (command == LoopCommand::Mute) { if ((occupied_mask & bit(track)) != 0U) mute_mask ^= bit(track); return; }
+    if (command == LoopCommand::Solo) { if ((occupied_mask & bit(track)) != 0U) solo_mask ^= bit(track); return; }
     if (command == LoopCommand::Undo) { begin_journal_swap(track, 1U); return; }
     if (command == LoopCommand::Redo) { begin_journal_swap(track, 2U); return; }
     if (command == LoopCommand::Bounce) start_bounce(track);
   }
 
-  void consume_performance_commands() noexcept {
-    const bool quantized = quantize_frames() > 0U;
-    for (unsigned track = 0U; track < kLoopTrackCount; ++track) {
-      const unsigned bits = pending_performance[track].exchange(0U, std::memory_order_acq_rel);
-      if (bits == 0U) continue;
-      if ((bits & kTrackMuteBit) != 0U) execute_command(LoopCommand::Mute, track);
-      if ((bits & kTrackSoloBit) != 0U) execute_command(LoopCommand::Solo, track);
-      if ((bits & kTrackPlayBit) != 0U) {
-        if (quantized) schedule_command(LoopCommand::TrackPlay, track); else execute_command(LoopCommand::TrackPlay, track);
-      }
-      if ((bits & kTrackStopBit) != 0U) {
-        if (quantized) schedule_command(LoopCommand::TrackStop, track); else execute_command(LoopCommand::TrackStop, track);
-      }
-    }
-  }
-
-  void queue_performance(unsigned track, LoopCommand command) noexcept {
-    if (track >= kLoopTrackCount) return;
-    unsigned bit = 0U;
-    if (command == LoopCommand::TrackPlay) bit = kTrackPlayBit;
-    else if (command == LoopCommand::TrackStop) bit = kTrackStopBit;
-    else if (command == LoopCommand::Mute) bit = kTrackMuteBit;
-    else if (command == LoopCommand::Solo) bit = kTrackSoloBit;
-    if (bit != 0U) pending_performance[track].fetch_or(bit, std::memory_order_release);
-  }
-
-  void queue_command(unsigned track, LoopCommand command) noexcept {
-    pending_track.store(std::min(track, kLoopTrackCount - 1U), std::memory_order_relaxed);
-    pending_command.store(static_cast<unsigned>(command), std::memory_order_release);
-  }
-
-  void consume_command() noexcept {
-    consume_performance_commands();
-    const unsigned raw = pending_command.exchange(kNoCommand, std::memory_order_acq_rel);
-    if (raw == kNoCommand) return;
-    const unsigned track = pending_track.load(std::memory_order_acquire);
-    if (raw == kTrimCommand) {
-      set_trim_window(track, pending_trim_start.load(std::memory_order_relaxed), pending_trim_end.load(std::memory_order_relaxed));
-      return;
-    }
-    if (raw == kAutoTrimCommand) {
-      auto_trim_window(track);
-      return;
-    }
-    if (raw == kResetTrimCommand) {
-      reset_trim_window(track);
-      return;
-    }
-
-    const auto command = static_cast<LoopCommand>(raw);
+  void handle_command(LoopCommand command, unsigned track) noexcept {
     const bool first_record = command == LoopCommand::Record && !any_occupied() && !recording;
     if (first_record) {
       clock_frame = 0U;
@@ -494,7 +523,23 @@ struct LoopProcessor::Impl {
     else execute_command(command, track);
   }
 
-  void run_scheduled_commands() noexcept {
+  void consume_control() noexcept {
+    if (trim_pending.exchange(false, std::memory_order_acq_rel)) {
+      set_trim_window(
+          trim_track.load(std::memory_order_relaxed),
+          trim_start_pending.load(std::memory_order_relaxed),
+          trim_end_pending.load(std::memory_order_relaxed));
+    }
+    PendingAction action{};
+    while (dequeue_action(action)) {
+      if (action.code == kAutoTrimAction) auto_trim_window(action.track);
+      else if (action.code == kResetTrimAction) reset_trim_window(action.track);
+      else handle_command(static_cast<LoopCommand>(action.code), action.track);
+    }
+  }
+
+  void run_due_commands() noexcept {
+    if (next_scheduled_due == kNoDue || next_scheduled_due > clock_frame) return;
     for (auto& slot : scheduled) {
       if (!slot.active || slot.due > clock_frame) continue;
       const auto command = slot.command;
@@ -502,36 +547,107 @@ struct LoopProcessor::Impl {
       slot.active = false;
       execute_command(command, track);
     }
+    recompute_next_scheduled_due();
   }
 
-  float read_track(unsigned track, unsigned channel) const noexcept {
-    const auto length = active_length(track);
-    if (length == 0U) return 0.F;
+  void read_track_stereo(unsigned track, float& left, float& right) const noexcept {
+    left = 0.F;
+    right = 0.F;
+    const auto length = lengths[track];
+    if (length == 0U || tracks[track].empty()) return;
     const auto relative = std::min(positions[track], length - 1U);
     const auto absolute = trim_start_frames[track] + relative;
+    const auto index = absolute * 2U;
     const auto& buffer = tracks[track];
-    if (buffer.empty()) return 0.F;
-    const auto index = absolute * 2U + channel;
-    const auto fade_samples = std::min<std::size_t>(
-        length / 4U,
-        static_cast<std::size_t>(std::round(fade.load(std::memory_order_relaxed) * .02F * rate)));
-    if (fade_samples <= 1U || relative < length - fade_samples) return buffer[index];
-    const auto local = relative - (length - fade_samples);
-    const float alpha = static_cast<float>(local) / static_cast<float>(fade_samples);
-    const auto start_relative = std::min(length - 1U, local);
-    const auto start_absolute = trim_start_frames[track] + start_relative;
-    const float start = buffer[start_absolute * 2U + channel];
-    return buffer[index] * (1.F - alpha) + start * alpha;
+    const auto seam = fade_frames[track];
+    if (seam <= 1U || relative < length - seam) {
+      left = buffer[index];
+      right = buffer[index + 1U];
+      return;
+    }
+    const auto local = relative - (length - seam);
+    const float alpha = static_cast<float>(local) / static_cast<float>(seam);
+    const auto start_absolute = trim_start_frames[track] + std::min(length - 1U, local);
+    const auto start_index = start_absolute * 2U;
+    left = buffer[index] * (1.F - alpha) + buffer[start_index] * alpha;
+    right = buffer[index + 1U] * (1.F - alpha) + buffer[start_index + 1U] * alpha;
   }
 
   void advance_track(unsigned track) noexcept {
-    const auto length = active_length(track);
-    if (length == 0U) {
-      positions[track] = 0U;
-      return;
-    }
+    const auto length = lengths[track];
+    if (length == 0U) { positions[track] = 0U; return; }
     const auto next = positions[track] + 1U;
     positions[track] = next >= length ? 0U : next;
+  }
+
+  void process_segment(float* data, std::size_t frames, float loop_level, float overdub_feedback) noexcept {
+    std::array<float, kLoopTrackCount> levels{};
+    for (unsigned track = 0U; track < kLoopTrackCount; ++track)
+      levels[track] = track_levels[track].load(std::memory_order_relaxed);
+
+    const bool soloing = any_solo_occupied();
+    const std::uint32_t playback_mask = playing
+        ? occupied_mask & active_mask & ~mute_mask & (soloing ? solo_mask : 0xffU)
+        : 0U;
+    const std::uint32_t advance_mask = playing ? occupied_mask & active_mask : 0U;
+
+    for (std::size_t frame = 0U; frame < frames; ++frame) {
+      const float live_left = std::isfinite(data[frame * 2U]) ? data[frame * 2U] : 0.F;
+      const float live_right = std::isfinite(data[frame * 2U + 1U]) ? data[frame * 2U + 1U] : 0.F;
+      float loop_left = 0.F;
+      float loop_right = 0.F;
+
+      for (unsigned track = 0U; track < kLoopTrackCount; ++track) {
+        if ((playback_mask & bit(track)) == 0U) continue;
+        float track_left = 0.F;
+        float track_right = 0.F;
+        read_track_stereo(track, track_left, track_right);
+        loop_left += track_left * levels[track];
+        loop_right += track_right * levels[track];
+      }
+
+      data[frame * 2U] = live_left + loop_left * loop_level;
+      data[frame * 2U + 1U] = live_right + loop_right * loop_level;
+
+      if (recording) {
+        auto& buffer = tracks[record_track];
+        if (record_count < max_frames && !buffer.empty()) {
+          const auto write = record_count * 2U;
+          buffer[write] = live_left;
+          buffer[write + 1U] = live_right;
+          update_envelope(record_track, record_count, live_left, live_right, false);
+          ++record_count;
+        }
+      } else if (overdubbing && (occupied_mask & bit(overdub_track)) != 0U) {
+        auto& buffer = tracks[overdub_track];
+        const auto length = lengths[overdub_track];
+        if (length > 0U && !buffer.empty()) {
+          const auto relative = std::min(positions[overdub_track], length - 1U);
+          const auto absolute = trim_start_frames[overdub_track] + relative;
+          const auto write = absolute * 2U;
+          journal_before_write(overdub_track, absolute, write, buffer);
+          const float next_left = buffer[write] * overdub_feedback + live_left;
+          const float next_right = buffer[write + 1U] * overdub_feedback + live_right;
+          buffer[write] = next_left;
+          buffer[write + 1U] = next_right;
+          update_envelope(overdub_track, absolute, next_left, next_right, overdub_feedback <= .001F);
+        }
+      }
+
+      if (bouncing) {
+        auto& target = tracks[bounce_track];
+        if (!target.empty() && bounce_count < bounce_frames) {
+          const auto write = bounce_count * 2U;
+          target[write] = loop_left;
+          target[write + 1U] = loop_right;
+          update_envelope(bounce_track, bounce_count, loop_left, loop_right, false);
+          ++bounce_count;
+        }
+      }
+
+      for (unsigned track = 0U; track < kLoopTrackCount; ++track)
+        if ((advance_mask & bit(track)) != 0U) advance_track(track);
+    }
   }
 
   LoopTransport current_transport() const noexcept {
@@ -541,25 +657,13 @@ struct LoopProcessor::Impl {
     return playing && any_active_occupied() ? LoopTransport::Playing : LoopTransport::Stopped;
   }
 
-  void publish_runtime() noexcept {
+  void refresh_published_waveform() noexcept {
     const unsigned track = selected.load(std::memory_order_relaxed);
-    const auto raw = raw_frames[track];
-    const auto length = active_length(track);
-    published_frames.store(length, std::memory_order_relaxed);
-    published_raw_frames.store(raw, std::memory_order_relaxed);
-    published_position.store(std::min(positions[track], length > 0U ? length - 1U : 0U), std::memory_order_relaxed);
-    published_trim_start.store(raw > 0U ? static_cast<float>(trim_start_frames[track]) / static_cast<float>(raw) : 0.F, std::memory_order_relaxed);
-    published_trim_end.store(raw > 0U ? static_cast<float>(trim_end_frames[track]) / static_cast<float>(raw) : 1.F, std::memory_order_relaxed);
-    std::uint32_t mask = 0U;
-    for (unsigned index = 0U; index < kLoopTrackCount; ++index) if (occupied[index]) mask |= (1U << index);
-    published_mask.store(mask, std::memory_order_relaxed);
-    published_transport.store(static_cast<unsigned>(current_transport()), std::memory_order_relaxed);
-
     for (auto& bucket : published_waveform) bucket.store(0.F, std::memory_order_relaxed);
-    if (!occupied[track] || raw == 0U) return;
+    if ((occupied_mask & bit(track)) == 0U || raw_frames[track] == 0U) return;
     const auto used = used_envelope_bins(track);
     float maximum = 0.F;
-    for (std::size_t bin = 0; bin < used; ++bin) maximum = std::max(maximum, envelopes[track][bin]);
+    for (std::size_t bin = 0U; bin < used; ++bin) maximum = std::max(maximum, envelopes[track][bin]);
     if (maximum <= 1e-6F) return;
     for (unsigned bucket = 0U; bucket < kLoopWaveformBins; ++bucket) {
       const auto start = std::min<std::size_t>(used - 1U, static_cast<std::size_t>(bucket) * used / kLoopWaveformBins);
@@ -571,104 +675,93 @@ struct LoopProcessor::Impl {
     }
   }
 
+  void publish_runtime(std::size_t processed_frames) noexcept {
+    const unsigned track = selected.load(std::memory_order_relaxed);
+    const auto raw = raw_frames[track];
+    const auto length = active_length(track);
+    published_frames.store(length, std::memory_order_relaxed);
+    published_raw_frames.store(raw, std::memory_order_relaxed);
+    published_position.store(std::min(positions[track], length > 0U ? length - 1U : 0U), std::memory_order_relaxed);
+    published_trim_start.store(raw > 0U ? static_cast<float>(trim_start_frames[track]) / static_cast<float>(raw) : 0.F, std::memory_order_relaxed);
+    published_trim_end.store(raw > 0U ? static_cast<float>(trim_end_frames[track]) / static_cast<float>(raw) : 1.F, std::memory_order_relaxed);
+    published_mask.store(occupied_mask, std::memory_order_relaxed);
+    published_active_mask.store(active_mask & occupied_mask, std::memory_order_relaxed);
+    published_mute_mask.store(mute_mask & occupied_mask, std::memory_order_relaxed);
+    published_solo_mask.store(solo_mask & occupied_mask, std::memory_order_relaxed);
+    published_transport.store(static_cast<unsigned>(current_transport()), std::memory_order_relaxed);
+
+    waveform_publish_elapsed += processed_frames;
+    const bool refresh = waveform_refresh_pending.load(std::memory_order_relaxed)
+        && (waveform_publish_elapsed >= waveform_publish_period || waveform_force.exchange(false, std::memory_order_acq_rel));
+    if (refresh) {
+      waveform_publish_elapsed = 0U;
+      waveform_refresh_pending.store(false, std::memory_order_relaxed);
+      refresh_published_waveform();
+    }
+  }
+
   void process(float* data, std::size_t frames) noexcept {
-    consume_command();
+    consume_control();
+    if (fade_refresh_pending.load(std::memory_order_relaxed)) refresh_fade_cache();
+    apply_journal_swaps(frames);
+
     if (!enabled.load(std::memory_order_relaxed)) {
-      publish_runtime();
+      publish_runtime(frames);
       return;
     }
 
     const float loop_level = master_level.load(std::memory_order_relaxed);
     const float overdub_feedback = overdub.load(std::memory_order_relaxed);
+    std::size_t offset = 0U;
 
-    for (std::size_t frame = 0; frame < frames; ++frame) {
-      run_scheduled_commands();
-      for (unsigned track = 0U; track < kLoopTrackCount; ++track)
-        if (swap_mode[track] != 0U) apply_journal_swap_step(track);
-
-      const float live_left = std::isfinite(data[frame * 2U]) ? data[frame * 2U] : 0.F;
-      const float live_right = std::isfinite(data[frame * 2U + 1U]) ? data[frame * 2U + 1U] : 0.F;
-      float loop_left = 0.F;
-      float loop_right = 0.F;
-      const bool soloing = any_solo_occupied();
-
-      if (playing) {
-        for (unsigned track = 0U; track < kLoopTrackCount; ++track) {
-          if (!occupied[track] || !active[track] || muted[track] || active_length(track) == 0U) continue;
-          if (soloing && !soloed[track]) continue;
-          const float level = track_levels[track].load(std::memory_order_relaxed);
-          loop_left += read_track(track, 0U) * level;
-          loop_right += read_track(track, 1U) * level;
-        }
+    while (offset < frames) {
+      run_due_commands();
+      std::size_t segment = frames - offset;
+      if (next_scheduled_due != kNoDue && next_scheduled_due > clock_frame) {
+        const auto until_due = next_scheduled_due - clock_frame;
+        segment = std::min<std::size_t>(segment, static_cast<std::size_t>(until_due));
       }
-
-      data[frame * 2U] = live_left + loop_left * loop_level;
-      data[frame * 2U + 1U] = live_right + loop_right * loop_level;
-
       if (recording) {
-        auto& record_buffer = tracks[record_track];
-        if (record_count < max_frames && !record_buffer.empty()) {
-          const auto write = record_count * 2U;
-          record_buffer[write] = live_left;
-          record_buffer[write + 1U] = live_right;
-          update_envelope(record_track, record_count, live_left, live_right);
-          ++record_count;
-        }
-        if (record_count >= max_frames) finish_recording(record_track);
-      } else if (overdubbing && occupied[overdub_track]) {
-        auto& overdub_buffer = tracks[overdub_track];
-        const auto length = active_length(overdub_track);
-        if (length > 0U && !overdub_buffer.empty()) {
-          const auto relative = std::min(positions[overdub_track], length - 1U);
-          const auto absolute = trim_start_frames[overdub_track] + relative;
-          const auto write = absolute * 2U;
-          journal_before_write(overdub_track, absolute, write, overdub_buffer);
-          // DUB is a continuous rolling replacement pass. At RETAIN=0 the
-          // previous performance is completely gone after one full orbit; raising
-          // RETAIN restores classic feedback overdubbing without changing transport.
-          const float next_left = overdub_buffer[write] * overdub_feedback + live_left;
-          const float next_right = overdub_buffer[write + 1U] * overdub_feedback + live_right;
-          overdub_buffer[write] = next_left;
-          overdub_buffer[write + 1U] = next_right;
-          update_envelope(overdub_track, absolute, next_left, next_right);
-        }
+        if (record_count >= max_frames) { finish_recording(record_track); continue; }
+        segment = std::min(segment, max_frames - record_count);
       }
-
       if (bouncing) {
-        auto& target = tracks[bounce_track];
-        if (!target.empty() && bounce_count < bounce_frames) {
-          const auto write = bounce_count * 2U;
-          target[write] = loop_left;
-          target[write + 1U] = loop_right;
-          update_envelope(bounce_track, bounce_count, loop_left, loop_right);
-          ++bounce_count;
-        }
-        if (bounce_count >= bounce_frames) finish_bounce();
+        if (bounce_count >= bounce_frames) { finish_bounce(); continue; }
+        segment = std::min(segment, bounce_frames - bounce_count);
       }
+      if (segment == 0U) { run_due_commands(); continue; }
 
-      if (playing) {
-        for (unsigned track = 0U; track < kLoopTrackCount; ++track)
-          if (occupied[track] && active[track]) advance_track(track);
-      }
-      ++clock_frame;
+      process_segment(data + offset * 2U, segment, loop_level, overdub_feedback);
+      offset += segment;
+      clock_frame += segment;
+
+      if (recording && record_count >= max_frames) finish_recording(record_track);
+      if (bouncing && bounce_count >= bounce_frames) finish_bounce();
     }
-    publish_runtime();
+    publish_runtime(frames);
   }
 
   float rate;
   std::size_t max_frames;
   float envelope_scale;
+  std::size_t waveform_publish_period;
+  std::size_t waveform_publish_elapsed{};
+  float cached_fade{};
+
   std::array<std::vector<float>, kLoopTrackCount> tracks;
   std::array<std::array<float, kLoopEnvelopeBins>, kLoopTrackCount> envelopes{};
   std::array<std::atomic<float>, kLoopTrackCount> track_levels{};
-  std::array<bool, kLoopTrackCount> occupied{};
-  std::array<bool, kLoopTrackCount> active{};
-  std::array<bool, kLoopTrackCount> muted{};
-  std::array<bool, kLoopTrackCount> soloed{};
   std::array<std::size_t, kLoopTrackCount> raw_frames{};
   std::array<std::size_t, kLoopTrackCount> trim_start_frames{};
   std::array<std::size_t, kLoopTrackCount> trim_end_frames{};
+  std::array<std::size_t, kLoopTrackCount> lengths{};
+  std::array<std::size_t, kLoopTrackCount> fade_frames{};
   std::array<std::size_t, kLoopTrackCount> positions{};
+  std::array<std::size_t, kLoopTrackCount> replace_envelope_bin{};
+  std::uint32_t occupied_mask{};
+  std::uint32_t active_mask{};
+  std::uint32_t mute_mask{};
+  std::uint32_t solo_mask{};
 
   std::array<std::vector<float>, kLoopTrackCount> undo_tracks;
   std::array<std::vector<std::uint16_t>, kLoopTrackCount> undo_tags;
@@ -683,19 +776,23 @@ struct LoopProcessor::Impl {
   std::atomic<bool> enabled{false};
   std::atomic<unsigned> selected{0U};
   std::atomic<float> master_level{.78F};
-  // RETAIN feedback: 0 = live replace, 1 = classic additive overdub.
   std::atomic<float> overdub{0.F};
   std::atomic<float> fade{.18F};
+  std::atomic<bool> fade_refresh_pending{false};
   std::atomic<float> bpm{120.F};
   std::atomic<unsigned> quantize_mode{kQuantizeOff};
   std::uint64_t clock_frame{};
   std::array<ScheduledCommand, kScheduledSlots> scheduled{};
+  std::uint64_t next_scheduled_due{kNoDue};
 
-  std::atomic<unsigned> pending_command{kNoCommand};
-  std::array<std::atomic<unsigned>, kLoopTrackCount> pending_performance{};
-  std::atomic<unsigned> pending_track{0U};
-  std::atomic<float> pending_trim_start{0.F};
-  std::atomic<float> pending_trim_end{1.F};
+  std::array<PendingAction, kCommandQueueSlots> command_queue{};
+  std::atomic<unsigned> command_write{};
+  std::atomic<unsigned> command_read{};
+  std::atomic<bool> trim_pending{false};
+  std::atomic<unsigned> trim_track{0U};
+  std::atomic<float> trim_start_pending{0.F};
+  std::atomic<float> trim_end_pending{1.F};
+
   bool playing{false};
   bool recording{false};
   unsigned record_track{0U};
@@ -709,25 +806,31 @@ struct LoopProcessor::Impl {
 
   std::atomic<unsigned> published_transport{static_cast<unsigned>(LoopTransport::Empty)};
   std::atomic<std::uint32_t> published_mask{};
+  std::atomic<std::uint32_t> published_active_mask{};
+  std::atomic<std::uint32_t> published_mute_mask{};
+  std::atomic<std::uint32_t> published_solo_mask{};
   std::atomic<std::uint64_t> published_frames{};
   std::atomic<std::uint64_t> published_raw_frames{};
   std::atomic<std::uint64_t> published_position{};
   std::atomic<float> published_trim_start{0.F};
   std::atomic<float> published_trim_end{1.F};
   std::array<std::atomic<float>, kLoopWaveformBins> published_waveform{};
+  std::atomic<bool> waveform_refresh_pending{true};
+  std::atomic<bool> waveform_force{true};
 };
 
 LoopProcessor::LoopProcessor(float rate) : impl_(std::make_unique<Impl>(rate)) {}
 LoopProcessor::~LoopProcessor() = default;
 void LoopProcessor::process(float* data, std::size_t frames) noexcept { if (data && frames) impl_->process(data, frames); }
 void LoopProcessor::set_enabled(bool value) noexcept { impl_->enabled.store(value, std::memory_order_relaxed); }
-void LoopProcessor::set_selected_track(unsigned track) noexcept { impl_->selected.store(std::min(track, kLoopTrackCount - 1U), std::memory_order_relaxed); }
+void LoopProcessor::set_selected_track(unsigned track) noexcept {
+  impl_->selected.store(std::min(track, kLoopTrackCount - 1U), std::memory_order_relaxed);
+  impl_->waveform_force.store(true, std::memory_order_release);
+  impl_->waveform_refresh_pending.store(true, std::memory_order_release);
+}
 void LoopProcessor::set_master_level(float value) noexcept { impl_->master_level.store(clamp01(value), std::memory_order_relaxed); }
 void LoopProcessor::set_track_level(unsigned track, float value) noexcept {
   if (track >= kLoopTrackCount || !std::isfinite(value)) return;
-  // The native faceplate has a stable text control protocol. Values above the
-  // physical 0..1 fader range are private Loop control frames so new performance
-  // features do not require a breaking native-host protocol revision.
   if (value >= 2'000.F) {
     const auto mode = static_cast<unsigned>(std::clamp<long>(std::lround(value - 2'000.F), 0L, 2L));
     impl_->quantize_mode.store(mode, std::memory_order_relaxed);
@@ -739,47 +842,47 @@ void LoopProcessor::set_track_level(unsigned track, float value) noexcept {
   }
   if (value >= 1.5F) {
     const long sentinel = std::lround(value);
-    if (sentinel == 2L) impl_->queue_performance(track, LoopCommand::TrackPlay);
-    else if (sentinel == 3L) impl_->queue_performance(track, LoopCommand::TrackStop);
-    else if (sentinel == 4L) impl_->queue_performance(track, LoopCommand::Mute);
-    else if (sentinel == 5L) impl_->queue_performance(track, LoopCommand::Solo);
-    else if (sentinel == 6L) impl_->queue_command(track, LoopCommand::Undo);
-    else if (sentinel == 7L) impl_->queue_command(track, LoopCommand::Redo);
-    else if (sentinel == 8L && impl_->ensure_track_buffer(track)) impl_->queue_command(track, LoopCommand::Bounce);
+    if (sentinel == 2L) impl_->enqueue_action(static_cast<unsigned>(LoopCommand::TrackPlay), track);
+    else if (sentinel == 3L) impl_->enqueue_action(static_cast<unsigned>(LoopCommand::TrackStop), track);
+    else if (sentinel == 4L) impl_->enqueue_action(static_cast<unsigned>(LoopCommand::Mute), track);
+    else if (sentinel == 5L) impl_->enqueue_action(static_cast<unsigned>(LoopCommand::Solo), track);
+    else if (sentinel == 6L) impl_->enqueue_action(static_cast<unsigned>(LoopCommand::Undo), track);
+    else if (sentinel == 7L) impl_->enqueue_action(static_cast<unsigned>(LoopCommand::Redo), track);
+    else if (sentinel == 8L && impl_->ensure_track_buffer(track)) impl_->enqueue_action(static_cast<unsigned>(LoopCommand::Bounce), track);
     return;
   }
   impl_->track_levels[track].store(clamp01(value), std::memory_order_relaxed);
 }
 void LoopProcessor::set_overdub(float value) noexcept { impl_->overdub.store(clamp01(value), std::memory_order_relaxed); }
-void LoopProcessor::set_fade(float value) noexcept { impl_->fade.store(clamp01(value), std::memory_order_relaxed); }
+void LoopProcessor::set_fade(float value) noexcept {
+  impl_->fade.store(clamp01(value), std::memory_order_relaxed);
+  impl_->fade_refresh_pending.store(true, std::memory_order_release);
+}
 void LoopProcessor::command(LoopCommand value) noexcept {
   const unsigned track = impl_->selected.load(std::memory_order_relaxed);
-  if (value == LoopCommand::TrackPlay || value == LoopCommand::TrackStop || value == LoopCommand::Mute || value == LoopCommand::Solo) {
-    impl_->queue_performance(track, value);
-    return;
-  }
   if (value == LoopCommand::Record && !impl_->ensure_track_buffer(track)) return;
-  if (value == LoopCommand::Overdub) impl_->ensure_undo_journal(track);
+  if (value == LoopCommand::Overdub && !impl_->ensure_undo_journal(track)) return;
   if (value == LoopCommand::Bounce && !impl_->ensure_track_buffer(track)) return;
-  impl_->queue_command(track, value);
+  impl_->enqueue_action(static_cast<unsigned>(value), track);
 }
 void LoopProcessor::set_trim(float start, float end) noexcept {
-  impl_->pending_trim_start.store(clamp01(start), std::memory_order_relaxed);
-  impl_->pending_trim_end.store(clamp01(end), std::memory_order_relaxed);
-  impl_->pending_track.store(impl_->selected.load(std::memory_order_relaxed), std::memory_order_relaxed);
-  impl_->pending_command.store(kTrimCommand, std::memory_order_release);
+  impl_->trim_start_pending.store(clamp01(start), std::memory_order_relaxed);
+  impl_->trim_end_pending.store(clamp01(end), std::memory_order_relaxed);
+  impl_->trim_track.store(impl_->selected.load(std::memory_order_relaxed), std::memory_order_relaxed);
+  impl_->trim_pending.store(true, std::memory_order_release);
 }
 void LoopProcessor::auto_trim() noexcept {
-  impl_->pending_track.store(impl_->selected.load(std::memory_order_relaxed), std::memory_order_relaxed);
-  impl_->pending_command.store(kAutoTrimCommand, std::memory_order_release);
+  impl_->enqueue_action(kAutoTrimAction, impl_->selected.load(std::memory_order_relaxed));
 }
 void LoopProcessor::reset_trim() noexcept {
-  impl_->pending_track.store(impl_->selected.load(std::memory_order_relaxed), std::memory_order_relaxed);
-  impl_->pending_command.store(kResetTrimCommand, std::memory_order_release);
+  impl_->enqueue_action(kResetTrimAction, impl_->selected.load(std::memory_order_relaxed));
 }
 LoopTransport LoopProcessor::transport() const noexcept { return static_cast<LoopTransport>(impl_->published_transport.load(std::memory_order_relaxed)); }
 unsigned LoopProcessor::selected_track() const noexcept { return impl_->selected.load(std::memory_order_relaxed); }
 std::uint32_t LoopProcessor::track_mask() const noexcept { return impl_->published_mask.load(std::memory_order_relaxed); }
+std::uint32_t LoopProcessor::track_active_mask() const noexcept { return impl_->published_active_mask.load(std::memory_order_relaxed); }
+std::uint32_t LoopProcessor::track_mute_mask() const noexcept { return impl_->published_mute_mask.load(std::memory_order_relaxed); }
+std::uint32_t LoopProcessor::track_solo_mask() const noexcept { return impl_->published_solo_mask.load(std::memory_order_relaxed); }
 std::uint64_t LoopProcessor::loop_frames() const noexcept { return impl_->published_frames.load(std::memory_order_relaxed); }
 std::uint64_t LoopProcessor::raw_frames() const noexcept { return impl_->published_raw_frames.load(std::memory_order_relaxed); }
 std::uint64_t LoopProcessor::position() const noexcept { return impl_->published_position.load(std::memory_order_relaxed); }
