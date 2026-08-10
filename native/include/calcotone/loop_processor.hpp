@@ -12,7 +12,7 @@ inline constexpr float kLoopMaxSeconds = 60.F;
 inline constexpr unsigned kLoopWaveformBins = 256U;
 inline constexpr unsigned kLoopEnvelopeBins = 16'384U;
 
-// Values 4-6 are deliberately reserved by the internal trim command queue.
+// Values 4-6 remain reserved for legacy private trim command compatibility.
 enum class LoopCommand : unsigned {
   Record = 0U,
   Overdub = 1U,
@@ -50,6 +50,9 @@ class LoopProcessor final {
   LoopTransport transport() const noexcept;
   unsigned selected_track() const noexcept;
   std::uint32_t track_mask() const noexcept;
+  std::uint32_t track_active_mask() const noexcept;
+  std::uint32_t track_mute_mask() const noexcept;
+  std::uint32_t track_solo_mask() const noexcept;
   std::uint64_t loop_frames() const noexcept;
   std::uint64_t raw_frames() const noexcept;
   std::uint64_t position() const noexcept;
