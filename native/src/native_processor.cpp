@@ -100,11 +100,8 @@ struct NativeProcessor::Impl {
     apply_output_safety(output, frames, gain, &limited, &peak);
     output_limited_samples.fetch_add(limited, std::memory_order_relaxed);
     publish_peak(pre_limiter_peak, peak);
-    // Final post-loop/post-safety audio is copied into the lock-free visual ring.
-    // The FFT itself stays on the control-server thread when /spectrum is read.
     native_visual_spectrum().publish(output, frames);
   }
-
 
   float rate;
   PitchTracker tuner;
@@ -166,6 +163,9 @@ void NativeProcessor::reset_loop_trim() noexcept { impl_->loop.reset_trim(); }
 LoopTransport NativeProcessor::loop_transport() const noexcept { return impl_->loop.transport(); }
 unsigned NativeProcessor::loop_selected_track() const noexcept { return impl_->loop.selected_track(); }
 std::uint32_t NativeProcessor::loop_track_mask() const noexcept { return impl_->loop.track_mask(); }
+std::uint32_t NativeProcessor::loop_track_active_mask() const noexcept { return impl_->loop.track_active_mask(); }
+std::uint32_t NativeProcessor::loop_track_mute_mask() const noexcept { return impl_->loop.track_mute_mask(); }
+std::uint32_t NativeProcessor::loop_track_solo_mask() const noexcept { return impl_->loop.track_solo_mask(); }
 std::uint64_t NativeProcessor::loop_frames() const noexcept { return impl_->loop.loop_frames(); }
 std::uint64_t NativeProcessor::loop_raw_frames() const noexcept { return impl_->loop.raw_frames(); }
 std::uint64_t NativeProcessor::loop_position() const noexcept { return impl_->loop.position(); }
