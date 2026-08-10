@@ -19,7 +19,6 @@ const ascii = read('src/components/ascii/AsciiArtEngine.tsx');
 const asciiCss = read('src/components/ascii/AsciiArtEngine.css');
 const pressureDisplay = read('src/components/ascii/PressureStyleDisplay.tsx');
 const viewport = read('src/components/effects/ModuleViewport.tsx');
-const field = read('src/components/motion/XYSignalField.tsx');
 const railC = read('src/components/effects/RailCModules.tsx');
 const railDisplay = read('src/components/ascii/RailCHardwareDisplay.tsx');
 const loopDisplay = read('src/components/ascii/LoopTrackMatrixDisplay.tsx');
@@ -41,11 +40,11 @@ forbidText(viewport, 'viewport-caption', 'Duplicate module artwork label');
 forbidText(viewport, '<TemporalVideo', 'Module decoder');
 forbidText(viewport, '.mp4', 'Module media asset');
 
-requireText(field, '<AsciiArtEngine', 'XY ASCII surface');
-requireText(field, 'kind="landscape"', 'XY combined landscape');
-requireText(field, 'pressure={signalLab}', 'Existing Pressure state reaches ASCII world');
-forbidText(field, 'DreamFieldEngine', 'Retired Dream fallback');
-forbidText(field, 'VideoLandscapeEngine', 'XY decoder world');
+// The retired XY landscape/motion surface is intentionally absent. The active
+// visual system is module-scoped ASCII plus the Stomp/Stack spectacle and Loop editor.
+forbidText(app, 'XYSignalField', 'Retired XY landscape component');
+forbidText(app, 'MotionPad', 'Retired XY motion component');
+forbidText(app, 'xyAssignments', 'Retired XY motion state');
 
 requireText(ascii, 'hashAsciiScene', 'Deterministic scene identity');
 requireText(ascii, 'moduleModeKey', 'Per-dropdown scene identity');
@@ -124,8 +123,8 @@ requireText(hardwarePalette, '.spectrum-header {', 'Cream Spectrum title/LIVE bo
 requireText(hardwarePalette, '.sample-recorder {', 'Cream Recorder chassis');
 requireText(hardwarePalette, '.level-meter span.lit', 'Cream level-meter illumination');
 requireText(hardwarePalette, '.output-meter span.lit', 'Cream output-meter illumination');
-requireText(hardwarePalette, '.knob-patch-jack.assigned', 'Dark metallic knob jacks');
-requireText(hardwarePalette, '.xy-patch-destination.axis-y i', 'Dark metallic XY sockets');
+requireText(hardwarePalette, '.knob-shell::before', 'Dark metallic knob bezel');
+forbidText(hardwarePalette, '.xy-patch-destination', 'Retired XY patch sockets');
 requireText(hardwarePalette, '.pressure-panel .knob-label', 'Charcoal Pressure labels');
 requireText(hardwarePalette, '.effect-module .module-header h3', 'Charcoal module titles');
 requireText(hardwarePalette, '.effect-module .knob-label', 'Charcoal module control legends');
