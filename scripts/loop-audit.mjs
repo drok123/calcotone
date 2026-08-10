@@ -69,11 +69,12 @@ forbidText(rail, "['Track', 'Loop', 'RETAIN', 'Fade']", 'Retired modal macro kno
 forbidText(rail, 'aria-label="Loop track"', 'Retired selected-track dropdown');
 requireText(railCss, '.loop-track-fader', 'Loop fader hardware styling');
 requireText(railCss, "transform: rotate(-90deg)", 'Loop vertical fader orientation');
-requireText(faceplate, '{ x: 0.19883040935672514, y: 216 }', 'User-supplied T1 fader position');
-requireText(faceplate, '{ x: 0.4444444444444444, y: 216 }', 'User-supplied T2 fader position');
-requireText(faceplate, '{ x: 0.6900584795321637, y: 216 }', 'User-supplied T3 fader position');
-requireText(faceplate, '{ x: 0.9122807017543859, y: 216 }', 'User-supplied T4 fader position');
-requireText(faceplate, '{ x: 0.19883040935672514, y: 182 }', 'T1 pad aligned above fader');
+requireText(faceplate, '{ x: 0.14327485380116955, y: 216 }', 'Centered T1 fader position');
+requireText(faceplate, '{ x: 0.38888888888888884, y: 216 }', 'Centered T2 fader position');
+requireText(faceplate, '{ x: 0.6345029239766081, y: 216 }', 'Centered T3 fader position');
+requireText(faceplate, '{ x: 0.8567251461988303, y: 216 }', 'Centered T4 fader position');
+requireText(faceplate, '{ x: 0.14327485380116955, y: 272 }', 'T1 pad vertically aligned with centered fader');
+requireText(faceplate, '{ x: 0.8567251461988303, y: 272 }', 'T4 pad vertically aligned with centered fader');
 requireText(faceplate, 'controlViewportCeiling(', 'Button-aware viewport collision geometry');
 requireText(display, 'L O O P  //  4 TRACK MEMORY', 'Four-track display identity');
 requireText(display, 'REC > PLAY > DUB  //  SHIFT + TRACK = CLEAR', 'Faceplate transport legend');
@@ -96,4 +97,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('CALCOTONE Loop audit passed · 8-buffer backend, 4 RC-style track faders/pads, utility transport, trim, and four orbital ASCII clocks locked');
+console.log('CALCOTONE Loop audit passed · 8-buffer backend, centered 4-track RC-style faders/pads, utility transport, trim, and four orbital ASCII clocks locked');
