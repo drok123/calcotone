@@ -2,6 +2,7 @@
 
 #include "calcotone/input_router.hpp"
 #include "calcotone/native_dream_engine.hpp"
+#include "calcotone/native_visual_spectrum.hpp"
 #include "calcotone/pitch_tracker.hpp"
 
 #include <algorithm>
@@ -35,6 +36,7 @@ struct NativeProcessor::Impl {
       : rate(std::clamp(sample_rate, 8'000.F, 384'000.F)), tuner(rate),
         stack_one(rate), stack_two(rate), rack_one(rate), rack_two(rate),
         pressure_one(rate), pressure_two(rate), loop(rate), dream(rate, kBlockFrames) {
+    native_visual_spectrum().configure(rate);
     std::array<unsigned, kOrderSlots> initial{};
     for (unsigned slot = 0; slot < kOrderSlots; ++slot) initial[slot] = slot;
     packed_order.store(pack_order(initial));
@@ -98,6 +100,9 @@ struct NativeProcessor::Impl {
     apply_output_safety(output, frames, gain, &limited, &peak);
     output_limited_samples.fetch_add(limited, std::memory_order_relaxed);
     publish_peak(pre_limiter_peak, peak);
+    // Final post-loop/post-safety audio is copied into the lock-free visual ring.
+    // The FFT itself stays on the control-server thread when /spectrum is read.
+    native_visual_spectrum().publish(output, frames);
   }
 
 
