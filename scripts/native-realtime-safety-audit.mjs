@@ -5,6 +5,7 @@ const read = (path) => readFileSync(resolve(process.cwd(), path), 'utf8').replac
 const rack = read('native/src/native_rack.cpp');
 const atmos = read('native/src/atmos_parity_processor.cpp');
 const drift = read('native/src/drift_parity_processor.cpp');
+const ember = read('native/src/ember_parity_processor.cpp');
 const host = read('native/src/wasapi_host.cpp');
 const failures = [];
 
@@ -50,6 +51,15 @@ for (const token of [
 ]) requireText(drift, token, 'Click-safe dedicated Drift model handoff');
 
 for (const token of [
+  'int active_mode{-1};',
+  'float mode_mix{1.F};',
+  'void prepare_mode_transition() noexcept',
+  'void advance_mode_transition() noexcept',
+  'const unsigned mode = static_cast<unsigned>(std::max(0, active_mode));',
+  'data[frame * 2 + channel] = dry[channel] + (processed - dry[channel]) * mode_mix;',
+]) requireText(ember, token, 'Click-safe dedicated Ember model handoff');
+
+for (const token of [
   'RealtimeThreadScope realtime;',
   'ring->pull(captured_left, captured_right, &stream_discontinuity)',
   'recovery.process(valid, captured_left, captured_right, left, right)',
@@ -61,4 +71,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('Native realtime safety audit passed · rack and Drift model changes are dry-crossed and Atmos switching performs no network heap allocation in the render callback');
+console.log('Native realtime safety audit passed · rack, Ember, and Drift model changes are dry-crossed and Atmos switching performs no network heap allocation in the render callback');

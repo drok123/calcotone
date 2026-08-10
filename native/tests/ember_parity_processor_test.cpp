@@ -43,6 +43,33 @@ int main() {
     for (std::size_t j = i + 1; j < signatures.size(); ++j)
       assert(std::abs(signatures[i] - signatures[j]) > 1e-3);
 
+  {
+    // Cross the radically different tube -> digital topology at an exact dry sample.
+    calcotone::EmberParityProcessor transition(rate);
+    assert(transition.set_parameter("mode", 7.F));
+    assert(transition.set_parameter("drive", .72F));
+    assert(transition.set_parameter("heat", .58F));
+    assert(transition.set_parameter("character", .64F));
+    assert(transition.set_parameter("mix", 1.F));
+    std::vector<float> warmup(4096U * 2U);
+    for (std::size_t frame = 0; frame < 4096U; ++frame) {
+      const float sample = .22F * std::sin(6.283185307F * 173.F * static_cast<float>(frame) / rate);
+      warmup[frame * 2U] = sample; warmup[frame * 2U + 1U] = sample;
+    }
+    transition.process(warmup.data(), 4096U);
+    assert(transition.set_parameter("mode", 17.F));
+    std::vector<float> changing(512U * 2U);
+    for (std::size_t frame = 0; frame < 512U; ++frame) {
+      const float sample = .22F * std::sin(6.283185307F * 173.F * static_cast<float>(frame + 4096U) / rate);
+      changing[frame * 2U] = sample; changing[frame * 2U + 1U] = sample;
+    }
+    const auto dry = changing;
+    transition.process(changing.data(), 512U);
+    constexpr std::size_t crossing = 143U;
+    assert(std::abs(changing[crossing * 2U] - dry[crossing * 2U]) < 1e-5F);
+    assert(std::abs(changing[crossing * 2U + 1U] - dry[crossing * 2U + 1U]) < 1e-5F);
+  }
+
   calcotone::EmberParityProcessor processor(rate);
   assert(!processor.set_parameter("unknown", .5F));
   return 0;
