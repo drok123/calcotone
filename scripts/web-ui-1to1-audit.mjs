@@ -30,9 +30,11 @@ const viewportIndex = effect.indexOf('className={`faceplate-viewport-shell');
 const controlsIndex = effect.indexOf('className={`knob-row faceplate-control-surface');
 require(viewportIndex >= 0 && controlsIndex > viewportIndex, 'viewport/knob DOM order drifted from the web build');
 
-require(layout.includes("const FACTORY_LAYOUT_REVISION = '2026-08-09-loop505-fader-faceplate-v2';"), 'Loop 505 fader layout migration revision is missing');
-require(layout.includes("pressure: {\n      viewportHeight: 168,\n      stageHeight: 304,\n      knobs: [\n        { x: 0.19883040935672514, y: 216 },\n        { x: 0.4444444444444444, y: 216 },\n        { x: 0.6900584795321637, y: 216 },\n        { x: 0.9122807017543859, y: 216 },"), 'Loop fader geometry does not match the supplied faceplate');
-require(layout.includes("buttons: [\n        { x: 0.19883040935672514, y: 182 },\n        { x: 0.4444444444444444, y: 182 },\n        { x: 0.6900584795321637, y: 182 },\n        { x: 0.9122807017543859, y: 182 },"), 'Loop track pads are not aligned above their faders');
+require(layout.includes("const FACTORY_LAYOUT_REVISION = '2026-08-09-railc-latest-loop-centered-v4';"), 'latest Rail C centered layout migration revision is missing');
+require(layout.includes("stomp: {\n      viewportHeight: 168,\n      stageHeight: 304,\n      knobs: [\n        { x: 0.08187134502923976, y: 224 },"), 'Stomp geometry does not match the latest supplied faceplate');
+require(layout.includes("chaos: {\n      viewportHeight: 168,\n      stageHeight: 304,\n      knobs: [\n        { x: 0.11695906432748537, y: 240 },\n        { x: 0.3742690058479532, y: 240 },\n        { x: 0.6432748538011696, y: 240 },\n        { x: 0.8888888888888888, y: 240 },"), 'Stack geometry does not match the latest supplied faceplate');
+require(layout.includes("pressure: {\n      viewportHeight: 168,\n      stageHeight: 304,\n      knobs: [\n        { x: 0.14327485380116955, y: 216 },\n        { x: 0.38888888888888884, y: 216 },\n        { x: 0.6345029239766081, y: 216 },\n        { x: 0.8567251461988303, y: 216 },"), 'Loop fader bank is not centered as a rigid four-channel group');
+require(layout.includes("buttons: [\n        { x: 0.14327485380116955, y: 272 },\n        { x: 0.38888888888888884, y: 272 },\n        { x: 0.6345029239766081, y: 272 },\n        { x: 0.8567251461988303, y: 272 },"), 'Loop track pads are not vertically aligned with the centered faders');
 require(layout.includes('controlViewportCeiling('), 'Loop fader/button-aware viewport clearance is missing');
 require(layout.includes('{ x: 0.09523809523809523, y: 224 }') && layout.includes('{ x: 0.9166666666666666, y: 224 }'), 'uploaded approved core six-knob geometry drifted');
 
@@ -50,4 +52,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('Web UI 1:1 parity audit passed · approved 304px faceplate, canonical core knobs, Loop 505 fader geometry, and 1440p viewport flow are locked for Windows.');
+console.log('Web UI 1:1 parity audit passed · latest Stomp/Stack geometry, centered Loop fader bank, canonical core knobs, and 1440p viewport flow are locked for Windows.');
