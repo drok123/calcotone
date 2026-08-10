@@ -1,15 +1,20 @@
 import { isNativeBackendEngaged } from './audio/NativeAudioBridge';
 import {
+  LOOP_VISIBLE_TRACK_COUNT,
   getLoopState,
   LOOP_CHANGE_EVENT,
   LOOP_PERFORMANCE_COMMAND_EVENT,
+  cycleLoopQuantize,
   sendLoopCommand,
+  setLoopBpm,
   setLoopRuntime,
+  setLoopState,
   toggleLoopTrackMute,
   toggleLoopTrackPlayback,
   toggleLoopTrackSolo,
   type LoopPerformanceCommand,
   type LoopPerformanceCommandName,
+  type LoopUtilityCommand,
 } from './components/signal/loopStore';
 import './loop505Controls.css';
 
@@ -20,7 +25,14 @@ const NATIVE_SENTINELS: Record<LoopPerformanceCommandName, number> = {
   mute: 4,
   solo: 5,
 };
+const NATIVE_UTILITY_SENTINELS: Record<LoopUtilityCommand, number> = {
+  undo: 6,
+  redo: 7,
+  bounce: 8,
+};
+const QUANTIZE_CODES = { off: 0, beat: 1, bar: 2 } as const;
 let nativeQueue: Promise<void> = Promise.resolve();
+let nativeClockSignature = '';
 let refreshFrame = 0;
 
 function loopPads(): HTMLButtonElement[] {
@@ -43,8 +55,103 @@ function scheduleRefresh(): void {
   if (refreshFrame) return;
   refreshFrame = window.requestAnimationFrame(() => {
     refreshFrame = 0;
-    refreshPads();
+    refreshFaceplate();
   });
+}
+
+function queueNativeLine(line: string): void {
+  nativeQueue = nativeQueue.then(async () => {
+    try {
+      await fetch(NATIVE_COMMAND_URL, {
+        method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
+        headers: { 'Content-Type': 'text/plain' },
+        body: line,
+      });
+    } catch {
+      // Native health/reconnect owns reporting when the desktop host disappears.
+    }
+  });
+}
+
+function sendNativeControl(track: number, value: number): void {
+  queueNativeLine(`loopTrackLevel ${track} ${value}`);
+}
+
+function syncNativeClock(): void {
+  if (!isNativeBackendEngaged()) {
+    nativeClockSignature = '';
+    return;
+  }
+  const state = getLoopState();
+  const signature = `${state.bpm}:${state.quantize}`;
+  if (signature === nativeClockSignature) return;
+  nativeClockSignature = signature;
+  // Track 8 is reserved on the four-strip faceplate. Values >=1000 are private
+  // native Loop control frames and never touch its physical fader level.
+  sendNativeControl(LOOP_VISIBLE_TRACK_COUNT + 3, 1000 + state.bpm);
+  sendNativeControl(LOOP_VISIBLE_TRACK_COUNT + 3, 2000 + QUANTIZE_CODES[state.quantize]);
+}
+
+function ensureTools(): HTMLDivElement | null {
+  const bank = document.querySelector<HTMLElement>('.module-pressure .loop-utility-bank');
+  if (!bank) return null;
+  const existing = bank.querySelector<HTMLDivElement>('.loop-505-tools');
+  if (existing) return existing;
+  const tools = document.createElement('div');
+  tools.className = 'loop-505-tools';
+  tools.setAttribute('role', 'group');
+  tools.setAttribute('aria-label', 'Loop 505 edit and bounce tools');
+  for (const [action, label] of [['undo', 'UNDO'], ['redo', 'REDO'], ['bounce', 'BNC']] as const) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `loop-utility-button loop-505-action loop-505-${action}`;
+    button.dataset.loop505Action = action;
+    button.textContent = label;
+    tools.append(button);
+  }
+  bank.append(tools);
+  return tools;
+}
+
+function refreshClock(): void {
+  const state = getLoopState();
+  const clock = document.querySelector<HTMLElement>('.module-pressure .loop-track-bank');
+  if (!clock) return;
+  clock.classList.add('loop-clock-bank');
+  const quantizeLabel = state.quantize === 'off' ? 'OFF' : state.quantize === 'beat' ? 'BEAT' : 'BAR';
+  const text = `T${state.selectedTrack + 1} · ${state.bpm} · ${quantizeLabel}`;
+  if (clock.textContent !== text) clock.textContent = text;
+  clock.setAttribute('role', 'button');
+  clock.setAttribute('tabindex', '0');
+  clock.setAttribute('aria-label', `Loop clock ${state.bpm} BPM, quantize ${quantizeLabel}. Scroll to change BPM, click to cycle quantize.`);
+  clock.title = 'Wheel: BPM · Click: quantize OFF / BEAT / BAR · Shift-wheel: ±5 BPM';
+}
+
+function refreshTools(): void {
+  const tools = ensureTools();
+  if (!tools) return;
+  const state = getLoopState();
+  const writing = state.transport === 'recording' || state.transport === 'overdubbing';
+  const selectedFilled = (state.trackMask & (1 << state.selectedTrack)) !== 0;
+  const activeSources = (state.trackActiveMask & state.trackMask) !== 0;
+  let emptyVisible = false;
+  for (let track = 0; track < LOOP_VISIBLE_TRACK_COUNT; track += 1) {
+    if ((state.trackMask & (1 << track)) === 0) { emptyVisible = true; break; }
+  }
+  for (const button of tools.querySelectorAll<HTMLButtonElement>('.loop-505-action')) {
+    const action = button.dataset.loop505Action as LoopUtilityCommand | undefined;
+    if (action === 'bounce') {
+      button.disabled = writing || !activeSources || !emptyVisible;
+      button.title = emptyVisible ? 'Bounce the audible active loop mix into the first empty track' : 'Clear a visible track before bouncing';
+    } else {
+      button.disabled = writing || !selectedFilled;
+      button.title = action === 'undo'
+        ? 'Undo the selected track’s latest overdub session'
+        : 'Redo the selected track after undo';
+    }
+  }
 }
 
 function refreshPads(): void {
@@ -90,9 +197,60 @@ function refreshPads(): void {
   }
 }
 
+function refreshFaceplate(): void {
+  refreshPads();
+  refreshClock();
+  refreshTools();
+  syncNativeClock();
+}
+
+function issueUtility(action: LoopUtilityCommand): void {
+  const state = getLoopState();
+  const writing = state.transport === 'recording' || state.transport === 'overdubbing';
+  if (writing) return;
+
+  if (action === 'bounce') {
+    let destination = -1;
+    for (let track = 0; track < LOOP_VISIBLE_TRACK_COUNT; track += 1) {
+      if ((state.trackMask & (1 << track)) === 0) { destination = track; break; }
+    }
+    if (destination < 0 || (state.trackActiveMask & state.trackMask) === 0) return;
+    setLoopState({ selectedTrack: destination });
+    if (isNativeBackendEngaged()) sendNativeControl(destination, NATIVE_UTILITY_SENTINELS.bounce);
+    else sendLoopCommand('bounce');
+    scheduleRefresh();
+    return;
+  }
+
+  if ((state.trackMask & (1 << state.selectedTrack)) === 0) return;
+  if (isNativeBackendEngaged()) sendNativeControl(state.selectedTrack, NATIVE_UTILITY_SENTINELS[action]);
+  else sendLoopCommand(action);
+  scheduleRefresh();
+}
+
 function handleClick(event: MouseEvent): void {
   const target = event.target;
   if (target instanceof Element) {
+    const clock = target.closest<HTMLElement>('.module-pressure .loop-track-bank');
+    if (clock && !clock.closest('.faceplate-layout-editing') && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      cycleLoopQuantize();
+      scheduleRefresh();
+      return;
+    }
+
+    const tool = target.closest<HTMLButtonElement>('.module-pressure .loop-505-action');
+    if (tool && !tool.closest('.faceplate-layout-editing')) {
+      const action = tool.dataset.loop505Action as LoopUtilityCommand | undefined;
+      if (action) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        issueUtility(action);
+      }
+      return;
+    }
+
     const allToggle = target.closest<HTMLButtonElement>('.module-pressure .loop-all-toggle');
     if (allToggle && !allToggle.closest('.faceplate-layout-editing') && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
       const before = getLoopState();
@@ -102,13 +260,15 @@ function handleClick(event: MouseEvent): void {
       event.preventDefault();
       event.stopImmediatePropagation();
       sendLoopCommand('play');
-      // The legacy optimistic ALL state predates independent tracks. Correct it
-      // immediately so restarting one track after ALL STOP cannot wake its siblings.
-      setLoopRuntime({
-        trackActiveMask: stopAll ? 0 : before.trackMask,
-        transport: stopAll ? 'stopped' : 'playing',
-        position: 0,
-      });
+      // Quantized engines will commit at the next boundary. Keep optimistic state
+      // conservative in quantized modes so the display does not claim an early stop.
+      if (before.quantize === 'off') {
+        setLoopRuntime({
+          trackActiveMask: stopAll ? 0 : before.trackMask,
+          transport: stopAll ? 'stopped' : 'playing',
+          position: 0,
+        });
+      }
       scheduleRefresh();
       return;
     }
@@ -145,24 +305,42 @@ function handleContextMenu(event: MouseEvent): void {
   scheduleRefresh();
 }
 
+function handleWheel(event: WheelEvent): void {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const clock = target.closest<HTMLElement>('.module-pressure .loop-track-bank');
+  if (!clock || clock.closest('.faceplate-layout-editing')) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  const state = getLoopState();
+  const direction = event.deltaY < 0 ? 1 : -1;
+  setLoopBpm(state.bpm + direction * (event.shiftKey ? 5 : 1));
+  scheduleRefresh();
+}
+
+function handleKeyDown(event: KeyboardEvent): void {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const clock = target.closest<HTMLElement>('.module-pressure .loop-track-bank');
+  if (!clock || clock.closest('.faceplate-layout-editing')) return;
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    cycleLoopQuantize();
+  } else if (event.key === 'ArrowUp' || event.key === 'ArrowRight') {
+    event.preventDefault();
+    setLoopBpm(getLoopState().bpm + (event.shiftKey ? 5 : 1));
+  } else if (event.key === 'ArrowDown' || event.key === 'ArrowLeft') {
+    event.preventDefault();
+    setLoopBpm(getLoopState().bpm - (event.shiftKey ? 5 : 1));
+  } else return;
+  scheduleRefresh();
+}
+
 function sendNativePerformance(detail: LoopPerformanceCommand): void {
   if (!isNativeBackendEngaged()) return;
   const sentinel = NATIVE_SENTINELS[detail.command];
   if (!Number.isFinite(sentinel)) return;
-  nativeQueue = nativeQueue.then(async () => {
-    try {
-      await fetch(NATIVE_COMMAND_URL, {
-        method: 'POST',
-        mode: 'cors',
-        credentials: 'omit',
-        headers: { 'Content-Type': 'text/plain' },
-        body: `loopTrackLevel ${detail.track} ${sentinel}`,
-      });
-    } catch {
-      // The native host can disappear while the UI remains open; the ordinary
-      // health/reconnect path owns reporting and recovery.
-    }
-  });
+  sendNativeControl(detail.track, sentinel);
 }
 
 function handlePerformanceCommand(event: Event): void {
@@ -178,6 +356,8 @@ function handleLoopChange(): void {
 
 document.addEventListener('click', handleClick, true);
 document.addEventListener('contextmenu', handleContextMenu, true);
+document.addEventListener('wheel', handleWheel, { capture: true, passive: false });
+document.addEventListener('keydown', handleKeyDown, true);
 window.addEventListener(LOOP_PERFORMANCE_COMMAND_EVENT, handlePerformanceCommand);
 window.addEventListener(LOOP_CHANGE_EVENT, handleLoopChange);
 
@@ -190,6 +370,8 @@ scheduleRefresh();
 function uninstall(): void {
   document.removeEventListener('click', handleClick, true);
   document.removeEventListener('contextmenu', handleContextMenu, true);
+  document.removeEventListener('wheel', handleWheel, true);
+  document.removeEventListener('keydown', handleKeyDown, true);
   window.removeEventListener(LOOP_PERFORMANCE_COMMAND_EVENT, handlePerformanceCommand);
   window.removeEventListener(LOOP_CHANGE_EVENT, handleLoopChange);
   observer.disconnect();
