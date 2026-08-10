@@ -45,10 +45,6 @@
   box-shadow: inset 0 0 28px rgba(0, 0, 0, 0.86);
 }
 
-.module-chaos .chaos-pad-shell > .xy-pad {
-  display: none !important;
-}
-
 .module-chaos .chaos-pad-shell::before {
   content: none;
 }
@@ -98,12 +94,7 @@
 }
 
 /* Belt-and-suspenders cleanup for legacy patch UI while declarations migrate. */
-.knob-patch-jack,
-.patch-cable-overlay,
-.patch-cable-layer,
-.xy-jack-panel,
-.motion-jack-panel,
-[data-patch-target] {
+[data-control-target] {
   display: none !important;
 }
 

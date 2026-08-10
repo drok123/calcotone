@@ -21,18 +21,11 @@ select,
 input[type="text"],
 .sample-name,
 .performance-mode button:not(.active),
-.route-axis button:not(.active),
-.route-options button:not(.active),
-.motion-route header button,
-.motion-route,
 .empty-routes,
-.xy-patch-bay,
-.xy-patch-destination,
 .meter-pair,
 .output-meter,
 .input-matrix,
 .algorithm-selector,
-.motion-route details,
 .faceplate-editor-readout,
 .status-item {
   background:
@@ -51,8 +44,7 @@ input[type="text"],
 /* Gray sub-surfaces inside the recorder and routing UI. */
 .take-preview,
 .take-preview div,
-.route-controls,
-.motion-route-list {
+.route-controls {
   background-color: transparent !important;
 }
 
@@ -60,7 +52,6 @@ input[type="text"],
 .spectrum-screen,
 .dsp-viewport,
 .dream-pad,
-.xy-pad,
 .module-viewport,
 .module-viewport-shell,
 .module-screen,

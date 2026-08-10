@@ -15,9 +15,6 @@
 .spectrum-screen,
 .sample-recorder,
 .media-transport,
-.xy-pad,
-.xy-values > div,
-.motion-route,
 .empty-routes,
 select,
 input[type='text'],
@@ -26,10 +23,7 @@ input[type='text'],
 .knob-value,
 .polarity-row button,
 .performance-mode button,
-.route-axis button,
-.route-options button,
 .recorder-controls button,
-.motion-route header button,
 .module-toggle {
   border-color: var(--ui-outline) !important;
 }
@@ -40,8 +34,7 @@ input[type='text'],
 .performance-panel,
 .modules-section,
 .effect-module,
-.spectrum-screen,
-.xy-pad {
+.spectrum-screen {
   border-color: var(--ui-outline-strong) !important;
 }
 

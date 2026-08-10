@@ -36,41 +36,6 @@
 /* Patch hardware stays in the knob-ring charcoal family, with just enough
    directional highlight to read as machined dark metal. Route identity remains
    in the labels/glow instead of changing the socket material. */
-.knob-patch-jack,
-.knob-patch-jack.assigned,
-.knob-patch-jack.axis-y {
-  border-color: #666c6e !important;
-  color: #ddd7c7 !important;
-  background:
-    radial-gradient(circle at 34% 24%, #73797b 0 7%, var(--calcotone-metal-top) 14%, var(--calcotone-metal-mid) 42%, #202426 64%, var(--calcotone-metal-bottom) 100%) !important;
-  box-shadow:
-    0 3px 6px rgba(0,0,0,.66),
-    inset 0 1px rgba(255,255,255,.24),
-    inset 0 -2px rgba(0,0,0,.68) !important;
-}
-
-.knob-patch-jack > span {
-  background: #07090a !important;
-  border-color: #3e4446 !important;
-  box-shadow: inset 0 2px 4px #000 !important;
-}
-
-.knob-patch-jack b {
-  color: #ddd7c7 !important;
-  text-shadow: 0 1px 2px #000;
-}
-
-.xy-patch-destination i,
-.xy-patch-destination.axis-x i,
-.xy-patch-destination.axis-y i {
-  border-color: #666c6e !important;
-  background:
-    radial-gradient(circle at 50% 50%, #07090a 0 36%, #252a2c 38% 48%, var(--calcotone-metal-mid) 50% 66%, var(--calcotone-metal-top) 68% 77%, var(--calcotone-metal-bottom) 80% 100%) !important;
-  box-shadow:
-    inset 0 1px 2px rgba(255,255,255,.14),
-    inset 0 -2px 4px rgba(0,0,0,.82),
-    0 2px 5px rgba(0,0,0,.48) !important;
-}
 
 /* Spectrum housing stays charcoal, now with a clear cream hardware outline. */
 .spectrum-unit {
@@ -123,10 +88,6 @@
 }
 
 /* Nudge the PATCHES heading right without moving the route count or the box itself. */
-.motion-route-inspector .route-inspector-heading > strong {
-  position: relative;
-  left: 20px;
-}
 
 /* RAW / CLEAN / LOUD now occupy the selector row directly; the old MASTER label is gone. */
 .recorder-master-selector-buttons-only {
@@ -200,12 +161,6 @@
   gap: 10px;
   margin-top: 12px;
   align-items: end;
-}
-
-.pressure-panel .knob-patch-jack,
-.pressure-panel .knob-modulation-ring,
-.pressure-panel .knob-effective-marker {
-  display: none !important;
 }
 
 .pressure-styles {

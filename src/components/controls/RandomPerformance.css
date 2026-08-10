@@ -1,8 +1,6 @@
 /* RANDOM briefly holds the existing frame only while it plans the destination.
    The actual UI/DSP transfer then moves one painted module packet at a time. */
-html.random-morphing .knob-face,
-html.random-morphing .knob-effective-marker,
-html.random-morphing .knob-modulation-ring {
+html.random-morphing .knob-face {
   transition: none !important;
   animation: none !important;
   will-change: auto !important;
