@@ -12,6 +12,7 @@ import type { VisualAudioState } from '../../visual/VisualEngine';
 import type { ModuleState, XYAssignment } from '../../ui/types';
 import { Knob } from '../controls/Knob';
 import { RailCHardwareDisplay } from '../ascii/RailCHardwareDisplay';
+import { LoopTrackMatrixDisplay } from '../ascii/LoopTrackMatrixDisplay';
 import {
   STACK_AMP_MODELS,
   STACK_CABINETS,
@@ -25,8 +26,9 @@ import {
   type RandomizationProfile,
 } from '../../features/random/randomProfiles';
 import {
-  LOOP_TRACK_COUNT,
-  occupiedLoopTracks,
+  LOOP_VISIBLE_TRACK_COUNT,
+  clearLoopTrack,
+  pressLoopTrack,
   sendLoopCommand,
   setLoopState,
   setSelectedTrackLevel,
@@ -667,10 +669,8 @@ function LoopModule({
   const state = useLoopState();
   const [trimEditing, setTrimEditing] = useState(false);
   const trackLevel = state.trackLevels[state.selectedTrack] ?? 0.72;
-  const occupied = occupiedLoopTracks(state.trackMask);
-  const seconds = state.loopFrames > 0 ? state.loopFrames / Math.max(1, state.sampleRate) : 0;
-  const rawSeconds = state.rawFrames > 0 ? state.rawFrames / Math.max(1, state.sampleRate) : 0;
   const selectedFilled = (state.trackMask & (1 << state.selectedTrack)) !== 0;
+  const writing = state.transport === 'recording' || state.transport === 'overdubbing';
   const minimumTrim = state.rawFrames > 0 ? Math.min(0.25, 64 / state.rawFrames) : 0.001;
   const knobLabels = trimEditing ? ['IN', 'OUT', 'Track', 'Fade'] as const : ['Track', 'Loop', 'RETAIN', 'Fade'] as const;
   const knobValues = trimEditing
@@ -678,8 +678,8 @@ function LoopModule({
     : [trackLevel, state.masterLevel, state.overdub, state.fade] as const;
 
   useEffect(() => {
-    if (!selectedFilled && trimEditing) setTrimEditing(false);
-  }, [selectedFilled, trimEditing]);
+    if ((!selectedFilled || writing) && trimEditing) setTrimEditing(false);
+  }, [selectedFilled, trimEditing, writing]);
 
   function setKnob(index: number, value: number): void {
     if (trimEditing) {
@@ -709,17 +709,28 @@ function LoopModule({
     else setLoopState({ fade: 0.18 });
   }
 
-  const buttons = trimEditing ? [
-    { key: 'auto', label: 'AUTO', active: false, action: () => sendLoopCommand({ type: 'autoTrim' } as const) },
-    { key: 'reset', label: 'RESET', active: false, action: () => sendLoopCommand({ type: 'resetTrim' } as const) },
-    { key: 'play', label: 'PLAY', active: state.transport === 'playing', action: () => sendLoopCommand('play') },
-    { key: 'done', label: 'DONE', active: true, action: () => setTrimEditing(false) },
-  ] : [
-    { key: 'record', label: 'REC', active: state.transport === 'recording', action: () => sendLoopCommand('record') },
-    { key: 'overdub', label: 'DUB', active: state.transport === 'overdubbing', action: () => sendLoopCommand('overdub') },
-    { key: 'play', label: 'PLAY', active: state.transport === 'playing', action: () => sendLoopCommand('play') },
-    { key: 'clear', label: 'CLEAR', active: false, action: () => sendLoopCommand('clear') },
-  ];
+  const buttons = Array.from({ length: LOOP_VISIBLE_TRACK_COUNT }, (_, track) => {
+    const occupied = (state.trackMask & (1 << track)) !== 0;
+    const selected = track === state.selectedTrack;
+    const recording = selected && state.transport === 'recording';
+    const overdubbing = selected && state.transport === 'overdubbing';
+    const playing = occupied && state.transport !== 'stopped' && state.transport !== 'empty';
+    const label = recording ? 'REC' : overdubbing ? 'DUB' : occupied ? (playing ? 'PLAY' : 'STOP') : 'REC';
+    const locked = writing && !selected;
+    return {
+      key: `track-${track}`,
+      label: `T${track + 1} ${label}`,
+      active: recording || overdubbing || playing,
+      className: recording ? 'is-recording' : overdubbing ? 'is-overdubbing' : playing ? 'is-playing' : occupied ? 'is-stopped' : 'is-empty',
+      locked,
+      action: (shiftKey: boolean) => {
+        if (locked) return;
+        setTrimEditing(false);
+        if (shiftKey) clearLoopTrack(track);
+        else pressLoopTrack(track);
+      },
+    };
+  });
 
   return (
     <RailModuleFrame
@@ -730,29 +741,16 @@ function LoopModule({
       onToggle={() => setLoopState({ enabled: !state.enabled })}
       headerControl={(
         <div className="loop-header-controls">
-          <label className="algorithm-selector pressure-machine-selector">
-            <span className="sr-only">Loop track</span>
-            <select
-              aria-label="Loop track"
-              value={state.selectedTrack}
-              disabled={state.transport === 'recording' || state.transport === 'overdubbing'}
-              onChange={(event) => {
-                setTrimEditing(false);
-                setLoopState({ selectedTrack: Number(event.target.value) });
-              }}
-            >
-              {Array.from({ length: LOOP_TRACK_COUNT }, (_, index) => (
-                <option value={index} key={index}>{`T${index + 1}${(state.trackMask & (1 << index)) !== 0 ? ' ●' : ''}`}</option>
-              ))}
-            </select>
-          </label>
+          <span className="loop-track-bank" aria-label={`Four track Loop bank, track ${state.selectedTrack + 1} selected`}>
+            4 TRK · T{state.selectedTrack + 1} · {running ? 'LIVE' : 'READY'}
+          </span>
           <button
             type="button"
             className={`loop-trim-toggle ${trimEditing ? 'active' : ''}`}
-            disabled={!selectedFilled}
+            disabled={!selectedFilled || writing}
             aria-pressed={trimEditing}
             onClick={() => setTrimEditing((current) => !current)}
-            title={selectedFilled ? 'Edit non-destructive loop boundaries' : 'Record this track before trimming'}
+            title={selectedFilled ? 'Edit the selected track non-destructively' : 'Record this track before trimming'}
           >
             TRIM
           </button>
@@ -763,24 +761,11 @@ function LoopModule({
         moduleId="pressure"
         knobRowClass="pressure-rail-knobs"
         viewport={(
-          <div className={`pressure-ascii dsp-viewport ${state.enabled ? 'active' : 'is-off'}`} aria-label="Loop memory transport display">
-            <RailCHardwareDisplay
-              kind="loop"
+          <div className={`pressure-ascii dsp-viewport ${state.enabled ? 'active' : 'is-off'}`} aria-label="Four track Loop memory display">
+            <LoopTrackMatrixDisplay
               enabled={state.enabled}
               visualState={visualState}
-              modeLabel={trimEditing
-                ? 'TRIM EDIT'
-                : state.transport === 'overdubbing'
-                  ? (state.overdub <= 0.001 ? 'LIVE REPLACE' : 'LIVE DUB')
-                  : state.transport}
-              detailLabel={trimEditing
-                ? `T${state.selectedTrack + 1} · ${seconds.toFixed(2)}s / ${rawSeconds.toFixed(2)}s RAW`
-                : `T${state.selectedTrack + 1} · ${selectedFilled ? 'MEM' : 'EMPTY'} · ${occupied}/8 · ${seconds.toFixed(1)}s · ${running ? 'LIVE' : 'READY'}`}
-              loopWaveform={state.waveform}
-              trimStart={state.trimStart}
-              trimEnd={state.trimEnd}
               trimEditing={trimEditing}
-              loopProgress={state.loopFrames > 0 ? state.position / state.loopFrames : 0}
             />
           </div>
         )}
@@ -805,7 +790,16 @@ function LoopModule({
           />
         ))}
         buttons={buttons.map((button) => (
-          <button type="button" key={button.key} className={button.active ? 'active' : ''} aria-pressed={button.active} onClick={button.action}>
+          <button
+            type="button"
+            key={button.key}
+            className={`loop-track-pad ${button.className} ${button.active ? 'active' : ''}`}
+            aria-pressed={button.active}
+            aria-label={`${button.label}. Click for record/play/overdub. Shift click to clear this track.`}
+            disabled={button.locked}
+            title={button.locked ? 'Finish the active REC/DUB pass before changing tracks' : 'Click: REC / PLAY / DUB · Shift-click: clear track'}
+            onClick={(event) => button.action(event.shiftKey)}
+          >
             {button.label}
           </button>
         ))}
