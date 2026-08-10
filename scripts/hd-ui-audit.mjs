@@ -54,6 +54,12 @@ for (const token of [
   if (!scheduler.includes(token)) failures.push(`viewport scheduler is missing ${token}`);
 }
 
+const maxVisualFpsInit = scheduler.indexOf('const MAX_VISUAL_FPS = 20');
+const firstPreferredIntervalCall = scheduler.indexOf('let targetInterval = preferredInterval()');
+if (maxVisualFpsInit < 0 || firstPreferredIntervalCall < 0 || maxVisualFpsInit > firstPreferredIntervalCall) {
+  failures.push('viewport scheduler constants must initialize before preferredInterval() is called at module scope (prevents startup TDZ / black screen)');
+}
+
 for (const [name, source, tokens] of [
   ['module display', moduleDisplay, [
     'canvasPixelRatio(width, height, 5_400_000)',
