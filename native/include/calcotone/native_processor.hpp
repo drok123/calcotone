@@ -41,6 +41,9 @@ class NativeProcessor final {
   LoopTransport loop_transport() const noexcept;
   unsigned loop_selected_track() const noexcept;
   std::uint32_t loop_track_mask() const noexcept;
+  std::uint32_t loop_track_active_mask() const noexcept;
+  std::uint32_t loop_track_mute_mask() const noexcept;
+  std::uint32_t loop_track_solo_mask() const noexcept;
   std::uint64_t loop_frames() const noexcept;
   std::uint64_t loop_raw_frames() const noexcept;
   std::uint64_t loop_position() const noexcept;
