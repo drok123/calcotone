@@ -21,11 +21,14 @@ requireText(baseCss, '.module-pressure {', 'Loop base refinement remains module-
 requireText(css, '.module-pressure {', 'Loop v3 layer is module-scoped');
 forbidText(css, '.module-stomp', 'Loop v3 must not touch Stomp');
 forbidText(css, '.module-chaos', 'Loop v3 must not touch Stack');
-requireText(css, '--loop-header-height: 54px', 'Loop header compacts after clock migration');
+requireText(css, '--loop-header-height: 38px', 'Loop uses one compact readable header row');
 requireText(css, '.loop-track-bank,', 'Retired header clock is hidden');
-requireText(css, '.loop-trim-toggle {', 'Retired TRIM mode button is hidden');
-requireText(css, 'grid-template-columns: repeat(2, minmax(0, 86px))', 'Only MSTR and RETAIN remain in compact utility row');
+requireText(css, '.loop-trim-toggle,', 'Retired TRIM mode button remains hidden');
+requireText(css, '.loop-utility-bank {', 'Retired micro utility row remains hidden');
 requireText(css, '.loop-header-action-bank', 'Loop actions live beside module title');
+requireText(css, 'font: 900 .54rem/1 var(--mono)', 'Loop header action text is readable');
+requireText(css, 'min-height: 26px', 'Loop header actions have usable hit targets');
+requireText(css, '.loop-header-param', 'MSTR and RET header parameter controls are styled');
 requireText(css, '.loop-header-track-action', 'Selected-track REC/PLAY/DUB action lives in header');
 requireText(css, '--loop-phase-angle: 0deg', '505 phase ring owns a realtime phase variable');
 requireText(css, 'from calc(-90deg + var(--loop-phase-angle))', 'Phase packet begins at twelve o clock and rotates with loop phase');
@@ -50,7 +53,7 @@ requireText(display, "sendLoopCommand({ type: 'autoTrim' })", 'AUTO trim remains
 requireText(display, "sendLoopCommand({ type: 'resetTrim' })", 'RESET trim remains available inside transient screen');
 requireText(display, 'cycleLoopQuantize()', 'Transient clock cycles OFF BEAT BAR');
 requireText(display, 'setLoopBpm(', 'Transient clock edits BPM');
-requireText(display, 'loopTrackProgress(state.selectedTrack, stamp)', 'Transient utility retains truthful playhead');
+requireText(display, 'loopTrackProgress(state.selectedTrack, stamp)', 'Transient utility retains truthful browser playhead');
 forbidText(display, 'SHADE_RAMP', 'Loop utility screen must not regress to ASCII shading');
 forbidText(display, 'L O O P  //  4 TRACK MEMORY', 'Loop utility screen must not become a hero display again');
 
@@ -59,7 +62,12 @@ requireText(controller, "makeButton('loop-505-action loop-505-undo'", 'UNDO move
 requireText(controller, "makeButton('loop-505-action loop-505-redo'", 'REDO moved beside LOOP title');
 requireText(controller, "makeButton('loop-header-track-action'", 'REC/PLAY/DUB moved beside LOOP title');
 requireText(controller, "makeButton('loop-505-action loop-505-bounce'", 'Bounce remains reachable in compact header');
-requireText(controller, 'loopTrackProgress(track, stamp)', 'Each knob ring follows its own actual loop phase');
+requireText(controller, "makeParameterControl('loop-header-master', 'MSTR', 'masterLevel'", 'MSTR moved into Loop header');
+requireText(controller, "makeParameterControl('loop-header-retain', 'RET', 'overdub'", 'RETAIN moved into Loop header');
+requireText(controller, 'function presentationProgress(', 'Knob rings use listener-facing phase calculation');
+requireText(controller, 'nativePathLatencyMs', 'Native Loop phase accounts for output path latency');
+requireText(controller, 'phaseFrames = position + elapsedFrames - latencyFrames', 'Knob phase is compensated toward audible output');
+requireText(controller, 'NATIVE_LOOP_POLL_MS = 100', 'Native Loop position refresh is faster than diagnostics cadence');
 requireText(controller, "pad.style.setProperty('--loop-phase-angle'", 'Realtime phase is sent to the ring without React rerenders');
 requireText(controller, "pad.classList.toggle('is-loop-boundary'", 'Twelve o clock loop restart cue is explicit');
 
@@ -69,4 +77,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE Loop v3 audit passed · always-live transient trim/fade bars, embedded BPM clock, compact header actions, and per-track off-white 505 phase rings locked');
+console.log('CALCOTONE Loop v3 audit passed · direct trim/fade editor, embedded clock, readable single-row header, MSTR/RET controls, and audible-phase 505 rings locked');
