@@ -35,7 +35,9 @@ struct NativeProcessor::Impl {
   explicit Impl(float sample_rate)
       : rate(std::clamp(sample_rate, 8'000.F, 384'000.F)), tuner(rate),
         stack_one(rate), stack_two(rate), rack_one(rate), rack_two(rate),
-        pressure_one(rate), pressure_two(rate), loop(rate), dream(rate, kBlockFrames) {
+        pressure_one(rate), pressure_two(rate), loop(rate), dream(rate, kBlockFrames),
+        input_route_alpha(1.F - std::exp(-1.F / (.018F * rate))),
+        input_route_current(input_route_target(InputRoutingMode::Stereo, 1.F, false, false)) {
     native_visual_spectrum().configure(rate);
     std::array<unsigned, kOrderSlots> initial{};
     for (unsigned slot = 0; slot < kOrderSlots; ++slot) initial[slot] = slot;
@@ -63,8 +65,14 @@ struct NativeProcessor::Impl {
 
   void process_block(const float* input, float* output, std::size_t frames) noexcept {
     for (std::size_t frame = 0; frame < frames; ++frame) tuner.push(input[frame * 2 + 1]);
-    split_dual_mono(input, lane_one_input.data(), lane_two_input.data(), frames,
-                    input_gain.load(std::memory_order_relaxed));
+    const auto mode = static_cast<InputRoutingMode>(std::min(
+        static_cast<unsigned>(InputRoutingMode::Swap), input_mode.load(std::memory_order_relaxed)));
+    const float width = input_width.load(std::memory_order_relaxed);
+    const unsigned polarity = input_polarity.load(std::memory_order_relaxed);
+    const auto route_target = input_route_target(mode, width, (polarity & 1U) != 0U, (polarity & 2U) != 0U);
+    route_dual_mono(input, lane_one_input.data(), lane_two_input.data(), frames,
+                    input_gain.load(std::memory_order_relaxed), route_target,
+                    input_route_current, input_route_alpha);
     std::copy_n(lane_one_input.data(), frames * 2, lane_one_output.data());
     std::copy_n(lane_two_input.data(), frames * 2, lane_two_output.data());
     dream.begin_block(frames);
@@ -116,7 +124,12 @@ struct NativeProcessor::Impl {
   std::array<std::atomic<bool>, kStackToken> module_bypassed{};
   std::atomic<bool> active{false}, stack_bypassed{true}, stomp_bypassed{true}, pressure_bypassed{true};
   std::atomic<unsigned> stack_input{1}, stomp_input{1};
+  std::atomic<unsigned> input_mode{static_cast<unsigned>(InputRoutingMode::Stereo)};
+  std::atomic<float> input_width{1.F};
+  std::atomic<unsigned> input_polarity{0U};
   std::atomic<float> input_gain{1.F}, output_gain{.72F};
+  float input_route_alpha{};
+  InputRouteMatrix input_route_current{};
   std::atomic<std::uint64_t> output_limited_samples{};
   std::atomic<float> pre_limiter_peak{};
 };
@@ -192,6 +205,15 @@ void NativeProcessor::set_active(bool value) noexcept { impl_->active.store(valu
 void NativeProcessor::set_stack_bypassed(bool value) noexcept { impl_->stack_bypassed.store(value); }
 void NativeProcessor::set_stack_input(unsigned value) noexcept { impl_->stack_input.store(std::min(2U, value)); }
 void NativeProcessor::set_stomp_input(unsigned value) noexcept { impl_->stomp_input.store(std::min(2U, value)); impl_->apply_stomp_route(); }
+void NativeProcessor::set_input_mode(InputRoutingMode value) noexcept {
+  impl_->input_mode.store(std::min(static_cast<unsigned>(InputRoutingMode::Swap), static_cast<unsigned>(value)), std::memory_order_relaxed);
+}
+void NativeProcessor::set_input_width(float value) noexcept {
+  impl_->input_width.store(std::clamp(std::isfinite(value) ? value : 1.F, 0.F, 2.F), std::memory_order_relaxed);
+}
+void NativeProcessor::set_input_polarity(bool invert_left, bool invert_right) noexcept {
+  impl_->input_polarity.store((invert_left ? 1U : 0U) | (invert_right ? 2U : 0U), std::memory_order_relaxed);
+}
 void NativeProcessor::set_input_gain(float value) noexcept { impl_->input_gain.store(std::clamp(value, 0.F, 2.F)); }
 void NativeProcessor::set_output_gain(float value) noexcept { impl_->output_gain.store(std::clamp(value, 0.F, 1.5F)); }
 void NativeProcessor::set_stack_drive(float value) noexcept { impl_->stack_one.set_drive(value); impl_->stack_two.set_drive(value); }
