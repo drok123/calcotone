@@ -52,6 +52,7 @@ const NATIVE_ORIGIN = 'http://127.0.0.1:48157';
 const PROFILE_SELECTOR_PARAMETERS = new Set(['mode', 'algorithm']);
 const STACK_PROFILE_SELECTORS = new Set(['model', 'cab']);
 const STACK_PROFILE_PARAMETERS = new Set(['drive', 'tone', 'sag', 'mix']);
+const HEALTH_CACHE_MS = 160;
 let nativeBackendEngaged = false;
 
 /** True only while the current Calcotone UI has successfully activated the native engine. */
@@ -63,6 +64,9 @@ export class NativeAudioBridge {
   private connected = false;
   private lastProbeFailure = 'Native host was not detected.';
   private commandQueue: Promise<boolean> = Promise.resolve(true);
+  private healthCache: NativeAudioHealth | null = null;
+  private healthCacheAt = 0;
+  private healthRequest: Promise<NativeAudioHealth | null> | null = null;
   // Native machine selectors can change topology as well as coefficients. Keep the
   // latest desired operating point beside the transport queue so selecting a new
   // machine commits one coherent profile instead of waiting for the next knob write.
@@ -146,11 +150,15 @@ export class NativeAudioBridge {
       }
       this.connected = true;
       this.lastProbeFailure = '';
+      this.healthCache = health;
+      this.healthCacheAt = performance.now();
       this.resetDesiredState();
       return health;
     } catch (error) {
       this.connected = false;
       nativeBackendEngaged = false;
+      this.healthCache = null;
+      this.healthCacheAt = 0;
       this.lastProbeFailure = error instanceof DOMException && error.name === 'AbortError'
         ? 'Native bridge timed out.'
         : 'Native bridge was unreachable.';
@@ -169,13 +177,21 @@ export class NativeAudioBridge {
 
   public async readHealth(): Promise<NativeAudioHealth | null> {
     if (!this.connected) return null;
-    try {
-      const response = await fetch(this.request(`${NATIVE_ORIGIN}/health`, { cache: 'no-store' }));
-      if (!response.ok) return null;
-      return await response.json() as NativeAudioHealth;
-    } catch {
-      return null;
-    }
+    const now = performance.now();
+    if (this.healthCache && now - this.healthCacheAt < HEALTH_CACHE_MS) return this.healthCache;
+    if (this.healthRequest) return this.healthRequest;
+
+    this.healthRequest = fetch(this.request(`${NATIVE_ORIGIN}/health`, { cache: 'no-store' }))
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const health = await response.json() as NativeAudioHealth;
+        this.healthCache = health;
+        this.healthCacheAt = performance.now();
+        return health;
+      })
+      .catch(() => null)
+      .finally(() => { this.healthRequest = null; });
+    return this.healthRequest;
   }
 
   public async commandLine(line: string): Promise<boolean> {
@@ -219,6 +235,9 @@ export class NativeAudioBridge {
   public disconnect(): void {
     this.connected = false;
     nativeBackendEngaged = false;
+    this.healthCache = null;
+    this.healthCacheAt = 0;
+    this.healthRequest = null;
     this.resetDesiredState();
   }
 }
