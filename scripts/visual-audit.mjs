@@ -104,13 +104,18 @@ for (const field of approvedFaceplateGeometry) {
   }
   faceplateGeometryCursor = fieldPosition;
 }
-requireText(faceplate, "const FACTORY_LAYOUT_REVISION = '2026-08-06-uploaded-approved-faceplate-1440p-v1'", 'Shared web layout revision');
+requireText(faceplate, "const FACTORY_LAYOUT_REVISION = '2026-08-09-loop505-fader-faceplate-v2'", 'Shared web layout revision');
 requireText(faceplate, 'window.localStorage.getItem(FACTORY_LAYOUT_REVISION_KEY) !== FACTORY_LAYOUT_REVISION', 'Stale saved-layout replacement');
 requireText(faceplate, 'return cloneLayout(FACTORY_FACEPLATE_LAYOUT)', 'Factory layout fallback');
 forbidText(faceplate, 'AUTO_FACEPLATE_LAYOUT', 'Automatic layout can override approved geometry');
 requireText(faceplate, 'Math.max(...knobs.map((point) => point.y)) + 46', 'Exact saved-layout floor preservation');
-requireText(faceplate, 'pressure: {\n      viewportHeight: 168', 'Pressure web-reference viewport integration');
-requireText(faceplate, '{ x: 0.3391812865497076, y: 216 }', 'Pressure uploaded-approved knob integration');
+requireText(faceplate, 'pressure: {\n      viewportHeight: 168', 'Loop web-reference viewport integration');
+requireText(faceplate, '{ x: 0.19883040935672514, y: 216 }', 'Loop T1 user-layout fader integration');
+requireText(faceplate, '{ x: 0.4444444444444444, y: 216 }', 'Loop T2 user-layout fader integration');
+requireText(faceplate, '{ x: 0.6900584795321637, y: 216 }', 'Loop T3 user-layout fader integration');
+requireText(faceplate, '{ x: 0.9122807017543859, y: 216 }', 'Loop T4 user-layout fader integration');
+requireText(faceplate, '{ x: 0.19883040935672514, y: 182 }', 'Loop track pads align above faders');
+requireText(faceplate, 'controlViewportCeiling(', 'Loop button-aware viewport collision geometry');
 forbidText(main, "import './approvedFaceplateLayoutPatch'", 'Retired startup layout mutation');
 
 requireText(hardwarePalette, '--calcotone-cream-ink: #101315', 'Patches-charcoal ink on cream');
@@ -145,6 +150,7 @@ requireText(railC, 'aria-label="STACK cabinet"', 'Stack cabinet selector');
 requireText(railC, 'kind="stomp"', 'Stomp shared hardware artwork');
 requireText(railC, 'kind="stack"', 'Stack shared hardware artwork');
 requireText(railC, '<LoopTrackMatrixDisplay', 'Loop canonical four-track artwork');
+requireText(railC, 'function LoopTrackFader(', 'Loop four-channel fader surface');
 requireText(loopDisplay, 'LOOP_VISIBLE_TRACK_COUNT', 'Loop four-track display contract');
 requireText(loopDisplay, 'loopTrackProgress(track, stamp)', 'Loop independent orbit playheads');
 requireText(loopDisplay, 'const outerRim = clamp01', 'Loop retained mechanical ring language');
@@ -158,6 +164,8 @@ requireText(railDisplay, 'function drawRailSpectacle', 'Stomp/Stack high-density
 requireText(railDisplay, 'const value = (center * 3 + left + right + up + down) / 7', 'Rail C five-tap supersampling');
 requireText(railDisplay, "if (props.kind === 'stomp' || props.kind === 'stack')", 'Stomp/Stack spectacle routing');
 requireText(railC, 'pressure-ascii dsp-viewport', 'Loop approved-geometry ASCII display');
+requireText(railCCss, '.loop-track-fader', 'Loop hardware fader styling');
+requireText(railCCss, '.loop-utility-bank', 'Loop utility strip styling');
 forbidText(railCCss, '.module-synth', 'Retired Synth module CSS');
 forbidText(railCCss, '.synth-', 'Retired Synth control CSS');
 forbidText(railCCss, '.piano-roll-', 'Retired piano-roll CSS');
@@ -172,4 +180,4 @@ if (failures.length) {
   console.error('');
   process.exit(1);
 }
-console.log('CALCOTONE visual audit passed (six ASCII effects plus Stomp, Stack, and four-track Loop).');
+console.log('CALCOTONE visual audit passed (six ASCII effects plus Stomp, Stack, and four-track fader Loop).');
