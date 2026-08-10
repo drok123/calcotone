@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const roots = ['src', 'public'];
-const sourceExtensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.html', '.md']);
+const sourceExtensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.html', '.md', '.css']);
 const forbidden = [
   'XYAssignment',
   'XYAxis',
@@ -19,6 +19,17 @@ const forbidden = [
   'live-patch-layer',
   'patch-is-dragging',
   'xy-worlds',
+  'XYSignalField',
+  'MotionPad',
+  'xy-pad',
+  'knob-patch-jack',
+  'knob-modulation-ring',
+  'knob-effective-marker',
+  'effectiveValue',
+  'motion-route',
+  'route-inspector',
+  'patch-target-active',
+  'hover-axis-',
 ];
 
 const failures = [];
@@ -38,7 +49,9 @@ function visit(target) {
 }
 
 for (const root of roots) visit(root);
-if (fs.existsSync('src/ui/motion.ts')) failures.push('src/ui/motion.ts must not exist');
+for (const retiredPath of ['src/components/motion/MotionPad.tsx', 'src/components/motion/MotionPad.css', 'src/components/motion/XYSignalField.tsx', 'src/components/motion/UiPolish.css', 'src/ui/motion.ts']) {
+  if (fs.existsSync(retiredPath)) failures.push(`${retiredPath} must not exist`);
+}
 if (fs.existsSync('public/xy-worlds')) failures.push('public/xy-worlds must not exist');
 
 if (failures.length) {

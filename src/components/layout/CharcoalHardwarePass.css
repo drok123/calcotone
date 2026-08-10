@@ -156,11 +156,6 @@
   align-items: end;
 }
 
-.pressure-panel .knob-modulation-ring,
-.pressure-panel .knob-effective-marker {
-  display: none !important;
-}
-
 .pressure-styles {
   display: grid;
   grid-template-columns: repeat(4,1fr);

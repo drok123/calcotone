@@ -19,8 +19,7 @@
   filter: saturate(0.92) contrast(1.08);
 }
 
-.dsp-viewport.ascii-viewport::after,
-.xy-visual-stack.ascii-only::after {
+.dsp-viewport.ascii-viewport::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -40,13 +39,6 @@
 
 .dsp-viewport.ascii-viewport.is-reconfiguring .ascii-art-engine {
   animation: ascii-reconfigure 360ms steps(4, end);
-}
-
-.xy-visual-stack.ascii-only {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  background: #050706;
 }
 
 @keyframes ascii-reconfigure {

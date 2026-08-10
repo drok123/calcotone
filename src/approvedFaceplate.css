@@ -26,7 +26,6 @@
 .effect-module .knob-control,.rail-c-module .knob-control{min-height:88px!important;grid-template-rows:66px 18px!important;gap:3px!important}
 .effect-module .knob-label,.rail-c-module .knob-label{font-size:.62rem!important;line-height:1!important}
 .effect-module .knob-indicator,.rail-c-module .knob-indicator{height:13px!important}
-.effect-module .knob-patch-jack,.rail-c-module .knob-patch-jack{right:max(0px,calc(50% - 42px))!important;top:39px!important}
 .rail-modules{grid-auto-columns:minmax(0,1fr);align-items:stretch}
 .rail-modules>.effect-module,.rail-modules>.rail-c-module{width:100%!important;max-width:none!important;min-width:0!important;height:100%!important;box-sizing:border-box;justify-self:stretch;align-self:stretch}
 .module-synth{--module-accent: #7de8ff}
@@ -83,8 +82,5 @@
 .module-synth.module-overlay-active .piano-roll-keys span{font-size:.62rem}
 .module-synth.module-overlay-active .piano-roll-note-handle{width:10px}
 .module-synth.module-overlay-active .synth-pattern-strip{min-height:31px;padding:6px 9px;font-size:.53rem}
-.chaos-pad-shell .xy-pad{min-height:158px;height:158px;border:0;border-radius:0}
-.chaos-pad-shell .xy-patch-bay{position:absolute;right:6px;bottom:6px;left:6px;z-index:5;height:27px;min-height:27px;margin:0;border-width:1px;border-radius:0;background:#040a07db;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
-.chaos-pad-shell .motion-route-inspector{display:none}
 .synth-knob-row{grid-template-columns:repeat(6,minmax(0,1fr))!important}
 @media (max-width:760px){.synth-knob-row{grid-template-columns:repeat(6,minmax(0,1fr))!important}}

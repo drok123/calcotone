@@ -5,47 +5,47 @@
 }
 
 /* Replace generic knob names with machine-language controls. */
-.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-patch-target="delay.time"]) .knob-label,
-.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-patch-target="delay.time"]) .knob-label { font-size: 0; }
-.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-patch-target="delay.time"]) .knob-label::after { content: "ECHO DELAY"; font-size: .68rem; }
-.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-patch-target="delay.time"]) .knob-label::after { content: "DRUM RATE"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-control-target="delay.time"]) .knob-label,
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-control-target="delay.time"]) .knob-label { font-size: 0; }
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-control-target="delay.time"]) .knob-label::after { content: "ECHO DELAY"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-control-target="delay.time"]) .knob-label::after { content: "DRUM RATE"; font-size: .68rem; }
 
-.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-patch-target="delay.feedback"]) .knob-label,
-.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-patch-target="delay.feedback"]) .knob-label { font-size: 0; }
-.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-patch-target="delay.feedback"]) .knob-label::after { content: "SUSTAIN"; font-size: .68rem; }
-.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-patch-target="delay.feedback"]) .knob-label::after { content: "SWELLS"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-control-target="delay.feedback"]) .knob-label,
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-control-target="delay.feedback"]) .knob-label { font-size: 0; }
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-control-target="delay.feedback"]) .knob-label::after { content: "SUSTAIN"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-control-target="delay.feedback"]) .knob-label::after { content: "SWELLS"; font-size: .68rem; }
 
-.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-patch-target="delay.character"]) .knob-label,
-.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-patch-target="delay.character"]) .knob-label,
-.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-patch-target="delay.character"]) .knob-label,
-.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-patch-target="delay.character"]) .knob-label { font-size: 0; }
-.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-patch-target="delay.character"]) .knob-label::after { content: "TAPE AGE"; font-size: .68rem; }
-.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-patch-target="delay.character"]) .knob-label::after { content: "DRUM AGE"; font-size: .68rem; }
-.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-patch-target="delay.character"]) .knob-label::after { content: "MOD DEPTH"; font-size: .68rem; }
-.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-patch-target="delay.character"]) .knob-label::after { content: "PITCH SHIFT"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-control-target="delay.character"]) .knob-label,
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-control-target="delay.character"]) .knob-label,
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-control-target="delay.character"]) .knob-label,
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-control-target="delay.character"]) .knob-label { font-size: 0; }
+.effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .knob-control:has([data-control-target="delay.character"]) .knob-label::after { content: "TAPE AGE"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="Binson Echorec"]:checked) .knob-control:has([data-control-target="delay.character"]) .knob-label::after { content: "DRUM AGE"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-control-target="delay.character"]) .knob-label::after { content: "MOD DEPTH"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-control-target="delay.character"]) .knob-label::after { content: "PITCH SHIFT"; font-size: .68rem; }
 
-.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-patch-target="delay.color"]) .knob-label,
-.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-patch-target="delay.color"]) .knob-label { font-size: 0; }
-.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-patch-target="delay.color"]) .knob-label::after { content: "BRIGHTNESS"; font-size: .68rem; }
-.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-patch-target="delay.color"]) .knob-label::after { content: "FILTER"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-control-target="delay.color"]) .knob-label,
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-control-target="delay.color"]) .knob-label { font-size: 0; }
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-control-target="delay.color"]) .knob-label::after { content: "BRIGHTNESS"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-control-target="delay.color"]) .knob-label::after { content: "FILTER"; font-size: .68rem; }
 
-.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-patch-target="delay.width"]) .knob-label,
-.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-patch-target="delay.width"]) .knob-label { font-size: 0; }
-.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-patch-target="delay.width"]) .knob-label::after { content: "MOD / WIDTH"; font-size: .68rem; }
-.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-patch-target="delay.width"]) .knob-label::after { content: "STEREO"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-control-target="delay.width"]) .knob-label,
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-control-target="delay.width"]) .knob-label { font-size: 0; }
+.effect-module:has(.halo-algorithm-selector option[value="Deluxe Memory Man"]:checked) .knob-control:has([data-control-target="delay.width"]) .knob-label::after { content: "MOD / WIDTH"; font-size: .68rem; }
+.effect-module:has(.halo-algorithm-selector option[value="AMS DMX 15-80 S"]:checked) .knob-control:has([data-control-target="delay.width"]) .knob-label::after { content: "STEREO"; font-size: .68rem; }
 
 /* Artifact hardware paths keep machine-specific terminology in React. */
-.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label { font-size: 0; }
-.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.wear"]) .knob-label::after { content: "RECORD"; font-size: .68rem; }
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-control-target="media.wear"]) .knob-label { font-size: 0; }
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-control-target="media.wear"]) .knob-label::after { content: "RECORD"; font-size: .68rem; }
 
-.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label { font-size: 0; }
-.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.wow"]) .knob-label::after { content: "TAPE SPEED"; font-size: .68rem; }
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-control-target="media.wow"]) .knob-label { font-size: 0; }
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-control-target="media.wow"]) .knob-label::after { content: "TAPE SPEED"; font-size: .68rem; }
 
-.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label { font-size: 0; }
-.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.noise"]) .knob-label::after { content: "HISS"; font-size: .68rem; }
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-control-target="media.noise"]) .knob-label { font-size: 0; }
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-control-target="media.noise"]) .knob-label::after { content: "HISS"; font-size: .68rem; }
 
-.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label { font-size: 0; }
-.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-patch-target="media.tone"]) .knob-label::after { content: "BIAS"; font-size: .68rem; }
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-control-target="media.tone"]) .knob-label { font-size: 0; }
+.effect-module:has(.media-mode-selector option[value="Ampex ATR-102"]:checked) .knob-control:has([data-control-target="media.tone"]) .knob-label::after { content: "BIAS"; font-size: .68rem; }
 
 /* Machine names inside the viewport. */
 .effect-module:has(.halo-algorithm-selector option[value="EP-3 Echoplex"]:checked) .viewport-caption,

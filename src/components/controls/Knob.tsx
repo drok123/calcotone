@@ -4,7 +4,7 @@ import { clamp } from '../../ui/math';
 export function Knob({
   label,
   value,
-  effectiveValue,
+  controlTarget,
   display,
   disabled = false,
   onChange,
@@ -12,14 +12,13 @@ export function Knob({
 }: {
   label: string;
   value: number;
-  effectiveValue: number;
+  controlTarget?: string;
   display: string;
   disabled?: boolean;
   onChange: (value: number) => void;
   onReset: () => void;
 }) {
   const rotation = -135 + value * 270;
-  const effectiveRotation = -135 + effectiveValue * 270;
   const valueRef = useRef(value);
   const dragRef = useRef({ pointerId: -1, startX: 0, startY: 0, startValue: 0, moved: false });
   const dragFrameRef = useRef<number | null>(null);
@@ -167,6 +166,7 @@ export function Knob({
       <span className="knob-value" aria-hidden={!isAdjusting}>{display}</span>
       <span
         className="knob-shell"
+        data-control-target={controlTarget}
         onPointerDown={handlePointerDown}
         onKeyDown={handleKeyDown}
         role="slider"
@@ -178,9 +178,7 @@ export function Knob({
         aria-valuetext={display}
         aria-disabled={disabled}
         title="Drag vertically · Shift for fine control · Double-click to reset"
-        style={{ '--effective-rotation': `${effectiveRotation}deg`, '--base-rotation': `${rotation}deg` } as CSSProperties}
       >
-        <span className="knob-effective-marker" aria-hidden="true" />
         <span className="knob-face" style={faceStyle} aria-hidden="true">
           <span className="knob-indicator" />
         </span>

@@ -13,64 +13,10 @@
 }
 
 /* One silver hardware language for every physical patch jack/socket. */
-.knob-patch-jack,
-.knob-patch-jack.assigned,
-.knob-patch-jack.axis-y {
-  border-color: #d6d8d5 !important;
-  color: #111315 !important;
-  background:
-    radial-gradient(circle at 34% 26%, #f5f6f3 0 9%, #c7cbc8 18%, #8d9490 44%, #555c59 68%, #272c2a 100%) !important;
-  box-shadow:
-    0 2px 5px rgba(0,0,0,.58),
-    inset 0 1px rgba(255,255,255,.72),
-    inset 0 -2px rgba(20,22,21,.48) !important;
-}
 
 /* Slightly larger dark socket opening so the silver ring reads more like a real input jack. */
-.knob-patch-jack > span {
-  width: 52% !important;
-  height: 52% !important;
-  min-width: 8px;
-  min-height: 8px;
-  border-radius: 50%;
-  background: #090b0a !important;
-  border: 1px solid #6f7773;
-  box-shadow: inset 0 1px 3px #000 !important;
-}
-
-.knob-patch-jack.assigned {
-  box-shadow:
-    0 0 0 2px rgba(226,232,228,.16),
-    0 0 9px rgba(205,222,212,.30),
-    0 2px 5px rgba(0,0,0,.58),
-    inset 0 1px rgba(255,255,255,.72) !important;
-}
-
-.knob-patch-jack.axis-y {
-  box-shadow:
-    0 0 0 2px rgba(226,232,228,.16),
-    0 0 9px rgba(205,222,212,.30),
-    0 2px 5px rgba(0,0,0,.58),
-    inset 0 1px rgba(255,255,255,.72) !important;
-}
-
-.xy-patch-destination i,
-.xy-patch-destination.axis-x i,
-.xy-patch-destination.axis-y i {
-  border-color: #cdd2cf !important;
-  background:
-    radial-gradient(circle at 50% 50%, #080a09 0 36%, #343a37 38% 46%, #8d9591 49% 65%, #d7dbd8 68% 78%, #686f6c 82% 100%) !important;
-  box-shadow:
-    inset 0 1px 2px rgba(255,255,255,.32),
-    inset 0 -2px 3px rgba(0,0,0,.72),
-    0 0 0 2px rgba(0,0,0,.24) !important;
-}
 
 /* Route identity stays in typography rather than coloring the jack metal. */
-.xy-patch-destination.axis-x b,
-.xy-patch-destination.axis-y b {
-  color: var(--cream-text) !important;
-}
 
 /* Squarer spectrum hardware: tighter corner radii and less vertical dominance. */
 .spectrum-unit {

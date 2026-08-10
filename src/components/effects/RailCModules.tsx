@@ -458,7 +458,7 @@ function StompModule({ engineRunning, visualState, onEnabledChange, onModeChange
             />
           </div>
         )}
-        knobs={controls.map((label,index)=><Knob key={`${mode}-${label}`} label={label} value={values[index]!} effectiveValue={values[index]!} display={`${Math.round(values[index]!*100)}%`} onChange={(value)=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?value:item));}} onReset={()=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?0.5:item));}}/>) }
+        knobs={controls.map((label,index)=><Knob key={`${mode}-${label}`} label={label} value={values[index]!} display={`${Math.round(values[index]!*100)}%`} onChange={(value)=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?value:item));}} onReset={()=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?0.5:item));}}/>) }
       />
     </RailModuleFrame>
   );
@@ -641,7 +641,6 @@ function ChaosModule({
             key={label}
             label={label}
             value={values[index]}
-            effectiveValue={values[index]}
             display={`${Math.round(values[index] * 100)}%`}
             onChange={(value) => setValues((current) => current.map((item, valueIndex) => valueIndex === index ? value : item))}
             onReset={() => setValues((current) => current.map((item, valueIndex) => valueIndex === index ? [0.36, 0.52, 0.34, 0.62][index]! : item))}

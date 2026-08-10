@@ -18,7 +18,6 @@ const forbidText = (source, needle, label) => {
 const engine = read('src/components/ascii/AsciiArtEngine.tsx');
 const pressureDisplay = read('src/components/ascii/PressureStyleDisplay.tsx');
 const viewport = read('src/components/effects/ModuleViewport.tsx');
-const field = read('src/components/motion/XYSignalField.tsx');
 const scheduler = read('src/components/effects/viewportScheduler.ts');
 
 const effectFiles = [
@@ -96,12 +95,16 @@ forbidText(pressureDisplay, 'Math.random()', 'Nondeterministic module display');
 forbidText(viewport, 'viewport-caption', 'Duplicate module artwork label');
 requireText(viewport, '<AsciiArtEngine kind="module" module={module}', 'High-fidelity module renderer');
 forbidText(viewport, 'PressureStyleDisplay', 'Retired low-density core module renderer');
-requireText(field, 'kind="landscape"', 'XY ASCII landscape renderer');
 requireText(scheduler, 'function frameBudget(): number', 'Adaptive shared visual frame budget');
 requireText(scheduler, 'const HEAVY_FRAME_MS = 10.5', 'Visual overload fallback threshold');
 requireText(scheduler, 'targetInterval = reducedInterval()', 'Automatic visual-rate fallback');
 
 const retired = [
+  'src/components/motion/MotionPad.tsx',
+  'src/components/motion/MotionPad.css',
+  'src/components/motion/XYSignalField.tsx',
+  'src/components/motion/UiPolish.css',
+  'src/ui/motion.ts',
   'src/components/video/TemporalVideo.tsx',
   'src/components/video/TemporalVideo.css',
   'src/components/motion/VideoLandscapeEngine.tsx',
@@ -131,7 +134,7 @@ function collectSource(directory) {
   });
 }
 const runtimeSource = collectSource('src').map((relative) => read(relative)).join('\n');
-for (const token of ['<video', 'TemporalVideo', 'requestVideoFrameCallback', 'VideoLandscapeEngine', '.mp4']) {
+for (const token of ['<video', 'TemporalVideo', 'requestVideoFrameCallback', 'VideoLandscapeEngine', '.mp4', 'XYSignalField', 'MotionPad', 'xy-pad', 'knob-patch-jack', 'motion-route']) {
   forbidText(runtimeSource, token, 'Decoder-free runtime');
 }
 

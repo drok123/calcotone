@@ -172,8 +172,8 @@ export function EffectModule({
         key={parameter.id}
         label={presentation.label}
         value={parameter.value}
-        effectiveValue={parameter.value}
         display={presentation.display}
+        controlTarget={`${module.id}.${parameter.id}`}
         disabled={!module.available || presentation.disabled === true}
         onReset={() => onParameterReset(parameter.id)}
         onChange={(value: number) => onParameterChange(parameter.id, value)}

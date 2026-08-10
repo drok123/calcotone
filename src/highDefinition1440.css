@@ -43,8 +43,7 @@ img {
 .performance-panel,
 .spectrum-unit,
 .recorder-panel,
-.motion-pad,
-.xy-pad {
+.motion-pad {
   background-clip: padding-box;
 }
 
