@@ -157,16 +157,18 @@ requireText(nativeBridge, 'this.rememberDesiredState(line)', 'Native desired-sta
 requireText(nativeBridge, 'this.profileReplayLines(line)', 'Native selector profile replay');
 requireText(nativeBridge, '.then(() => this.sendCommand(line))', 'Native FIFO selector commit');
 
-// Stomp/Stack retain the shared high-DPI hardware renderer. Loop owns a dedicated
-// four-clock matrix so all four performance tracks stay visible at the same time.
+// Stomp/Stack retain the shared high-DPI hardware renderer. Loop is deliberately
+// not dropdown artwork: its compact canvas is a selected-track transient utility.
 for (const kind of ['stomp', 'stack']) requireText(railCArtwork, `${kind}: {`, `Rail C ${kind} artwork profile`);
 for (const kind of ['stomp', 'stack']) requireText(railC, `kind=\"${kind}\"`, `Rail C ${kind} artwork mount`);
 requireText(railCArtwork, 'subscribeViewportAnimation(render)', 'Rail C artwork shared scheduler');
 requireText(railCArtwork, 'canvasPixelRatio(width, height, 5_400_000)', 'Rail C artwork high-DPI backing');
-requireText(railC, '<LoopTrackMatrixDisplay', 'Loop four-track artwork mount');
-requireText(loopArtwork, 'LOOP_VISIBLE_TRACK_COUNT', 'Loop four-track artwork cardinality');
-requireText(loopArtwork, 'subscribeViewportAnimation(render)', 'Loop artwork shared scheduler');
-requireText(loopArtwork, 'canvasPixelRatio(width, height, 5_400_000)', 'Loop artwork high-DPI backing');
+requireText(railC, '<LoopTrackMatrixDisplay', 'Loop transient utility mount');
+requireText(loopArtwork, 'function drawTransientEditor(', 'Loop transient utility renderer');
+requireText(loopArtwork, 'const waveform = runtime?.waveform ?? state.waveform', 'Loop selected-track transient source');
+requireText(loopArtwork, 'subscribeViewportAnimation(render)', 'Loop utility shared scheduler');
+requireText(loopArtwork, 'canvasPixelRatio(width, height, 2_400_000)', 'Loop compact utility high-DPI backing');
+forbidText(loopArtwork, 'LOOP_VISIBLE_TRACK_COUNT', 'Loop utility canvas must not regress to four-track hero artwork');
 
 if (failures.length) {
   console.error('\nCALCOTONE dropdown audit failed:\n');
