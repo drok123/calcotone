@@ -15,22 +15,23 @@ let worstCallbackCostMs = 0;
 
 const HEAVY_FRAME_MS = 10.5;
 const RECOVERY_FRAME_COUNT = 90;
+const MAX_VISUAL_FPS = 20;
 
 function preferredInterval(): number {
-  return 1000 / getDisplayProfile().visualFps;
+  return 1000 / Math.min(getDisplayProfile().visualFps, MAX_VISUAL_FPS);
 }
 
 function reducedInterval(): number {
-  return 1000 / (getDisplayProfile().reference1440p ? 30 : 20);
+  return 1000 / (getDisplayProfile().reference1440p ? 15 : 12);
 }
 
 function frameBudget(): number {
   const preferred = preferredInterval();
   return targetInterval > preferred + .25
-    ? 5.25
+    ? 4.5
     : getDisplayProfile().reference1440p
-      ? 6.75
-      : 7.5;
+      ? 5.5
+      : 6.25;
 }
 
 function refreshCallbackSnapshot(): void {
@@ -89,8 +90,10 @@ function runViewportAnimationFrame(time: number): void {
 
   lastFrameCostMs = performance.now() - frameStarted;
 
-  // Visuals remain subordinate to audio. 1440p may run at 45 FPS while healthy,
-  // then immediately falls back to 30 FPS if a renderer or the whole slice is heavy.
+  // The paint clock is intentionally slower than the audio clock. Renderers always
+  // sample the latest audio-derived phase, so skipped frames reduce CPU without
+  // accumulating visual drift. Heavy frames fall back again before they can compete
+  // with WebView/native control work.
   if (lastFrameCostMs > HEAVY_FRAME_MS || frameWorst > HEAVY_FRAME_MS) {
     targetInterval = reducedInterval();
     recoveryFrames = 0;
