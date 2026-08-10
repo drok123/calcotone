@@ -37,7 +37,7 @@ class CalcotoneAnalogSignalChainProcessor extends AudioWorkletProcessor {
       previousDcOutput: 0,
       tptState: 0,
       cutoffHz: -1,
-      cutoffCoefficient: 0,
+      cutoffG: 0,
     };
   }
 
@@ -49,7 +49,7 @@ class CalcotoneAnalogSignalChainProcessor extends AudioWorkletProcessor {
       state.previousDcOutput = 0;
       state.tptState = 0;
       state.cutoffHz = -1;
-      state.cutoffCoefficient = 0;
+      state.cutoffG = 0;
     }
   }
 
@@ -137,14 +137,14 @@ class CalcotoneAnalogSignalChainProcessor extends AudioWorkletProcessor {
     return this.hermite(table[i0], table[i1], table[i2], table[i3], mu);
   }
 
-  lowpassCoefficient(cutoff, state) {
-    const safe = Math.max(10, Math.min(sampleRate * 0.475, cutoff));
-    if (safe !== state.cutoffHz) {
-      const g = Math.tan(Math.PI * safe / sampleRate);
-      state.cutoffHz = safe;
-      state.cutoffCoefficient = g / (1 + g);
+  lowpassCoefficient(cutoffValue, state) {
+    const cutoff = Math.max(10, Math.min(sampleRate * 0.475, cutoffValue));
+    if (cutoff !== state.cutoffHz) {
+      const g = Math.tan(Math.PI * cutoff / sampleRate);
+      state.cutoffHz = cutoff;
+      state.cutoffG = g;
     }
-    return state.cutoffCoefficient;
+    return state.cutoffG;
   }
 
   process(inputs, outputs, parameters) {
@@ -173,8 +173,8 @@ class CalcotoneAnalogSignalChainProcessor extends AudioWorkletProcessor {
         state.previousDcInput = shaped;
         state.previousDcOutput = Math.abs(dcOut) < 1e-20 ? 0 : dcOut;
 
-        const coefficient = this.lowpassCoefficient(this.value(parameters.cutoff, i), state);
-        const v = (state.previousDcOutput - state.tptState) * coefficient;
+        const g = this.lowpassCoefficient(this.value(parameters.cutoff, i), state);
+        const v = (state.previousDcOutput - state.tptState) * g / (1 + g);
         const lowpass = v + state.tptState;
         state.tptState = lowpass + v;
 
