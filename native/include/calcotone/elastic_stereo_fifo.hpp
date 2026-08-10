@@ -59,6 +59,8 @@ class ElasticStereoFifo final {
   double phase_{};
   double ratio_{1.0};
   double filtered_depth_{};
+  std::uint64_t resampled_frames_local_{};
+  std::uint32_t telemetry_refresh_{};
   float previous_left_{};
   float previous_right_{};
   bool history_valid_{};
