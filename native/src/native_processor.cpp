@@ -147,7 +147,24 @@ bool NativeProcessor::set_module_parameter(RackModule module, std::string_view n
       && impl_->rack_two.set_parameter(module, name, value);
 }
 bool NativeProcessor::set_pressure_parameter(std::string_view name, float value) noexcept {
-  return std::isfinite(value) && impl_->pressure_one.set_parameter(name, value)
+  if (!std::isfinite(value)) return false;
+  // Reuse the existing host-level parameter tunnel for I/O matrix controls so
+  // the embedded faceplate can update native routing without a parallel HTTP
+  // command vocabulary. These names never reach the retired Pressure DSP.
+  if (name == "inputMode") {
+    set_input_mode(static_cast<InputRoutingMode>(static_cast<unsigned>(std::clamp(value, 0.F, 5.F))));
+    return true;
+  }
+  if (name == "inputWidth") {
+    set_input_width(value);
+    return true;
+  }
+  if (name == "inputPolarity") {
+    const auto bits = static_cast<unsigned>(std::clamp(value, 0.F, 3.F));
+    set_input_polarity((bits & 1U) != 0U, (bits & 2U) != 0U);
+    return true;
+  }
+  return impl_->pressure_one.set_parameter(name, value)
       && impl_->pressure_two.set_parameter(name, value);
 }
 void NativeProcessor::set_module_bypassed(RackModule module, bool bypassed) noexcept {
