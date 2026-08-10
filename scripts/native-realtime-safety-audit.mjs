@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 const read = (path) => readFileSync(resolve(process.cwd(), path), 'utf8').replace(/\r\n?/g, '\n');
 const rack = read('native/src/native_rack.cpp');
 const atmos = read('native/src/atmos_parity_processor.cpp');
+const drift = read('native/src/drift_parity_processor.cpp');
 const host = read('native/src/wasapi_host.cpp');
 const failures = [];
 
@@ -40,6 +41,15 @@ for (const token of [
 forbidText(atmos, 'std::make_unique<AtmosNetwork>', 'Atmos audio callback heap allocation');
 
 for (const token of [
+  'float mode_mix{1.F};',
+  'float mode_fade_step{};',
+  'unsigned mode_transition{};',
+  'void activate_mode(std::size_t mode) noexcept',
+  'void advance_mode_transition() noexcept',
+  'data[frame * 2] = dry_l + (processed_l - dry_l) * mode_mix;',
+]) requireText(drift, token, 'Click-safe dedicated Drift model handoff');
+
+for (const token of [
   'RealtimeThreadScope realtime;',
   'ring->pull(captured_left, captured_right, &stream_discontinuity)',
   'recovery.process(valid, captured_left, captured_right, left, right)',
@@ -51,4 +61,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('Native realtime safety audit passed · discrete model changes are dry-crossed and Atmos switching performs no network heap allocation in the render callback');
+console.log('Native realtime safety audit passed · rack and Drift model changes are dry-crossed and Atmos switching performs no network heap allocation in the render callback');

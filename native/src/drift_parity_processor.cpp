@@ -26,15 +26,20 @@ struct DriftParityProcessor::Impl {
   float glide_amount{};
   std::size_t control_countdown{};
   std::size_t active_mode{std::numeric_limits<std::size_t>::max()};
+  std::size_t pending_mode{};
   const DriftParityProfile* active_profile{&kDriftParityProfiles[0]};
   float dry_gain{1.F};
   float wet_gain{};
+  float mode_mix{1.F};
+  float mode_fade_step{};
+  unsigned mode_transition{};
 
   explicit Impl(float rate)
       : sample_rate(std::clamp(rate, 8000.F, 384000.F)),
         classic(sample_rate),
         standard(sample_rate) {
     glide_amount = 1.F - std::exp(-1.F / (sample_rate * .035F));
+    mode_fade_step = 1.F / std::max(1.F, sample_rate * .003F);
     for (std::size_t i = 0; i < target.size(); ++i) {
       target[i].store(value[i], std::memory_order_relaxed);
       target_snapshot[i] = value[i];
@@ -47,6 +52,9 @@ struct DriftParityProcessor::Impl {
     classic.reset();
     standard.reset();
     active_mode = std::numeric_limits<std::size_t>::max();
+    pending_mode = 0U;
+    mode_mix = 1.F;
+    mode_transition = 0U;
     control_countdown = 0U;
   }
 
@@ -64,21 +72,49 @@ struct DriftParityProcessor::Impl {
       value[i] += (target_snapshot[i] - value[i]) * glide_amount;
   }
 
+  void activate_mode(std::size_t mode) noexcept {
+    mode = std::min<std::size_t>(21, mode);
+    active_mode = mode;
+    active_profile = &drift_parity_profile(mode);
+    if (active_profile->branch == DriftParityBranch::Classic) {
+      classic.set_model(active_profile->classic_model);
+    } else {
+      classic.set_model(0);
+      standard.set_mode(static_cast<unsigned>(mode));
+    }
+  }
+
   void refresh_routing_and_mix() noexcept {
-    const auto mode = std::min<std::size_t>(21, static_cast<std::size_t>(std::lround(value[0])));
-    if (mode != active_mode) {
-      active_mode = mode;
-      active_profile = &drift_parity_profile(mode);
-      if (active_profile->branch == DriftParityBranch::Classic) {
-        classic.set_model(active_profile->classic_model);
-      } else {
-        classic.set_model(0);
-        standard.set_mode(static_cast<unsigned>(mode));
-      }
+    const auto requested = std::min<std::size_t>(21, static_cast<std::size_t>(std::lround(value[0])));
+    if (active_mode == std::numeric_limits<std::size_t>::max()) {
+      activate_mode(requested);
+      pending_mode = requested;
+      mode_mix = 1.F;
+      mode_transition = 0U;
+    } else if (requested != active_mode) {
+      pending_mode = requested;
+      if (mode_transition == 0U || mode_transition == 2U) mode_transition = 1U;
     }
     const float mix = clamp01(value[6]);
     dry_gain = std::cos(mix * kPi * .5F);
     wet_gain = std::sin(mix * kPi * .5F);
+  }
+
+  void advance_mode_transition() noexcept {
+    if (mode_transition == 1U) {
+      mode_mix = std::max(0.F, mode_mix - mode_fade_step);
+      if (mode_mix <= 0.F) {
+        mode_mix = 0.F;
+        activate_mode(pending_mode);
+        mode_transition = 2U;
+      }
+    } else if (mode_transition == 2U) {
+      mode_mix = std::min(1.F, mode_mix + mode_fade_step);
+      if (mode_mix >= 1.F) {
+        mode_mix = 1.F;
+        mode_transition = 0U;
+      }
+    }
   }
 
   void process(float* data, std::size_t frames) noexcept {
@@ -92,6 +128,7 @@ struct DriftParityProcessor::Impl {
       }
       glide();
       if (refresh_control) refresh_routing_and_mix();
+      advance_mode_transition();
 
       const float rate = std::clamp(value[1], .05F, 2.5F);
       const float depth = std::clamp(value[2], 0.F, .008F);
@@ -111,8 +148,10 @@ struct DriftParityProcessor::Impl {
         wet = standard.process_sample(dry_l, dry_r, rate, depth, shape, spread, motion);
       }
 
-      data[frame * 2] = std::clamp(dry_l * dry_gain + wet[0] * wet_gain, -1.2F, 1.2F);
-      data[frame * 2 + 1] = std::clamp(dry_r * dry_gain + wet[1] * wet_gain, -1.2F, 1.2F);
+      const float processed_l = std::clamp(dry_l * dry_gain + wet[0] * wet_gain, -1.2F, 1.2F);
+      const float processed_r = std::clamp(dry_r * dry_gain + wet[1] * wet_gain, -1.2F, 1.2F);
+      data[frame * 2] = dry_l + (processed_l - dry_l) * mode_mix;
+      data[frame * 2 + 1] = dry_r + (processed_r - dry_r) * mode_mix;
     }
   }
 };
