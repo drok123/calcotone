@@ -72,6 +72,7 @@ export interface LoopState extends LoopSettings, LoopRuntime {
 
 const STORAGE_KEY = 'calcotone.loop-state.v2';
 const LEGACY_STORAGE_KEY = 'calcotone.loop-state.v1';
+const PERSIST_INTERVAL_MS = 180;
 const listeners = new Set<() => void>();
 const PERFORMANCE_COMMANDS = new Set<LoopPerformanceCommandName>(['trackPlay', 'trackStop', 'mute', 'solo']);
 const TRANSPORT_COMMANDS = new Set<LoopTransportCommand>(['record', 'overdub', 'play', 'clear']);
@@ -156,6 +157,12 @@ function normalizeWaveform(values: readonly number[] | undefined): number[] {
   return Array.from({ length: LOOP_WAVEFORM_BINS }, (_, index) => clamp01(values?.[index] ?? 0));
 }
 
+function sameTrackLevels(left: readonly number[], right: readonly number[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) if (left[index] !== right[index]) return false;
+  return true;
+}
+
 function loadSettings(): LoopSettings {
   if (typeof window === 'undefined') return { ...DEFAULT_SETTINGS, trackLevels: [...DEFAULT_SETTINGS.trackLevels] };
   try {
@@ -182,17 +189,43 @@ function loadSettings(): LoopSettings {
 }
 
 let state: LoopState = { ...loadSettings(), ...DEFAULT_RUNTIME, trackRuntime: defaultTrackRuntime() };
+let persistTimer = 0;
 
 function emit(): void {
   for (const listener of listeners) listener();
 }
 
-function persist(): void {
+function settingsSnapshot(): LoopSettings {
+  return {
+    enabled: state.enabled,
+    selectedTrack: state.selectedTrack,
+    masterLevel: state.masterLevel,
+    overdub: state.overdub,
+    fade: state.fade,
+    bpm: state.bpm,
+    quantize: state.quantize,
+    trackLevels: [...state.trackLevels],
+  };
+}
+
+function persistNow(): void {
   if (typeof window === 'undefined') return;
-  const { enabled, selectedTrack, masterLevel, overdub, fade, bpm, quantize, trackLevels } = state;
+  const snapshot = settingsSnapshot();
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ enabled, selectedTrack, masterLevel, overdub, fade, bpm, quantize, trackLevels }));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
   } catch { /* optional */ }
+}
+
+function schedulePersist(): void {
+  if (typeof window === 'undefined' || persistTimer) return;
+  persistTimer = window.setTimeout(() => {
+    persistTimer = 0;
+    persistNow();
+  }, PERSIST_INTERVAL_MS);
+}
+
+export function getLoopSettings(): LoopSettings {
+  return settingsSnapshot();
 }
 
 export function getLoopState(): LoopState {
@@ -209,6 +242,25 @@ export function setLoopState(patch: Partial<LoopSettings>): void {
   const selectedTrack = clampTrack(patch.selectedTrack ?? state.selectedTrack);
   const cached = state.trackRuntime[selectedTrack] ?? makeTrackRuntime();
   const changedTrack = selectedTrack !== previousTrack;
+  let trackLevels = patch.trackLevels ? normalizeTrackLevels(patch.trackLevels) : state.trackLevels;
+  if (patch.trackLevels && sameTrackLevels(trackLevels, state.trackLevels)) trackLevels = state.trackLevels;
+
+  const enabled = patch.enabled ?? state.enabled;
+  const masterLevel = clamp01(patch.masterLevel ?? state.masterLevel);
+  const overdub = clamp01(patch.overdub ?? state.overdub);
+  const fade = clamp01(patch.fade ?? state.fade);
+  const bpm = clampBpm(patch.bpm ?? state.bpm);
+  const quantize = normalizeQuantize(patch.quantize ?? state.quantize);
+  const changed = changedTrack
+    || enabled !== state.enabled
+    || masterLevel !== state.masterLevel
+    || overdub !== state.overdub
+    || fade !== state.fade
+    || bpm !== state.bpm
+    || quantize !== state.quantize
+    || trackLevels !== state.trackLevels;
+  if (!changed) return;
+
   state = {
     ...state,
     ...(changedTrack ? {
@@ -219,19 +271,22 @@ export function setLoopState(patch: Partial<LoopSettings>): void {
       trimEnd: cached.trimEnd,
       waveform: cached.waveform,
     } : {}),
-    ...patch,
-    enabled: patch.enabled ?? state.enabled,
+    enabled,
     selectedTrack,
-    masterLevel: clamp01(patch.masterLevel ?? state.masterLevel),
-    overdub: clamp01(patch.overdub ?? state.overdub),
-    fade: clamp01(patch.fade ?? state.fade),
-    bpm: clampBpm(patch.bpm ?? state.bpm),
-    quantize: normalizeQuantize(patch.quantize ?? state.quantize),
-    trackLevels: patch.trackLevels ? normalizeTrackLevels(patch.trackLevels) : state.trackLevels,
+    masterLevel,
+    overdub,
+    fade,
+    bpm,
+    quantize,
+    trackLevels,
   };
-  persist();
+  schedulePersist();
   emit();
-  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent<LoopSettings>(LOOP_CHANGE_EVENT, { detail: getLoopState() }));
+  if (typeof window !== 'undefined') {
+    // Native/browser audio consumers only need settings here. Do not deep-copy the
+    // eight waveform caches on every control tick merely to publish a fader change.
+    window.dispatchEvent(new CustomEvent<LoopSettings>(LOOP_CHANGE_EVENT, { detail: settingsSnapshot() }));
+  }
 }
 
 export function setLoopBpm(value: number): void {
@@ -245,8 +300,10 @@ export function cycleLoopQuantize(): LoopQuantize {
 }
 
 export function setSelectedTrackLevel(value: number): void {
+  const next = clamp01(value);
+  if (state.trackLevels[state.selectedTrack] === next) return;
   const levels = [...state.trackLevels];
-  levels[state.selectedTrack] = clamp01(value);
+  levels[state.selectedTrack] = next;
   setLoopState({ trackLevels: levels });
 }
 
