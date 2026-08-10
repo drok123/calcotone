@@ -1,6 +1,10 @@
 import { useSyncExternalStore } from 'react';
 
+// The audio engine keeps its established eight-track storage contract for preset/
+// native compatibility. The redesigned faceplate intentionally exposes four tracks
+// as the first RC-style performance layer; the remaining slots stay reserved.
 export const LOOP_TRACK_COUNT = 8;
+export const LOOP_VISIBLE_TRACK_COUNT = 4;
 export const LOOP_MAX_SECONDS = 60;
 export const LOOP_WAVEFORM_BINS = 256;
 export const LOOP_COMMAND_EVENT = 'calcotone:loop-command';
@@ -35,7 +39,19 @@ export interface LoopRuntime {
   waveform: number[];
 }
 
-export interface LoopState extends LoopSettings, LoopRuntime {}
+export interface LoopTrackRuntime {
+  loopFrames: number;
+  rawFrames: number;
+  position: number;
+  trimStart: number;
+  trimEnd: number;
+  waveform: number[];
+  updatedAtMs: number;
+}
+
+export interface LoopState extends LoopSettings, LoopRuntime {
+  trackRuntime: LoopTrackRuntime[];
+}
 
 const STORAGE_KEY = 'calcotone.loop-state.v2';
 const LEGACY_STORAGE_KEY = 'calcotone.loop-state.v1';
@@ -64,12 +80,36 @@ const DEFAULT_RUNTIME: LoopRuntime = {
   waveform: Array.from({ length: LOOP_WAVEFORM_BINS }, () => 0),
 };
 
+function nowMilliseconds(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+function makeTrackRuntime(): LoopTrackRuntime {
+  return {
+    loopFrames: 0,
+    rawFrames: 0,
+    position: 0,
+    trimStart: 0,
+    trimEnd: 1,
+    waveform: Array.from({ length: LOOP_WAVEFORM_BINS }, () => 0),
+    updatedAtMs: nowMilliseconds(),
+  };
+}
+
+function defaultTrackRuntime(): LoopTrackRuntime[] {
+  return Array.from({ length: LOOP_TRACK_COUNT }, () => makeTrackRuntime());
+}
+
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
 }
 
 function clampTrack(value: number): number {
   return Math.max(0, Math.min(LOOP_TRACK_COUNT - 1, Math.round(Number.isFinite(value) ? value : 0)));
+}
+
+function clampVisibleTrack(value: number): number {
+  return Math.max(0, Math.min(LOOP_VISIBLE_TRACK_COUNT - 1, Math.round(Number.isFinite(value) ? value : 0)));
 }
 
 function normalizeTrackLevels(values: readonly number[] | undefined): number[] {
@@ -103,7 +143,7 @@ function loadSettings(): LoopSettings {
   }
 }
 
-let state: LoopState = { ...loadSettings(), ...DEFAULT_RUNTIME };
+let state: LoopState = { ...loadSettings(), ...DEFAULT_RUNTIME, trackRuntime: defaultTrackRuntime() };
 
 function emit(): void {
   for (const listener of listeners) listener();
@@ -116,15 +156,32 @@ function persist(): void {
 }
 
 export function getLoopState(): LoopState {
-  return { ...state, trackLevels: [...state.trackLevels], waveform: [...state.waveform] };
+  return {
+    ...state,
+    trackLevels: [...state.trackLevels],
+    waveform: [...state.waveform],
+    trackRuntime: state.trackRuntime.map((track) => ({ ...track, waveform: [...track.waveform] })),
+  };
 }
 
 export function setLoopState(patch: Partial<LoopSettings>): void {
+  const previousTrack = state.selectedTrack;
+  const selectedTrack = clampTrack(patch.selectedTrack ?? state.selectedTrack);
+  const cached = state.trackRuntime[selectedTrack] ?? makeTrackRuntime();
+  const changedTrack = selectedTrack !== previousTrack;
   state = {
     ...state,
+    ...(changedTrack ? {
+      loopFrames: cached.loopFrames,
+      rawFrames: cached.rawFrames,
+      position: cached.position,
+      trimStart: cached.trimStart,
+      trimEnd: cached.trimEnd,
+      waveform: cached.waveform,
+    } : {}),
     ...patch,
     enabled: patch.enabled ?? state.enabled,
-    selectedTrack: clampTrack(patch.selectedTrack ?? state.selectedTrack),
+    selectedTrack,
     masterLevel: clamp01(patch.masterLevel ?? state.masterLevel),
     overdub: clamp01(patch.overdub ?? state.overdub),
     fade: clamp01(patch.fade ?? state.fade),
@@ -144,17 +201,32 @@ export function setSelectedTrackLevel(value: number): void {
 export function setLoopRuntime(patch: Partial<LoopRuntime>): void {
   const trimStart = clamp01(patch.trimStart ?? state.trimStart);
   const trimEnd = Math.max(trimStart, clamp01(patch.trimEnd ?? state.trimEnd));
+  const loopFrames = Math.max(0, Math.round(patch.loopFrames ?? state.loopFrames));
+  const rawFrames = Math.max(0, Math.round(patch.rawFrames ?? state.rawFrames));
+  const position = Math.max(0, Math.round(patch.position ?? state.position));
+  const waveform = patch.waveform ? normalizeWaveform(patch.waveform) : state.waveform;
+  const trackRuntime = [...state.trackRuntime];
+  trackRuntime[state.selectedTrack] = {
+    loopFrames,
+    rawFrames,
+    position,
+    trimStart,
+    trimEnd,
+    waveform,
+    updatedAtMs: nowMilliseconds(),
+  };
   state = {
     ...state,
     ...patch,
     trackMask: Math.max(0, Math.min(255, Math.round(patch.trackMask ?? state.trackMask))),
-    loopFrames: Math.max(0, Math.round(patch.loopFrames ?? state.loopFrames)),
-    rawFrames: Math.max(0, Math.round(patch.rawFrames ?? state.rawFrames)),
-    position: Math.max(0, Math.round(patch.position ?? state.position)),
+    loopFrames,
+    rawFrames,
+    position,
     sampleRate: Math.max(8_000, Math.round(patch.sampleRate ?? state.sampleRate)),
     trimStart,
     trimEnd,
-    waveform: patch.waveform ? normalizeWaveform(patch.waveform) : state.waveform,
+    waveform,
+    trackRuntime,
   };
   emit();
 }
@@ -175,6 +247,50 @@ export function sendLoopCommand(command: LoopCommand): void {
     setLoopRuntime({ trimStart: 0, trimEnd: 1, loopFrames: state.rawFrames, position: Math.min(state.position, Math.max(0, state.rawFrames - 1)) });
   }
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent<LoopCommand>(LOOP_COMMAND_EVENT, { detail: normalized }));
+}
+
+/**
+ * RC-style one-button track transport for the four-track faceplate.
+ * Empty -> REC, REC -> PLAY, PLAY -> DUB, DUB -> PLAY.
+ * Switching tracks is intentionally blocked while a write pass is active so a
+ * recording target can never be stolen underneath the realtime thread.
+ */
+export function pressLoopTrack(track: number): boolean {
+  const target = clampVisibleTrack(track);
+  const writing = state.transport === 'recording' || state.transport === 'overdubbing';
+  if (writing && target !== state.selectedTrack) return false;
+
+  const occupied = (state.trackMask & (1 << target)) !== 0;
+  if (target !== state.selectedTrack) setLoopState({ selectedTrack: target });
+
+  if (state.transport === 'recording') sendLoopCommand('record');
+  else if (state.transport === 'overdubbing') sendLoopCommand('overdub');
+  else if (!occupied) sendLoopCommand('record');
+  else if (state.transport === 'stopped') sendLoopCommand('play');
+  else sendLoopCommand('overdub');
+  return true;
+}
+
+export function clearLoopTrack(track: number): boolean {
+  const target = clampVisibleTrack(track);
+  const writing = state.transport === 'recording' || state.transport === 'overdubbing';
+  if (writing && target !== state.selectedTrack) return false;
+  if (target !== state.selectedTrack) setLoopState({ selectedTrack: target });
+  sendLoopCommand('clear');
+  return true;
+}
+
+export function loopTrackProgress(track: number, atMs = nowMilliseconds()): number {
+  const target = clampTrack(track);
+  const runtime = state.trackRuntime[target];
+  if (!runtime || runtime.loopFrames <= 0) return 0;
+  let position = runtime.position;
+  const moving = state.transport === 'playing' || state.transport === 'recording' || state.transport === 'overdubbing';
+  if (moving && (state.trackMask & (1 << target)) !== 0) {
+    const elapsedFrames = Math.max(0, atMs - runtime.updatedAtMs) * state.sampleRate / 1000;
+    position = (position + elapsedFrames) % runtime.loopFrames;
+  }
+  return clamp01(position / runtime.loopFrames);
 }
 
 export function useLoopState(): LoopState {
