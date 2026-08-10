@@ -13,11 +13,11 @@ const nativeHeader = read('native/include/calcotone/loop_processor.hpp');
 const nativeTest = read('native/tests/loop_processor_test.cpp');
 const rail = read('src/components/effects/RailCModules.tsx');
 const railCss = read('src/components/effects/RailCModules.css');
+const loopRefinementCss = read('src/loopRefinement.css');
 const controls505 = read('src/loop505Controls.ts');
 const controls505Css = read('src/loop505Controls.css');
 const nativeBridge = read('src/audio/NativeAudioBridge.ts');
 const main = read('src/main.tsx');
-const faceplate = read('src/ui/faceplateLayout.ts');
 const display = read('src/components/ascii/LoopTrackMatrixDisplay.tsx');
 const random = read('src/features/random/railCRandomRegistry.ts');
 
@@ -131,19 +131,19 @@ requireText(store, "else if (!active || state.transport === 'stopped') sendLoopC
 requireText(store, "else sendLoopCommand('overdub')", 'Occupied playing track enters DUB');
 requireText(store, 'writing && target !== state.selectedTrack', 'Write-target theft guard');
 requireText(store, 'export function clearLoopTrack(track: number): boolean', 'Per-track clear path');
-requireText(store, 'export function loopTrackProgress(track: number', 'Independent display orbit extrapolation');
-requireText(rail, 'Array.from({ length: LOOP_VISIBLE_TRACK_COUNT }', 'Four physical track pads/faders');
-requireText(rail, 'button.action(event.shiftKey)', 'Track-pad shift clear gesture');
+requireText(store, 'export function loopTrackProgress(track: number', 'Independent Loop phase extrapolation');
+requireText(rail, 'Array.from({ length: LOOP_VISIBLE_TRACK_COUNT }', 'Four physical track controls/faders');
+requireText(rail, 'button.action(event.shiftKey)', 'Track-control shift clear gesture');
 requireText(rail, 'function LoopTrackFader(', 'Dedicated Loop channel fader');
 requireText(rail, 'onDoubleClick={() => onChange(0.72)}', 'Loop fader unity reset gesture');
 requireText(rail, 'levels[track] = clamp01(value)', 'Independent track fader write');
-requireText(rail, 'label="MSTR"', 'Master level moved to utility bank');
-requireText(rail, 'label="RET"', 'Retain moved to utility bank');
-requireText(rail, 'label="FADE"', 'Loop seam fade moved to utility bank');
+requireText(rail, 'label="MSTR"', 'Master level remains in utility bank');
+requireText(rail, 'label="RET"', 'Retain remains in utility bank');
+requireText(rail, 'label="FADE"', 'Loop seam fade remains in utility bank');
 requireText(rail, 'toggleAllTransport', 'All-track play/stop utility');
 requireText(rail, 'sendLoopCommand({ type: \'autoTrim\' })', 'Auto trim surfaced in faceplate');
 requireText(rail, 'sendLoopCommand({ type: \'resetTrim\' })', 'Reset trim surfaced in faceplate');
-requireText(rail, '<LoopTrackMatrixDisplay', 'Four-clock Loop display wired');
+requireText(rail, '<LoopTrackMatrixDisplay', 'Transient trim utility is wired into Loop viewport');
 forbidText(rail, "['Track', 'Loop', 'RETAIN', 'Fade']", 'Retired modal macro knobs');
 forbidText(rail, 'aria-label="Loop track"', 'Retired selected-track dropdown');
 requireText(railCss, '.loop-track-fader', 'Loop fader hardware styling');
@@ -159,38 +159,41 @@ requireText(controls505, "[['undo', 'UNDO'], ['redo', 'REDO'], ['bounce', 'BNC']
 requireText(controls505, 'cycleLoopQuantize()', 'Clock bank cycles quantize');
 requireText(controls505, "document.addEventListener('wheel', handleWheel", 'Clock bank mouse-wheel BPM');
 requireText(controls505, 'setLoopBpm(state.bpm + direction', 'Clock bank writes BPM');
-requireText(controls505Css, '.loop-track-pad.is-muted', 'Mute state hardware illumination');
-requireText(controls505Css, '.loop-track-pad.is-solo', 'Solo state hardware illumination');
-requireText(controls505Css, '.loop-clock-bank', 'Loop clock hardware styling');
-requireText(controls505Css, '.loop-505-tools', 'Loop edit utility styling');
+requireText(controls505Css, '.loop-track-pad.is-muted', 'Mute state hardware illumination remains connected');
+requireText(controls505Css, '.loop-track-pad.is-solo', 'Solo state hardware illumination remains connected');
+requireText(controls505Css, '.loop-clock-bank', 'Loop clock hardware class remains connected');
+requireText(controls505Css, '.loop-505-tools', 'Loop edit utility styling remains connected');
 requireText(nativeBridge, 'export function isNativeBackendEngaged()', 'Performance bridge only targets the engaged native engine');
 requireText(main, "import './loop505Controls'", 'RC-style Loop gesture bridge installed');
+requireText(main, "import './loopRefinement.css'", 'Loop fixed utility surface loaded last');
 
-// The approved physical geometry is immutable in this feature pass.
-requireText(faceplate, '{ x: 0.14327485380116955, y: 216 }', 'Centered T1 fader position');
-requireText(faceplate, '{ x: 0.38888888888888884, y: 216 }', 'Centered T2 fader position');
-requireText(faceplate, '{ x: 0.6345029239766081, y: 216 }', 'Centered T3 fader position');
-requireText(faceplate, '{ x: 0.8567251461988303, y: 216 }', 'Centered T4 fader position');
-requireText(faceplate, '{ x: 0.14327485380116955, y: 272 }', 'T1 pad vertically aligned with centered fader');
-requireText(faceplate, '{ x: 0.8567251461988303, y: 272 }', 'T4 pad vertically aligned with centered fader');
-requireText(faceplate, 'controlViewportCeiling(', 'Button-aware viewport collision geometry');
-requireText(display, 'L O O P  //  4 TRACK MEMORY', 'Four-track display identity');
-requireText(display, 'CLICK REC/DUB  RMB STOP  CTRL MUTE  ALT SOLO  SHIFT CLEAR', 'RC-style faceplate gesture legend');
-requireText(display, "return 'MUTE'", 'ASCII track mute status');
-requireText(display, "return 'SOLO'", 'ASCII track solo status');
-requireText(display, 'state.trackActiveMask & bit', 'ASCII independent track run state');
-requireText(display, 'const cellWidth = Math.floor(columns / 2)', '2x2 track matrix');
-requireText(display, 'const cellHeight = Math.floor(graphRows / 2)', '2x2 track matrix rows');
-requireText(display, 'const outerRim = clamp01', 'Loop layered spectacle outer rim');
-requireText(display, 'const innerGroove = clamp01', 'Loop retained inner groove language');
-requireText(display, 'const indexTick = Math.max', 'Loop retained clock index detail');
-requireText(display, 'const trailDelta = (progress - orbitPosition + 1) % 1', 'Loop truthful purple motion trail');
-requireText(display, "accents[row]![column] = trailDelta < 0.025 || wiperDelta < 0.018 ? '*' : '+'", 'Loop purple rotating wiper/trail');
-requireText(display, 'const waveIntensity = clamp01', 'Loop fine transient density');
-requireText(display, "accents[row]![column] = '['", 'ASCII trim IN marker');
-requireText(display, "accents[row]![column] = ']'", 'ASCII trim OUT marker');
-requireText(display, 'loopTrackProgress(track, stamp)', 'Every track gets its own orbit');
-forbidText(display, "glyphs: ' ·◦○●█'", 'retired alien Loop glyph palette');
+// Loop's visual geometry is now deliberately fixed by the final refinement layer,
+// not by freeform faceplate coordinates. Every strip uses the same quarter-grid.
+requireText(loopRefinementCss, '--loop-trim-height: 88px', 'Compact transient editor height');
+requireText(loopRefinementCss, '--loop-fader-y: 151px', 'All faders share one Y coordinate');
+requireText(loopRefinementCss, '--loop-knob-y: 220px', 'All Loop knobs share one Y coordinate');
+requireText(loopRefinementCss, '.faceplate-knob-slot:nth-of-type(1) { left: 12.5% !important; }', 'T1 fader quarter-grid center');
+requireText(loopRefinementCss, '.faceplate-knob-slot:nth-of-type(4) { left: 87.5% !important; }', 'T4 fader quarter-grid center');
+requireText(loopRefinementCss, '.faceplate-pressure-slot:nth-child(1) { left: 12.5% !important; }', 'T1 Loop knob aligned to fader');
+requireText(loopRefinementCss, '.faceplate-pressure-slot:nth-child(4) { left: 87.5% !important; }', 'T4 Loop knob aligned to fader');
+requireText(loopRefinementCss, 'repeating-conic-gradient(', '505 segmented indicator ring');
+requireText(loopRefinementCss, 'rgba(248, 244, 232, .98)', '505 ring is off-white');
+requireText(loopRefinementCss, '.module-pressure.faceplate-layout-editing .faceplate-knob-slot', 'Loop strip geometry cannot be free-dragged out of alignment');
+
+// The old ornamental ASCII matrix is intentionally retired. The screen now has
+// one job: accurately display and manipulate the selected track transient trim.
+requireText(display, 'function drawTransientEditor(', 'Real transient trim renderer');
+requireText(display, 'const waveform = runtime?.waveform ?? state.waveform', 'Selected-track transient data source');
+requireText(display, 'context.lineTo(bounds.left + x, bounds.mid - amplitude * halfHeight)', 'Continuous transient envelope geometry');
+requireText(display, 'sendLoopCommand({', 'Direct trim edit command path');
+requireText(display, "type: 'trim'", 'Non-destructive trim command');
+requireText(display, 'onPointerDown={beginTrimDrag}', 'Direct draggable trim boundaries');
+requireText(display, 'onPointerMove={moveTrimDrag}', 'Continuous trim dragging');
+requireText(display, 'loopTrackProgress(state.selectedTrack, stamp)', 'Truthful selected-track playhead');
+requireText(display, "context.fillText('DRAG I / O'", 'Trim affordance text');
+forbidText(display, 'SHADE_RAMP', 'ASCII shading retired from Loop utility screen');
+forbidText(display, 'L O O P  //  4 TRACK MEMORY', 'Hero Loop display identity retired');
+forbidText(display, 'const outerRim = clamp01', 'Orbital spectacle retired from utility screen');
 requireText(random, "RAIL_C_RANDOM_ORDER = ['stomp', 'chaos']", 'Loop excluded from RANDOM registry');
 
 if (failures.length) {
@@ -198,4 +201,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('CALCOTONE Loop audit passed · centered 4-track 505 performance surface, sample-clock quantize, realtime journal undo/redo, bounce, trim and orbital displays locked');
+console.log('CALCOTONE Loop audit passed · fixed four-strip 505 surface, transient trim editor, off-white knob indicators, sample-clock quantize, realtime undo/redo and bounce locked');
