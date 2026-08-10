@@ -217,14 +217,15 @@ export class NativeAudioBridge {
     // a selector followed by their knob values in one call stack, so the selector replay
     // sees the final desired snapshot rather than briefly restoring the previous recipe.
     this.rememberDesiredState(trimmed);
-    const operation = this.commandQueue.then(() => this.sendCommand(trimmed)).then(async (sent) => {
+    line = trimmed;
+    const operation = this.commandQueue.then(() => this.sendCommand(line)).then(async (sent) => {
       if (!sent) {
         // A failed setter must be retryable. Only clear it if no newer value for the
         // same field has superseded this queued request.
         if (loopKey && this.loopCommandState.get(loopKey) === trimmed) this.loopCommandState.delete(loopKey);
         return false;
       }
-      for (const replay of this.profileReplayLines(trimmed)) {
+      for (const replay of this.profileReplayLines(line)) {
         if (!await this.sendCommand(replay)) return false;
       }
       return true;
