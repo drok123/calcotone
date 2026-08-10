@@ -95,9 +95,19 @@ export class NativeAudioBridge {
   }
 
   private loopStateKey(line: string): string | null {
-    const parts = line.trim().split(/\s+/);
-    if (parts[0] === 'loopParam' && parts.length >= 3) return `loopParam:${parts[1]}`;
-    if (parts[0] === 'loopTrackLevel' && parts.length >= 3) return `loopTrackLevel:${parts[1]}`;
+    // This classifier sits on every native control gesture, not just Loop. Avoid the
+    // regex split/allocation path for the overwhelmingly common non-Loop commands.
+    const paramPrefix = 'loopParam ';
+    if (line.startsWith(paramPrefix)) {
+      const end = line.indexOf(' ', paramPrefix.length);
+      if (end > paramPrefix.length) return `loopParam:${line.slice(paramPrefix.length, end)}`;
+      return null;
+    }
+    const levelPrefix = 'loopTrackLevel ';
+    if (line.startsWith(levelPrefix)) {
+      const end = line.indexOf(' ', levelPrefix.length);
+      if (end > levelPrefix.length) return `loopTrackLevel:${line.slice(levelPrefix.length, end)}`;
+    }
     return null;
   }
 
