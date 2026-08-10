@@ -1,5 +1,8 @@
 * CALCOTONE reusable hardware-stage behavioral calibration
 * The expression is filled from the same typed operating point used by realtime DSP.
+* ngspice 42 B-sources use ternary conditionals; keep legacy generated if(a,b,c) expressions portable through this local helper.
+
+.func if(x,y,z) {x ? y : z}
 
 Vin in 0 SIN(0 {{INPUT_AMPLITUDE}} {{INPUT_FREQUENCY}})
 Bstage out 0 V = {{TRANSFER_EXPRESSION}}
@@ -10,7 +13,8 @@ Rload out 0 10k
 .control
 set wr_singlescale
 set wr_vecnames
-wrdata {{OUTPUT_PATH}} time v(out)
+run
+wrdata {{OUTPUT_PATH}} v(out)
 quit
 .endc
 

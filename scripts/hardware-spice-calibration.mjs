@@ -502,7 +502,7 @@ function opAmpExpression(drive, asymmetry) {
 function summingExpression(compression, asymmetry) {
   const comp = Math.max(0, Math.min(0.12, Math.round(compression * 512) / 512));
   const asym = Math.max(-0.08, Math.min(0.08, Math.round(asymmetry * 512) / 512));
-  return `min(1,max(-1,v(in)-${spiceNumber(comp)}*v(in)^3+${spiceNumber(asym)}*v(in)^2*(1-abs(v(in)))))`;
+  return `min(1,max(-1,v(in)-${spiceNumber(comp)}*v(in)*v(in)*v(in)+${spiceNumber(asym)}*v(in)*v(in)*(1-abs(v(in)))))`;
 }
 
 function transformerExpression(drive, asymmetry) {
