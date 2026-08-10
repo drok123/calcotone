@@ -1,10 +1,4 @@
-/*
- * LOOP refinement pass
- * --------------------
- * Intentionally scoped to .module-pressure so no other CALCOTONE module moves.
- * The Loop faceplate follows a strict 7-column control grid and shared hardware
- * dimensions. New controls should reuse these tokens rather than inventing offsets.
- */
+/* Loop-only refinement. No selector in this file may target another module. */
 .module-pressure {
   --loop-grid-gap: 4px;
   --loop-control-height: 30px;
@@ -17,21 +11,16 @@
   --loop-panel: #100c08;
   --loop-panel-deep: #090806;
   --loop-ink: rgba(242, 234, 216, .82);
-  --loop-dim: rgba(242, 234, 216, .56);
   --loop-accent: #d7c8ff;
 }
 
-/*
- * LOOP gets its own two-story header: identity/power on the first line and a
- * full-width performance deck on the second. This is the space win that makes
- * precision trim possible without deleting the visual display.
- */
+/* LOOP alone gets a second header story so precision controls use full width. */
 .module-pressure .module-header {
-  min-height: 72px;
-  height: 72px;
-  flex-basis: 72px;
+  min-height: 92px;
+  height: 92px;
+  flex-basis: 92px;
   grid-template-columns: minmax(0, 1fr) 42px;
-  grid-template-rows: 24px 44px;
+  grid-template-rows: 24px 64px;
   gap: 4px 6px;
   margin-bottom: 7px;
 }
@@ -51,16 +40,16 @@
 .module-pressure .module-header-control {
   grid-column: 1 / -1;
   grid-row: 2;
+  align-self: stretch;
   width: 100%;
   min-width: 0;
   max-width: none;
-  align-self: stretch;
 }
 
 .module-pressure .loop-header-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 64px;
-  grid-template-rows: var(--loop-control-height);
+  grid-template-rows: repeat(2, var(--loop-control-height));
   align-items: stretch;
   gap: var(--loop-grid-gap);
   width: 100%;
@@ -71,21 +60,19 @@
 .module-pressure .loop-clock-bank {
   grid-column: 1;
   grid-row: 1;
+  display: grid;
+  place-items: center start;
   width: 100%;
   min-width: 0;
   height: var(--loop-control-height);
   padding: 0 10px;
-  justify-content: start;
-  place-items: center start;
+  border: 1px solid var(--loop-border-strong);
   border-radius: var(--loop-control-radius);
-  border-color: var(--loop-border-strong);
   color: var(--loop-accent);
-  background:
-    linear-gradient(180deg, rgba(215, 200, 255, .055), transparent 52%),
-    var(--loop-panel);
+  background: linear-gradient(180deg, rgba(215, 200, 255, .055), transparent 52%), var(--loop-panel);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, .34);
   font: 900 var(--loop-strong-size)/1 var(--mono);
   letter-spacing: .055em;
-  box-shadow: inset 0 0 10px rgba(0, 0, 0, .34);
 }
 
 .module-pressure .loop-trim-toggle {
@@ -93,22 +80,12 @@
   grid-row: 1;
   width: 64px;
   min-width: 64px;
-  height: var(--loop-control-height);
-  min-height: var(--loop-control-height);
-  padding: 0;
 }
 
-/*
- * Utility row is positioned directly below the compact clock/TRIM line. The
- * header is allowed to overflow vertically into its own reserved second story;
- * this keeps the seven columns full-width instead of squeezing them beside LOOP.
- */
+/* Seven equal columns are the Loop placement contract. */
 .module-pressure .loop-utility-bank {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 34px;
-  z-index: 4;
+  grid-column: 1 / -1;
+  grid-row: 2;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   align-items: stretch;
@@ -118,12 +95,7 @@
   overflow: visible;
 }
 
-.module-pressure .module-header-control,
-.module-pressure .loop-header-controls {
-  position: relative;
-}
-
-/* The injected 505 action wrapper participates in the exact same 7-column grid. */
+/* Dynamically inserted UNDO / REDO / BNC become direct members of that grid. */
 .module-pressure .loop-505-tools {
   display: contents;
 }
@@ -137,10 +109,8 @@
   min-height: var(--loop-control-height);
   border: 1px solid var(--loop-border);
   border-radius: var(--loop-control-radius);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, .025), transparent 54%),
-    var(--loop-panel);
   color: var(--loop-ink);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .025), transparent 54%), var(--loop-panel);
   box-shadow: inset 0 0 8px rgba(0, 0, 0, .32);
   font-family: var(--mono);
 }
@@ -184,9 +154,7 @@
   height: 6px;
   border: 1px solid rgba(242, 234, 216, .22);
   border-radius: 3px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, .05), transparent 50%),
-    var(--loop-panel-deep);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .05), transparent 50%), var(--loop-panel-deep);
   box-shadow: inset 0 0 4px rgba(0, 0, 0, .78);
 }
 
@@ -254,10 +222,7 @@
   box-shadow: 0 0 0 1px rgba(215, 200, 255, .22), inset 0 0 9px rgba(215, 200, 255, .08);
 }
 
-/*
- * TRIM reuses the same seven columns: IN=2, OUT=2, FADE=1, AUTO=1, RESET=1.
- * Nothing changes center lines when the deck changes mode.
- */
+/* TRIM uses the same 7-column math: IN 2 + OUT 2 + FADE 1 + AUTO 1 + RESET 1. */
 .module-pressure:has(.loop-trim-toggle.active) .loop-505-tools {
   display: none;
 }
@@ -265,14 +230,8 @@
 .module-pressure:has(.loop-trim-toggle.active) .loop-utility-slider:nth-child(1),
 .module-pressure:has(.loop-trim-toggle.active) .loop-utility-slider:nth-child(2) {
   grid-column: span 2;
-}
-
-.module-pressure:has(.loop-trim-toggle.active) .loop-utility-slider:nth-child(1),
-.module-pressure:has(.loop-trim-toggle.active) .loop-utility-slider:nth-child(2) {
   border-color: rgba(215, 200, 255, .42);
-  background:
-    linear-gradient(180deg, rgba(215, 200, 255, .075), transparent 56%),
-    var(--loop-panel);
+  background: linear-gradient(180deg, rgba(215, 200, 255, .075), transparent 56%), var(--loop-panel);
 }
 
 .module-pressure:has(.loop-trim-toggle.active) .loop-utility-slider:nth-child(1) output,
@@ -282,14 +241,11 @@
   font-size: .60rem;
 }
 
-/* Compact visual screen, but much more legible internally after the canvas pass. */
+/* Retain the display, but give it stronger CALCOTONE hardware framing. */
 .module-pressure .pressure-ascii {
   border: 1px solid rgba(255, 190, 114, .25);
   border-radius: 6px;
-  background:
-    linear-gradient(180deg, rgba(215, 200, 255, .025), transparent 30%),
-    radial-gradient(circle at 50% 50%, rgba(150, 83, 30, .11), transparent 62%),
-    #0b0806;
+  background: linear-gradient(180deg, rgba(215, 200, 255, .025), transparent 30%), radial-gradient(circle at 50% 50%, rgba(150, 83, 30, .11), transparent 62%), #0b0806;
   box-shadow: inset 0 0 18px rgba(0, 0, 0, .52), 0 1px 0 rgba(255, 255, 255, .025);
 }
 
@@ -298,7 +254,7 @@
   height: 100%;
 }
 
-/* Four channel strips share identical widths, typography and control language. */
+/* Four identical channel strips: same width, same labels, same pad footprint. */
 .module-pressure .rail-c-control-surface .faceplate-knob-slot {
   width: 66px;
 }
@@ -367,7 +323,6 @@
   border-color: rgba(215, 200, 255, .86);
 }
 
-/* Disabled controls stay readable enough to understand why they are unavailable. */
 .module-pressure .loop-utility-slider input:disabled,
 .module-pressure .loop-utility-button:disabled,
 .module-pressure .loop-505-action:disabled,
