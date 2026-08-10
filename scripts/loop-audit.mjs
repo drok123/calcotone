@@ -12,6 +12,8 @@ const forbidText = (source, needle, label) => {
 
 const store = read('src/components/signal/loopStore.ts');
 const worklet = read('public/loop-processor.js');
+const loopDeck = read('src/audio/LoopDeck.ts');
+const nativeBridge = read('src/audio/NativeAudioBridge.ts');
 const native = read('native/src/loop_processor.cpp');
 const nativeHeader = read('native/include/calcotone/loop_processor.hpp');
 const nativeProcessorHeader = read('native/include/calcotone/native_processor.hpp');
@@ -39,6 +41,45 @@ for (const token of [
   'export function toggleLoopTrackSolo(track: number): boolean',
   'export function loopTrackProgress(track: number',
 ]) requireText(store, token, 'Loop state contract');
+
+// Control-rate UI updates must stay cheap: no deep waveform snapshot on every fader
+// event, no synchronous localStorage write for every tick, and no no-op publications.
+for (const token of [
+  'const PERSIST_INTERVAL_MS = 180',
+  'function settingsSnapshot(): LoopSettings',
+  'export function getLoopSettings(): LoopSettings',
+  'function schedulePersist(): void',
+  'if (typeof window === \'undefined\' || persistTimer) return',
+  'if (!changed) return',
+  'detail: settingsSnapshot()',
+  'if (state.trackLevels[state.selectedTrack] === next) return',
+]) requireText(store, token, 'Loop settings control-rate contract');
+forbidText(store, 'detail: getLoopState()', 'Loop settings event deep waveform snapshot');
+
+// Browser bridge only posts fields that changed. The worklet already accepts partial
+// settings packets, so unchanged controls must never be structured-cloned every tick.
+for (const token of [
+  'private lastSettings: LoopSettings | null = null',
+  "const message: { type: 'settings' } & Partial<LoopSettings> = { type: 'settings' }",
+  'if (!changed) return',
+  'const levelsChanged = !previous',
+  'this.node.port.postMessage(message)',
+]) requireText(loopDeck, token, 'Browser Loop settings diff contract');
+forbidText(loopDeck, "this.node.port.postMessage({ type: 'settings', ...settings })", 'Browser whole-snapshot settings spam');
+
+// Native App still publishes a complete Loop settings snapshot for simple ownership,
+// but NativeAudioBridge dedupes each idempotent setter in strict queue order. Failed
+// requests clear their key so a later identical value remains retryable.
+for (const token of [
+  'private readonly loopCommandState = new Map<string, string>()',
+  'private loopStateKey(line: string): string | null',
+  "return `loopParam:${parts[1]}`",
+  "return `loopTrackLevel:${parts[1]}`",
+  'if (loopKey && this.loopCommandState.get(loopKey) === trimmed) return true',
+  'if (loopKey) this.loopCommandState.set(loopKey, trimmed)',
+  'this.loopCommandState.delete(loopKey)',
+  'this.loopCommandState.clear()',
+]) requireText(nativeBridge, token, 'Native Loop command dedupe contract');
 
 // Browser fallback must keep the render path fixed-capacity. Commands may arrive via
 // MessagePort, but quantized scheduling itself must never grow/shrink JS arrays.
@@ -169,7 +210,9 @@ for (const token of [
   "makeButton('loop-505-action loop-505-bounce', 'BNC'",
   'function presentationProgress(track: number, stamp: number)',
   'const progress = active ? presentationProgress(track, stamp) : 0',
+  'const state = getLoopSettings()',
 ]) requireText(surface, token, 'Loop V3 performance surface');
+forbidText(surface, 'const state = getLoopState()', 'Loop header deep runtime snapshot');
 
 for (const token of [
   '.loop-header-action-bank',
@@ -190,4 +233,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('Loop audit passed · fixed-capacity scheduling, cached realtime state, bounded undo, decimated telemetry and direct V3 controls are intact');
+console.log('Loop audit passed · fixed realtime scheduling, diffed settings transport, throttled persistence, bounded undo, decimated telemetry and direct V3 controls are intact');
