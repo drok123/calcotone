@@ -9,6 +9,7 @@ const sharedSource = readFileSync(resolve(root, 'src/visual/SharedVisualSpectrum
 const visualEngine = readFileSync(resolve(root, 'src/visual/VisualEngine.ts'), 'utf8');
 const waterfall = readFileSync(resolve(root, 'src/components/meters/SpectrumWaterfall.tsx'), 'utf8');
 const nativeSpectrum = readFileSync(resolve(root, 'src/visual/NativeVisualSpectrum.ts'), 'utf8');
+const nativeSpectrumCore = readFileSync(resolve(root, 'native/include/calcotone/native_visual_spectrum.hpp'), 'utf8');
 const audioEngine = readFileSync(resolve(root, 'src/audio/AudioEngine.ts'), 'utf8');
 
 const requireText = (source, needle, label) => {
@@ -31,7 +32,14 @@ requireText(waterfall, 'const frequencyData = new Uint8Array(frequencyBinCount)'
 requireText(waterfall, 'analyser.getByteFrequencyData(frequencyData)', 'Waterfall direct live analyser read');
 forbidText(waterfall, 'getLatestVisualSpectrum()', 'Waterfall global snapshot dependency');
 requireText(nativeSpectrum, "const NATIVE_SPECTRUM_URL = 'http://127.0.0.1:48157/spectrum'", 'Native spectrum endpoint');
+requireText(nativeSpectrum, 'const NATIVE_SPECTRUM_INTERVAL_MS = 50', 'Native spectrum request throttle');
 requireText(nativeSpectrum, 'getPresentationTimeSeconds()', 'Native processed-frame visual clock');
+requireText(nativeSpectrumCore, 'for (std::size_t size = 2U; size <= kFftSize; size <<= 1U)', 'Native radix-2 FFT stages');
+requireText(nativeSpectrumCore, 'reverse_bits(index)', 'Native FFT bit reversal');
+requireText(nativeSpectrumCore, 'hann_window()', 'Native reusable Hann window');
+requireText(nativeSpectrumCore, 'cosine_table()', 'Native reusable FFT cosine table');
+requireText(nativeSpectrumCore, 'sine_table()', 'Native reusable FFT sine table');
+forbidText(nativeSpectrumCore, 'for (std::size_t sample = 0; sample < kFftSize; ++sample)', 'Quadratic native DFT loop');
 requireText(audioEngine, 'this.sharedVisualSpectrum?.connect(this.analyser)', 'Parallel master visual tap');
 requireText(audioEngine, 'return this.sharedVisualSpectrum ?? this.analyser', 'Native analyser fallback');
 
@@ -86,4 +94,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE visual ring audit passed (lock-free ordering, direct live waterfall read, audio presentation clocks, analyser fallback).');
+console.log('CALCOTONE visual ring audit passed (lock-free ordering, 20 Hz native fetch, radix-2 FFT, audio presentation clocks, analyser fallback).');
