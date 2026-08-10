@@ -11,41 +11,60 @@
 
 namespace calcotone {
 
-// Realtime-safe mono snapshot ring. The audio thread only performs relaxed
-// atomic stores; the control thread performs a small radix-2 FFT when /spectrum
-// is read. This keeps all spectral work away from the realtime render thread.
+// Realtime-safe mono spectrum snapshot. The audio thread writes every sample to
+// a private staging ring, then publishes one coherent atomic FFT window at roughly
+// the UI refresh cadence. Spectral work remains entirely on the control thread.
 class NativeVisualSpectrum final {
  public:
   static constexpr std::size_t kFftSize = 256;
   static constexpr std::size_t kBins = kFftSize / 2;
 
   void configure(float sample_rate) noexcept {
-    sample_rate_.store(std::clamp(sample_rate, 8'000.F, 384'000.F), std::memory_order_relaxed);
+    const float rate = std::clamp(sample_rate, 8'000.F, 384'000.F);
+    sample_rate_.store(rate, std::memory_order_relaxed);
+    snapshot_interval_frames_ = std::max<std::size_t>(
+        kFftSize, static_cast<std::size_t>(std::lround(rate / 50.F)));
   }
 
   void publish(const float* interleaved_stereo, std::size_t frames) noexcept {
     if (!interleaved_stereo || frames == 0U) return;
-    auto write = write_index_.load(std::memory_order_relaxed);
     for (std::size_t frame = 0; frame < frames; ++frame) {
       const float mono = .5F * (interleaved_stereo[frame * 2] + interleaved_stereo[frame * 2 + 1]);
-      samples_[write].store(std::clamp(mono, -1.5F, 1.5F), std::memory_order_relaxed);
-      write = (write + 1U) % kFftSize;
+      staging_samples_[staging_write_] = std::clamp(mono, -1.5F, 1.5F);
+      staging_write_ = (staging_write_ + 1U) & (kFftSize - 1U);
     }
-    write_index_.store(write, std::memory_order_release);
-    const auto prior_available = available_.load(std::memory_order_relaxed);
-    const auto next_available = prior_available + frames >= kFftSize ? kFftSize : prior_available + frames;
-    available_.store(next_available, std::memory_order_release);
+    staging_available_ = std::min(kFftSize, staging_available_ + frames);
     published_frames_.fetch_add(static_cast<std::uint64_t>(frames), std::memory_order_relaxed);
+
+    frames_since_snapshot_ += frames;
+    if (frames_since_snapshot_ < snapshot_interval_frames_) return;
+    frames_since_snapshot_ %= snapshot_interval_frames_;
+
+    // Odd generation means a publication is in progress. The control thread can
+    // retry without blocking the realtime writer; one 256-sample copy occurs only
+    // around 50 times/sec rather than one atomic store for every audio sample.
+    snapshot_sequence_.fetch_add(1U, std::memory_order_release);
+    auto read = staging_write_;
+    for (std::size_t index = 0; index < kFftSize; ++index) {
+      snapshot_[index].store(staging_samples_[read], std::memory_order_relaxed);
+      read = (read + 1U) & (kFftSize - 1U);
+    }
+    available_.store(staging_available_, std::memory_order_relaxed);
+    snapshot_sequence_.fetch_add(1U, std::memory_order_release);
   }
 
   std::string json() const {
     std::array<float, kFftSize> input{};
-    const auto available = available_.load(std::memory_order_acquire);
-    if (available >= kFftSize) {
-      auto read = write_index_.load(std::memory_order_acquire);
-      for (std::size_t index = 0; index < kFftSize; ++index) {
-        input[index] = samples_[read].load(std::memory_order_relaxed);
-        read = (read + 1U) % kFftSize;
+    if (available_.load(std::memory_order_acquire) >= kFftSize) {
+      // Read one coherent generation. Publication is brief and only ~50 Hz, so a
+      // control-thread retry is cheap and never pushes work back onto audio.
+      for (;;) {
+        const auto before = snapshot_sequence_.load(std::memory_order_acquire);
+        if ((before & 1U) != 0U) continue;
+        for (std::size_t index = 0; index < kFftSize; ++index)
+          input[index] = snapshot_[index].load(std::memory_order_relaxed);
+        const auto after = snapshot_sequence_.load(std::memory_order_acquire);
+        if (before == after) break;
       }
     }
 
@@ -146,8 +165,13 @@ class NativeVisualSpectrum final {
     return values;
   }
 
-  std::array<std::atomic<float>, kFftSize> samples_{};
-  std::atomic<std::size_t> write_index_{};
+  std::array<float, kFftSize> staging_samples_{};
+  std::size_t staging_write_{};
+  std::size_t staging_available_{};
+  std::size_t frames_since_snapshot_{};
+  std::size_t snapshot_interval_frames_{960U};
+  std::array<std::atomic<float>, kFftSize> snapshot_{};
+  std::atomic<std::uint64_t> snapshot_sequence_{};
   std::atomic<std::size_t> available_{};
   std::atomic<std::uint64_t> published_frames_{};
   std::atomic<float> sample_rate_{48'000.F};
