@@ -1,3 +1,34 @@
+const GRAIN_TANH_MIN = -8;
+const GRAIN_TANH_MAX = 8;
+const GRAIN_TANH_LUT = new Float32Array(4096);
+const GRAIN_TANH_SCALE = (GRAIN_TANH_LUT.length - 1) / (GRAIN_TANH_MAX - GRAIN_TANH_MIN);
+for (let index = 0; index < GRAIN_TANH_LUT.length; index += 1) {
+  const x = GRAIN_TANH_MIN + index / GRAIN_TANH_SCALE;
+  GRAIN_TANH_LUT[index] = Math.tanh(x);
+}
+const GRAIN_OUTPUT_TANH_NORM = 1 / Math.tanh(1.02);
+
+function grainHermite(y0, y1, y2, y3, mu) {
+  const mu2 = mu * mu;
+  const a0 = -0.5 * y0 + 1.5 * y1 - 1.5 * y2 + 0.5 * y3;
+  const a1 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+  const a2 = -0.5 * y0 + 0.5 * y2;
+  return a0 * mu * mu2 + a1 * mu2 + a2 * mu + y1;
+}
+
+function grainTanh(value) {
+  if (value <= GRAIN_TANH_MIN) return -1;
+  if (value >= GRAIN_TANH_MAX) return 1;
+  const position = (value - GRAIN_TANH_MIN) * GRAIN_TANH_SCALE;
+  const index = Math.floor(position);
+  const mu = position - index;
+  const last = GRAIN_TANH_LUT.length - 1;
+  const i0 = index > 0 ? index - 1 : 0;
+  const i2 = index < last ? index + 1 : last;
+  const i3 = index + 2 < last ? index + 2 : last;
+  return grainHermite(GRAIN_TANH_LUT[i0], GRAIN_TANH_LUT[index], GRAIN_TANH_LUT[i2], GRAIN_TANH_LUT[i3], mu);
+}
+
 const GRAIN_DRY_ANCHORS = [0.38, 0.24, 0.16, 0.28, 0.18, 0.10, 0.14, 0.18, 0.22, 0.16, 0.20, 0.18];
 const GRAIN_WET_GAINS = [1.18, 1.30, 1.32, 1.20, 1, 1, 1.18, 1.12, 1.17, 1.16, 1.22, 1.18];
 const SLICE_INTERVALS = [0, 0, 2, -2, 5, -5, 7, -7, 12, -12];
@@ -526,8 +557,9 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       this.hardwareL += (left - this.hardwareL) * coefficient;
       this.hardwareR += (right - this.hardwareR) * coefficient;
       const reelDrive = 1.02 + memory * 0.34;
-      outputL = Math.tanh(this.hardwareL * reelDrive) / Math.tanh(reelDrive);
-      outputR = Math.tanh(this.hardwareR * reelDrive) / Math.tanh(reelDrive);
+      const reelNormalization = 1 / Math.max(1e-6, grainTanh(reelDrive));
+      outputL = grainTanh(this.hardwareL * reelDrive) * reelNormalization;
+      outputR = grainTanh(this.hardwareR * reelDrive) * reelNormalization;
     } else if (mode === 9) {
       // Arbhar: six strata read as a wide bed with a restrained feedback-delay halo.
       this.hardwareL += (left - this.hardwareL) * (0.20 + density * 0.16);
@@ -678,8 +710,8 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
         }
       }
 
-      let safeL = Math.tanh(processedL * 1.02) / Math.tanh(1.02);
-      let safeR = Math.tanh(processedR * 1.02) / Math.tanh(1.02);
+      let safeL = grainTanh(processedL * 1.02) * GRAIN_OUTPUT_TANH_NORM;
+      let safeR = grainTanh(processedR * 1.02) * GRAIN_OUTPUT_TANH_NORM;
       const inputPower = (dryL * dryL + dryR * dryR) * 0.5;
       const wetPower = (safeL * safeL + safeR * safeR) * 0.5;
       this.inputEnergy += (inputPower - this.inputEnergy) * 0.0016;
