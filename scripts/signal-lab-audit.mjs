@@ -67,13 +67,19 @@ requireText(nativeArtifact, 'std::clamp(std::round(value), 0.F, 17.F)', 'Native 
 
 // Rail C legacy layout id "pressure" now renders LOOP. Preserve the exact approved
 // geometry key while exposing the first four of the eight backend buffers as an
-// RC-style performance bank: one REC/PLAY/DUB pad and one mechanical clock per track.
+// RC-style performance bank: one REC/PLAY/DUB pad, one channel fader and one clock per track.
 requireText(railC, 'name="Loop"', 'Loop rail module heading');
-requireText(railC, 'Array.from({ length: LOOP_VISIBLE_TRACK_COUNT }', 'Loop four-track pad bank');
+requireText(railC, 'Array.from({ length: LOOP_VISIBLE_TRACK_COUNT }', 'Loop four-track pad and fader bank');
 requireText(railC, 'button.action(event.shiftKey)', 'Loop per-track clear gesture');
-requireText(railC, "['Track', 'Loop', 'RETAIN', 'Fade']", 'Loop live-replace macro controls');
-requireText(railC, "['IN', 'OUT', 'Track', 'Fade']", 'Loop trim macro controls');
-requireText(railC, 'trimEditing ?', 'Loop trim macro switch');
+requireText(railC, 'function LoopTrackFader(', 'Loop dedicated vertical fader control');
+requireText(railC, 'aria-label={`Loop track ${track + 1} level`}', 'Loop fader accessibility contract');
+requireText(railC, 'levels[track] = clamp01(value)', 'Loop independent per-track gain write');
+requireText(railC, 'label="MSTR"', 'Loop master utility retained');
+requireText(railC, 'label="RET"', 'Loop retain utility retained');
+requireText(railC, 'label="FADE"', 'Loop fade utility retained');
+requireText(railC, 'sendLoopCommand({ type: \'autoTrim\' })', 'Loop auto trim surfaced');
+requireText(railC, 'sendLoopCommand({ type: \'resetTrim\' })', 'Loop trim reset surfaced');
+requireText(railC, 'toggleAllTransport', 'Loop global play-stop utility');
 requireText(railC, '<LoopTrackMatrixDisplay', 'Loop four-track artwork mount');
 requireText(loopArtwork, 'L O O P  //  4 TRACK MEMORY', 'Loop display identity');
 requireText(loopArtwork, 'LOOP_VISIBLE_TRACK_COUNT', 'Loop four-track artwork contract');
@@ -171,4 +177,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE Loop/Artifact dynamics audit passed (8-buffer Loop backend + four-track performance faceplate + four Artifact compressor topologies).');
+console.log('CALCOTONE Loop/Artifact dynamics audit passed (8-buffer backend + four track faders/pads + four Artifact compressor topologies).');
