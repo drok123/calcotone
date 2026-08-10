@@ -28,10 +28,57 @@
   box-shadow: 0 0 8px rgba(215, 200, 255, .16), inset 0 0 8px rgba(215, 200, 255, .08);
 }
 
-.module-pressure .loop-track-pad.is-recording {
+.module-pressure .loop-track-pad.is-recording,
+.module-pressure .loop-track-pad.is-overdubbing {
   opacity: 1;
 }
 
-.module-pressure .loop-track-pad.is-overdubbing {
-  opacity: 1;
+.module-pressure .loop-clock-bank {
+  min-width: 78px;
+  padding: 0 5px;
+  color: rgba(215, 200, 255, .86);
+  border-color: rgba(215, 200, 255, .28);
+  cursor: ns-resize;
+  user-select: none;
+  outline: none;
+  transition: border-color 90ms linear, color 90ms linear, box-shadow 90ms linear;
+}
+
+.module-pressure .loop-clock-bank:hover,
+.module-pressure .loop-clock-bank:focus-visible {
+  color: #fffaf0;
+  border-color: rgba(215, 200, 255, .64);
+  box-shadow: inset 0 0 8px rgba(215, 200, 255, .07), 0 0 6px rgba(215, 200, 255, .08);
+}
+
+.module-pressure .loop-505-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.module-pressure .loop-505-action {
+  min-width: 0;
+  padding-inline: 4px;
+  font-size: .37rem;
+  letter-spacing: .015em;
+}
+
+.module-pressure .loop-505-undo,
+.module-pressure .loop-505-redo {
+  color: rgba(215, 200, 255, .74);
+  border-color: rgba(215, 200, 255, .20);
+}
+
+.module-pressure .loop-505-bounce {
+  color: rgba(255, 190, 114, .84);
+  border-color: rgba(255, 190, 114, .28);
+}
+
+.module-pressure .loop-505-action:not(:disabled):hover {
+  color: #fffaf0;
+  border-color: rgba(215, 200, 255, .64);
+  background: rgba(95, 84, 122, .22);
 }
