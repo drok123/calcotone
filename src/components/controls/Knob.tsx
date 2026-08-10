@@ -1,12 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import type { XYAssignment } from '../../ui/types';
 import { clamp } from '../../ui/math';
 
-/**
- * Shared hardware knob. Legacy patch props remain temporarily accepted so
- * existing module declarations can migrate independently, but no jack,
- * assignment badge, cable gesture, or patch interaction is rendered.
- */
 export function Knob({
   label,
   value,
@@ -21,14 +15,8 @@ export function Knob({
   effectiveValue: number;
   display: string;
   disabled?: boolean;
-  assignment?: XYAssignment;
-  patchTarget?: string;
   onChange: (value: number) => void;
   onReset: () => void;
-  onPatchStart?: (startX: number, startY: number, pointerX: number, pointerY: number) => void;
-  onPatchMove?: (pointerX: number, pointerY: number) => void;
-  onPatchEnd?: (pointerX: number, pointerY: number) => void;
-  onPatchDisconnect?: () => void;
 }) {
   const rotation = -135 + value * 270;
   const effectiveRotation = -135 + effectiveValue * 270;
