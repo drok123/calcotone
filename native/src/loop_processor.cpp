@@ -14,6 +14,10 @@ constexpr unsigned kNoCommand = 0xffU;
 constexpr unsigned kTrimCommand = 4U;
 constexpr unsigned kAutoTrimCommand = 5U;
 constexpr unsigned kResetTrimCommand = 6U;
+constexpr unsigned kTrackPlayBit = 1U << 0U;
+constexpr unsigned kTrackStopBit = 1U << 1U;
+constexpr unsigned kTrackMuteBit = 1U << 2U;
+constexpr unsigned kTrackSoloBit = 1U << 3U;
 constexpr std::size_t kMinimumLoopFrames = 64U;
 float clamp01(float value) noexcept { return std::clamp(std::isfinite(value) ? value : 0.F, 0.F, 1.F); }
 }
@@ -44,6 +48,18 @@ struct LoopProcessor::Impl {
     return false;
   }
 
+  bool any_active_occupied() const noexcept {
+    for (unsigned track = 0U; track < kLoopTrackCount; ++track)
+      if (occupied[track] && active[track]) return true;
+    return false;
+  }
+
+  bool any_solo_occupied() const noexcept {
+    for (unsigned track = 0U; track < kLoopTrackCount; ++track)
+      if (occupied[track] && soloed[track]) return true;
+    return false;
+  }
+
   std::size_t active_length(unsigned track) const noexcept {
     if (!occupied[track]) return 0U;
     return trim_end_frames[track] > trim_start_frames[track]
@@ -63,6 +79,9 @@ struct LoopProcessor::Impl {
 
   void start_recording(unsigned track) noexcept {
     occupied[track] = false;
+    active[track] = true;
+    muted[track] = false;
+    soloed[track] = false;
     raw_frames[track] = 0U;
     trim_start_frames[track] = 0U;
     trim_end_frames[track] = 0U;
@@ -82,15 +101,21 @@ struct LoopProcessor::Impl {
       trim_end_frames[track] = frames;
       positions[track] = 0U;
       occupied[track] = true;
+      active[track] = true;
       playing = true;
+    } else {
+      active[track] = false;
     }
     recording = false;
     record_count = 0U;
-    if (!any_occupied()) playing = false;
+    if (!any_active_occupied()) playing = false;
   }
 
   void clear_track(unsigned track) noexcept {
     occupied[track] = false;
+    active[track] = false;
+    muted[track] = false;
+    soloed[track] = false;
     raw_frames[track] = 0U;
     trim_start_frames[track] = 0U;
     trim_end_frames[track] = 0U;
@@ -100,7 +125,7 @@ struct LoopProcessor::Impl {
       record_count = 0U;
     }
     if (overdubbing && overdub_track == track) overdubbing = false;
-    if (!any_occupied()) playing = false;
+    if (!any_active_occupied()) playing = false;
   }
 
   void set_trim_window(unsigned track, float requested_start, float requested_end) noexcept {
@@ -157,7 +182,44 @@ struct LoopProcessor::Impl {
     positions[track] = 0U;
   }
 
+  void play_track(unsigned track) noexcept {
+    if (!occupied[track] || active_length(track) == 0U) return;
+    active[track] = true;
+    positions[track] = 0U;
+    playing = true;
+  }
+
+  void stop_track(unsigned track) noexcept {
+    if (recording && record_track == track) finish_recording(track);
+    if (overdubbing && overdub_track == track) overdubbing = false;
+    active[track] = false;
+    positions[track] = 0U;
+    if (!any_active_occupied()) playing = false;
+  }
+
+  void consume_performance_commands() noexcept {
+    for (unsigned track = 0U; track < kLoopTrackCount; ++track) {
+      const unsigned bits = pending_performance[track].exchange(0U, std::memory_order_acq_rel);
+      if (bits == 0U) continue;
+      if ((bits & kTrackPlayBit) != 0U) play_track(track);
+      if ((bits & kTrackStopBit) != 0U) stop_track(track);
+      if ((bits & kTrackMuteBit) != 0U && occupied[track]) muted[track] = !muted[track];
+      if ((bits & kTrackSoloBit) != 0U && occupied[track]) soloed[track] = !soloed[track];
+    }
+  }
+
+  void queue_performance(unsigned track, LoopCommand command) noexcept {
+    if (track >= kLoopTrackCount) return;
+    unsigned bit = 0U;
+    if (command == LoopCommand::TrackPlay) bit = kTrackPlayBit;
+    else if (command == LoopCommand::TrackStop) bit = kTrackStopBit;
+    else if (command == LoopCommand::Mute) bit = kTrackMuteBit;
+    else if (command == LoopCommand::Solo) bit = kTrackSoloBit;
+    if (bit != 0U) pending_performance[track].fetch_or(bit, std::memory_order_release);
+  }
+
   void consume_command() noexcept {
+    consume_performance_commands();
     const unsigned raw = pending_command.exchange(kNoCommand, std::memory_order_acq_rel);
     if (raw == kNoCommand) return;
     const unsigned track = pending_track.load(std::memory_order_acquire);
@@ -185,6 +247,7 @@ struct LoopProcessor::Impl {
         overdubbing = false;
       } else if (occupied[track] && active_length(track) > 0U) {
         overdub_track = track;
+        active[track] = true;
         overdubbing = true;
         recording = false;
         playing = true;
@@ -193,7 +256,13 @@ struct LoopProcessor::Impl {
     }
     if (command == LoopCommand::Play) {
       if (any_occupied()) {
-        playing = !playing;
+        const bool stop_all = any_active_occupied();
+        for (unsigned index = 0U; index < kLoopTrackCount; ++index) {
+          if (!occupied[index]) continue;
+          active[index] = !stop_all;
+          positions[index] = 0U;
+        }
+        playing = !stop_all;
         overdubbing = false;
         recording = false;
         record_count = 0U;
@@ -237,7 +306,7 @@ struct LoopProcessor::Impl {
     if (recording) return LoopTransport::Recording;
     if (overdubbing) return LoopTransport::Overdubbing;
     if (!any_occupied()) return LoopTransport::Empty;
-    return playing ? LoopTransport::Playing : LoopTransport::Stopped;
+    return playing && any_active_occupied() ? LoopTransport::Playing : LoopTransport::Stopped;
   }
 
   void publish_runtime() noexcept {
@@ -277,9 +346,9 @@ struct LoopProcessor::Impl {
       return;
     }
 
-    const unsigned selected_track = selected.load(std::memory_order_relaxed);
     const float loop_level = master_level.load(std::memory_order_relaxed);
     const float overdub_feedback = overdub.load(std::memory_order_relaxed);
+    const bool soloing = any_solo_occupied();
 
     for (std::size_t frame = 0; frame < frames; ++frame) {
       const float live_left = std::isfinite(data[frame * 2U]) ? data[frame * 2U] : 0.F;
@@ -289,7 +358,8 @@ struct LoopProcessor::Impl {
 
       if (playing) {
         for (unsigned track = 0U; track < kLoopTrackCount; ++track) {
-          if (!occupied[track] || active_length(track) == 0U) continue;
+          if (!occupied[track] || !active[track] || muted[track] || active_length(track) == 0U) continue;
+          if (soloing && !soloed[track]) continue;
           const float level = track_levels[track].load(std::memory_order_relaxed);
           loop_left += read_track(track, 0U) * level;
           loop_right += read_track(track, 1U) * level;
@@ -328,7 +398,8 @@ struct LoopProcessor::Impl {
       }
 
       if (playing) {
-        for (unsigned track = 0U; track < kLoopTrackCount; ++track) if (occupied[track]) advance_track(track);
+        for (unsigned track = 0U; track < kLoopTrackCount; ++track)
+          if (occupied[track] && active[track]) advance_track(track);
       }
     }
     publish_runtime();
@@ -341,6 +412,9 @@ struct LoopProcessor::Impl {
   std::array<std::array<float, kLoopEnvelopeBins>, kLoopTrackCount> envelopes{};
   std::array<std::atomic<float>, kLoopTrackCount> track_levels{};
   std::array<bool, kLoopTrackCount> occupied{};
+  std::array<bool, kLoopTrackCount> active{};
+  std::array<bool, kLoopTrackCount> muted{};
+  std::array<bool, kLoopTrackCount> soloed{};
   std::array<std::size_t, kLoopTrackCount> raw_frames{};
   std::array<std::size_t, kLoopTrackCount> trim_start_frames{};
   std::array<std::size_t, kLoopTrackCount> trim_end_frames{};
@@ -352,6 +426,7 @@ struct LoopProcessor::Impl {
   std::atomic<float> overdub{0.F};
   std::atomic<float> fade{.18F};
   std::atomic<unsigned> pending_command{kNoCommand};
+  std::array<std::atomic<unsigned>, kLoopTrackCount> pending_performance{};
   std::atomic<unsigned> pending_track{0U};
   std::atomic<float> pending_trim_start{0.F};
   std::atomic<float> pending_trim_end{1.F};
@@ -377,11 +452,28 @@ void LoopProcessor::process(float* data, std::size_t frames) noexcept { if (data
 void LoopProcessor::set_enabled(bool value) noexcept { impl_->enabled.store(value, std::memory_order_relaxed); }
 void LoopProcessor::set_selected_track(unsigned track) noexcept { impl_->selected.store(std::min(track, kLoopTrackCount - 1U), std::memory_order_relaxed); }
 void LoopProcessor::set_master_level(float value) noexcept { impl_->master_level.store(clamp01(value), std::memory_order_relaxed); }
-void LoopProcessor::set_track_level(unsigned track, float value) noexcept { if (track < kLoopTrackCount) impl_->track_levels[track].store(clamp01(value), std::memory_order_relaxed); }
+void LoopProcessor::set_track_level(unsigned track, float value) noexcept {
+  if (track >= kLoopTrackCount || !std::isfinite(value)) return;
+  // Values above the physical 0..1 fader range are private control sentinels used
+  // by the Windows faceplate. They reuse the stable loopTrackLevel transport without
+  // changing its normal fader behavior or allocating on the realtime thread.
+  if (value >= 1.5F) {
+    if (value >= 4.5F) impl_->queue_performance(track, LoopCommand::Solo);
+    else if (value >= 3.5F) impl_->queue_performance(track, LoopCommand::Mute);
+    else if (value >= 2.5F) impl_->queue_performance(track, LoopCommand::TrackStop);
+    else impl_->queue_performance(track, LoopCommand::TrackPlay);
+    return;
+  }
+  impl_->track_levels[track].store(clamp01(value), std::memory_order_relaxed);
+}
 void LoopProcessor::set_overdub(float value) noexcept { impl_->overdub.store(clamp01(value), std::memory_order_relaxed); }
 void LoopProcessor::set_fade(float value) noexcept { impl_->fade.store(clamp01(value), std::memory_order_relaxed); }
 void LoopProcessor::command(LoopCommand value) noexcept {
   const unsigned track = impl_->selected.load(std::memory_order_relaxed);
+  if (value == LoopCommand::TrackPlay || value == LoopCommand::TrackStop || value == LoopCommand::Mute || value == LoopCommand::Solo) {
+    impl_->queue_performance(track, value);
+    return;
+  }
   if (value == LoopCommand::Record && !impl_->ensure_track_buffer(track)) return;
   impl_->pending_track.store(track, std::memory_order_relaxed);
   impl_->pending_command.store(static_cast<unsigned>(value), std::memory_order_release);
