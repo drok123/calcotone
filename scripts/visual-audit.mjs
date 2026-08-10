@@ -104,17 +104,22 @@ for (const field of approvedFaceplateGeometry) {
   }
   faceplateGeometryCursor = fieldPosition;
 }
-requireText(faceplate, "const FACTORY_LAYOUT_REVISION = '2026-08-09-loop505-fader-faceplate-v2'", 'Shared web layout revision');
+requireText(faceplate, "const FACTORY_LAYOUT_REVISION = '2026-08-09-railc-latest-loop-centered-v4'", 'Shared web layout revision');
 requireText(faceplate, 'window.localStorage.getItem(FACTORY_LAYOUT_REVISION_KEY) !== FACTORY_LAYOUT_REVISION', 'Stale saved-layout replacement');
 requireText(faceplate, 'return cloneLayout(FACTORY_FACEPLATE_LAYOUT)', 'Factory layout fallback');
 forbidText(faceplate, 'AUTO_FACEPLATE_LAYOUT', 'Automatic layout can override approved geometry');
 requireText(faceplate, 'Math.max(...knobs.map((point) => point.y)) + 46', 'Exact saved-layout floor preservation');
 requireText(faceplate, 'pressure: {\n      viewportHeight: 168', 'Loop web-reference viewport integration');
-requireText(faceplate, '{ x: 0.19883040935672514, y: 216 }', 'Loop T1 user-layout fader integration');
-requireText(faceplate, '{ x: 0.4444444444444444, y: 216 }', 'Loop T2 user-layout fader integration');
-requireText(faceplate, '{ x: 0.6900584795321637, y: 216 }', 'Loop T3 user-layout fader integration');
-requireText(faceplate, '{ x: 0.9122807017543859, y: 216 }', 'Loop T4 user-layout fader integration');
-requireText(faceplate, '{ x: 0.19883040935672514, y: 182 }', 'Loop track pads align above faders');
+requireText(faceplate, '{ x: 0.08187134502923976, y: 224 }', 'Stomp latest user-layout integration');
+requireText(faceplate, '{ x: 0.11695906432748537, y: 240 }', 'Stack T1 latest user-layout integration');
+requireText(faceplate, '{ x: 0.3742690058479532, y: 240 }', 'Stack T2 latest user-layout integration');
+requireText(faceplate, '{ x: 0.6432748538011696, y: 240 }', 'Stack T3 latest user-layout integration');
+requireText(faceplate, '{ x: 0.8888888888888888, y: 240 }', 'Stack T4 latest user-layout integration');
+requireText(faceplate, '{ x: 0.14327485380116955, y: 216 }', 'Loop T1 centered fader integration');
+requireText(faceplate, '{ x: 0.38888888888888884, y: 216 }', 'Loop T2 centered fader integration');
+requireText(faceplate, '{ x: 0.6345029239766081, y: 216 }', 'Loop T3 centered fader integration');
+requireText(faceplate, '{ x: 0.8567251461988303, y: 216 }', 'Loop T4 centered fader integration');
+requireText(faceplate, '{ x: 0.14327485380116955, y: 272 }', 'Loop track pads stay vertically paired with centered faders');
 requireText(faceplate, 'controlViewportCeiling(', 'Loop button-aware viewport collision geometry');
 forbidText(main, "import './approvedFaceplateLayoutPatch'", 'Retired startup layout mutation');
 
@@ -155,7 +160,7 @@ requireText(loopDisplay, 'LOOP_VISIBLE_TRACK_COUNT', 'Loop four-track display co
 requireText(loopDisplay, 'loopTrackProgress(track, stamp)', 'Loop independent orbit playheads');
 requireText(loopDisplay, 'const outerRim = clamp01', 'Loop retained mechanical ring language');
 requireText(loopDisplay, 'const innerGroove = clamp01', 'Loop retained inner groove language');
-requireText(loopDisplay, 'const indexTick = Math.max', 'Loop retained clock index detail');
+requireText(loopDisplay, 'const indexTick = Math.max', 'Loop clock index detail');
 requireText(loopDisplay, 'const cellWidth = Math.floor(columns / 2)', 'Loop 2x2 track matrix');
 requireText(loopDisplay, 'subscribeViewportAnimation(render)', 'Loop shared viewport scheduler');
 requireText(railDisplay, "const RAIL_SHADE_RAMP = ' .:-=+*#%@'", 'Rail C spectacle density ramp');
@@ -180,4 +185,4 @@ if (failures.length) {
   console.error('');
   process.exit(1);
 }
-console.log('CALCOTONE visual audit passed (six ASCII effects plus Stomp, Stack, and four-track fader Loop).');
+console.log('CALCOTONE visual audit passed (six ASCII effects plus Stomp, Stack, and centered four-track fader Loop).');
