@@ -66,10 +66,12 @@ requireText(controller, "makeParameterControl('loop-header-master', 'MSTR', 'mas
 requireText(controller, "makeParameterControl('loop-header-retain', 'RET', 'overdub'", 'RETAIN moved into Loop header');
 requireText(controller, 'function presentationProgress(', 'Knob rings use listener-facing phase calculation');
 requireText(controller, 'nativePathLatencyMs', 'Native Loop phase accounts for output path latency');
-requireText(controller, 'phaseFrames = position + elapsedFrames - latencyFrames', 'Knob phase is compensated toward audible output');
-requireText(controller, 'NATIVE_LOOP_POLL_MS = 100', 'Native Loop position refresh is faster than diagnostics cadence');
+requireText(controller, 'return loopTrackProgress(track, stamp - nativePathLatencyMs)', 'Knob ring reads internal Loop timing without cloning state');
+requireText(controller, 'NATIVE_LATENCY_POLL_MS = 1_000', 'Native latency sampling stays outside fast Loop runtime telemetry');
 requireText(controller, "pad.style.setProperty('--loop-phase-angle'", 'Realtime phase is sent to the ring without React rerenders');
 requireText(controller, "pad.classList.toggle('is-loop-boundary'", 'Twelve o clock loop restart cue is explicit');
+forbidText(controller, 'setLoopRuntime', 'Loop V3 must not become a second native runtime writer');
+forbidText(controller, 'NATIVE_LOOP_POLL_MS = 100', 'Loop V3 must not restore duplicate fast health polling');
 
 if (failures.length) {
   console.error(`Loop refinement audit failed (${failures.length})`);
@@ -77,4 +79,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE Loop v3 audit passed · direct trim/fade editor, embedded clock, readable single-row header, MSTR/RET controls, and audible-phase 505 rings locked');
+console.log('CALCOTONE Loop v3 audit passed · direct editor, readable header, audible-phase rings, allocation-free phase reads, and single-owner native telemetry locked');
