@@ -251,14 +251,21 @@
   min-width: 0;
 }
 
-.loop-header-controls .algorithm-selector {
+.loop-track-bank {
   flex: 1 1 auto;
   min-width: 0;
-}
-
-.loop-header-controls select {
-  width: 100%;
-  min-width: 0;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0 7px;
+  overflow: hidden;
+  border: 1px solid rgba(255,190,114,.20);
+  border-radius: 3px;
+  color: rgba(242,234,216,.70);
+  background: #100c08;
+  font: 800 .46rem/1 var(--mono);
+  letter-spacing: .06em;
+  white-space: nowrap;
 }
 
 .loop-trim-toggle {
@@ -284,6 +291,38 @@
 .loop-trim-toggle:disabled {
   cursor: not-allowed;
   opacity: .34;
+}
+
+.loop-track-pad {
+  min-height: 27px !important;
+  padding: 0 4px !important;
+  letter-spacing: .035em;
+  white-space: nowrap;
+}
+
+.loop-track-pad.is-empty {
+  opacity: .78;
+}
+
+.loop-track-pad.is-stopped {
+  border-style: dashed;
+}
+
+.loop-track-pad:disabled {
+  cursor: not-allowed;
+  opacity: .28;
+  box-shadow: none !important;
+}
+
+.loop-track-pad.is-recording.active,
+.loop-track-pad.is-overdubbing.active {
+  transform: translateY(1px);
+  box-shadow: inset 0 0 8px rgba(215,200,255,.12), 0 0 8px color-mix(in srgb, var(--module-accent) 32%, transparent);
+}
+
+.loop-track-matrix {
+  width: 100%;
+  height: 100%;
 }
 
 .stomp-display {
