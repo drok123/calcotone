@@ -175,13 +175,15 @@ export class NativeAudioBridge {
     // a selector followed by their knob values in one call stack, so the selector replay
     // sees the final desired snapshot rather than briefly restoring the previous recipe.
     this.rememberDesiredState(line);
-    const operation = this.commandQueue.then(async () => {
-      if (!await this.sendCommand(line)) return false;
-      for (const replay of this.profileReplayLines(line)) {
-        if (!await this.sendCommand(replay)) return false;
-      }
-      return true;
-    });
+    const operation = this.commandQueue
+      .then(() => this.sendCommand(line))
+      .then(async (sent) => {
+        if (!sent) return false;
+        for (const replay of this.profileReplayLines(line)) {
+          if (!await this.sendCommand(replay)) return false;
+        }
+        return true;
+      });
     this.commandQueue = operation.catch(() => false);
     return operation;
   }
