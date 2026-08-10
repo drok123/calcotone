@@ -120,6 +120,11 @@ class AtmosNetwork {
     for (auto& buffer : early_history_) buffer.assign(early_capacity, 0.F);
   }
 
+  void set_model(std::size_t requested) noexcept {
+    model_ = std::min(requested, max_model_index());
+    reset();
+  }
+
   void reset() noexcept {
     for (auto& line : lines_) std::fill(line.begin(), line.end(), 0.F);
     for (auto& buffer : predelay_) std::fill(buffer.begin(), buffer.end(), 0.F);
@@ -315,8 +320,8 @@ class AtmosNetwork {
 struct AtmosParityProcessor::Impl {
   explicit Impl(float requested_rate)
       : rate(std::clamp(requested_rate, 8'000.F, 384'000.F)),
-        active(std::make_unique<AtmosNetwork>(rate, 2U)),
-        fade_total(std::max<std::size_t>(1U, static_cast<std::size_t>(std::lround(rate * .82F)))) {}
+        network_a(rate, 2U), network_b(rate, 2U), active(&network_a),
+        fade_total(std::max<std::size_t>(1U, static_cast<std::size_t>(std::lround(rate * .08F)))) {}
 
   AtmosControls controls() const noexcept {
     return {smooth[1], smooth[2], smooth[3], smooth[4], smooth[5]};
@@ -326,22 +331,26 @@ struct AtmosParityProcessor::Impl {
     for (std::size_t index = 0; index < smooth.size(); ++index)
       smooth[index] = target[index].load(std::memory_order_relaxed);
     active_model = std::min(max_model_index(), static_cast<std::size_t>(std::max(0.F, std::round(smooth[0]))));
-    active = std::make_unique<AtmosNetwork>(rate, active_model);
-    retiring.reset();
+    network_a.set_model(active_model);
+    network_b.set_model(active_model);
+    active = &network_a;
+    retiring = nullptr;
     fade_position = 0U;
     processed_frames = 0U;
   }
 
-  void switch_model(std::size_t requested, const AtmosControls& current) {
+  void switch_model(std::size_t requested, const AtmosControls& current) noexcept {
     requested = std::min(max_model_index(), requested);
     if (requested == active_model) return;
     if (processed_frames == 0U) {
-      active = std::make_unique<AtmosNetwork>(rate, requested);
-      retiring.reset();
+      active->set_model(requested);
+      retiring = nullptr;
     } else {
-      retiring = std::move(active);
+      AtmosNetwork* next = active == &network_a ? &network_b : &network_a;
+      retiring = active;
       retiring_controls = current;
-      active = std::make_unique<AtmosNetwork>(rate, requested);
+      next->set_model(requested);
+      active = next;
       fade_position = 0U;
     }
     active_model = requested;
@@ -370,7 +379,7 @@ struct AtmosParityProcessor::Impl {
         const auto retiring_wet = retiring->process_frame(dry, retiring_controls);
         wet[0] = active_wet[0] * active_gain + retiring_wet[0] * retiring_gain;
         wet[1] = active_wet[1] * active_gain + retiring_wet[1] * retiring_gain;
-        if (++fade_position >= fade_total) retiring.reset();
+        if (++fade_position >= fade_total) retiring = nullptr;
       }
 
       const float mix = clamp01(smooth[6]);
@@ -385,8 +394,10 @@ struct AtmosParityProcessor::Impl {
   float rate;
   std::array<std::atomic<float>, 7> target{2.F,2.4F,.52F,.42F,.74F,.18F,.13F};
   std::array<float, 7> smooth{2.F,2.4F,.52F,.42F,.74F,.18F,.13F};
-  std::unique_ptr<AtmosNetwork> active;
-  std::unique_ptr<AtmosNetwork> retiring;
+  AtmosNetwork network_a;
+  AtmosNetwork network_b;
+  AtmosNetwork* active;
+  AtmosNetwork* retiring{};
   AtmosControls retiring_controls{};
   std::size_t active_model{2U};
   std::size_t fade_position{};

@@ -52,14 +52,26 @@ struct Params {
   std::array<float, 7> value{};
   std::atomic<bool> bypassed{true};
   float active{};
+  float mode_mix{1.F};
+  unsigned mode_transition{};
   Params(std::initializer_list<float> defaults) noexcept {
     std::size_t i = 0;
     for (float v : defaults) { target[i].store(v); value[i++] = v; }
   }
   void glide(float amount) noexcept {
-    for (std::size_t i = 0; i < value.size(); ++i)
+    // Slot zero is a discrete hardware/model selector. Smoothing it numerically
+    // walks through unrelated machines and creates topology clicks. Continuous
+    // controls retain their normal parameter glide.
+    for (std::size_t i = 1; i < value.size(); ++i)
       value[i] += (target[i].load(std::memory_order_relaxed) - value[i]) * amount;
   }
+  unsigned target_mode() const noexcept {
+    return static_cast<unsigned>(std::max(0.F, std::round(target[0].load(std::memory_order_relaxed))));
+  }
+  unsigned current_mode() const noexcept {
+    return static_cast<unsigned>(std::max(0.F, std::round(value[0])));
+  }
+  void sync_mode(unsigned requested) noexcept { value[0] = static_cast<float>(requested); }
 };
 
 struct Ember {
@@ -472,19 +484,52 @@ void NativeRack::process_module(RackModule module, float* data, std::size_t fram
   if (module >= RackModule::Count) return;
   auto& params = impl_->params(module);
   const float target = params.bypassed.load(std::memory_order_relaxed) ? 0.F : 1.F;
-  if (target == 0.F && params.active < 1e-5F) { params.active = 0.F; return; }
+  if (target == 0.F && params.active < 1e-5F) {
+    params.active = 0.F;
+    params.sync_mode(params.target_mode());
+    params.mode_mix = 1.F;
+    params.mode_transition = 0U;
+    return;
+  }
   const float fade = 1.F - std::exp(-1.F / (impl_->sample_rate * .006F));
-  for (std::size_t offset = 0; offset < frames; offset += kRackBlockFrames) {
-    const std::size_t block = std::min(kRackBlockFrames, frames - offset);
-    float* block_output = data + offset * 2;
-    std::copy_n(block_output, block * 2, impl_->dry.data());
+  const float mode_fade_step = 1.F / std::max(1.F, impl_->sample_rate * .003F);
+  const std::size_t mode_fade_frames = std::max<std::size_t>(1U,
+      static_cast<std::size_t>(std::lround(impl_->sample_rate * .003F)));
+  std::size_t offset = 0U;
+  while (offset < frames) {
+    const unsigned requested_mode = params.target_mode();
+    const unsigned current_mode = params.current_mode();
+    if (params.mode_transition == 0U && requested_mode != current_mode)
+      params.mode_transition = 1U;
+    else if (params.mode_transition == 2U && requested_mode != current_mode)
+      params.mode_transition = 1U;
+
+    const std::size_t block_limit = params.mode_transition != 0U
+        ? mode_fade_frames : kRackBlockFrames;
+    const std::size_t block = std::min(block_limit, frames - offset);
+    float* block_output = data + offset * 2U;
+    std::copy_n(block_output, block * 2U, impl_->dry.data());
     impl_->run(module, block_output, block);
     for (std::size_t frame = 0; frame < block; ++frame) {
       params.active += (target - params.active) * fade;
+      if (params.mode_transition == 1U)
+        params.mode_mix = std::max(0.F, params.mode_mix - mode_fade_step);
+      else if (params.mode_transition == 2U)
+        params.mode_mix = std::min(1.F, params.mode_mix + mode_fade_step);
+      const float blend = params.active * params.mode_mix;
       for (unsigned ch = 0; ch < 2; ++ch) {
-        const auto i = frame * 2 + ch;
-        block_output[i] = impl_->dry[i] + (block_output[i] - impl_->dry[i]) * params.active;
+        const auto i = frame * 2U + ch;
+        block_output[i] = impl_->dry[i] + (block_output[i] - impl_->dry[i]) * blend;
       }
+    }
+    offset += block;
+
+    if (params.mode_transition == 1U && params.mode_mix <= 0.F) {
+      params.sync_mode(params.target_mode());
+      params.mode_transition = 2U;
+    } else if (params.mode_transition == 2U && params.mode_mix >= 1.F) {
+      params.mode_mix = 1.F;
+      params.mode_transition = 0U;
     }
   }
 }
