@@ -1,0 +1,231 @@
+/* LOOP v3: the transient screen owns trim/clock editing; the header owns transport. */
+.module-pressure {
+  --loop-header-height: 54px;
+}
+
+.module-pressure::after {
+  top: calc(var(--loop-module-pad) + var(--loop-header-height) + var(--loop-header-gap)) !important;
+}
+
+.module-pressure .module-header {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 42px !important;
+  grid-template-rows: 28px 22px !important;
+  min-height: var(--loop-header-height) !important;
+  height: var(--loop-header-height) !important;
+  flex-basis: var(--loop-header-height) !important;
+  gap: 4px 6px !important;
+}
+
+.module-pressure .module-title {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.module-pressure .module-title h3 {
+  flex: 0 0 auto;
+  margin-right: 2px;
+}
+
+.module-pressure .module-toggle {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.module-pressure .module-header-control {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  width: 100%;
+  min-width: 0;
+}
+
+/* The old clock and TRIM mode controls remain in React for compatibility but are
+   not part of the visible instrument anymore. */
+.module-pressure .loop-track-bank,
+.module-pressure .loop-clock-bank,
+.module-pressure .loop-trim-toggle {
+  display: none !important;
+}
+
+.module-pressure .loop-header-controls {
+  display: block !important;
+  width: 100% !important;
+  height: 22px !important;
+}
+
+/* Preserve MSTR and RETAIN without letting the retired utility strip take over
+   the module. Fade is edited on the transient bars; transport lives beside LOOP. */
+.module-pressure .loop-utility-bank {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 86px)) !important;
+  justify-content: start;
+  align-items: stretch;
+  gap: 4px;
+  width: auto !important;
+  height: 22px;
+  overflow: visible;
+}
+
+.module-pressure .loop-utility-bank > .loop-utility-slider:nth-child(n + 3),
+.module-pressure .loop-utility-bank > .loop-all-toggle,
+.module-pressure .loop-utility-bank > .loop-505-tools {
+  display: none !important;
+}
+
+.module-pressure .loop-utility-bank > .loop-utility-slider:nth-child(1),
+.module-pressure .loop-utility-bank > .loop-utility-slider:nth-child(2) {
+  display: grid !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  grid-template-rows: 9px 9px !important;
+  padding: 1px 4px !important;
+}
+
+.module-pressure .loop-utility-bank > .loop-utility-slider:nth-child(1) input[type='range'],
+.module-pressure .loop-utility-bank > .loop-utility-slider:nth-child(2) input[type='range'] {
+  height: 9px !important;
+}
+
+.module-pressure .loop-header-action-bank {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  margin-left: 2px;
+}
+
+.module-pressure .loop-header-action {
+  display: grid;
+  place-items: center;
+  height: 20px;
+  min-height: 20px;
+  min-width: 29px;
+  padding: 0 5px;
+  border: 1px solid rgba(242, 234, 216, .20);
+  border-radius: 3px;
+  color: rgba(242, 234, 216, .72);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .025), transparent 55%), #100c08;
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, .38);
+  font: 900 .43rem/1 var(--mono);
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+
+.module-pressure .loop-header-action:not(:disabled):hover,
+.module-pressure .loop-header-action:focus-visible {
+  color: #fffdf6;
+  border-color: rgba(242, 234, 216, .56);
+  box-shadow: 0 0 5px rgba(242, 234, 216, .08), inset 0 0 6px rgba(0, 0, 0, .28);
+}
+
+.module-pressure .loop-header-action:disabled {
+  opacity: .34;
+}
+
+.module-pressure .loop-header-track-action {
+  color: #fffdf6;
+  border-color: rgba(242, 234, 216, .38);
+}
+
+.module-pressure .loop-header-action.loop-505-undo,
+.module-pressure .loop-header-action.loop-505-redo {
+  color: rgba(215, 200, 255, .78);
+}
+
+.module-pressure .loop-header-action.loop-505-bounce {
+  color: rgba(255, 190, 114, .78);
+}
+
+.module-pressure .module-route-cue {
+  margin-left: auto;
+}
+
+/* The screen is permanently an editor. There is no TRIM mode to enter. */
+.module-pressure .loop-transient-trim {
+  cursor: default !important;
+  outline: none;
+}
+
+.module-pressure .loop-transient-trim:hover,
+.module-pressure .loop-transient-trim:focus-visible {
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, .54), 0 0 0 1px rgba(242, 234, 216, .12);
+}
+
+/* 505-style loop phase: a quiet segmented reference ring plus a single bright
+   off-white phase packet. 0deg is twelve o'clock, so each revolution visibly
+   marks the exact start of that track's loop. */
+.module-pressure .loop-track-pad {
+  --loop-phase-angle: 0deg;
+}
+
+.module-pressure .loop-track-pad::before {
+  content: '' !important;
+  position: absolute !important;
+  z-index: -1 !important;
+  inset: -7px !important;
+  border-radius: 50% !important;
+  opacity: var(--loop-ring-opacity) !important;
+  background:
+    conic-gradient(from -90deg, rgba(255, 253, 246, .96) 0deg 3deg, transparent 3deg 360deg),
+    repeating-conic-gradient(from -90deg, rgba(248, 244, 232, .78) 0deg 4deg, transparent 4deg 30deg) !important;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)) !important;
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)) !important;
+  filter: drop-shadow(0 0 2px rgba(248, 244, 232, .12));
+  pointer-events: none;
+}
+
+.module-pressure .loop-track-pad::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -8px;
+  border-radius: 50%;
+  opacity: 0;
+  background: conic-gradient(
+    from calc(-90deg + var(--loop-phase-angle)),
+    rgba(255, 253, 246, 1) 0deg 12deg,
+    rgba(248, 244, 232, .46) 12deg 19deg,
+    transparent 19deg 360deg
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 2px));
+  filter: drop-shadow(0 0 4px rgba(248, 244, 232, .66)) drop-shadow(0 0 8px rgba(248, 244, 232, .20));
+  pointer-events: none;
+  transition: opacity 90ms linear, filter 70ms linear;
+}
+
+.module-pressure .loop-track-pad.is-playing::after,
+.module-pressure .loop-track-pad.is-recording::after,
+.module-pressure .loop-track-pad.is-overdubbing::after {
+  opacity: 1;
+}
+
+.module-pressure .loop-track-pad.is-muted::after {
+  opacity: .34;
+}
+
+.module-pressure .loop-track-pad.is-recording::after,
+.module-pressure .loop-track-pad.is-overdubbing::after {
+  filter: drop-shadow(0 0 5px rgba(248, 244, 232, .82)) drop-shadow(0 0 10px rgba(248, 244, 232, .30));
+}
+
+.module-pressure .loop-track-pad.is-loop-boundary::after {
+  filter: drop-shadow(0 0 7px rgba(255, 253, 246, .96)) drop-shadow(0 0 13px rgba(248, 244, 232, .38));
+}
+
+@media (max-width: 1180px) {
+  .module-pressure .loop-header-action-bank { gap: 2px; }
+  .module-pressure .loop-header-action {
+    min-width: 26px;
+    padding-inline: 3px;
+    font-size: .39rem;
+  }
+  .module-pressure .loop-utility-bank {
+    grid-template-columns: repeat(2, minmax(0, 74px)) !important;
+  }
+}
