@@ -1,8 +1,18 @@
-import { loopTrackProgress } from './components/signal/loopStore';
+import {
+  getLoopState,
+  setLoopRuntime,
+  setLoopState,
+} from './components/signal/loopStore';
 import './loopSurfaceV3.css';
+
+const NATIVE_HEALTH_URL = 'http://127.0.0.1:48157/health';
+const NATIVE_LOOP_POLL_MS = 100;
 
 let refreshFrame = 0;
 let animationFrame = 0;
+let nativePollTimer = 0;
+let nativePollPending = false;
+let nativePathLatencyMs = 0;
 let cachedPads: HTMLButtonElement[] = [];
 let lastHeaderRefresh = Number.NEGATIVE_INFINITY;
 
@@ -14,6 +24,10 @@ function loopPads(): HTMLButtonElement[] {
   return Array.from(document.querySelectorAll<HTMLButtonElement>('.module-pressure .loop-track-pad'));
 }
 
+function nativeShellActive(): boolean {
+  return window.location.hostname === '127.0.0.1' && window.location.port === '48157';
+}
+
 function makeButton(className: string, text: string, ariaLabel: string): HTMLButtonElement {
   const button = document.createElement('button');
   button.type = 'button';
@@ -21,6 +35,36 @@ function makeButton(className: string, text: string, ariaLabel: string): HTMLBut
   button.textContent = text;
   button.setAttribute('aria-label', ariaLabel);
   return button;
+}
+
+function makeParameterControl(
+  className: string,
+  labelText: string,
+  parameter: 'masterLevel' | 'overdub',
+  ariaLabel: string,
+): HTMLLabelElement {
+  const label = document.createElement('label');
+  label.className = `loop-header-param ${className}`;
+  label.setAttribute('aria-label', ariaLabel);
+
+  const caption = document.createElement('span');
+  caption.className = 'loop-header-param-label';
+  caption.textContent = labelText;
+
+  const input = document.createElement('input');
+  input.type = 'range';
+  input.min = '0';
+  input.max = '1';
+  input.step = '0.01';
+  input.dataset.loopParameter = parameter;
+  input.setAttribute('aria-label', ariaLabel);
+
+  const value = document.createElement('span');
+  value.className = 'loop-header-param-value';
+  value.setAttribute('aria-hidden', 'true');
+
+  label.append(caption, input, value);
+  return label;
 }
 
 function ensureHeaderActions(): HTMLElement | null {
@@ -33,7 +77,7 @@ function ensureHeaderActions(): HTMLElement | null {
   const bank = document.createElement('div');
   bank.className = 'loop-header-action-bank';
   bank.setAttribute('role', 'group');
-  bank.setAttribute('aria-label', 'Loop transport and edit actions');
+  bank.setAttribute('aria-label', 'Loop transport, edit, master and retain controls');
 
   const all = makeButton('loop-all-toggle loop-header-all', 'ALL', 'Play or stop all Loop tracks');
   const undo = makeButton('loop-505-action loop-505-undo', 'UNDO', 'Undo selected Loop track overdub');
@@ -43,8 +87,10 @@ function ensureHeaderActions(): HTMLElement | null {
   const rec = makeButton('loop-header-track-action', 'REC', 'Record selected Loop track');
   const bounce = makeButton('loop-505-action loop-505-bounce', 'BNC', 'Bounce active Loop mix to an empty track');
   bounce.dataset.loop505Action = 'bounce';
+  const master = makeParameterControl('loop-header-master', 'MSTR', 'masterLevel', 'Loop master level');
+  const retain = makeParameterControl('loop-header-retain', 'RET', 'overdub', 'Loop overdub retain amount');
 
-  bank.append(all, undo, redo, rec, bounce);
+  bank.append(all, undo, redo, rec, bounce, master, retain);
   const heading = title.querySelector('h3');
   if (heading?.nextSibling) title.insertBefore(bank, heading.nextSibling);
   else title.append(bank);
@@ -55,6 +101,17 @@ function mirrorButtonState(target: HTMLButtonElement | null, source: HTMLButtonE
   if (!target || !source) return;
   target.disabled = source.disabled;
   target.title = source.title;
+}
+
+function refreshParameter(
+  bank: HTMLElement,
+  parameter: 'masterLevel' | 'overdub',
+  value: number,
+): void {
+  const input = bank.querySelector<HTMLInputElement>(`input[data-loop-parameter="${parameter}"]`);
+  if (input && document.activeElement !== input) input.value = value.toFixed(2);
+  const readout = input?.parentElement?.querySelector<HTMLElement>('.loop-header-param-value');
+  if (readout) readout.textContent = `${Math.round(value * 100)}`;
 }
 
 function refreshHeader(): void {
@@ -93,6 +150,9 @@ function refreshHeader(): void {
     trackAction.setAttribute('aria-label', trackAction.title);
   }
 
+  const state = getLoopState();
+  refreshParameter(bank, 'masterLevel', state.masterLevel);
+  refreshParameter(bank, 'overdub', state.overdub);
   cachedPads = loopPads();
 }
 
@@ -119,8 +179,43 @@ function handleClick(event: MouseEvent): void {
   scheduleRefresh();
 }
 
+function handleInput(event: Event): void {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  const parameter = target.dataset.loopParameter;
+  if (parameter !== 'masterLevel' && parameter !== 'overdub') return;
+  const value = Math.max(0, Math.min(1, Number(target.value) || 0));
+  setLoopState(parameter === 'masterLevel' ? { masterLevel: value } : { overdub: value });
+  const readout = target.parentElement?.querySelector<HTMLElement>('.loop-header-param-value');
+  if (readout) readout.textContent = `${Math.round(value * 100)}`;
+}
+
+function presentationProgress(track: number, stamp: number): number {
+  const state = getLoopState();
+  const runtime = state.trackRuntime[track];
+  if (!runtime || runtime.loopFrames <= 0) return 0;
+
+  const bit = 1 << track;
+  const writingTarget = track === state.selectedTrack
+    && (state.transport === 'recording' || state.transport === 'overdubbing');
+  const active = (state.trackActiveMask & bit) !== 0;
+  const transportRunning = state.transport === 'playing'
+    || state.transport === 'recording'
+    || state.transport === 'overdubbing';
+  const moving = writingTarget || (transportRunning && active);
+  let position = runtime.position;
+
+  if (moving && ((state.trackMask & bit) !== 0 || writingTarget)) {
+    const elapsedFrames = Math.max(0, stamp - runtime.updatedAtMs) * state.sampleRate / 1000;
+    const latencyFrames = Math.max(0, nativePathLatencyMs) * state.sampleRate / 1000;
+    const phaseFrames = position + elapsedFrames - latencyFrames;
+    position = ((phaseFrames % runtime.loopFrames) + runtime.loopFrames) % runtime.loopFrames;
+  }
+  return Math.max(0, Math.min(1, position / runtime.loopFrames));
+}
+
 function animateRings(stamp: number): void {
-  if (stamp - lastHeaderRefresh > 180) {
+  if (stamp - lastHeaderRefresh > 120) {
     lastHeaderRefresh = stamp;
     refreshHeader();
   }
@@ -130,14 +225,57 @@ function animateRings(stamp: number): void {
     const active = pad.classList.contains('is-playing')
       || pad.classList.contains('is-recording')
       || pad.classList.contains('is-overdubbing');
-    const progress = active ? loopTrackProgress(track, stamp) : 0;
+    const progress = active ? presentationProgress(track, stamp) : 0;
     pad.style.setProperty('--loop-phase-angle', `${(progress * 360).toFixed(3)}deg`);
     pad.classList.toggle('is-loop-boundary', active && (progress <= 0.025 || progress >= 0.995));
   }
   animationFrame = window.requestAnimationFrame(animateRings);
 }
 
+type NativeLoopHealth = {
+  engine?: string;
+  sampleRate?: number;
+  estimatedPathMs?: number;
+  loopTransport?: number;
+  loopTrackMask?: number;
+  loopFrames?: number;
+  loopRawFrames?: number;
+  loopPosition?: number;
+  loopTrimStart?: number;
+  loopTrimEnd?: number;
+  loopWaveform?: number[];
+};
+
+async function pollNativeLoopRuntime(): Promise<void> {
+  if (!nativeShellActive() || nativePollPending || document.hidden) return;
+  nativePollPending = true;
+  try {
+    const response = await fetch(NATIVE_HEALTH_URL, { cache: 'no-store', credentials: 'omit' });
+    if (!response.ok) return;
+    const health = await response.json() as NativeLoopHealth;
+    if (health.engine !== 'calcotone-native') return;
+    nativePathLatencyMs = Math.max(0, Math.min(250, Number(health.estimatedPathMs) || 0));
+    const transports = ['empty', 'stopped', 'playing', 'recording', 'overdubbing'] as const;
+    setLoopRuntime({
+      transport: transports[Math.max(0, Math.min(4, Math.round(Number(health.loopTransport) || 0)))] ?? 'empty',
+      trackMask: Math.max(0, Math.round(Number(health.loopTrackMask) || 0)),
+      loopFrames: Math.max(0, Math.round(Number(health.loopFrames) || 0)),
+      rawFrames: Math.max(0, Math.round(Number(health.loopRawFrames ?? health.loopFrames) || 0)),
+      position: Math.max(0, Math.round(Number(health.loopPosition) || 0)),
+      sampleRate: Math.max(8_000, Math.round(Number(health.sampleRate) || 48_000)),
+      trimStart: Math.max(0, Math.min(1, Number(health.loopTrimStart) || 0)),
+      trimEnd: Math.max(0, Math.min(1, Number(health.loopTrimEnd) || 1)),
+      waveform: Array.isArray(health.loopWaveform) ? health.loopWaveform : undefined,
+    });
+  } catch {
+    // Native bridge may be restarting. Existing UI state continues to extrapolate.
+  } finally {
+    nativePollPending = false;
+  }
+}
+
 document.addEventListener('click', handleClick, true);
+document.addEventListener('input', handleInput, true);
 
 const observer = new MutationObserver((mutations) => {
   if (mutations.some((mutation) => mutation.type === 'childList' || mutation.type === 'characterData')) scheduleRefresh();
@@ -146,14 +284,23 @@ if (document.body) observer.observe(document.body, { subtree: true, childList: t
 
 scheduleRefresh();
 animationFrame = window.requestAnimationFrame(animateRings);
+if (nativeShellActive()) {
+  void pollNativeLoopRuntime();
+  nativePollTimer = window.setInterval(() => { void pollNativeLoopRuntime(); }, NATIVE_LOOP_POLL_MS);
+}
 
 function uninstall(): void {
   document.removeEventListener('click', handleClick, true);
+  document.removeEventListener('input', handleInput, true);
   observer.disconnect();
   if (refreshFrame) window.cancelAnimationFrame(refreshFrame);
   if (animationFrame) window.cancelAnimationFrame(animationFrame);
+  if (nativePollTimer) window.clearInterval(nativePollTimer);
   refreshFrame = 0;
   animationFrame = 0;
+  nativePollTimer = 0;
+  nativePollPending = false;
+  nativePathLatencyMs = 0;
   cachedPads = [];
 }
 
