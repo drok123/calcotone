@@ -7,6 +7,8 @@ const atmos = read('native/src/atmos_parity_processor.cpp');
 const drift = read('native/src/drift_parity_processor.cpp');
 const ember = read('native/src/ember_parity_processor.cpp');
 const host = read('native/src/wasapi_host.cpp');
+const parityGenerator = read('native/tools/apply_atmos_parity.py');
+const emberRouteGenerator = read('native/tools/apply_ember_magnetic_route.py');
 const failures = [];
 
 const requireText = (source, needle, label) => {
@@ -58,6 +60,11 @@ for (const token of [
   'const unsigned mode = static_cast<unsigned>(std::max(0, active_mode));',
   'data[frame * 2 + channel] = dry[channel] + (processed - dry[channel]) * mode_mix;',
 ]) requireText(ember, token, 'Click-safe dedicated Ember model handoff');
+
+requireText(parityGenerator, 'p.value[0]', 'Generated parity wrapper committed model state');
+forbidText(parityGenerator, 'p.target[0].load(std::memory_order_relaxed)', 'Generated parity wrapper target-mode bypass');
+requireText(emberRouteGenerator, 'const float mode_value = p.value[0];', 'Generated Ember specialty committed mode state');
+forbidText(emberRouteGenerator, 'const float mode_value = p.target[0]', 'Generated Ember specialty target-mode bypass');
 
 for (const token of [
   'RealtimeThreadScope realtime;',

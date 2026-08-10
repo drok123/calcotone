@@ -44,17 +44,16 @@ def main() -> int:
             raise RuntimeError("native rack include anchor was not found")
         source = source.replace(include_anchor, include_anchor + parity_includes, 1)
 
-    # Params owns the UI-facing atomics, while each parity processor owns its own
-    # sample-rate smoothing. Feed the atomic targets directly. The former wrapper
-    # called Params::glide only once per host block, then smoothed a second time in
-    # the processor; model changes could take seconds and rounded indices appeared
-    # unresponsive at normal callback sizes.
+    # Continuous controls feed the parity processors directly because those engines
+    # own their sample-rate smoothing. Discrete model slot zero is different: NativeRack
+    # commits p.value[0] only at the guaranteed dry crossing, so generated wrappers must
+    # never bypass that handoff by reading p.target[0] directly.
     ember_replacement = r'''struct Ember {
   Params p{0.F, .14F, 9500.F, .18F, .22F, .38F, .22F};
   EmberParityProcessor processor;
   explicit Ember(float rate) : processor(rate) {}
   void process(float* data, std::size_t frames, float) noexcept {
-    processor.set_parameter("mode", p.target[0].load(std::memory_order_relaxed));
+    processor.set_parameter("mode", p.value[0]);
     processor.set_parameter("drive", p.target[1].load(std::memory_order_relaxed));
     processor.set_parameter("tone", p.target[2].load(std::memory_order_relaxed));
     processor.set_parameter("heat", p.target[3].load(std::memory_order_relaxed));
@@ -73,7 +72,7 @@ float read_delay'''
   DriftParityProcessor processor;
   explicit Drift(float rate) : processor(rate) {}
   void process(float* data, std::size_t frames, float) noexcept {
-    processor.set_parameter("mode", p.target[0].load(std::memory_order_relaxed));
+    processor.set_parameter("mode", p.value[0]);
     processor.set_parameter("rate", p.target[1].load(std::memory_order_relaxed));
     processor.set_parameter("depth", p.target[2].load(std::memory_order_relaxed));
     processor.set_parameter("shape", p.target[3].load(std::memory_order_relaxed));
@@ -92,7 +91,7 @@ struct Halo {'''
   HaloParityProcessor processor;
   explicit Halo(float rate) : processor(rate) {}
   void process(float* data, std::size_t frames, float) noexcept {
-    processor.set_parameter("algorithm", p.target[0].load(std::memory_order_relaxed));
+    processor.set_parameter("algorithm", p.value[0]);
     processor.set_parameter("time", p.target[1].load(std::memory_order_relaxed));
     processor.set_parameter("feedback", p.target[2].load(std::memory_order_relaxed));
     processor.set_parameter("color", p.target[3].load(std::memory_order_relaxed));
@@ -117,7 +116,7 @@ struct Halo {'''
   GrainParityProcessor processor;
   explicit Grain(float rate) : processor(rate) {}
   void process(float* data, std::size_t frames, float) noexcept {
-    processor.set_parameter("mode", p.target[0].load(std::memory_order_relaxed));
+    processor.set_parameter("mode", p.value[0]);
     processor.set_parameter("bits", p.target[1].load(std::memory_order_relaxed));
     processor.set_parameter("density", p.target[2].load(std::memory_order_relaxed));
     processor.set_parameter("pitch", p.target[3].load(std::memory_order_relaxed));
@@ -136,7 +135,7 @@ struct Artifact {'''
   ArtifactParityProcessor processor;
   explicit Artifact(float rate) : processor(rate) {}
   void process(float* data, std::size_t frames, float) noexcept {
-    processor.set_parameter("mode", p.target[0].load(std::memory_order_relaxed));
+    processor.set_parameter("mode", p.value[0]);
     processor.set_parameter("wear", p.target[1].load(std::memory_order_relaxed));
     processor.set_parameter("wow", p.target[2].load(std::memory_order_relaxed));
     processor.set_parameter("noise", p.target[3].load(std::memory_order_relaxed));
@@ -154,7 +153,7 @@ struct Stomp {'''
   StompParityProcessor processor;
   explicit Stomp(float rate) : processor(rate) {}
   void process(float* data, std::size_t frames, float) noexcept {
-    processor.set_parameter("mode", p.target[0].load(std::memory_order_relaxed));
+    processor.set_parameter("mode", p.value[0]);
     processor.set_parameter("drive", p.target[1].load(std::memory_order_relaxed));
     processor.set_parameter("tone", p.target[2].load(std::memory_order_relaxed));
     processor.set_parameter("level", p.target[3].load(std::memory_order_relaxed));
