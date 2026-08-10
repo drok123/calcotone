@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <sstream>
 #include <string>
 
@@ -17,7 +18,12 @@ class NativeVisualSpectrum final {
   static constexpr std::size_t kFftSize = 256;
   static constexpr std::size_t kBins = kFftSize / 2;
 
+  void configure(float sample_rate) noexcept {
+    sample_rate_.store(std::clamp(sample_rate, 8'000.F, 384'000.F), std::memory_order_relaxed);
+  }
+
   void publish(const float* interleaved_stereo, std::size_t frames) noexcept {
+    if (!interleaved_stereo || frames == 0U) return;
     auto write = write_index_.load(std::memory_order_relaxed);
     for (std::size_t frame = 0; frame < frames; ++frame) {
       const float mono = .5F * (interleaved_stereo[frame * 2] + interleaved_stereo[frame * 2 + 1]);
@@ -26,6 +32,7 @@ class NativeVisualSpectrum final {
     }
     write_index_.store(write, std::memory_order_release);
     available_.store(std::min<std::size_t>(kFftSize, available_.load(std::memory_order_relaxed) + frames), std::memory_order_release);
+    published_frames_.fetch_add(static_cast<std::uint64_t>(frames), std::memory_order_relaxed);
   }
 
   std::string json() const {
@@ -41,7 +48,9 @@ class NativeVisualSpectrum final {
 
     constexpr float pi = 3.14159265358979323846F;
     std::ostringstream output;
-    output << "{\"bins\":[";
+    output << "{\"frame\":" << published_frames_.load(std::memory_order_relaxed)
+           << ",\"sampleRate\":" << sample_rate_.load(std::memory_order_relaxed)
+           << ",\"bins\":[";
     for (std::size_t bin = 0; bin < kBins; ++bin) {
       float real = 0.F;
       float imaginary = 0.F;
@@ -66,6 +75,13 @@ class NativeVisualSpectrum final {
   std::array<std::atomic<float>, kFftSize> samples_{};
   std::atomic<std::size_t> write_index_{};
   std::atomic<std::size_t> available_{};
+  std::atomic<std::uint64_t> published_frames_{};
+  std::atomic<float> sample_rate_{48'000.F};
 };
+
+inline NativeVisualSpectrum& native_visual_spectrum() noexcept {
+  static NativeVisualSpectrum spectrum;
+  return spectrum;
+}
 
 }  // namespace calcotone
