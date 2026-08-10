@@ -18,6 +18,14 @@ void consume(calcotone::LoopProcessor& loop) {
   std::array<float, 2> sample{};
   loop.process(sample.data(), 1U);
 }
+
+float render_peak(calcotone::LoopProcessor& processor, std::size_t frames = 64U) {
+  std::vector<float> block(frames * 2U, 0.F);
+  processor.process(block.data(), frames);
+  float maximum = 0.F;
+  for (const float sample : block) maximum = std::max(maximum, std::abs(sample));
+  return maximum;
+}
 }
 
 int main() {
@@ -177,14 +185,6 @@ int main() {
   consume(performance_loop);
   performance_loop.set_selected_track(0U);
 
-  const auto render_peak = [](calcotone::LoopProcessor& processor) {
-    std::vector<float> block(64U * 2U, 0.F);
-    processor.process(block.data(), 64U);
-    float maximum = 0.F;
-    for (const float sample : block) maximum = std::max(maximum, std::abs(sample));
-    return maximum;
-  };
-
   const float both_tracks = render_peak(performance_loop);
   assert(both_tracks > .29F && both_tracks < .31F);
 
@@ -209,5 +209,80 @@ int main() {
   performance_loop.set_track_level(0U, .5F);  // ordinary fader remains ordinary
   const float half_track_one = render_peak(performance_loop);
   assert(half_track_one > .19F && half_track_one < .21F);
+
+  // Realtime-safe UNDO/REDO journals only the frames touched by one DUB session.
+  // Swapping happens one sample per callback frame, so no full-loop memcpy can
+  // block the audio thread. The same journal naturally becomes REDO after UNDO.
+  calcotone::LoopProcessor journal_loop(48'000.F);
+  journal_loop.set_enabled(true);
+  journal_loop.set_master_level(1.F);
+  journal_loop.set_fade(0.F);
+  journal_loop.set_track_level(0U, 1.F);
+  std::vector<float> base_take(128U * 2U);
+  fill(base_take, .2F, .2F);
+  journal_loop.set_selected_track(0U);
+  journal_loop.command(calcotone::LoopCommand::Record);
+  journal_loop.process(base_take.data(), 128U);
+  journal_loop.command(calcotone::LoopCommand::Record);
+  consume(journal_loop);
+
+  journal_loop.set_overdub(0.F);
+  std::vector<float> dub_take(128U * 2U);
+  fill(dub_take, .05F, .05F);
+  journal_loop.command(calcotone::LoopCommand::Overdub);
+  journal_loop.process(dub_take.data(), 128U);
+  journal_loop.command(calcotone::LoopCommand::Overdub);
+  consume(journal_loop);
+  const float dubbed_peak = render_peak(journal_loop, 128U);
+  assert(dubbed_peak > .049F && dubbed_peak < .051F);
+
+  journal_loop.set_track_level(0U, 6.F);  // private UNDO sentinel
+  consume(journal_loop);
+  std::vector<float> undo_swap(128U * 2U, 0.F);
+  journal_loop.process(undo_swap.data(), 128U);
+  const float undone_peak = render_peak(journal_loop, 128U);
+  assert(undone_peak > .199F && undone_peak < .201F);
+
+  journal_loop.set_track_level(0U, 7.F);  // private REDO sentinel
+  consume(journal_loop);
+  std::vector<float> redo_swap(128U * 2U, 0.F);
+  journal_loop.process(redo_swap.data(), 128U);
+  const float redone_peak = render_peak(journal_loop, 128U);
+  assert(redone_peak > .049F && redone_peak < .051F);
+
+  // BOUNCE renders the audible pre-master loop bus into an empty track, then
+  // leaves that destination stopped so the mix is not automatically doubled.
+  performance_loop.set_selected_track(2U);
+  performance_loop.set_track_level(2U, 8.F);  // private BOUNCE sentinel
+  std::vector<float> bounce_window(128U * 2U, 0.F);
+  performance_loop.process(bounce_window.data(), 128U);
+  consume(performance_loop);
+  assert((performance_loop.track_mask() & (1U << 2U)) != 0U);
+  performance_loop.set_track_level(0U, 3.F);
+  performance_loop.set_track_level(1U, 3.F);
+  performance_loop.set_track_level(2U, 2.F);
+  const float bounced_peak = render_peak(performance_loop, 64U);
+  assert(bounced_peak > .19F && bounced_peak < .21F);
+
+  // Quantization is sample-clock owned. First REC establishes phase immediately;
+  // its stop request at 120 BPM / beat quantize must wait until frame 24,000.
+  calcotone::LoopProcessor quantized_loop(48'000.F);
+  quantized_loop.set_enabled(true);
+  quantized_loop.set_track_level(7U, 1120.F);  // native clock control: 120 BPM
+  quantized_loop.set_track_level(7U, 2001.F);  // native clock control: beat quantize
+  quantized_loop.set_selected_track(0U);
+  std::vector<float> quantized_start(100U * 2U);
+  fill(quantized_start, .1F, .1F);
+  quantized_loop.command(calcotone::LoopCommand::Record);
+  quantized_loop.process(quantized_start.data(), 100U);
+  assert(quantized_loop.transport() == calcotone::LoopTransport::Recording);
+  quantized_loop.command(calcotone::LoopCommand::Record);
+  std::vector<float> until_boundary(23'900U * 2U);
+  fill(until_boundary, .1F, .1F);
+  quantized_loop.process(until_boundary.data(), 23'900U);
+  assert(quantized_loop.transport() == calcotone::LoopTransport::Recording);
+  consume(quantized_loop);
+  assert(quantized_loop.transport() == calcotone::LoopTransport::Playing);
+  assert(quantized_loop.raw_frames() == 24'000U);
   return 0;
 }
