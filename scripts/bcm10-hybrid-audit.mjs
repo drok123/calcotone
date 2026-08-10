@@ -60,7 +60,7 @@ if (bcm10RecipeStart < 0 || bcm10RecipeEnd < 0) {
 }
 // MUTATE preserves the currently selected machine, so this guard applies when
 // the user is already on BCM10. SMART mode is protected by the dedicated ranges above.
-if (!appSource.includes("module.mediaMode === 'Neve BCM10'")) {
+if (!appSource.includes("modeModule.mediaMode === 'Neve BCM10'")) {
   failures.push('BCM10 MUTATE path is missing mode-specific drive/mix guardrails');
 }
 if (!readFileSync(resolve(process.cwd(), 'src/audio/models/Bcm10Calibration.ts'), 'utf8').includes('const a0 = -0.5 * y0')) {
