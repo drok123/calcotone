@@ -153,7 +153,14 @@ function normalizeTrackLevels(values: readonly number[] | undefined): number[] {
   return Array.from({ length: LOOP_TRACK_COUNT }, (_, index) => clamp01(values?.[index] ?? DEFAULT_SETTINGS.trackLevels[index]!));
 }
 
-function normalizeWaveform(values: readonly number[] | undefined): number[] {
+function normalizeWaveform(values: readonly number[] | undefined, current?: number[]): number[] {
+  if (current && current.length === LOOP_WAVEFORM_BINS) {
+    let unchanged = true;
+    for (let index = 0; index < LOOP_WAVEFORM_BINS; index += 1) {
+      if (current[index] !== clamp01(values?.[index] ?? 0)) { unchanged = false; break; }
+    }
+    if (unchanged) return current;
+  }
   return Array.from({ length: LOOP_WAVEFORM_BINS }, (_, index) => clamp01(values?.[index] ?? 0));
 }
 
@@ -308,14 +315,34 @@ export function setSelectedTrackLevel(value: number): void {
 }
 
 export function setLoopRuntime(patch: Partial<LoopRuntime>): void {
+  const transport = patch.transport ?? state.transport;
   const trimStart = clamp01(patch.trimStart ?? state.trimStart);
   const trimEnd = Math.max(trimStart, clamp01(patch.trimEnd ?? state.trimEnd));
   const loopFrames = Math.max(0, Math.round(patch.loopFrames ?? state.loopFrames));
   const rawFrames = Math.max(0, Math.round(patch.rawFrames ?? state.rawFrames));
   const position = Math.max(0, Math.round(patch.position ?? state.position));
-  const waveform = patch.waveform ? normalizeWaveform(patch.waveform) : state.waveform;
+  const sampleRate = Math.max(8_000, Math.round(patch.sampleRate ?? state.sampleRate));
+  const waveform = patch.waveform ? normalizeWaveform(patch.waveform, state.waveform) : state.waveform;
   const nextTrackMask = clampMask(patch.trackMask ?? state.trackMask);
   const clearingAll = patch.transport === 'empty' && nextTrackMask === 0;
+  const trackActiveMask = clearingAll ? 0 : clampMask(patch.trackActiveMask ?? state.trackActiveMask);
+  const trackMuteMask = clearingAll ? 0 : clampMask(patch.trackMuteMask ?? state.trackMuteMask);
+  const trackSoloMask = clearingAll ? 0 : clampMask(patch.trackSoloMask ?? state.trackSoloMask);
+
+  const unchanged = transport === state.transport
+    && nextTrackMask === state.trackMask
+    && trackActiveMask === state.trackActiveMask
+    && trackMuteMask === state.trackMuteMask
+    && trackSoloMask === state.trackSoloMask
+    && loopFrames === state.loopFrames
+    && rawFrames === state.rawFrames
+    && position === state.position
+    && sampleRate === state.sampleRate
+    && trimStart === state.trimStart
+    && trimEnd === state.trimEnd
+    && waveform === state.waveform;
+  if (unchanged) return;
+
   const trackRuntime = [...state.trackRuntime];
   trackRuntime[state.selectedTrack] = {
     loopFrames,
@@ -328,15 +355,15 @@ export function setLoopRuntime(patch: Partial<LoopRuntime>): void {
   };
   state = {
     ...state,
-    ...patch,
+    transport,
     trackMask: nextTrackMask,
-    trackActiveMask: clearingAll ? 0 : clampMask(patch.trackActiveMask ?? state.trackActiveMask),
-    trackMuteMask: clearingAll ? 0 : clampMask(patch.trackMuteMask ?? state.trackMuteMask),
-    trackSoloMask: clearingAll ? 0 : clampMask(patch.trackSoloMask ?? state.trackSoloMask),
+    trackActiveMask,
+    trackMuteMask,
+    trackSoloMask,
     loopFrames,
     rawFrames,
     position,
-    sampleRate: Math.max(8_000, Math.round(patch.sampleRate ?? state.sampleRate)),
+    sampleRate,
     trimStart,
     trimEnd,
     waveform,
