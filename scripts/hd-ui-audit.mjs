@@ -74,6 +74,11 @@ for (const [name, source, tokens] of [
     'canvasPixelRatio(width, height, 6_400_000)',
     'profile.reference1440p ? 30 : 24',
     "import { canvasPixelRatio, getDisplayProfile } from '../../ui/displayProfile'",
+    'const time = audio.time > 0 ? audio.time : stamp / 1000',
+    "const characters = new Array<string>(columns).fill(' ')",
+    "const accents = isModule ? new Array<string>(columns).fill(' ') : null",
+    "characters.fill(' ')",
+    "accents?.fill(' ')",
   ]],
   ['spectrum', spectrum, [
     'canvasPixelRatio(cssWidth, cssHeight, 5_600_000)',
@@ -96,6 +101,13 @@ for (const retired of [
   "const accents = Array.from({ length: innerWidth }, () => ' ')",
 ]) {
   if (moduleDisplay.includes(retired)) failures.push(`module display must not allocate a graph-row array via ${retired}`);
+}
+for (const retired of [
+  "const characters = Array.from({ length: columns }, () => ' ')",
+  "const accents = isModule ? Array.from({ length: columns }, () => ' ') : null",
+  'const time = stamp / 1000',
+]) {
+  if (ascii.includes(retired)) failures.push(`ASCII engine must not regress to ${retired}`);
 }
 for (const retired of [
   'function projectPoint(',
@@ -177,4 +189,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('1440p UI fidelity audit passed · sharp raster targets remain intact while animated rows reuse buffers and spectrum projection stays allocation-free');
+console.log('1440p UI fidelity audit passed · sharp raster targets remain intact while animated rows reuse buffers, ASCII follows audio time, and spectrum projection stays allocation-free');
