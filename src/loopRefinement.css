@@ -6,6 +6,9 @@
   --loop-label-size: .52rem;
   --loop-value-size: .56rem;
   --loop-strong-size: .62rem;
+  --loop-header-height: 92px;
+  --loop-header-gap: 7px;
+  --loop-module-pad: 12px;
   --loop-border: rgba(255, 190, 114, .24);
   --loop-border-strong: rgba(215, 200, 255, .56);
   --loop-panel: #100c08;
@@ -14,15 +17,22 @@
   --loop-accent: #d7c8ff;
 }
 
+/* Keep the chassis separator attached to the real bottom of the taller Loop header. */
+.module-pressure::after {
+  top: calc(var(--loop-module-pad) + var(--loop-header-height) + var(--loop-header-gap));
+}
+
 /* LOOP alone gets a second header story so precision controls use full width. */
 .module-pressure .module-header {
-  min-height: 92px;
-  height: 92px;
-  flex-basis: 92px;
+  display: grid !important;
+  align-items: stretch;
+  min-height: var(--loop-header-height);
+  height: var(--loop-header-height);
+  flex-basis: var(--loop-header-height);
   grid-template-columns: minmax(0, 1fr) 42px;
   grid-template-rows: 24px 64px;
   gap: 4px 6px;
-  margin-bottom: 7px;
+  margin-bottom: var(--loop-header-gap);
 }
 
 .module-pressure .module-title {
