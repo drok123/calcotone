@@ -62,7 +62,8 @@ class NativeVisualSpectrum final {
         imaginary += value * std::sin(phase);
       }
       const float magnitude = std::sqrt(real * real + imaginary * imaginary) / (static_cast<float>(kFftSize) * .5F);
-      const float decibels = 20.F * std::log10(std::max(1e-7F, magnitude));
+      const float safe_magnitude = magnitude > 1e-7F ? magnitude : 1e-7F;
+      const float decibels = 20.F * std::log10(safe_magnitude);
       const int byte = static_cast<int>(std::clamp((decibels + 90.F) / 78.F * 255.F, 0.F, 255.F));
       if (bin) output << ',';
       output << byte;
