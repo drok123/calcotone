@@ -63,9 +63,8 @@ import { LevelMeter } from './components/meters/LevelMeter';
 import { SpectrumWaterfall } from './components/meters/SpectrumWaterfall';
 import { RecorderPanel, type RecordedTake } from './components/recorder/RecorderPanel';
 import { FaceplateLayoutEditor } from './components/layout/FaceplateLayoutEditor';
-import type { ModuleState, XYAssignment, XYAxis } from './ui/types';
+import type { ModuleState } from './ui/types';
 import { clamp } from './ui/math';
-import { shapeMotionSource } from './ui/motion';
 import {
   moveRackModule,
   nudgeRackModule,
@@ -111,30 +110,6 @@ const RAIL_C_MODULE_NAMES: Record<RailCRandomModuleId, string> = {
   chaos: 'Stack',
 };
 type RoutingRail = RackRail;
-
-
-const INITIAL_XY_ASSIGNMENTS: XYAssignment[] = [];
-
-
-interface PersistentPatchLine {
-  id: string;
-  axis: XYAxis;
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
-}
-
-
-interface PatchDraft {
-  target: string;
-  label: string;
-  startX: number;
-  startY: number;
-  pointerX: number;
-  pointerY: number;
-  hoverAxis: XYAxis | null;
-}
 
 interface RandomUiPlan {
   finalModules: ModuleState[];
@@ -243,14 +218,9 @@ const INITIAL_MODULES: ModuleState[] = [
   },
 ];
 
-
 type MusicalRange = readonly [number, number];
 
-
-
 function randomMusicalValue(range: MusicalRange, centerBias = 0.35): number {
-  // Blend one uniform draw with the average of two draws. This still reaches extremes,
-  // but lands in useful middle territory more often than raw full-range randomness.
   const uniform = Math.random();
   const centered = (Math.random() + Math.random()) * 0.5;
   const t = uniform * (1 - centerBias) + centered * centerBias;
@@ -417,9 +387,6 @@ interface SweetSpotRecipe {
   parameters: Record<string, MusicalRange>;
 }
 
-// Named hardware modes do not use the generic full-module random ranges. Each recipe
-// represents a recognizable operating point, then MUSICAL RANDOM adds a small amount
-// of variation around that center so the result stays in the machine's useful zone.
 const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
   'saturation:goldlion': [
     { name: 'OPEN COLOR', parameters: { drive:[0.16,0.30], tone:[0.60,0.78], heat:[0.14,0.30], character:[0.46,0.58], dynamics:[0.34,0.50], mix:[0.18,0.30] } },
@@ -436,7 +403,6 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
   'saturation:rcablack': [
     { name: 'THICK COLOR', parameters: { drive:[0.18,0.33], tone:[0.38,0.58], heat:[0.30,0.48], character:[0.56,0.70], dynamics:[0.52,0.68], mix:[0.20,0.34] } },
   ],
-
   'chorus:ce1': [
     { name: 'CLASSIC MID INTENSITY', parameters: { rate:[0.09,0.11], depth:[0.27,0.31], shape:[0.46,0.66], spread:[0.80,0.86], motion:[0.16,0.30], mix:[0.20,0.34] } },
   ],
@@ -460,7 +426,6 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
     { name: 'TRIANGLE PAN', parameters: { rate:[0.08,0.24], depth:[0.52,0.78], shape:[0.04,0.28], spread:[0.64,0.92], motion:[0.20,0.46], mix:[0.16,0.30] } },
     { name: 'SQUARE CHOP', parameters: { rate:[0.18,0.40], depth:[0.72,0.94], shape:[0.74,0.96], spread:[0.56,0.86], motion:[0.68,0.92], mix:[0.12,0.26] } },
   ],
-
   'delay:re201': [
     { name: 'MODE 3 SYNCOPATED', parameters: { time:[0.20,0.36], feedback:[0.24,0.40], color:[0.45,0.62], character:[0.14,0.30], width:[0.31,0.39], mix:[0.18,0.30] } },
     { name: 'MODE 6 DUB', parameters: { time:[0.14,0.28], feedback:[0.38,0.56], color:[0.38,0.55], character:[0.22,0.38], width:[0.74,0.82], mix:[0.20,0.34] } },
@@ -481,7 +446,6 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
     { name: 'DIGITAL DOUBLE', parameters: { time:[0.06,0.12], feedback:[0.12,0.24], color:[0.58,0.78], character:[0.10,0.22], width:[0.68,0.88], mix:[0.14,0.26] } },
     { name: 'PITCH SPACE', parameters: { time:[0.18,0.34], feedback:[0.24,0.42], color:[0.52,0.72], character:[0.30,0.50], width:[0.72,0.92], mix:[0.18,0.30] } },
   ],
-
   'reverb:emt140': [
     { name: 'PLATE A · 3.0 S', parameters: { decay:[0.48,0.52], size:[0.49,0.51], color:[0.52,0.68], diffusion:[0.68,0.84], motion:[0.00,0.00], mix:[0.18,0.30] } },
   ],
@@ -489,7 +453,6 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
     { name: 'ROOM A STYLE', parameters: { decay:[0.60,0.68], size:[0.48,0.64], color:[0.36,0.54], diffusion:[0.68,0.86], motion:[0.14,0.28], mix:[0.16,0.30] } },
     { name: 'VOCAL PLATE STYLE', parameters: { decay:[0.46,0.58], size:[0.18,0.34], color:[0.55,0.74], diffusion:[0.42,0.62], motion:[0.08,0.20], mix:[0.18,0.32] } },
   ],
-
   'bitcrusher:clouds': [
     { name: 'DIFFUSE CLOUD', parameters: { bits:[0.34,0.58], density:[0.58,0.76], pitch:[0.00,0.16], chaos:[0.26,0.48], bloom:[0.46,0.66], mix:[0.20,0.34] } },
     { name: 'FROZEN DISSOLVE', parameters: { bits:[0.58,0.82], density:[0.48,0.68], pitch:[0.08,0.28], chaos:[0.48,0.72], bloom:[0.68,0.84], mix:[0.22,0.38] } },
@@ -514,7 +477,6 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
     { name: 'MOSAIC CASCADE', parameters: { bits:[0.28,0.48], density:[0.44,0.66], pitch:[0.20,0.42], chaos:[0.24,0.48], bloom:[0.46,0.68], mix:[0.20,0.36] } },
     { name: 'GLITCH SEQUENCE', parameters: { bits:[0.52,0.74], density:[0.54,0.78], pitch:[0.36,0.62], chaos:[0.52,0.76], bloom:[0.32,0.56], mix:[0.18,0.34] } },
   ],
-
   'saturation:sp1200': [
     { name: 'FILTERED DRUM BUS', parameters: { drive:[0.42,0.62], tone:[0.05,0.20], heat:[0.12,0.28], character:[0.46,0.66], dynamics:[0.32,0.50], mix:[0.18,0.32] } },
   ],
@@ -533,7 +495,6 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
   'saturation:fairlightiix': [
     { name: 'EARLY DIGITAL', parameters: { drive:[0.30,0.50], tone:[0.30,0.74], heat:[0.20,0.38], character:[0.44,0.72], dynamics:[0.34,0.54], mix:[0.18,0.31] } },
   ],
-
   'media:tascam424': [
     { name: 'ELASTIC DI', parameters: { wear:[0.28,0.42], wow:[0.14,0.19], noise:[0.09,0.13], tone:[0.30,0.44], mix:[0.22,0.36] } },
     { name: 'PUSHED PREAMP', parameters: { wear:[0.40,0.54], wow:[0.13,0.18], noise:[0.08,0.13], tone:[0.46,0.58], mix:[0.24,0.38] } },
@@ -634,7 +595,6 @@ export default function App() {
   const [sampleRate, setSampleRate] = useState('—');
   const [nativeTuner, setNativeTuner] = useState({ hz: 0, level: 0 });
   const [nativeHealth, setNativeHealth] = useState<NativeAudioHealth | null>(null);
-  const [xyPosition] = useState({ x: 50, y: 50 });
   const [analyser, setAnalyser] = useState<VisualSpectrumSource | null>(null);
   const [performanceMode, setPerformanceMode] =
     useState<PerformanceMode>('live');
@@ -644,13 +604,6 @@ export default function App() {
   const [gpuExperiment, setGpuExperiment] = useState<GpuCabinetExperimentReport | null>(null);
   const [adaptiveMode, setAdaptiveMode] = useState(true);
   const [explainMode, setExplainMode] = useState(false);
-  const [xyAssignments, setXyAssignments] = useState<XYAssignment[]>(
-    INITIAL_XY_ASSIGNMENTS
-  );
-  const [patchDraft, setPatchDraft] = useState<PatchDraft | null>(null);
-  const [persistentPatchLines, setPersistentPatchLines] = useState<
-    PersistentPatchLine[]
-  >([]);
 
   useEffect(() => {
     if (engineState !== 'running' || audioBackend !== 'native') {
@@ -725,9 +678,6 @@ export default function App() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const recordingStartedAtRef = useRef<number | null>(null);
   const recordingTimerRef = useRef<number | null>(null);
-  const xyPadRef = useRef<HTMLDivElement | null>(null);
-  const patchDraftRef = useRef<PatchDraft | null>(null);
-  const motionValueRef = useRef(new Map<string, number>());
   const randomUiPlanRef = useRef<RandomUiPlan | null>(null);
   const randomFlowActiveRef = useRef(false);
   const offlineRandomTimersRef = useRef<number[]>([]);
@@ -821,7 +771,6 @@ export default function App() {
     return modules.find((module) => module.id === moduleId);
   }
 
-
   async function applyRoutingOrder(nextA: string[], nextB: string[], nextC: string[]): Promise<void> {
     const order = serialOrderFromRack({ A: nextA, B: nextB, C: nextC });
     if (backendRef.current === 'native') {
@@ -864,7 +813,7 @@ export default function App() {
     setRailAOrder(next.A);
     setRailBOrder(next.B);
     setRailCOrder(next.C);
-    void applyRoutingOrder(next.A, next.B, next.C);
+    void applyRoutingOrder(next.A, nextB = next.B, nextC = next.C);
   }
 
   function resetRailOrder(rail: RoutingRail): void {
@@ -1007,9 +956,6 @@ export default function App() {
         `WEB AUDIO FALLBACK · ${nativeBridgeRef.current.getLastProbeFailure()}`
       );
     } catch (error) {
-      // engine.start() is transactional internally, but failures after it returns
-      // (preset construction, UI/DSP audit, later startup sync) must also tear
-      // down the opened MediaStream/AudioContext before showing ERROR.
       try {
         await engineRef.current?.stop();
       } catch (cleanupError) {
@@ -1381,7 +1327,6 @@ export default function App() {
     setMessage(`Artifact changed to ${mode}.`);
   }
 
-
   function randomizeActiveModules(profile: RandomizationProfile = randomProfile): void {
     const activeModules = modules.filter((module) => module.enabled && module.available);
     const activeRailC = getActiveRailCRandomModuleIds();
@@ -1395,8 +1340,6 @@ export default function App() {
     const nextModules = modules.map((module) => {
       if (!module.enabled || !module.available) return module;
 
-      // Pick the module mode first. Hardware recipes depend on the selected machine,
-      // so its operating point must be chosen before the knobs are randomized.
       const profileRecipe = RANDOM_PROFILE_RECIPES[profile]?.[module.id];
       const modeModule = profile === 'mutate'
         ? module
@@ -1413,13 +1356,10 @@ export default function App() {
           ?? genericRanges[parameter.id];
         if (!range) return parameter;
 
-        // Hardware recipes are intentionally tighter and more center-biased than the
-        // creative modes: variation around a known good setting, not a lottery ticket.
         let next = profile === 'mutate'
           ? parameter.value + (Math.random() * 2 - 1) * RANDOM_MUTATION_AMOUNT
           : randomMusicalValue(range, sweetSpot || profileRecipe ? 0.60 : 0.35);
 
-        // Extra guardrails for parameters where combinations can get unruly.
         if (modeModule.id === 'delay' && parameter.id === 'feedback') {
           next = Math.min(next, (modeModule.delayAlgorithm === 'constellation' || modeModule.delayAlgorithm === 'scatter') ? 0.56 : 0.68);
         }
@@ -1435,7 +1375,6 @@ export default function App() {
           if (parameter.id === 'mix') next = Math.min(next, 0.38);
         }
         if (parameter.id === 'mix') {
-          // Wet/dry is deliberately conservative so a randomized patch stays playable.
           next = Math.min(next, 0.52);
         }
 
@@ -1493,10 +1432,6 @@ export default function App() {
             void nativeBridgeRef.current.commandLine(`param ${module.id} ${parameter.id} ${toDspParameterValue(module.id, parameter.id, parameter.value)}`);
         }
 
-        // Native DSP receives the new values immediately, but it does not emit the
-        // browser transfer scheduler's RANDOM reveal events. Drive the same serial UI
-        // packet flow locally so every controlled select and Rail C controller lands
-        // on the exact state that is actually sounding.
         const orderedTargets = [
           ...RANDOM_UI_EFFECT_ORDER.filter((effectId) => targets.has(effectId)),
           ...activeRailC,
@@ -1544,8 +1479,6 @@ export default function App() {
         }
       }
     } else {
-      // Without live DSP there is no transfer scheduler to drive the UI. Preserve
-      // the same serial reveal locally so RANDOM never falls back to a visual burst.
       const orderedTargets = [
         ...RANDOM_UI_EFFECT_ORDER.filter((effectId) => targets.has(effectId)),
         ...activeRailC,
@@ -1581,57 +1514,6 @@ export default function App() {
     if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine(`moduleBypass ${moduleId} ${nextEnabled ? 0 : 1}`);
     else engineRef.current?.setEffectBypassed(moduleId, !nextEnabled);
     setMessage(`${module.name} ${nextEnabled ? 'enabled' : 'bypassed'}.`);
-  }
-
-  function applyXYAssignments(
-    x: number,
-    y: number,
-    moduleSource: ModuleState[] = modules
-  ): void {
-    const activeTargets = new Set(xyAssignments.map((assignment) => assignment.target));
-    for (const target of motionValueRef.current.keys()) {
-      if (!activeTargets.has(target)) motionValueRef.current.delete(target);
-    }
-
-    for (const assignment of xyAssignments) {
-      if (!assignment.target) continue;
-
-      const source = assignment.axis === 'x' ? x : y;
-      const shaped = shapeMotionSource(
-        assignment.inverted ? 1 - source : source,
-        assignment.curve ?? 'linear'
-      );
-      const [moduleId, parameterId] = assignment.target.split('.');
-      const module = moduleSource.find((candidate) => candidate.id === moduleId);
-      const parameter = module?.parameters.find(
-        (candidate) => candidate.id === parameterId
-      );
-
-      if (!module || !parameter) continue;
-
-      // The knob remains the center/base value. Depth determines how far the cable
-      // can pull the destination around that base setting.
-      const bipolar = shaped * 2 - 1;
-      const targetValue = clamp(
-        parameter.value + bipolar * 0.5 * assignment.depth,
-        assignment.min ?? 0,
-        assignment.max ?? 1
-      );
-      const previousValue = motionValueRef.current.get(assignment.target) ?? targetValue;
-      const smoothing = assignment.smoothing ?? 'medium';
-      const response = smoothing === 'fast' ? 0.72 : smoothing === 'slow' ? 0.16 : 0.36;
-      const modulatedValue = previousValue + (targetValue - previousValue) * response;
-      motionValueRef.current.set(assignment.target, modulatedValue);
-
-      if (engineState === 'running') {
-        const dspValue = toDspParameterValue(moduleId, parameterId, modulatedValue);
-        if (backendRef.current === 'native') {
-          void nativeBridgeRef.current.commandLine(`param ${moduleId} ${parameterId} ${dspValue}`);
-        } else {
-          setEffectParameterIfLoaded(engineRef.current, moduleId, parameterId, dspValue);
-        }
-      }
-    }
   }
 
   useEffect(() => {
@@ -1681,13 +1563,6 @@ export default function App() {
       }
 
       setMessage(plan.finalMessage);
-      if (revealedEverything) {
-        applyXYAssignments(
-          xyPosition.x / 100,
-          xyPosition.y / 100,
-          plan.finalModules
-        );
-      }
     };
 
     window.addEventListener(RANDOM_UI_MODULE_EVENT, revealModule);
@@ -1696,158 +1571,7 @@ export default function App() {
       window.removeEventListener(RANDOM_UI_MODULE_EVENT, revealModule);
       window.removeEventListener(RANDOM_UI_COMPLETE_EVENT, finishFlow);
     };
-  }, [engineState, xyAssignments, xyPosition.x, xyPosition.y]);
-
-  function beginPatch(
-    target: string,
-    label: string,
-    startX: number,
-    startY: number,
-    pointerX: number,
-    pointerY: number
-  ): void {
-    const draft = {
-      target,
-      label,
-      startX,
-      startY,
-      pointerX,
-      pointerY,
-      hoverAxis: detectPatchAxis(pointerX, pointerY),
-    };
-    patchDraftRef.current = draft;
-    setPatchDraft(draft);
-    setMessage(`${label}: choose X or Y on the motion pad.`);
-  }
-
-  function movePatch(pointerX: number, pointerY: number): void {
-    const current = patchDraftRef.current;
-    if (!current) return;
-    const next = {
-      ...current,
-      pointerX,
-      pointerY,
-      hoverAxis: detectPatchAxis(pointerX, pointerY),
-    };
-    patchDraftRef.current = next;
-    setPatchDraft(next);
-  }
-
-  function finishPatch(pointerX: number, pointerY: number): void {
-    const draft = patchDraftRef.current;
-    if (!draft) return;
-
-    const axis = detectPatchAxis(pointerX, pointerY);
-
-    if (axis) {
-      const id = `xy-${draft.target.replace('.', '-')}`;
-      setXyAssignments((current) => [
-        ...current.filter((assignment) => assignment.target !== draft.target),
-        {
-          id,
-          axis,
-          target: draft.target,
-          depth: 0.5,
-          inverted: false,
-          min: 0,
-          max: 1,
-          curve: 'soft',
-          smoothing: 'medium',
-        },
-      ]);
-
-      const [moduleId] = draft.target.split('.');
-      setModules((current) =>
-        current.map((module) =>
-          module.id === moduleId ? { ...module, enabled: true } : module
-        )
-      );
-      engineRef.current?.setEffectBypassed(moduleId, false);
-      setMessage(`${draft.label} → ${axis.toUpperCase()}.`);
-    } else {
-      setMessage(`Patch from ${draft.label} cancelled.`);
-    }
-
-    patchDraftRef.current = null;
-    setPatchDraft(null);
-  }
-
-  function detectPatchAxis(pointerX: number, pointerY: number): XYAxis | null {
-    const pad = xyPadRef.current?.getBoundingClientRect();
-    if (!pad) return null;
-
-    // Give cable drops a forgiving magnetic capture zone around the pad. The
-    // visible X/Y jacks are the actual destinations; the closest socket wins.
-    const captureMargin = Math.max(28, Math.min(pad.width, pad.height) * 0.12);
-    if (
-      pointerX < pad.left - captureMargin ||
-      pointerX > pad.right + captureMargin ||
-      pointerY < pad.top - captureMargin ||
-      pointerY > pad.bottom + captureMargin
-    ) return null;
-
-    const xSocket = { x: pad.left + pad.width * 0.18, y: pad.top + pad.height * 0.82 };
-    const ySocket = { x: pad.left + pad.width * 0.82, y: pad.top + pad.height * 0.18 };
-    const xDistance = Math.hypot(pointerX - xSocket.x, pointerY - xSocket.y);
-    const yDistance = Math.hypot(pointerX - ySocket.x, pointerY - ySocket.y);
-    return xDistance <= yDistance ? 'x' : 'y';
-  }
-
-  function disconnectPatch(target: string): void {
-    setXyAssignments((current) =>
-      current.filter((assignment) => assignment.target !== target)
-    );
-    motionValueRef.current.delete(target);
-
-    const [moduleId, parameterId] = target.split('.');
-    const module = modules.find((candidate) => candidate.id === moduleId);
-    const parameter = module?.parameters.find(
-      (candidate) => candidate.id === parameterId
-    );
-    if (parameter && engineState === 'running') {
-      setEffectParameterIfLoaded(
-        engineRef.current,
-        moduleId,
-        parameterId,
-        toDspParameterValue(moduleId, parameterId, parameter.value)
-      );
-    }
-    setMessage('Patch removed.');
-  }
-
-
-  function refreshPersistentPatchLines(): void {
-    const pad = xyPadRef.current?.getBoundingClientRect();
-    if (!pad) {
-      setPersistentPatchLines([]);
-      return;
-    }
-
-    const lines = xyAssignments.flatMap((assignment) => {
-      const source = document.querySelector<HTMLElement>(
-        `[data-patch-target="${assignment.target}"]`
-      );
-      if (!source) return [];
-      const sourceBounds = source.getBoundingClientRect();
-      const endX = assignment.axis === 'x'
-        ? pad.left + pad.width * 0.18
-        : pad.left + pad.width * 0.82;
-      const endY = assignment.axis === 'x'
-        ? pad.top + pad.height * 0.82
-        : pad.top + pad.height * 0.18;
-      return [
-        {
-          id: assignment.id,
-          axis: assignment.axis,
-          startX: sourceBounds.left + sourceBounds.width / 2,
-          startY: sourceBounds.top + sourceBounds.height / 2,
-          endX,
-          endY,
-        },
-      ];
-    });
-    setPersistentPatchLines(lines);
-  }
+  }, []);
 
   function changePerformanceMode(mode: PerformanceMode): void {
     setPerformanceMode(mode);
@@ -1860,12 +1584,6 @@ export default function App() {
       `${mode.charAt(0).toUpperCase() + mode.slice(1)} quality selected.${engineState === 'running' && backendRef.current === 'web' ? ' Restart audio to apply its device-buffer policy.' : ''}`
     );
   }
-
-  useEffect(() => {
-    if (engineState !== 'running') return;
-    if (randomFlowActiveRef.current) return;
-    applyXYAssignments(xyPosition.x / 100, xyPosition.y / 100);
-  }, [xyAssignments, modules, xyPosition.x, xyPosition.y, engineState]);
 
   useEffect(() => {
     return () => {
@@ -1883,20 +1601,6 @@ export default function App() {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
-
-  useLayoutEffect(() => {
-    const frame = window.requestAnimationFrame(refreshPersistentPatchLines);
-    const observer = new ResizeObserver(refreshPersistentPatchLines);
-    if (xyPadRef.current) observer.observe(xyPadRef.current);
-    window.addEventListener('resize', refreshPersistentPatchLines);
-    window.addEventListener('scroll', refreshPersistentPatchLines, true);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      observer.disconnect();
-      window.removeEventListener('resize', refreshPersistentPatchLines);
-      window.removeEventListener('scroll', refreshPersistentPatchLines, true);
-    };
-  }, [xyAssignments, railAOrder, railBOrder, railCOrder]);
 
   useLayoutEffect(() => {
     const fitCanvas = (): void => {
@@ -1940,8 +1644,6 @@ export default function App() {
         return;
       }
     } catch {
-      // WebView2 may reject the browser Fullscreen API. Fall through to the
-      // native-safe viewport mode so the hardware control always works.
     }
     setAppFullscreen(true);
     setMessage('CALCOTONE fullscreen workspace enabled.');
@@ -2297,7 +1999,6 @@ export default function App() {
                             key={moduleId}
                             moduleId={moduleId}
                             modules={modules}
-                            assignments={xyAssignments}
                             visualState={visualState}
                             running={isRunning}
                             onStompEnabledChange={setStompEnabled}
@@ -2335,12 +2036,6 @@ export default function App() {
                           onDriftModeChange={updateDriftMode}
                           onGrainModeChange={updateGrainMode}
                           visualState={visualState}
-                          assignments={xyAssignments}
-                          xyPosition={xyPosition}
-                          onPatchStart={beginPatch}
-                          onPatchMove={movePatch}
-                          onPatchEnd={finishPatch}
-                          onPatchDisconnect={disconnectPatch}
                           {...routingProps}
                         />
                       );
@@ -2391,7 +2086,6 @@ export default function App() {
           </div>
           <div className="footer-actions">
             <span><i className={isRunning ? 'active' : ''} />{isRunning ? 'LIVE' : 'STANDBY'}</span>
-            <span><i className={xyAssignments.length ? 'active' : ''} />{xyAssignments.length} PATCHES</span>
             <span><i className={recordingState === 'recording' ? 'recording' : recordedTake ? 'active' : ''} />{recordingState === 'recording' ? `REC ${formatDuration(recordingSeconds)}` : recordedTake ? 'TAKE READY' : 'REC READY'}</span>
             <button
               type="button"
@@ -2417,39 +2111,6 @@ export default function App() {
         </footer>
       </main>
       </div>
-
-        {persistentPatchLines.length > 0 && (
-          <svg className="persistent-patch-layer" aria-hidden="true">
-            {persistentPatchLines.map((line) => (
-              <path
-                key={line.id}
-                className={`axis-${line.axis}`}
-                d={createPatchPath(
-                  line.startX,
-                  line.startY,
-                  line.endX,
-                  line.endY
-                )}
-              />
-            ))}
-          </svg>
-        )}
-
-        {patchDraft && (
-          <svg className="live-patch-layer" aria-hidden="true">
-            <path
-              d={createPatchPath(
-                patchDraft.startX,
-                patchDraft.startY,
-                patchDraft.pointerX,
-                patchDraft.pointerY
-              )}
-            />
-            <circle cx={patchDraft.startX} cy={patchDraft.startY} r="6" />
-            <circle cx={patchDraft.pointerX} cy={patchDraft.pointerY} r="7" />
-          </svg>
-        )}
-
     </div>
   );
 }
@@ -2467,7 +2128,6 @@ function setEffectParameterIfLoaded(
   engine.setEffectParameter(effectId, parameterId, value);
   return true;
 }
-
 
 function auditUiAgainstEngine(engine: AudioEngine, modules: ModuleState[]): void {
   const failures: string[] = [];
@@ -2503,9 +2163,6 @@ function syncModuleParameters(
   modules: ModuleState[]
 ): void {
   for (const module of modules) {
-    // UI state is authoritative at startup. Presets construct the graph, but a
-    // user may have changed module power before pressing Power. Restore that
-    // state explicitly so the illuminated hardware always matches the DSP.
     engine.setEffectBypassed(module.id, !module.enabled);
 
     if (module.id === 'saturation' && module.emberMode) setEffectParameterIfLoaded(engine, 'saturation', 'mode', EMBER_MODE_ORDER.indexOf(module.emberMode));
@@ -2572,8 +2229,6 @@ function toDspParameterValue(
   }
 
   if (moduleId === 'delay' && parameterId === 'time') {
-    // Halo Time is intentionally front-loaded toward musically obvious echoes.
-    // The first third now spans roughly 30–880 ms, while the top end reaches 4 seconds.
     return 0.03 + Math.pow(value, 1.4) * 3.97;
   }
 
@@ -2653,18 +2308,6 @@ function formatRailOrder(order: readonly string[]): string {
   return order.map((id) => names[id] ?? id.toUpperCase()).join(' → ');
 }
 
-function createPatchPath(
-  startX: number,
-  startY: number,
-  endX: number,
-  endY: number
-): string {
-  const bend = Math.max(70, Math.abs(endX - startX) * 0.42);
-  const controlOneX = startX + (endX >= startX ? bend : -bend);
-  const controlTwoX = endX - (endX >= startX ? bend : -bend);
-  return `M ${startX} ${startY} C ${controlOneX} ${startY}, ${controlTwoX} ${endY}, ${endX} ${endY}`;
-}
-
 function sanitizeFileName(value: string): string {
   let printable = '';
   for (const character of value.trim()) {
@@ -2696,8 +2339,6 @@ function formatPeak(peak: number): string {
   if (peak <= 0) return '-∞ dBFS';
   return `${(20 * Math.log10(peak)).toFixed(1)} dBFS`;
 }
-
-
 
 function getDefaultParameterValue(moduleId: string, parameterId: string): number {
   return INITIAL_MODULES.find((module) => module.id === moduleId)?.parameters.find(
