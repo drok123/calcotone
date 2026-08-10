@@ -33,7 +33,8 @@ class NativeVisualSpectrum final {
       staging_samples_[staging_write_] = std::clamp(mono, -1.5F, 1.5F);
       staging_write_ = (staging_write_ + 1U) & (kFftSize - 1U);
     }
-    staging_available_ = std::min(kFftSize, staging_available_ + frames);
+    const auto next_available = staging_available_ + frames;
+    staging_available_ = next_available >= kFftSize ? kFftSize : next_available;
     published_frames_.fetch_add(static_cast<std::uint64_t>(frames), std::memory_order_relaxed);
 
     frames_since_snapshot_ += frames;
