@@ -3,6 +3,8 @@ import {
   getLoopState,
   LOOP_CHANGE_EVENT,
   LOOP_PERFORMANCE_COMMAND_EVENT,
+  sendLoopCommand,
+  setLoopRuntime,
   toggleLoopTrackMute,
   toggleLoopTrackPlayback,
   toggleLoopTrackSolo,
@@ -89,6 +91,29 @@ function refreshPads(): void {
 }
 
 function handleClick(event: MouseEvent): void {
+  const target = event.target;
+  if (target instanceof Element) {
+    const allToggle = target.closest<HTMLButtonElement>('.module-pressure .loop-all-toggle');
+    if (allToggle && !allToggle.closest('.faceplate-layout-editing') && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      const before = getLoopState();
+      const writing = before.transport === 'recording' || before.transport === 'overdubbing';
+      if (writing || before.trackMask === 0) return;
+      const stopAll = (before.trackActiveMask & before.trackMask) !== 0;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      sendLoopCommand('play');
+      // The legacy optimistic ALL state predates independent tracks. Correct it
+      // immediately so restarting one track after ALL STOP cannot wake its siblings.
+      setLoopRuntime({
+        trackActiveMask: stopAll ? 0 : before.trackMask,
+        transport: stopAll ? 'stopped' : 'playing',
+        position: 0,
+      });
+      scheduleRefresh();
+      return;
+    }
+  }
+
   const pad = padFromEvent(event);
   if (!pad || event.shiftKey) return;
   const track = trackForPad(pad);
