@@ -1,5 +1,5 @@
 import {
-  getLoopState,
+  getLoopSettings,
   loopTrackProgress,
   setLoopState,
 } from './components/signal/loopStore';
@@ -160,9 +160,9 @@ function refreshHeader(): void {
     if (trackAction.getAttribute('aria-label') !== title) trackAction.setAttribute('aria-label', title);
   }
 
-  // Header refresh is low frequency; the defensive snapshot is appropriate here.
-  // The per-frame phase path below never calls getLoopState().
-  const state = getLoopState();
+  // Header refresh only needs persistent controls, never transient waveform/runtime
+  // state. Keep the defensive copy to eight track levels instead of eight waveforms.
+  const state = getLoopSettings();
   refreshParameter(bank, 'masterLevel', state.masterLevel);
   refreshParameter(bank, 'overdub', state.overdub);
   cachedPads = loopPads();
