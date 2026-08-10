@@ -368,7 +368,7 @@ export function LoopTrackMatrixDisplay({ enabled, visualState }: LoopTrackMatrix
     setLoopState({ fade: clamp01(fade) });
   }
 
-  function beginPointer(event: ReactPointerEvent<HTMLCanvasElement>): void {
+  function beginTrimDrag(event: ReactPointerEvent<HTMLCanvasElement>): void {
     if (event.button !== 0) return;
     const current = stateRef.current;
     const canvas = event.currentTarget;
@@ -526,7 +526,7 @@ export function LoopTrackMatrixDisplay({ enabled, visualState }: LoopTrackMatrix
       role="application"
       tabIndex={0}
       aria-label={`Loop track ${state.selectedTrack + 1} transient editor. Drag IN and OUT bars, drag either fade point for seam crossfade, wheel the BPM readout to change tempo, click it to cycle quantize.`}
-      onPointerDown={beginPointer}
+      onPointerDown={beginTrimDrag}
       onPointerMove={movePointer}
       onPointerUp={finishPointer}
       onPointerCancel={finishPointer}
