@@ -556,6 +556,19 @@ const MUSICAL_ATMOS_MODES: readonly ReverbAlgorithm[] = [...REVERB_ALGORITHM_ORD
 const MUSICAL_GRAIN_MODES: readonly GrainMode[] = [...GRAIN_MODE_ORDER];
 const MUSICAL_MEDIA_MODES: readonly MediaMode[] = [...MEDIA_MODE_ORDER];
 
+function nativeInputModeIndex(mode: InputMode): number {
+  return mode === 'stereo' ? 0
+    : mode === 'mono-to-stereo' ? 1
+    : mode === 'left' ? 2
+    : mode === 'right' ? 3
+    : mode === 'sum-mono' ? 4
+    : 5;
+}
+
+function nativeInputPolarityBits(invertLeft: boolean, invertRight: boolean): number {
+  return (invertLeft ? 1 : 0) | (invertRight ? 2 : 0);
+}
+
 export default function App() {
   const nativeShell = new URLSearchParams(window.location.search).has('native-shell');
   const diagnosticAudio = import.meta.env.DEV
@@ -576,7 +589,9 @@ export default function App() {
   const [draggedModuleId, setDraggedModuleId] = useState<string | null>(null);
   const [dragOverModuleId, setDragOverModuleId] = useState<string | null>(null);
   const [inputGain, setInputGain] = useState(1);
-  const [inputMode, setInputMode] = useState<InputMode>('mono-to-stereo');
+  // Native desktop starts in dual-lane stereo mode so Input 1/2 remain independent
+  // for Tablet/Guitar routing. Browser fallback keeps its historical mono-1 default.
+  const [inputMode, setInputMode] = useState<InputMode>(nativeShell ? 'stereo' : 'mono-to-stereo');
   const [inputWidth, setInputWidth] = useState(1);
   const [invertLeft, setInvertLeft] = useState(false);
   const [invertRight, setInvertRight] = useState(false);
@@ -867,6 +882,9 @@ export default function App() {
           nativeBridgeRef.current.command('inputGain', inputGain),
           nativeBridgeRef.current.command('outputGain', outputGain),
           nativeBridgeRef.current.command('quality', performanceMode === 'studio' ? 4 : performanceMode === 'balanced' ? 2 : 1),
+          nativeBridgeRef.current.commandLine(`param pressure inputMode ${nativeInputModeIndex(inputMode)}`),
+          nativeBridgeRef.current.commandLine(`param pressure inputWidth ${inputWidth}`),
+          nativeBridgeRef.current.commandLine(`param pressure inputPolarity ${nativeInputPolarityBits(invertLeft, invertRight)}`),
         ]);
         const nativeSync: Promise<boolean>[] = [];
         for (const module of modules) {
@@ -1192,23 +1210,35 @@ export default function App() {
 
   function updateInputMode(mode: InputMode): void {
     setInputMode(mode);
-    engineRef.current?.setInputMode(mode);
+    if (backendRef.current === 'native') {
+      void nativeBridgeRef.current.commandLine(`param pressure inputMode ${nativeInputModeIndex(mode)}`);
+    } else {
+      engineRef.current?.setInputMode(mode);
+    }
     setMessage(
       mode === 'mono-to-stereo'
-        ? 'Input 1 is duplicated to both channels before the stereo effects rack.'
+        ? 'Input 1 is duplicated to the native stereo rack.'
         : `Input routing changed to ${mode.replaceAll('-', ' ')}.`
     );
   }
 
   function updateInputWidth(value: number): void {
     setInputWidth(value);
-    engineRef.current?.setInputWidth(value);
+    if (backendRef.current === 'native') {
+      void nativeBridgeRef.current.commandLine(`param pressure inputWidth ${value}`);
+    } else {
+      engineRef.current?.setInputWidth(value);
+    }
   }
 
   function updatePolarity(left: boolean, right: boolean): void {
     setInvertLeft(left);
     setInvertRight(right);
-    engineRef.current?.setInputPolarity(left, right);
+    if (backendRef.current === 'native') {
+      void nativeBridgeRef.current.commandLine(`param pressure inputPolarity ${nativeInputPolarityBits(left, right)}`);
+    } else {
+      engineRef.current?.setInputPolarity(left, right);
+    }
     const active = [left ? 'L' : '', right ? 'R' : ''].filter(Boolean).join(' + ');
     setMessage(active ? `Polarity inverted on ${active}.` : 'Input polarity normal.');
   }
@@ -1226,6 +1256,12 @@ export default function App() {
   }
 
   function toggleAdaptiveMode(): void {
+    if (backendRef.current === 'native') {
+      // Native FIFO/recovery safety is transport-critical and remains active.
+      // Keep the UI truthful instead of pretending this browser-only switch can disable it.
+      setMessage('Native I/O safety remains enabled to protect realtime audio.');
+      return;
+    }
     const next = !adaptiveMode;
     setAdaptiveMode(next);
     engineRef.current?.setAdaptiveMode(next);
@@ -1369,7 +1405,7 @@ export default function App() {
         if (modeModule.id === 'bitcrusher' && parameter.id === 'chaos') {
           next = Math.min(next, 0.52);
         }
-        if (modeModule.id === 'media' && module.mediaMode === 'Neve BCM10') {
+        if (modeModule.id === 'media' && modeModule.mediaMode === 'Neve BCM10') {
           if (parameter.id === 'tone') next = Math.min(next, 0.68);
           if (parameter.id === 'wear') next = Math.min(next, 0.72);
           if (parameter.id === 'mix') next = Math.min(next, 0.38);
@@ -1828,13 +1864,12 @@ export default function App() {
                   <span>Input Mode</span>
                   <select
                     value={inputMode}
-                    disabled={audioBackend === 'native'}
                     onChange={(event: ReactChangeEvent<HTMLSelectElement>) =>
                       updateInputMode(event.target.value as InputMode)
                     }
                   >
-                    <option value="mono-to-stereo">{audioBackend === 'native' ? 'Dual Mono → Stereo' : 'Mono 1 → Stereo'}</option>
-                    <option value="stereo">True Stereo</option>
+                    <option value="mono-to-stereo">Input 1 → Stereo</option>
+                    <option value="stereo">{audioBackend === 'native' || nativeShell ? 'Dual Mono / Stereo Rack' : 'True Stereo'}</option>
                     <option value="left">Left → Stereo</option>
                     <option value="right">Right → Stereo</option>
                     <option value="sum-mono">L + R → Stereo</option>
@@ -2091,7 +2126,8 @@ export default function App() {
               className={`footer-safe-toggle ${adaptiveMode ? 'active' : ''}`}
               onClick={toggleAdaptiveMode}
               aria-pressed={adaptiveMode}
-              title={adaptiveMode ? 'Safe mode enabled — click to disable adaptive DSP protection' : 'Safe mode disabled — click to enable adaptive DSP protection'}
+              disabled={audioBackend === 'native'}
+              title={audioBackend === 'native' ? 'Native realtime I/O safety is always enabled' : adaptiveMode ? 'Safe mode enabled — click to disable adaptive DSP protection' : 'Safe mode disabled — click to enable adaptive DSP protection'}
             >
               <i aria-hidden="true" />
               SAFE
