@@ -22,7 +22,7 @@ const dynamics = read('src/audio/SignalLab.ts');
 const artifact = read('src/audio/effects/Media.ts');
 const effectModule = read('src/components/effects/EffectModule.tsx');
 const railC = read('src/components/effects/RailCModules.tsx');
-const railCArtwork = read('src/components/ascii/RailCHardwareDisplay.tsx');
+const loopArtwork = read('src/components/ascii/LoopTrackMatrixDisplay.tsx');
 const loopBridge = read('src/loopBridge.tsx');
 const loopStore = read('src/components/signal/loopStore.ts');
 const loopWorklet = read('public/loop-processor.js');
@@ -65,18 +65,23 @@ requireText(nativeArtifact, 'requested_mode >= 14U', 'Native Artifact dynamics i
 requireText(nativeArtifact, 'requested_mode - 14U', 'Native Artifact dynamics model mapping');
 requireText(nativeArtifact, 'std::clamp(std::round(value), 0.F, 17.F)', 'Native Artifact eighteen-mode ceiling');
 
-// Rail C legacy layout id "pressure" now renders LOOP. Preserve the exact
-// approved geometry key while changing the visible/product behavior.
+// Rail C legacy layout id "pressure" now renders LOOP. Preserve the exact approved
+// geometry key while exposing the first four of the eight backend buffers as an
+// RC-style performance bank: one REC/PLAY/DUB pad and one mechanical clock per track.
 requireText(railC, 'name="Loop"', 'Loop rail module heading');
-requireText(railC, 'aria-label="Loop track"', 'Loop track selector');
-for (const label of ['REC', 'DUB', 'PLAY', 'CLEAR']) requireText(railC, `'${label}'`, `Loop ${label} transport control`);
+requireText(railC, 'Array.from({ length: LOOP_VISIBLE_TRACK_COUNT }', 'Loop four-track pad bank');
+requireText(railC, 'button.action(event.shiftKey)', 'Loop per-track clear gesture');
 requireText(railC, "['Track', 'Loop', 'RETAIN', 'Fade']", 'Loop live-replace macro controls');
 requireText(railC, "['IN', 'OUT', 'Track', 'Fade']", 'Loop trim macro controls');
 requireText(railC, 'trimEditing ?', 'Loop trim macro switch');
-requireText(railC, 'kind="loop"', 'Loop hardware artwork mount');
-requireText(railCArtwork, 'loop: {', 'Loop hardware artwork profile');
-requireText(railCArtwork, "title: 'L O O P'", 'Loop display identity');
-requireText(loopStore, 'export const LOOP_TRACK_COUNT = 8', 'Loop eight-track contract');
+requireText(railC, '<LoopTrackMatrixDisplay', 'Loop four-track artwork mount');
+requireText(loopArtwork, 'L O O P  //  4 TRACK MEMORY', 'Loop display identity');
+requireText(loopArtwork, 'LOOP_VISIBLE_TRACK_COUNT', 'Loop four-track artwork contract');
+requireText(loopArtwork, 'loopTrackProgress(track, stamp)', 'Loop per-track visual playhead');
+requireText(loopStore, 'export const LOOP_TRACK_COUNT = 8', 'Loop eight-buffer backend contract');
+requireText(loopStore, 'export const LOOP_VISIBLE_TRACK_COUNT = 4', 'Loop four-track faceplate contract');
+requireText(loopStore, 'export function pressLoopTrack(track: number): boolean', 'Loop one-button track transport');
+requireText(loopStore, 'export function clearLoopTrack(track: number): boolean', 'Loop per-track clear command');
 requireText(loopStore, "STORAGE_KEY = 'calcotone.loop-state.v2'", 'Loop live-replace settings persistence');
 requireText(loopStore, "LEGACY_STORAGE_KEY = 'calcotone.loop-state.v1'", 'Loop legacy settings migration');
 requireText(loopStore, "transport: 'empty'", 'Loop transport does not persist audio state');
@@ -166,4 +171,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE Loop/Artifact dynamics audit passed (standalone 8-track Loop + four Artifact compressor topologies).');
+console.log('CALCOTONE Loop/Artifact dynamics audit passed (8-buffer Loop backend + four-track performance faceplate + four Artifact compressor topologies).');
