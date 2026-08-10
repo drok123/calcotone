@@ -49,11 +49,19 @@ export interface NativeAudioHealth {
 }
 
 const NATIVE_ORIGIN = 'http://127.0.0.1:48157';
+const PROFILE_SELECTOR_PARAMETERS = new Set(['mode', 'algorithm']);
+const STACK_PROFILE_SELECTORS = new Set(['model', 'cab']);
+const STACK_PROFILE_PARAMETERS = new Set(['drive', 'tone', 'sag', 'mix']);
 
 export class NativeAudioBridge {
   private connected = false;
   private lastProbeFailure = 'Native host was not detected.';
   private commandQueue: Promise<boolean> = Promise.resolve(true);
+  // Native machine selectors can change topology as well as coefficients. Keep the
+  // latest desired operating point beside the transport queue so selecting a new
+  // machine commits one coherent profile instead of waiting for the next knob write.
+  private readonly parameterSnapshot = new Map<string, Map<string, string>>();
+  private readonly stackSnapshot = new Map<string, string>();
 
   public isConnected(): boolean { return this.connected; }
   public getLastProbeFailure(): string { return this.lastProbeFailure; }
@@ -64,6 +72,49 @@ export class NativeAudioBridge {
       mode: 'cors',
       credentials: 'omit',
     });
+  }
+
+  private resetDesiredState(): void {
+    this.parameterSnapshot.clear();
+    this.stackSnapshot.clear();
+  }
+
+  private rememberDesiredState(line: string): void {
+    const parts = line.trim().split(/\s+/);
+    if (parts[0] === 'param' && parts.length >= 4) {
+      const moduleId = parts[1]!;
+      const parameterId = parts[2]!;
+      if (PROFILE_SELECTOR_PARAMETERS.has(parameterId)) return;
+      let snapshot = this.parameterSnapshot.get(moduleId);
+      if (!snapshot) {
+        snapshot = new Map<string, string>();
+        this.parameterSnapshot.set(moduleId, snapshot);
+      }
+      snapshot.set(parameterId, parts.slice(3).join(' '));
+      return;
+    }
+
+    const name = parts[0];
+    if (name && STACK_PROFILE_PARAMETERS.has(name) && parts.length >= 2) {
+      this.stackSnapshot.set(name, parts.slice(1).join(' '));
+    }
+  }
+
+  private profileReplayLines(line: string): string[] {
+    const parts = line.trim().split(/\s+/);
+    if (parts[0] === 'param' && parts.length >= 4 && PROFILE_SELECTOR_PARAMETERS.has(parts[2]!)) {
+      const moduleId = parts[1]!;
+      const snapshot = this.parameterSnapshot.get(moduleId);
+      return snapshot
+        ? [...snapshot.entries()].map(([parameterId, value]) => `param ${moduleId} ${parameterId} ${value}`)
+        : [];
+    }
+
+    const name = parts[0];
+    if (name && STACK_PROFILE_SELECTORS.has(name)) {
+      return [...this.stackSnapshot.entries()].map(([parameterId, value]) => `${parameterId} ${value}`);
+    }
+    return [];
   }
 
   public async probe(timeoutMs = 8_000): Promise<NativeAudioHealth | null> {
@@ -89,6 +140,7 @@ export class NativeAudioBridge {
       }
       this.connected = true;
       this.lastProbeFailure = '';
+      this.resetDesiredState();
       return health;
     } catch (error) {
       this.connected = false;
@@ -119,7 +171,17 @@ export class NativeAudioBridge {
 
   public async commandLine(line: string): Promise<boolean> {
     if (!this.connected || !line.trim()) return false;
-    const operation = this.commandQueue.then(() => this.sendCommand(line));
+    // Remember synchronously, before the queued request runs. Random/preset flows enqueue
+    // a selector followed by their knob values in one call stack, so the selector replay
+    // sees the final desired snapshot rather than briefly restoring the previous recipe.
+    this.rememberDesiredState(line);
+    const operation = this.commandQueue.then(async () => {
+      if (!await this.sendCommand(line)) return false;
+      for (const replay of this.profileReplayLines(line)) {
+        if (!await this.sendCommand(replay)) return false;
+      }
+      return true;
+    });
     this.commandQueue = operation.catch(() => false);
     return operation;
   }
@@ -145,5 +207,8 @@ export class NativeAudioBridge {
     }
   }
 
-  public disconnect(): void { this.connected = false; }
+  public disconnect(): void {
+    this.connected = false;
+    this.resetDesiredState();
+  }
 }
