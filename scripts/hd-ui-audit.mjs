@@ -46,8 +46,9 @@ for (const token of [
 
 for (const token of [
   "import { getDisplayProfile } from '../../ui/displayProfile'",
-  'return 1000 / getDisplayProfile().visualFps',
-  'getDisplayProfile().reference1440p ? 30 : 20',
+  'const MAX_VISUAL_FPS = 20',
+  'Math.min(getDisplayProfile().visualFps, MAX_VISUAL_FPS)',
+  'getDisplayProfile().reference1440p ? 15 : 12',
   'targetInterval = reducedInterval()',
 ]) {
   if (!scheduler.includes(token)) failures.push(`viewport scheduler is missing ${token}`);
@@ -148,4 +149,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('1440p UI fidelity audit passed · adaptive DPI/FPS and gray module power states are separated from the unconditional uploaded faceplate contract');
+console.log('1440p UI fidelity audit passed · sharp raster targets remain intact while shared animated canvases are capped at an audio-safe 20 FPS');
