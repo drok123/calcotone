@@ -30,6 +30,10 @@ function nativeShellActive(): boolean {
   return window.location.hostname === '127.0.0.1' && window.location.port === '48157';
 }
 
+function setTextIfChanged(element: HTMLElement | null, text: string): void {
+  if (element && element.textContent !== text) element.textContent = text;
+}
+
 function makeButton(className: string, text: string, ariaLabel: string): HTMLButtonElement {
   const button = document.createElement('button');
   button.type = 'button';
@@ -111,9 +115,12 @@ function refreshParameter(
   value: number,
 ): void {
   const input = bank.querySelector<HTMLInputElement>(`input[data-loop-parameter="${parameter}"]`);
-  if (input && document.activeElement !== input) input.value = value.toFixed(2);
-  const readout = input?.parentElement?.querySelector<HTMLElement>('.loop-header-param-value');
-  if (readout) readout.textContent = `${Math.round(value * 100)}`;
+  if (input && document.activeElement !== input) {
+    const next = value.toFixed(2);
+    if (input.value !== next) input.value = next;
+  }
+  const readout = input?.parentElement?.querySelector<HTMLElement>('.loop-header-param-value') ?? null;
+  setTextIfChanged(readout, `${Math.round(value * 100)}`);
 }
 
 function refreshHeader(): void {
@@ -136,20 +143,21 @@ function refreshHeader(): void {
   const trackAction = bank.querySelector<HTMLButtonElement>('.loop-header-track-action');
   if (trackAction && selected) {
     trackAction.disabled = selected.disabled;
+    let text = 'DUB';
+    let title = 'Overdub the selected Loop track';
     if (selected.classList.contains('is-recording') || selected.classList.contains('is-overdubbing')) {
-      trackAction.textContent = 'END';
-      trackAction.title = 'Finish the selected Loop write pass';
+      text = 'END';
+      title = 'Finish the selected Loop write pass';
     } else if (selected.classList.contains('is-empty')) {
-      trackAction.textContent = 'REC';
-      trackAction.title = 'Record the selected Loop track';
+      text = 'REC';
+      title = 'Record the selected Loop track';
     } else if (selected.classList.contains('is-track-stopped') || selected.classList.contains('is-stopped')) {
-      trackAction.textContent = 'PLAY';
-      trackAction.title = 'Start the selected Loop track from its beginning';
-    } else {
-      trackAction.textContent = 'DUB';
-      trackAction.title = 'Overdub the selected Loop track';
+      text = 'PLAY';
+      title = 'Start the selected Loop track from its beginning';
     }
-    trackAction.setAttribute('aria-label', trackAction.title);
+    setTextIfChanged(trackAction, text);
+    if (trackAction.title !== title) trackAction.title = title;
+    if (trackAction.getAttribute('aria-label') !== title) trackAction.setAttribute('aria-label', title);
   }
 
   // Header refresh is low frequency; the defensive snapshot is appropriate here.
@@ -190,8 +198,8 @@ function handleInput(event: Event): void {
   if (parameter !== 'masterLevel' && parameter !== 'overdub') return;
   const value = Math.max(0, Math.min(1, Number(target.value) || 0));
   setLoopState(parameter === 'masterLevel' ? { masterLevel: value } : { overdub: value });
-  const readout = target.parentElement?.querySelector<HTMLElement>('.loop-header-param-value');
-  if (readout) readout.textContent = `${Math.round(value * 100)}`;
+  const readout = target.parentElement?.querySelector<HTMLElement>('.loop-header-param-value') ?? null;
+  setTextIfChanged(readout, `${Math.round(value * 100)}`);
 }
 
 function presentationProgress(track: number, stamp: number): number {
