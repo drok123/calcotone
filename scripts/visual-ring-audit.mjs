@@ -39,6 +39,11 @@ requireText(nativeSpectrumCore, 'reverse_bits(index)', 'Native FFT bit reversal'
 requireText(nativeSpectrumCore, 'hann_window()', 'Native reusable Hann window');
 requireText(nativeSpectrumCore, 'cosine_table()', 'Native reusable FFT cosine table');
 requireText(nativeSpectrumCore, 'sine_table()', 'Native reusable FFT sine table');
+requireText(nativeSpectrumCore, 'staging_samples_[staging_write_]', 'Native audio-thread staging ring');
+requireText(nativeSpectrumCore, 'snapshot_interval_frames_', 'Native spectrum publication cadence');
+requireText(nativeSpectrumCore, 'snapshot_sequence_.fetch_add(1U, std::memory_order_release)', 'Native coherent snapshot generation');
+requireText(nativeSpectrumCore, 'if (frames_since_snapshot_ < snapshot_interval_frames_) return', 'Native spectrum batched publication guard');
+forbidText(nativeSpectrumCore, 'samples_[write].store', 'Per-sample native atomic spectrum publication');
 forbidText(nativeSpectrumCore, 'for (std::size_t sample = 0; sample < kFftSize; ++sample)', 'Quadratic native DFT loop');
 requireText(audioEngine, 'this.sharedVisualSpectrum?.connect(this.analyser)', 'Parallel master visual tap');
 requireText(audioEngine, 'return this.sharedVisualSpectrum ?? this.analyser', 'Native analyser fallback');
@@ -94,4 +99,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE visual ring audit passed (lock-free ordering, 20 Hz native fetch, radix-2 FFT, audio presentation clocks, analyser fallback).');
+console.log('CALCOTONE visual ring audit passed (lock-free browser ring, batched native snapshot, radix-2 FFT, audio presentation clocks, analyser fallback).');
