@@ -20,6 +20,9 @@ forbidText(css, '.module-chaos', 'Loop refinement must not touch Stack');
 requireText(css, '--loop-grid-gap: 4px', 'Loop shared spacing token');
 requireText(css, '--loop-control-height: 30px', 'Loop shared control height token');
 requireText(css, '--loop-control-radius: 4px', 'Loop shared corner radius token');
+requireText(css, '--loop-header-height: 92px', 'Loop two-story header height token');
+requireText(css, '.module-pressure .module-header {\n  display: grid !important;', 'Loop header cannot regress to global flex layout');
+requireText(css, '.module-pressure::after {\n  top: calc(var(--loop-module-pad) + var(--loop-header-height) + var(--loop-header-gap));', 'Loop chassis divider follows refined header');
 requireText(css, 'grid-template-columns: repeat(7, minmax(0, 1fr))', 'Loop seven-column placement contract');
 requireText(css, '.module-pressure .loop-505-tools {\n  display: contents;', '505 actions participate in main grid');
 requireText(css, 'grid-column: span 2;', 'TRIM IN/OUT receive two equal columns');
@@ -38,4 +41,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE Loop refinement audit passed · Loop-only scope, 7-column uniform deck, readable matrix, and large trim controls locked');
+console.log('CALCOTONE Loop refinement audit passed · Loop-only scope, fixed grid cascade, 7-column uniform deck, readable matrix, and large trim controls locked');
