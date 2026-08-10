@@ -1,0 +1,111 @@
+name: Ember transition hardening
+
+on:
+  push:
+    branches: [agent/realtime-crackle-hardening]
+
+permissions:
+  contents: write
+
+jobs:
+  harden-ember:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Add Ember dry-crossed discrete handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_required(source, old, new, label, count=1):
+              actual = source.count(old)
+              if actual != count:
+                  raise SystemExit(f'{label}: expected {count}, found {actual}')
+              return source.replace(old, new, count)
+
+          path = Path('native/src/ember_parity_processor.cpp')
+          source = path.read_text()
+          source = replace_required(
+              source,
+              '''  std::array<std::atomic<float>, 7> target{};\n  std::array<float, 7> value{0.F, .14F, 9500.F, .18F, .22F, .38F, .22F};\n\n''',
+              '''  std::array<std::atomic<float>, 7> target{};\n  std::array<float, 7> value{0.F, .14F, 9500.F, .18F, .22F, .38F, .22F};\n  int active_mode{-1};\n  unsigned pending_mode{};\n  float mode_mix{1.F};\n  float mode_fade_step{};\n  unsigned mode_transition{};\n\n''',
+              'Ember transition state')
+          source = replace_required(
+              source,
+              '''  explicit Impl(float sample_rate) : rate(std::clamp(sample_rate, 8000.F, 384000.F)) {\n    for (std::size_t i = 0; i < value.size(); ++i) target[i].store(value[i]);\n  }\n''',
+              '''  explicit Impl(float sample_rate) : rate(std::clamp(sample_rate, 8000.F, 384000.F)) {\n    for (std::size_t i = 0; i < value.size(); ++i) target[i].store(value[i]);\n    mode_fade_step = 1.F / std::max(1.F, rate * .003F);\n  }\n\n  unsigned requested_mode() const noexcept {\n    return std::min(17U, static_cast<unsigned>(std::max(0.F, std::round(target[0].load(std::memory_order_relaxed)))));\n  }\n\n  void prepare_mode_transition() noexcept {\n    const unsigned requested = requested_mode();\n    if (active_mode < 0) {\n      active_mode = static_cast<int>(requested);\n      pending_mode = requested;\n      mode_mix = 1.F;\n      mode_transition = 0U;\n    } else if (requested != static_cast<unsigned>(active_mode)) {\n      pending_mode = requested;\n      if (mode_transition == 0U || mode_transition == 2U) mode_transition = 1U;\n    }\n  }\n\n  void advance_mode_transition() noexcept {\n    if (mode_transition == 1U) {\n      mode_mix = std::max(0.F, mode_mix - mode_fade_step);\n      if (mode_mix <= 0.F) {\n        mode_mix = 0.F;\n        active_mode = static_cast<int>(pending_mode);\n        mode_transition = 2U;\n      }\n    } else if (mode_transition == 2U) {\n      mode_mix = std::min(1.F, mode_mix + mode_fade_step);\n      if (mode_mix >= 1.F) {\n        mode_mix = 1.F;\n        mode_transition = 0U;\n      }\n    }\n  }\n''',
+              'Ember transition helpers')
+          source = replace_required(
+              source,
+              '''  void process(float* data, std::size_t frames) noexcept {\n    const float glide = 1.F - std::exp(-1.F / (rate * .045F));\n    for (std::size_t frame = 0; frame < frames; ++frame) {\n      value[0] = target[0].load(std::memory_order_relaxed);\n      for (std::size_t i = 1; i < value.size(); ++i)\n        value[i] += (target[i].load(std::memory_order_relaxed) - value[i]) * glide;\n\n      const unsigned mode = std::min(17U, static_cast<unsigned>(std::round(value[0])));\n''',
+              '''  void process(float* data, std::size_t frames) noexcept {\n    const float glide = 1.F - std::exp(-1.F / (rate * .045F));\n    prepare_mode_transition();\n    for (std::size_t frame = 0; frame < frames; ++frame) {\n      for (std::size_t i = 1; i < value.size(); ++i)\n        value[i] += (target[i].load(std::memory_order_relaxed) - value[i]) * glide;\n      prepare_mode_transition();\n      advance_mode_transition();\n\n      const unsigned mode = static_cast<unsigned>(std::max(0, active_mode));\n''',
+              'Ember process mode selection')
+          source = replace_required(
+              source,
+              '''          // Saturation.ts intentionally uses linear routing for the digital-capture branch.\n          data[frame * 2 + channel] = std::clamp(dry[channel] * (1.F - mix) + wet * mix, -1.2F, 1.2F);\n          continue;\n''',
+              '''          // Saturation.ts intentionally uses linear routing for the digital-capture branch.\n          const float processed = std::clamp(dry[channel] * (1.F - mix) + wet * mix, -1.2F, 1.2F);\n          data[frame * 2 + channel] = dry[channel] + (processed - dry[channel]) * mode_mix;\n          continue;\n''',
+              'Ember digital branch dry cross')
+          source = replace_required(
+              source,
+              '''        data[frame * 2 + channel] = std::clamp(dry[channel] * dry_gain + wet * wet_gain, -1.2F, 1.2F);\n''',
+              '''        const float processed = std::clamp(dry[channel] * dry_gain + wet * wet_gain, -1.2F, 1.2F);\n        data[frame * 2 + channel] = dry[channel] + (processed - dry[channel]) * mode_mix;\n''',
+              'Ember analog branch dry cross')
+          source = replace_required(
+              source,
+              '''  impl_->tube_supply_demand = 0.F; impl_->tube_supply_sag = 0.F; impl_->tube_thermal_state = 0.F;\n}\n''',
+              '''  impl_->tube_supply_demand = 0.F; impl_->tube_supply_sag = 0.F; impl_->tube_thermal_state = 0.F;\n  impl_->active_mode = -1; impl_->pending_mode = 0U; impl_->mode_mix = 1.F; impl_->mode_transition = 0U;\n}\n''',
+              'Ember reset transition state')
+          path.write_text(source)
+
+          test_path = Path('native/tests/ember_parity_processor_test.cpp')
+          test = test_path.read_text()
+          marker = '''  calcotone::EmberParityProcessor processor(rate);\n  assert(!processor.set_parameter("unknown", .5F));\n'''
+          insertion = '''  {\n    // Cross the radically different tube -> digital topology at an exact dry sample.\n    calcotone::EmberParityProcessor transition(rate);\n    assert(transition.set_parameter("mode", 7.F));\n    assert(transition.set_parameter("drive", .72F));\n    assert(transition.set_parameter("heat", .58F));\n    assert(transition.set_parameter("character", .64F));\n    assert(transition.set_parameter("mix", 1.F));\n    std::vector<float> warmup(4096U * 2U);\n    for (std::size_t frame = 0; frame < 4096U; ++frame) {\n      const float sample = .22F * std::sin(6.283185307F * 173.F * static_cast<float>(frame) / rate);\n      warmup[frame * 2U] = sample; warmup[frame * 2U + 1U] = sample;\n    }\n    transition.process(warmup.data(), 4096U);\n    assert(transition.set_parameter("mode", 17.F));\n    std::vector<float> changing(512U * 2U);\n    for (std::size_t frame = 0; frame < 512U; ++frame) {\n      const float sample = .22F * std::sin(6.283185307F * 173.F * static_cast<float>(frame + 4096U) / rate);\n      changing[frame * 2U] = sample; changing[frame * 2U + 1U] = sample;\n    }\n    const auto dry = changing;\n    transition.process(changing.data(), 512U);\n    constexpr std::size_t crossing = 143U;\n    assert(std::abs(changing[crossing * 2U] - dry[crossing * 2U]) < 1e-5F);\n    assert(std::abs(changing[crossing * 2U + 1U] - dry[crossing * 2U + 1U]) < 1e-5F);\n  }\n\n'''
+          if test.count(marker) != 1:
+              raise SystemExit('missing Ember test insertion point')
+          test = test.replace(marker, insertion + marker, 1)
+          test_path.write_text(test)
+
+          audit_path = Path('scripts/native-realtime-safety-audit.mjs')
+          audit = audit_path.read_text()
+          audit = replace_required(
+              audit,
+              "const drift = read('native/src/drift_parity_processor.cpp');\n",
+              "const drift = read('native/src/drift_parity_processor.cpp');\nconst ember = read('native/src/ember_parity_processor.cpp');\n",
+              'Ember realtime audit source')
+          audit = replace_required(
+              audit,
+              '''for (const token of [\n  'float mode_mix{1.F};',\n  'float mode_fade_step{};',\n  'unsigned mode_transition{};',\n  'void activate_mode(std::size_t mode) noexcept',\n  'void advance_mode_transition() noexcept',\n  'data[frame * 2] = dry_l + (processed_l - dry_l) * mode_mix;',\n]) requireText(drift, token, 'Click-safe dedicated Drift model handoff');\n\n''',
+              '''for (const token of [\n  'float mode_mix{1.F};',\n  'float mode_fade_step{};',\n  'unsigned mode_transition{};',\n  'void activate_mode(std::size_t mode) noexcept',\n  'void advance_mode_transition() noexcept',\n  'data[frame * 2] = dry_l + (processed_l - dry_l) * mode_mix;',\n]) requireText(drift, token, 'Click-safe dedicated Drift model handoff');\n\nfor (const token of [\n  'int active_mode{-1};',\n  'float mode_mix{1.F};',\n  'void prepare_mode_transition() noexcept',\n  'void advance_mode_transition() noexcept',\n  'const unsigned mode = static_cast<unsigned>(std::max(0, active_mode));',\n  'data[frame * 2 + channel] = dry[channel] + (processed - dry[channel]) * mode_mix;',\n]) requireText(ember, token, 'Click-safe dedicated Ember model handoff');\n\n''',
+              'Ember realtime audit contracts')
+          audit = audit.replace(
+              'Native realtime safety audit passed · rack and Drift model changes are dry-crossed and Atmos switching performs no network heap allocation in the render callback',
+              'Native realtime safety audit passed · rack, Ember, and Drift model changes are dry-crossed and Atmos switching performs no network heap allocation in the render callback')
+          audit_path.write_text(audit)
+          PY
+
+          git rm .github/workflows/ember-transition-hardening.yml
+          git add native/src/ember_parity_processor.cpp native/tests/ember_parity_processor_test.cpp scripts/native-realtime-safety-audit.mjs
+          git diff --cached --check
+
+      - name: Validate complete Calcotone tree
+        run: npm run check
+      - name: Commit Ember transition hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          git commit -m "Dry-cross dedicated Ember model changes"
+          git push origin HEAD:agent/realtime-crackle-hardening
