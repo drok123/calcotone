@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import { getLatestVisualSpectrum } from '../../visual/VisualEngine';
 import type { VisualSpectrumSource } from '../../visual/SharedVisualSpectrum';
 import { canvasPixelRatio, getDisplayProfile, subscribeDisplayProfile } from '../../ui/displayProfile';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
@@ -29,7 +28,6 @@ export function SpectrumWaterfall({
     let cssHeight = 1;
     let pixelRatio = 1;
     let visible = true;
-    const sampleInterval = 1000 / 30;
     const historyLength = 28;
     const pointCount = 48;
     const history: Float32Array[] = Array.from(
@@ -38,6 +36,7 @@ export function SpectrumWaterfall({
     );
     let historyCursor = 0;
     const frequencyBinCount = analyser?.frequencyBinCount ?? 0;
+    const frequencyData = new Uint8Array(frequencyBinCount);
     const binStarts = new Uint16Array(pointCount);
     const binEnds = new Uint16Array(pointCount);
 
@@ -70,12 +69,12 @@ export function SpectrumWaterfall({
     function collectSpectrum(): void {
       const row = history[historyCursor];
       row.fill(0);
-      const frequencyData = getLatestVisualSpectrum();
       if (!analyser || frequencyData.length === 0 || !running) {
         historyCursor = (historyCursor + 1) % historyLength;
         return;
       }
 
+      analyser.getByteFrequencyData(frequencyData);
       for (let point = 0; point < pointCount; point += 1) {
         const startIndex = binStarts[point];
         const endIndex = Math.min(binEnds[point], frequencyData.length);
@@ -180,10 +179,12 @@ export function SpectrumWaterfall({
 
     const render: ViewportRenderCallback = (timestamp) => {
       if (!visible || document.hidden) return;
-      const drawInterval = 1000 / getDisplayProfile().visualFps;
+      const visualFps = getDisplayProfile().visualFps;
+      const drawInterval = 1000 / visualFps;
       if (timestamp - lastDrawTime < drawInterval) return;
       lastDrawTime = timestamp;
 
+      const sampleInterval = 1000 / visualFps;
       if (timestamp - lastSampleTime >= sampleInterval) {
         collectSpectrum();
         lastSampleTime = timestamp;
