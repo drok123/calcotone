@@ -20,7 +20,6 @@ import './highDefinition1440.css'
 import './haloStabilityPatch'
 import './loopBridge'
 import './loop505Controls'
-import './loopSurfaceV3'
 import './randomVisualGovernor'
 import './randomTransferBridge'
 import './chordChainPatch'
@@ -29,6 +28,7 @@ import App from './App.tsx'
 import './approvedFaceplate.css'
 import './components/effects/ModulePowerState.css'
 import './loopRefinement.css'
+import './loopSurfaceV3'
 
 installDisplayProfile()
 
