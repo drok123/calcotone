@@ -30,10 +30,26 @@ class ElasticStereoFifo final {
 
  private:
   static constexpr std::size_t mask_ = capacity_frames - 1U;
+
+  // Capture and render run on separate MMCSS threads. Keep their cursor state on
+  // separate cache lines so advancing one side cannot invalidate the other
+  // thread's hot cursor line. Each side also caches the opposite cursor briefly;
+  // boundary checks force an immediate refresh before empty/full decisions.
+  struct alignas(64) ProducerCursor {
+    std::atomic<std::uint64_t> write{};
+    std::uint64_t cached_read{};
+    std::uint32_t refresh{};
+  };
+  struct alignas(64) ConsumerCursor {
+    std::atomic<std::uint64_t> read{};
+    std::uint64_t cached_write{};
+    std::uint32_t refresh{};
+  };
+
   std::array<float, capacity_frames * 2U> data_{};
   std::array<std::uint8_t, capacity_frames> markers_{};
-  std::atomic<std::uint64_t> write_{};
-  std::atomic<std::uint64_t> read_{};
+  ProducerCursor producer_{};
+  ConsumerCursor consumer_{};
   std::atomic<std::uint64_t> overruns_{};
   std::atomic<std::uint64_t> high_water_{};
   std::atomic<std::uint64_t> resampled_frames_{};
@@ -43,6 +59,8 @@ class ElasticStereoFifo final {
   double phase_{};
   double ratio_{1.0};
   double filtered_depth_{};
+  std::uint64_t resampled_frames_local_{};
+  std::uint32_t telemetry_refresh_{};
   float previous_left_{};
   float previous_right_{};
   bool history_valid_{};

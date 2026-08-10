@@ -13,11 +13,17 @@ export type ReverbAlgorithm =
   | 'nebula'
   | 'abyss'
   | 'emt140'
-  | 'lexicon224';
+  | 'lexicon224'
+  | 'rmx16'
+  | 'quantec'
+  | 'springtank'
+  | 'bloom'
+  | 'veil';
 
-// Existing indices remain fixed for preset compatibility.
+// Existing indices remain fixed for preset compatibility. New identities append only.
 export const REVERB_ALGORITHM_ORDER: ReverbAlgorithm[] = [
   'room','plate','hall','cinema','cloud','freeze','celestial','aurora','nebula','abyss','emt140','lexicon224',
+  'rmx16','quantec','springtank','bloom','veil',
 ];
 
 const ALGORITHM: ParameterDefinition = { id:'algorithm', label:'Algorithm', min:0, max:REVERB_ALGORITHM_ORDER.length-1, defaultValue:2, smoothingTime:0.08 };
@@ -76,6 +82,21 @@ const CONFIGS: Record<ReverbAlgorithm, AlgorithmConfig> = {
 
   // Lexicon 224 study: vintage digital FDN character, split decay and early 12-bit converter staging.
   lexicon224: { id:'lexicon224', lineTimes:[0.0247,0.0311,0.0389,0.0473,0.0571,0.0683,0.0811,0.0953,0.1117,0.1301], predelay:[0.024,0.031], sizeRange:[0.78,2.2], decayBias:1.12, dampingBias:0.72, diffusionBias:1.24, modulationDepth:0.00082, modulationRates:[0.071,0.089,0.113,0.137,0.173,0.211,0.257,0.307,0.367,0.433], crossAmount:0.12, outputTrim:0.21, inputTrim:0.58, highpass:145, converterBits:12, converterLowpass:8800, splitDecay:0.34 },
+
+  // AMS RMX16 Ambience study: short, highly diffuse digital field with restrained modulation and 16-bit era texture.
+  rmx16: { id:'rmx16', lineTimes:[0.0089,0.0117,0.0153,0.0197,0.0251,0.0311,0.0383,0.0461], predelay:[0.006,0.009], sizeRange:[0.55,1.45], decayBias:0.78, dampingBias:0.95, diffusionBias:1.42, modulationDepth:0.00028, modulationRates:[0.11,0.17,0.19,0.23,0.29,0.31,0.37,0.41], crossAmount:0.075, outputTrim:0.25, inputTrim:0.62, highpass:170, converterBits:16, converterLowpass:18000, splitDecay:0.18 },
+
+  // Quantec room-simulation study: dense natural early geometry, wide bandwidth and very low modulation.
+  quantec: { id:'quantec', lineTimes:[0.0127,0.0169,0.0217,0.0271,0.0331,0.0397,0.0473,0.0557,0.0649,0.0751,0.0863,0.0983], predelay:[0.0045,0.0065], sizeRange:[0.62,2.05], decayBias:0.88, dampingBias:1.02, diffusionBias:1.48, modulationDepth:0.00018, modulationRates:[0.071,0.083,0.101,0.127,0.149,0.173,0.199,0.227,0.257,0.283,0.313,0.347], crossAmount:0.095, outputTrim:0.205, inputTrim:0.68, highpass:125 },
+
+  // Mechanical spring-tank study: dispersive resonant field with a narrow physical size range and darker decay.
+  springtank: { id:'springtank', lineTimes:[0.0067,0.0091,0.0127,0.0173,0.0239,0.0323,0.0437,0.0581,0.0757,0.0971], predelay:[0.0025,0.0041], sizeRange:[0.82,1.22], decayBias:1.05, dampingBias:0.58, diffusionBias:1.36, modulationDepth:0.00065, modulationRates:[0.13,0.17,0.23,0.29,0.37,0.43,0.53,0.61,0.71,0.83], crossAmount:0.085, outputTrim:0.205, inputTrim:0.58, highpass:180, converterLowpass:11200, splitDecay:0.45, plateDispersion:1.55 },
+
+  // Bloom: slow, wide ambient expansion that grows behind transients without requiring pitch shifting.
+  bloom: { id:'bloom', lineTimes:[0.0317,0.0413,0.0529,0.0661,0.0811,0.0983,0.1177,0.1393,0.1631,0.1891,0.2173,0.2477], predelay:[0.030,0.044], sizeRange:[0.90,2.90], decayBias:2.40, dampingBias:1.15, diffusionBias:1.58, modulationDepth:0.0048, modulationRates:[0.037,0.049,0.067,0.089,0.113,0.143,0.179,0.221,0.269,0.323,0.383,0.449], crossAmount:0.185, outputTrim:0.135, inputTrim:0.43, highpass:220, splitDecay:0.28 },
+
+  // Veil: deliberately dark, soft-edged ambient field with slow motion and very little early presence.
+  veil: { id:'veil', lineTimes:[0.0277,0.0361,0.0463,0.0583,0.0721,0.0877,0.1051,0.1243,0.1453,0.1681,0.1927,0.2191], predelay:[0.020,0.034], sizeRange:[0.85,2.70], decayBias:1.85, dampingBias:0.42, diffusionBias:1.50, modulationDepth:0.0022, modulationRates:[0.041,0.057,0.073,0.097,0.127,0.157,0.193,0.233,0.281,0.337,0.397,0.463], crossAmount:0.160, outputTrim:0.145, inputTrim:0.46, highpass:120, converterLowpass:6200, splitDecay:0.22 },
 };
 
 // Early reflections are intentionally separated from the late field. They provide size/location cues
@@ -93,6 +114,11 @@ const EARLY: Record<ReverbAlgorithm, EarlyProfile> = {
   abyss:      { times:[0.014,0.030,0.051,0.076], earlyLevel:0.24, lateLevel:0.66, lowpass:7600, threshold:-26, ratio:5.2, attack:0.004, release:0.33 },
   emt140:     { times:[0.0037,0.0076,0.0128,0.0196], earlyLevel:0.31, lateLevel:0.79, lowpass:10600, threshold:-20, ratio:2.4, attack:0.0012, release:0.15 },
   lexicon224: { times:[0.007,0.0148,0.0245,0.037,0.052], earlyLevel:0.45, lateLevel:0.72, lowpass:8400, threshold:-23, ratio:3.4, attack:0.002, release:0.22 },
+  rmx16:      { times:[0.0028,0.0059,0.0101,0.0163,0.0247], earlyLevel:0.72, lateLevel:0.52, lowpass:14200, threshold:-22, ratio:3.0, attack:0.0015, release:0.13 },
+  quantec:    { times:[0.0036,0.0079,0.0137,0.0211,0.0307], earlyLevel:0.70, lateLevel:0.60, lowpass:15000, threshold:-24, ratio:3.2, attack:0.0018, release:0.16 },
+  springtank: { times:[0.0029,0.0067,0.0129,0.0221], earlyLevel:0.25, lateLevel:0.80, lowpass:9000, threshold:-22, ratio:2.8, attack:0.0012, release:0.21 },
+  bloom:      { times:[0.012,0.029,0.051], earlyLevel:0.20, lateLevel:0.78, lowpass:12000, threshold:-28, ratio:5.4, attack:0.0045, release:0.40 },
+  veil:       { times:[0.010,0.024,0.043,0.066], earlyLevel:0.28, lateLevel:0.72, lowpass:7000, threshold:-27, ratio:4.9, attack:0.004, release:0.36 },
 };
 
 class ReverbNetwork {
@@ -258,7 +284,7 @@ class ReverbNetwork {
       : Math.max(0.25, decay * this.config.decayBias);
     const colorCutoff = 1700 * Math.pow(10.2, color) * this.config.dampingBias;
     const freeze = this.config.id === 'freeze';
-    const loopBudget = freeze ? 0.958 : 0.875;
+    const loopBudget = freeze ? 0.997 : 0.992;
     const crossMagnitude = Math.min(freeze ? 0.016 : 0.034, this.config.crossAmount * (0.14 + diffusion * 0.22));
     if (this.config.converterLowpass) this.converterLowpass.frequency.setTargetAtTime(this.config.converterLowpass * (0.80 + color * 0.20), now, 0.08);
 
@@ -294,7 +320,8 @@ class ReverbNetwork {
       const spectralDecayScale = 1 + split * ((index / Math.max(1, this.delays.length - 1)) - 0.5) * (0.7 + (1 - color) * 0.6);
       const lineDecay = Math.pow(0.001, lineTime / Math.max(0.18, effectiveDecay * spectralDecayScale));
       const spread = 0.988 - index * 0.0019;
-      const safeSelfFeedback = Math.min(loopBudget - crossMagnitude - 0.042, Math.max(0.18, lineDecay * spread));
+      const feedbackHeadroom = freeze ? 0.004 : 0.010;
+      const safeSelfFeedback = Math.min(loopBudget - crossMagnitude - feedbackHeadroom, Math.max(0.18, lineDecay * spread));
       this.feedback[index].gain.setTargetAtTime(safeSelfFeedback, now, 0.065);
       const polarity = index % 4 < 2 ? 1 : -1;
       this.crossGains[index]?.gain.setTargetAtTime(crossMagnitude * polarity, now, 0.075);
@@ -393,7 +420,7 @@ export class ReverbEffect extends BaseEffect {
       case 'diffusion': { const next = clampParameter(value, DIFFUSION); if (this.initialized && this.diffusion === next) return; this.diffusion = next; this.parameterValues.set(parameterId, next); this.updateNetworks(); break; }
       case 'motion': { const next = clampParameter(value, MOTION); if (this.initialized && this.motion === next) return; this.motion = next; this.parameterValues.set(parameterId, next); this.updateNetworks(); break; }
       case 'mix': { const next = clampParameter(value, MIX); if (this.initialized && this.parameterValues.get(parameterId) === next) return; this.parameterValues.set(parameterId, next); this.setWetDryMix(next); break; }
-      default: console.warn(`Unknown parameter "${parameterId}" for ${this.name}.`);
+      default: console.warn(`Unknown parameter \"${parameterId}\" for ${this.name}.`);
     }
   }
 

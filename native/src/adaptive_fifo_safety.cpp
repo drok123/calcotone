@@ -62,6 +62,8 @@ bool AdaptiveFifoSafety::observe_block(std::size_t rendered_frames,
   const auto starvation_pressure = underrun_events + discontinuity_recoveries;
   if (starvation_pressure != 0U) {
     mark_unstable(starvation_pressure);
+    deadline_pressure_ = 0U;
+    deadline_quiet_frames_ = 0U;
     pending_pressure_ += starvation_pressure;
     if (cooldown_remaining_frames_ == 0U) {
       const auto pressure = pending_pressure_;
@@ -76,6 +78,8 @@ bool AdaptiveFifoSafety::observe_block(std::size_t rendered_frames,
   if (overrun_events != 0U) {
     mark_unstable(overrun_events);
     pending_pressure_ = 0U;
+    deadline_pressure_ = 0U;
+    deadline_quiet_frames_ = 0U;
     if (cooldown_remaining_frames_ == 0U) {
       const bool changed = lower_target();
       cooldown_remaining_frames_ = adjustment_cooldown_frames_;
@@ -84,9 +88,19 @@ bool AdaptiveFifoSafety::observe_block(std::size_t rendered_frames,
     return false;
   }
 
-  // Multiple events inside one cooldown window represent recurring instability.
-  // One isolated follow-up is absorbed by the first target raise and is not
-  // allowed to ratchet latency upward twice.
+  // A single callback-budget miss is only predictive. Keep it alive for a short
+  // confirmation window so a second miss can prove recurring CPU pressure, then
+  // forget it before it can turn one scheduling hiccup into permanent latency.
+  if (deadline_pressure_ != 0U) {
+    deadline_quiet_frames_ += frames;
+    if (deadline_quiet_frames_ >= adjustment_cooldown_frames_ / 2U) {
+      deadline_pressure_ = 0U;
+      deadline_quiet_frames_ = 0U;
+    }
+  }
+
+  // Multiple starvation events inside one cooldown window represent recurring
+  // instability. One isolated follow-up is absorbed by the first target raise.
   if (cooldown_remaining_frames_ == 0U && pending_pressure_ != 0U) {
     const auto pressure = pending_pressure_;
     pending_pressure_ = 0U;
@@ -109,10 +123,11 @@ bool AdaptiveFifoSafety::observe_block(std::size_t rendered_frames,
 
 bool AdaptiveFifoSafety::observe_deadline_miss() noexcept {
   mark_unstable(1U);
-  pending_pressure_ += 1U;
-  if (cooldown_remaining_frames_ != 0U) return false;
-  const auto pressure = pending_pressure_;
-  pending_pressure_ = 0U;
+  deadline_quiet_frames_ = 0U;
+  ++deadline_pressure_;
+  if (cooldown_remaining_frames_ != 0U || deadline_pressure_ < 2U) return false;
+  const auto pressure = deadline_pressure_;
+  deadline_pressure_ = 0U;
   const bool changed = raise_target(pressure);
   cooldown_remaining_frames_ = adjustment_cooldown_frames_;
   return changed;
@@ -123,6 +138,8 @@ void AdaptiveFifoSafety::reset() noexcept {
   stable_frames_ = 0U;
   cooldown_remaining_frames_ = 0U;
   pending_pressure_ = 0U;
+  deadline_pressure_ = 0U;
+  deadline_quiet_frames_ = 0U;
   raises_ = 0U;
   relaxations_ = 0U;
   instability_events_ = 0U;

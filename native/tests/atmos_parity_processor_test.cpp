@@ -1,4 +1,5 @@
 #include "calcotone/atmos_parity_processor.hpp"
+#include "calcotone/atmos_parity_profiles.hpp"
 
 #include <algorithm>
 #include <array>
@@ -50,7 +51,7 @@ double energy(const std::vector<float>& audio, std::size_t first, std::size_t la
 }
 
 void test_model_identities() {
-  std::array<double, 12> signatures{};
+  std::array<double, calcotone::kAtmosParityProfiles.size()> signatures{};
   for (unsigned mode = 0; mode < signatures.size(); ++mode) {
     const auto audio = render(mode, mode == 5U ? 12.F : 2.4F, 48'000U);
     double signature = 0.0;
@@ -84,13 +85,20 @@ void test_emt_mono_excitation_reaches_both_pickups() {
   assert(left > 1e-5 && right > left * .18);
 }
 
+void test_new_modes_are_reachable() {
+  for (unsigned mode = 12U; mode < calcotone::kAtmosParityProfiles.size(); ++mode) {
+    const auto audio = render(mode, mode == 15U ? 6.F : 2.8F, 32'000U);
+    assert(energy(audio, 0U, 32'000U) > 1e-6);
+  }
+}
+
 void test_live_algorithm_switch_preserves_outgoing_tail() {
   calcotone::AtmosParityProcessor processor(kRate);
   configure(processor, 2U, 5.F);
   std::vector<float> first(24'000U * 2U, 0.F);
   first[0] = .6F; first[1] = -.35F;
   process_blocks(processor, first);
-  assert(processor.set_parameter("algorithm", 1.F));
+  assert(processor.set_parameter("algorithm", static_cast<float>(calcotone::kAtmosParityProfiles.size() - 1U)));
   std::vector<float> transition(48'000U * 2U, 0.F);
   process_blocks(processor, transition);
   assert(energy(transition, 0U, 8'000U) > 1e-5);
@@ -119,6 +127,7 @@ int main() {
   test_early_reflections_precede_tail();
   test_decay_extends_tail();
   test_emt_mono_excitation_reaches_both_pickups();
+  test_new_modes_are_reachable();
   test_live_algorithm_switch_preserves_outgoing_tail();
   test_reset_is_deterministic();
 

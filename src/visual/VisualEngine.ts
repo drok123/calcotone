@@ -23,6 +23,8 @@ const IDLE_STATE: VisualAudioState = {
 
 let latestVisualAudioState: VisualAudioState = IDLE_STATE;
 let latestVisualSpectrum = new Uint8Array(0);
+let latestVisualOwner = 0;
+let nextVisualOwner = 1;
 
 /**
  * The canvas Dream Field renders on the shared viewport scheduler instead of
@@ -34,7 +36,7 @@ export function getLatestVisualAudioState(): VisualAudioState {
   return latestVisualAudioState;
 }
 
-/** Shared by every visual surface so the audio source is sampled only once per frame. */
+/** Shared by visual surfaces that want the most recent engine-owned snapshot. */
 export function getLatestVisualSpectrum(): Uint8Array {
   return latestVisualSpectrum;
 }
@@ -47,13 +49,19 @@ export function useVisualEngine(
   const [state, setState] = useState<VisualAudioState>(IDLE_STATE);
   const previousLevel = useRef(0);
   const smoothedBands = useRef({ low: 0, mid: 0, high: 0 });
+  const ownerRef = useRef(0);
+  if (ownerRef.current === 0) ownerRef.current = nextVisualOwner++;
 
   useEffect(() => {
+    const owner = ownerRef.current;
     if (!running || !analyser) {
       previousLevel.current = 0;
       smoothedBands.current = { low: 0, mid: 0, high: 0 };
-      latestVisualAudioState = IDLE_STATE;
-      latestVisualSpectrum = new Uint8Array(0);
+      if (latestVisualOwner === owner) {
+        latestVisualAudioState = IDLE_STATE;
+        latestVisualSpectrum = new Uint8Array(0);
+        latestVisualOwner = 0;
+      }
       setState((current) => current === IDLE_STATE ? current : IDLE_STATE);
       return;
     }
@@ -63,10 +71,10 @@ export function useVisualEngine(
     let lastReactPublish = 0;
     const sampleInterval = 1000 / Math.max(1, frameRate);
     // Canvas/video visualizers consume the shared snapshot independently. React only
-    // needs a modest cadence for meters, labels and CSS feedback; lowering this from
-    // 20 Hz substantially reduces full-workstation reconciliation with no DSP impact.
+    // needs a modest cadence for meters, labels and CSS feedback.
     const reactInterval = 1000 / 15;
     const data = new Uint8Array(analyser.frequencyBinCount);
+    latestVisualOwner = owner;
     latestVisualSpectrum = data;
     const lowEnd = Math.floor(data.length * 0.12);
     const midEnd = Math.floor(data.length * 0.48);
@@ -104,16 +112,20 @@ export function useVisualEngine(
       const transient = Math.min(1, levelRise * 8.5 + spectralSnap * 2.8);
       previousLevel.current = previousLevel.current * 0.66 + level * 0.34;
 
+      // Animation phase follows the audio presentation clock when the analyser can
+      // provide one. requestAnimationFrame remains only the repaint scheduler; it
+      // is no longer the musical/visual timeline.
+      const audioTime = analyser.getPresentationTimeSeconds?.() ?? timestamp / 1000;
       const next = {
         level,
         low,
         mid,
         high,
         transient,
-        driftPhase: (timestamp * 0.00008) % 1,
-        time: timestamp / 1000,
+        driftPhase: (audioTime * 0.08) % 1,
+        time: audioTime,
       };
-      latestVisualAudioState = next;
+      if (latestVisualOwner === owner) latestVisualAudioState = next;
 
       if (timestamp - lastReactPublish >= reactInterval) {
         lastReactPublish = timestamp;
@@ -124,8 +136,11 @@ export function useVisualEngine(
     frame = requestAnimationFrame(render);
     return () => {
       cancelAnimationFrame(frame);
-      latestVisualAudioState = IDLE_STATE;
-      latestVisualSpectrum = new Uint8Array(0);
+      if (latestVisualOwner === owner) {
+        latestVisualAudioState = IDLE_STATE;
+        latestVisualSpectrum = new Uint8Array(0);
+        latestVisualOwner = 0;
+      }
     };
   }, [analyser, running, frameRate]);
 

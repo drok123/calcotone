@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/audio_restart_policy_test.dir/link.d CMakeFiles/audio_restart_policy_test.dir/tests/audio_restart_policy_test.cpp.o -o audio_restart_policy_test  libcalcotone_dsp.a

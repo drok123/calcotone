@@ -10,33 +10,90 @@
 namespace calcotone {
 namespace {
 constexpr float kPi = 3.14159265358979323846F;
+constexpr float kTau = kPi * 2.F;
 constexpr float kCenterPanGain = .7071067811865475244F;
+constexpr std::size_t kControlPeriod = 32U;
+constexpr std::size_t kTanhTableSize = 4097U;
+constexpr float kTanhRange = 5.F;
+constexpr std::array<float, 3> kHeadRatios{1.F, 1.90F, 2.76F};
+constexpr std::array<float, 3> kHeadBase{.72F, .62F, .54F};
+constexpr std::array<float, 3> kFeedbackBase{.38F, .34F, .28F};
+constexpr std::array<std::array<float, 3>, 7> kModeHeads{{
+  {{1.F, 0.F, 0.F}}, {{0.F, 1.F, 0.F}}, {{0.F, 0.F, 1.F}},
+  {{1.F, 1.F, 0.F}}, {{0.F, 1.F, 1.F}}, {{1.F, 0.F, 1.F}},
+  {{1.F, 1.F, 1.F}},
+}};
 
 float clamp01(float value) noexcept {
   return std::clamp(value, 0.F, 1.F);
 }
 
 float triangle_wave(float phase) noexcept {
-  return (2.F / kPi) * std::asin(std::sin(phase));
+  // Exact (2/pi)*asin(sin(phase)) shape for an already wrapped [0, 2pi) phase,
+  // expressed piecewise so flutter does not pay for sin+asin every sample.
+  constexpr float scale = 2.F / kPi;
+  if (phase < kPi * .5F) return phase * scale;
+  if (phase < kPi * 1.5F) return 2.F - phase * scale;
+  return -4.F + phase * scale;
 }
 
 float read_delay(const std::vector<float>& buffer, std::size_t write, float delay_samples) noexcept {
   float position = static_cast<float>(write) - delay_samples;
   const float size = static_cast<float>(buffer.size());
-  while (position < 0.F) position += size;
-  while (position >= size) position -= size;
+  if (position < 0.F) position += size;
+  if (position >= size) position -= size;
   const auto first = static_cast<std::size_t>(position);
-  const auto second = (first + 1) % buffer.size();
+  auto second = first + 1U;
+  if (second == buffer.size()) second = 0U;
   const float fraction = position - static_cast<float>(first);
   return buffer[first] + (buffer[second] - buffer[first]) * fraction;
 }
 
-float space_echo_curve(float input, float age) noexcept {
+const std::array<float, kTanhTableSize>& tanh_table() noexcept {
+  static const auto table = [] {
+    std::array<float, kTanhTableSize> result{};
+    for (std::size_t index = 0; index < result.size(); ++index) {
+      const float normalized = static_cast<float>(index)
+          / static_cast<float>(result.size() - 1U);
+      result[index] = std::tanh(normalized * (kTanhRange * 2.F) - kTanhRange);
+    }
+    return result;
+  }();
+  return table;
+}
+
+float fast_tanh(float value) noexcept {
+  if (value <= -kTanhRange) return -1.F;
+  if (value >= kTanhRange) return 1.F;
+  const auto& table = tanh_table();
+  const float position = (value + kTanhRange)
+      * (static_cast<float>(kTanhTableSize - 1U) / (kTanhRange * 2.F));
+  const auto first = static_cast<std::size_t>(position);
+  const auto second = std::min(first + 1U, kTanhTableSize - 1U);
+  const float fraction = position - static_cast<float>(first);
+  return table[first] + (table[second] - table[first]) * fraction;
+}
+
+struct TapeCurveControl {
+  float drive{1.F};
+  float positive_bias{};
+  float normalization{1.F};
+  float output_gain{1.F};
+};
+
+TapeCurveControl tape_curve_control(float age) noexcept {
   const float normalized = clamp01(age);
-  const float drive = 1.08F + normalized * 3.1F;
-  const float asymmetric = input + std::max(0.F, input) * (.025F + normalized * .055F);
-  const float compressed = std::tanh(asymmetric * drive) / std::max(1e-6F, std::tanh(drive));
-  return compressed * (.99F - normalized * .035F);
+  TapeCurveControl result;
+  result.drive = 1.08F + normalized * 3.1F;
+  result.positive_bias = .025F + normalized * .055F;
+  result.normalization = 1.F / std::max(1e-6F, fast_tanh(result.drive));
+  result.output_gain = .99F - normalized * .035F;
+  return result;
+}
+
+float space_echo_curve(float input, const TapeCurveControl& curve) noexcept {
+  const float asymmetric = input + std::max(0.F, input) * curve.positive_bias;
+  return fast_tanh(asymmetric * curve.drive) * curve.normalization * curve.output_gain;
 }
 
 struct BiquadState {
@@ -46,41 +103,47 @@ struct BiquadState {
   float y2{};
 };
 
+struct BiquadCoefficients {
+  float b0{1.F};
+  float b1{};
+  float b2{};
+  float a1{};
+  float a2{};
+};
+
 enum class FilterType { Lowpass, Highpass };
 
-float biquad(
-    float input,
-    FilterType type,
-    float frequency,
-    float q,
-    float sample_rate,
-    BiquadState& state) noexcept {
+BiquadCoefficients design_biquad(
+    FilterType type, float frequency, float q, float sample_rate) noexcept {
   const float safe_frequency = std::clamp(frequency, 20.F, sample_rate * .45F);
-  const float omega = 2.F * kPi * safe_frequency / sample_rate;
+  const float omega = kTau * safe_frequency / sample_rate;
   const float cosine = std::cos(omega);
   const float alpha = std::sin(omega) / (2.F * std::max(.05F, q));
   const float inverse_a0 = 1.F / (1.F + alpha);
 
-  float b0{};
-  float b1{};
-  float b2{};
+  BiquadCoefficients coefficients;
   if (type == FilterType::Lowpass) {
-    b0 = (1.F - cosine) * .5F;
-    b1 = 1.F - cosine;
-    b2 = b0;
+    coefficients.b0 = (1.F - cosine) * .5F;
+    coefficients.b1 = 1.F - cosine;
+    coefficients.b2 = coefficients.b0;
   } else {
-    b0 = (1.F + cosine) * .5F;
-    b1 = -(1.F + cosine);
-    b2 = b0;
+    coefficients.b0 = (1.F + cosine) * .5F;
+    coefficients.b1 = -(1.F + cosine);
+    coefficients.b2 = coefficients.b0;
   }
-  b0 *= inverse_a0;
-  b1 *= inverse_a0;
-  b2 *= inverse_a0;
-  const float a1 = (-2.F * cosine) * inverse_a0;
-  const float a2 = (1.F - alpha) * inverse_a0;
+  coefficients.b0 *= inverse_a0;
+  coefficients.b1 *= inverse_a0;
+  coefficients.b2 *= inverse_a0;
+  coefficients.a1 = (-2.F * cosine) * inverse_a0;
+  coefficients.a2 = (1.F - alpha) * inverse_a0;
+  return coefficients;
+}
 
-  const float output = b0 * input + b1 * state.x1 + b2 * state.x2
-      - a1 * state.y1 - a2 * state.y2;
+float biquad(float input, const BiquadCoefficients& coefficients,
+             BiquadState& state) noexcept {
+  const float output = coefficients.b0 * input
+      + coefficients.b1 * state.x1 + coefficients.b2 * state.x2
+      - coefficients.a1 * state.y1 - coefficients.a2 * state.y2;
   state.x2 = state.x1;
   state.x1 = input;
   state.y2 = state.y1;
@@ -94,10 +157,30 @@ struct HaloSpaceEchoProcessor::Impl {
   float sample_rate;
   std::array<std::atomic<float>, 6> target{};
   std::array<float, 6> value{.36F, .22F, .42F, .14F, .58F, .14F};
+  std::array<float, 6> glide_amount{};
   std::vector<float> record_buffer;
   std::size_t write{};
-  float wow_phase{};
-  float flutter_phase{.043F * 2.F * kPi * 5.1F};
+  std::size_t control_countdown{};
+  std::size_t oscillator_renormalize{};
+  float wow_sine{};
+  float wow_cosine{1.F};
+  float wow_rotation_sine{};
+  float wow_rotation_cosine{1.F};
+  float flutter_phase{.043F * kTau * 5.1F};
+  float flutter_increment{};
+  float first_head_seconds{.1F};
+  float feedback_gain{};
+  float dry_gain{1.F};
+  float wet_gain{};
+  TapeCurveControl curve{};
+  std::array<float, 3> active_heads{};
+  std::array<float, 3> wow_depth{};
+  std::array<float, 3> flutter_depth{};
+  BiquadCoefficients input_lowpass_coefficients{};
+  BiquadCoefficients feedback_highpass_coefficients{};
+  BiquadCoefficients feedback_lowpass_coefficients{};
+  std::array<BiquadCoefficients, 3> head_highpass_coefficients{};
+  std::array<BiquadCoefficients, 3> head_lowpass_coefficients{};
   BiquadState input_lowpass{};
   BiquadState feedback_highpass{};
   BiquadState feedback_lowpass{};
@@ -105,128 +188,152 @@ struct HaloSpaceEchoProcessor::Impl {
   std::array<BiquadState, 3> head_lowpass{};
 
   explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)) {
+    constexpr std::array<float, 6> seconds{.065F, .05F, .06F, .06F, .06F, .025F};
     for (std::size_t index = 0; index < value.size(); ++index) {
       target[index].store(value[index], std::memory_order_relaxed);
+      glide_amount[index] = 1.F - std::exp(-1.F / (sample_rate * seconds[index]));
     }
-    record_buffer.assign(static_cast<std::size_t>(sample_rate * .75F) + 64, 0.F);
+    record_buffer.assign(static_cast<std::size_t>(sample_rate * .75F) + 64U, 0.F);
+    (void)tanh_table();
+    update_control();
   }
 
   void glide() noexcept {
-    constexpr std::array<float, 6> seconds{.065F, .05F, .06F, .06F, .06F, .025F};
     for (std::size_t index = 0; index < value.size(); ++index) {
-      const float amount = 1.F - std::exp(-1.F / (sample_rate * seconds[index]));
-      value[index] += (target[index].load(std::memory_order_relaxed) - value[index]) * amount;
+      value[index] += (target[index].load(std::memory_order_relaxed) - value[index])
+          * glide_amount[index];
+    }
+  }
+
+  void update_control() noexcept {
+    const float time = std::clamp(value[0], .03F, 6.2F);
+    const float feedback = std::clamp(value[1], 0.F, .9F);
+    const float color = clamp01(value[2]);
+    const float age = clamp01(value[3]);
+    const float width = clamp01(value[4]);
+    const float mix = clamp01(value[5]);
+
+    const float time_normalized = clamp01(
+        std::log(std::max(.03F, time) / .03F) / std::log(6.2F / .03F));
+    first_head_seconds = .069F + time_normalized * (.177F - .069F);
+    const float tone = 2100.F * std::pow(4.4F, color);
+    const float input_cutoff = 8900.F + color * 3600.F - age * 1600.F;
+    const float feedback_highpass_hz = 65.F + (1.F - color) * 105.F;
+    const float feedback_lowpass_hz = std::max(1800.F, tone * (1.F - age * .22F));
+    const float feedback_normalized = clamp01(feedback / .9F);
+    feedback_gain = std::min(.93F,
+        std::pow(feedback_normalized, 1.14F) * (.76F + age * .16F));
+
+    const float wow_increment = kTau * (.22F + age * .30F) / sample_rate;
+    wow_rotation_sine = std::sin(wow_increment);
+    wow_rotation_cosine = std::cos(wow_increment);
+    flutter_increment = kTau * (4.2F + age * 3.8F) / sample_rate;
+
+    const unsigned mode_index = std::min(6U, static_cast<unsigned>(std::floor(width * 7.F)));
+    active_heads = kModeHeads[mode_index];
+    curve = tape_curve_control(age);
+    dry_gain = std::cos(mix * kPi * .5F);
+    wet_gain = std::sin(mix * kPi * .5F);
+
+    input_lowpass_coefficients = design_biquad(
+        FilterType::Lowpass, input_cutoff, .45F, sample_rate);
+    feedback_highpass_coefficients = design_biquad(
+        FilterType::Highpass, feedback_highpass_hz, .5F, sample_rate);
+    feedback_lowpass_coefficients = design_biquad(
+        FilterType::Lowpass, feedback_lowpass_hz, .5F, sample_rate);
+
+    const float age_squared = age * age;
+    for (unsigned head = 0; head < 3; ++head) {
+      wow_depth[head] = (.00006F + age_squared * .00165F) * (1.F + head * .17F);
+      const float flutter = (.00002F + age_squared * .00036F) * (1.F + head * .12F);
+      flutter_depth[head] = (head & 1U) ? -flutter : flutter;
+      head_highpass_coefficients[head] = design_biquad(
+          FilterType::Highpass, 62.F + age * 45.F + head * 8.F,
+          .5F, sample_rate);
+      head_lowpass_coefficients[head] = design_biquad(
+          FilterType::Lowpass,
+          std::max(1700.F, tone * (1.F - head * .055F) * (1.F - age * .12F)),
+          .48F, sample_rate);
     }
   }
 
   void clear_state() noexcept {
     std::fill(record_buffer.begin(), record_buffer.end(), 0.F);
-    write = 0;
-    wow_phase = 0.F;
-    flutter_phase = .043F * 2.F * kPi * 5.1F;
+    write = 0U;
+    control_countdown = 0U;
+    oscillator_renormalize = 0U;
+    wow_sine = 0.F;
+    wow_cosine = 1.F;
+    flutter_phase = .043F * kTau * 5.1F;
     input_lowpass = {};
     feedback_highpass = {};
     feedback_lowpass = {};
     head_highpass.fill({});
     head_lowpass.fill({});
+    update_control();
+  }
+
+  void advance_modulation() noexcept {
+    const float next_sine = wow_sine * wow_rotation_cosine + wow_cosine * wow_rotation_sine;
+    const float next_cosine = wow_cosine * wow_rotation_cosine - wow_sine * wow_rotation_sine;
+    wow_sine = next_sine;
+    wow_cosine = next_cosine;
+    if ((++oscillator_renormalize & 4095U) == 0U) {
+      const float inverse_length = 1.F / std::max(
+          1e-9F, std::sqrt(wow_sine * wow_sine + wow_cosine * wow_cosine));
+      wow_sine *= inverse_length;
+      wow_cosine *= inverse_length;
+    }
+
+    flutter_phase += flutter_increment;
+    if (flutter_phase >= kTau) flutter_phase -= kTau;
   }
 
   void process(float* data, std::size_t frames) noexcept {
-    constexpr std::array<float, 3> ratios{1.F, 1.90F, 2.76F};
-    constexpr std::array<float, 3> head_base{.72F, .62F, .54F};
-    constexpr std::array<float, 3> feedback_base{.38F, .34F, .28F};
-    constexpr std::array<std::array<float, 3>, 7> mode_heads{{
-      {{1.F, 0.F, 0.F}}, {{0.F, 1.F, 0.F}}, {{0.F, 0.F, 1.F}},
-      {{1.F, 1.F, 0.F}}, {{0.F, 1.F, 1.F}}, {{1.F, 0.F, 1.F}},
-      {{1.F, 1.F, 1.F}},
-    }};
-
     for (std::size_t frame = 0; frame < frames; ++frame) {
       glide();
-      const float time = std::clamp(value[0], .03F, 6.2F);
-      const float feedback = std::clamp(value[1], 0.F, .9F);
-      const float color = clamp01(value[2]);
-      const float age = clamp01(value[3]);
-      const float width = clamp01(value[4]);
-      const float mix = clamp01(value[5]);
+      if (control_countdown == 0U) {
+        update_control();
+        control_countdown = kControlPeriod - 1U;
+      } else {
+        --control_countdown;
+      }
+      advance_modulation();
+      const float flutter = triangle_wave(flutter_phase);
 
-      const float time_normalized = clamp01(
-          std::log(std::max(.03F, time) / .03F) / std::log(6.2F / .03F));
-      const float first_head_seconds = .069F + time_normalized * (.177F - .069F);
-      const float tone = 2100.F * std::pow(4.4F, color);
-      const float input_cutoff = 8900.F + color * 3600.F - age * 1600.F;
-      const float feedback_highpass_hz = 65.F + (1.F - color) * 105.F;
-      const float feedback_lowpass_hz = std::max(1800.F, tone * (1.F - age * .22F));
-      const float feedback_normalized = clamp01(feedback / .9F);
-      const float feedback_gain = std::min(.93F,
-          std::pow(feedback_normalized, 1.14F) * (.76F + age * .16F));
-      const float wow_rate = .22F + age * .30F;
-      const float flutter_rate = 4.2F + age * 3.8F;
-      wow_phase += 2.F * kPi * wow_rate / sample_rate;
-      flutter_phase += 2.F * kPi * flutter_rate / sample_rate;
-      if (wow_phase >= 2.F * kPi) wow_phase -= 2.F * kPi;
-      if (flutter_phase >= 2.F * kPi) flutter_phase -= 2.F * kPi;
-
-      const unsigned mode_index = std::min(6U, static_cast<unsigned>(std::floor(width * 7.F)));
-      const auto& active_heads = mode_heads[mode_index];
       const float dry_left = data[frame * 2];
       const float dry_right = data[frame * 2 + 1];
       const float mono_input = (dry_left + dry_right) * .5F;
-      const float preamplified = space_echo_curve(mono_input, age);
+      const float preamplified = space_echo_curve(mono_input, curve);
       const float filtered_input = biquad(
-          preamplified, FilterType::Lowpass, input_cutoff, .45F, sample_rate, input_lowpass);
+          preamplified, input_lowpass_coefficients, input_lowpass);
 
       float wet_mono = 0.F;
       float feedback_bus = 0.F;
       for (unsigned head = 0; head < 3; ++head) {
-        const float wow_depth = (.00006F + age * age * .00165F) * (1.F + head * .17F);
-        const float flutter_depth = (.00002F + age * age * .00036F) * (1.F + head * .12F);
-        const float signed_flutter = (head & 1U) ? -flutter_depth : flutter_depth;
-        const float delay_seconds = first_head_seconds * ratios[head]
-            + std::sin(wow_phase) * wow_depth
-            + triangle_wave(flutter_phase) * signed_flutter;
+        const float delay_seconds = first_head_seconds * kHeadRatios[head]
+            + wow_sine * wow_depth[head]
+            + flutter * flutter_depth[head];
         float head_sample = read_delay(
             record_buffer, write, std::max(1.F, delay_seconds * sample_rate));
         head_sample = biquad(
-            head_sample,
-            FilterType::Highpass,
-            62.F + age * 45.F + head * 8.F,
-            .5F,
-            sample_rate,
-            head_highpass[head]);
+            head_sample, head_highpass_coefficients[head], head_highpass[head]);
         head_sample = biquad(
-            head_sample,
-            FilterType::Lowpass,
-            std::max(1700.F, tone * (1.F - head * .055F) * (1.F - age * .12F)),
-            .48F,
-            sample_rate,
-            head_lowpass[head]);
-        head_sample = space_echo_curve(head_sample, age);
-        wet_mono += head_sample * active_heads[head] * head_base[head];
-        feedback_bus += head_sample * active_heads[head] * feedback_base[head];
+            head_sample, head_lowpass_coefficients[head], head_lowpass[head]);
+        head_sample = space_echo_curve(head_sample, curve);
+        wet_mono += head_sample * active_heads[head] * kHeadBase[head];
+        feedback_bus += head_sample * active_heads[head] * kFeedbackBase[head];
       }
 
       float feedback_sample = biquad(
-          feedback_bus,
-          FilterType::Highpass,
-          feedback_highpass_hz,
-          .5F,
-          sample_rate,
-          feedback_highpass);
+          feedback_bus, feedback_highpass_coefficients, feedback_highpass);
       feedback_sample = biquad(
-          feedback_sample,
-          FilterType::Lowpass,
-          feedback_lowpass_hz,
-          .5F,
-          sample_rate,
-          feedback_lowpass);
-      feedback_sample = space_echo_curve(feedback_sample, age) * feedback_gain;
+          feedback_sample, feedback_lowpass_coefficients, feedback_lowpass);
+      feedback_sample = space_echo_curve(feedback_sample, curve) * feedback_gain;
       record_buffer[write] = std::clamp(filtered_input + feedback_sample, -1.25F, 1.25F);
-      write = (write + 1) % record_buffer.size();
+      if (++write == record_buffer.size()) write = 0U;
 
       const float wet = wet_mono * kCenterPanGain;
-      const float dry_gain = std::cos(mix * kPi * .5F);
-      const float wet_gain = std::sin(mix * kPi * .5F);
       data[frame * 2] = std::clamp(dry_left * dry_gain + wet * wet_gain, -1.2F, 1.2F);
       data[frame * 2 + 1] = std::clamp(dry_right * dry_gain + wet * wet_gain, -1.2F, 1.2F);
     }

@@ -2,6 +2,7 @@
 
 #include "calcotone/input_router.hpp"
 #include "calcotone/native_dream_engine.hpp"
+#include "calcotone/native_visual_spectrum.hpp"
 #include "calcotone/pitch_tracker.hpp"
 
 #include <algorithm>
@@ -34,7 +35,10 @@ struct NativeProcessor::Impl {
   explicit Impl(float sample_rate)
       : rate(std::clamp(sample_rate, 8'000.F, 384'000.F)), tuner(rate),
         stack_one(rate), stack_two(rate), rack_one(rate), rack_two(rate),
-        pressure_one(rate), pressure_two(rate), dream(rate, kBlockFrames) {
+        pressure_one(rate), pressure_two(rate), loop(rate), dream(rate, kBlockFrames),
+        input_route_alpha(1.F - std::exp(-1.F / (.018F * rate))),
+        input_route_current(input_route_target(InputRoutingMode::Stereo, 1.F, false, false)) {
+    native_visual_spectrum().configure(rate);
     std::array<unsigned, kOrderSlots> initial{};
     for (unsigned slot = 0; slot < kOrderSlots; ++slot) initial[slot] = slot;
     packed_order.store(pack_order(initial));
@@ -61,8 +65,14 @@ struct NativeProcessor::Impl {
 
   void process_block(const float* input, float* output, std::size_t frames) noexcept {
     for (std::size_t frame = 0; frame < frames; ++frame) tuner.push(input[frame * 2 + 1]);
-    split_dual_mono(input, lane_one_input.data(), lane_two_input.data(), frames,
-                    input_gain.load(std::memory_order_relaxed));
+    const auto mode = static_cast<InputRoutingMode>(std::min(
+        static_cast<unsigned>(InputRoutingMode::Swap), input_mode.load(std::memory_order_relaxed)));
+    const float width = input_width.load(std::memory_order_relaxed);
+    const unsigned polarity = input_polarity.load(std::memory_order_relaxed);
+    const auto route_target = input_route_target(mode, width, (polarity & 1U) != 0U, (polarity & 2U) != 0U);
+    route_dual_mono(input, lane_one_input.data(), lane_two_input.data(), frames,
+                    input_gain.load(std::memory_order_relaxed), route_target,
+                    input_route_current, input_route_alpha);
     std::copy_n(lane_one_input.data(), frames * 2, lane_one_output.data());
     std::copy_n(lane_two_input.data(), frames * 2, lane_two_output.data());
     dream.begin_block(frames);
@@ -87,26 +97,26 @@ struct NativeProcessor::Impl {
         dream.capture_module(rack_module, lane_one_output.data(), lane_two_output.data(), frames, enabled);
       }
     }
-    pressure_one.process(lane_one_output.data(), frames);
-    pressure_two.process(lane_two_output.data(), frames);
-    const bool pressure_active = !pressure_bypassed.load(std::memory_order_relaxed);
     dream.finish_block(lane_one_output.data(), lane_two_output.data(), frames,
-                       any_rack_active || !stack_off || pressure_active);
-    const float gain = active.load(std::memory_order_relaxed)
-        ? output_gain.load(std::memory_order_relaxed) : 0.F;
+                       any_rack_active || !stack_off);
+    const bool host_active = active.load(std::memory_order_relaxed);
+    sum_dual_mono(lane_one_output.data(), lane_two_output.data(), output, frames);
+    if (host_active) loop.process(output, frames);
+    const float gain = host_active ? output_gain.load(std::memory_order_relaxed) : 0.F;
     std::uint64_t limited = 0;
     float peak = 0.F;
-    mix_dual_mono(lane_one_output.data(), lane_two_output.data(), output, frames, gain, &limited, &peak);
+    apply_output_safety(output, frames, gain, &limited, &peak);
     output_limited_samples.fetch_add(limited, std::memory_order_relaxed);
     publish_peak(pre_limiter_peak, peak);
+    native_visual_spectrum().publish(output, frames);
   }
-
 
   float rate;
   PitchTracker tuner;
   StackAmp stack_one, stack_two;
   NativeRack rack_one, rack_two;
   NativePressure pressure_one, pressure_two;
+  LoopProcessor loop;
   NativeDreamEngine dream;
   std::array<float, kBlockFrames * 2> lane_one_input{}, lane_two_input{};
   std::array<float, kBlockFrames * 2> lane_one_output{}, lane_two_output{};
@@ -114,7 +124,12 @@ struct NativeProcessor::Impl {
   std::array<std::atomic<bool>, kStackToken> module_bypassed{};
   std::atomic<bool> active{false}, stack_bypassed{true}, stomp_bypassed{true}, pressure_bypassed{true};
   std::atomic<unsigned> stack_input{1}, stomp_input{1};
+  std::atomic<unsigned> input_mode{static_cast<unsigned>(InputRoutingMode::Stereo)};
+  std::atomic<float> input_width{1.F};
+  std::atomic<unsigned> input_polarity{0U};
   std::atomic<float> input_gain{1.F}, output_gain{.72F};
+  float input_route_alpha{};
+  InputRouteMatrix input_route_current{};
   std::atomic<std::uint64_t> output_limited_samples{};
   std::atomic<float> pre_limiter_peak{};
 };
@@ -132,7 +147,24 @@ bool NativeProcessor::set_module_parameter(RackModule module, std::string_view n
       && impl_->rack_two.set_parameter(module, name, value);
 }
 bool NativeProcessor::set_pressure_parameter(std::string_view name, float value) noexcept {
-  return std::isfinite(value) && impl_->pressure_one.set_parameter(name, value)
+  if (!std::isfinite(value)) return false;
+  // Reuse the existing host-level parameter tunnel for I/O matrix controls so
+  // the embedded faceplate can update native routing without a parallel HTTP
+  // command vocabulary. These names never reach the retired Pressure DSP.
+  if (name == "inputMode") {
+    set_input_mode(static_cast<InputRoutingMode>(static_cast<unsigned>(std::clamp(value, 0.F, 5.F))));
+    return true;
+  }
+  if (name == "inputWidth") {
+    set_input_width(value);
+    return true;
+  }
+  if (name == "inputPolarity") {
+    const auto bits = static_cast<unsigned>(std::clamp(value, 0.F, 3.F));
+    set_input_polarity((bits & 1U) != 0U, (bits & 2U) != 0U);
+    return true;
+  }
+  return impl_->pressure_one.set_parameter(name, value)
       && impl_->pressure_two.set_parameter(name, value);
 }
 void NativeProcessor::set_module_bypassed(RackModule module, bool bypassed) noexcept {
@@ -148,6 +180,28 @@ void NativeProcessor::set_pressure_bypassed(bool bypassed) noexcept {
   impl_->pressure_bypassed.store(bypassed, std::memory_order_relaxed);
   impl_->pressure_one.set_bypassed(bypassed); impl_->pressure_two.set_bypassed(bypassed);
 }
+void NativeProcessor::set_loop_enabled(bool value) noexcept { impl_->loop.set_enabled(value); }
+void NativeProcessor::set_loop_selected_track(unsigned track) noexcept { impl_->loop.set_selected_track(track); }
+void NativeProcessor::set_loop_master_level(float value) noexcept { impl_->loop.set_master_level(value); }
+void NativeProcessor::set_loop_track_level(unsigned track, float value) noexcept { impl_->loop.set_track_level(track, value); }
+void NativeProcessor::set_loop_overdub(float value) noexcept { impl_->loop.set_overdub(value); }
+void NativeProcessor::set_loop_fade(float value) noexcept { impl_->loop.set_fade(value); }
+void NativeProcessor::loop_command(LoopCommand command) noexcept { impl_->loop.command(command); }
+void NativeProcessor::set_loop_trim(float start, float end) noexcept { impl_->loop.set_trim(start, end); }
+void NativeProcessor::auto_trim_loop() noexcept { impl_->loop.auto_trim(); }
+void NativeProcessor::reset_loop_trim() noexcept { impl_->loop.reset_trim(); }
+LoopTransport NativeProcessor::loop_transport() const noexcept { return impl_->loop.transport(); }
+unsigned NativeProcessor::loop_selected_track() const noexcept { return impl_->loop.selected_track(); }
+std::uint32_t NativeProcessor::loop_track_mask() const noexcept { return impl_->loop.track_mask(); }
+std::uint32_t NativeProcessor::loop_track_active_mask() const noexcept { return impl_->loop.track_active_mask(); }
+std::uint32_t NativeProcessor::loop_track_mute_mask() const noexcept { return impl_->loop.track_mute_mask(); }
+std::uint32_t NativeProcessor::loop_track_solo_mask() const noexcept { return impl_->loop.track_solo_mask(); }
+std::uint64_t NativeProcessor::loop_frames() const noexcept { return impl_->loop.loop_frames(); }
+std::uint64_t NativeProcessor::loop_raw_frames() const noexcept { return impl_->loop.raw_frames(); }
+std::uint64_t NativeProcessor::loop_position() const noexcept { return impl_->loop.position(); }
+float NativeProcessor::loop_trim_start() const noexcept { return impl_->loop.trim_start(); }
+float NativeProcessor::loop_trim_end() const noexcept { return impl_->loop.trim_end(); }
+std::array<float, kLoopWaveformBins> NativeProcessor::loop_waveform() const noexcept { return impl_->loop.waveform(); }
 bool NativeProcessor::set_serial_order(std::span<const std::string_view> stages) noexcept {
   std::array<unsigned, kOrderSlots> next{};
   std::array<bool, kOrderSlots> used{};
@@ -168,6 +222,15 @@ void NativeProcessor::set_active(bool value) noexcept { impl_->active.store(valu
 void NativeProcessor::set_stack_bypassed(bool value) noexcept { impl_->stack_bypassed.store(value); }
 void NativeProcessor::set_stack_input(unsigned value) noexcept { impl_->stack_input.store(std::min(2U, value)); }
 void NativeProcessor::set_stomp_input(unsigned value) noexcept { impl_->stomp_input.store(std::min(2U, value)); impl_->apply_stomp_route(); }
+void NativeProcessor::set_input_mode(InputRoutingMode value) noexcept {
+  impl_->input_mode.store(std::min(static_cast<unsigned>(InputRoutingMode::Swap), static_cast<unsigned>(value)), std::memory_order_relaxed);
+}
+void NativeProcessor::set_input_width(float value) noexcept {
+  impl_->input_width.store(std::clamp(std::isfinite(value) ? value : 1.F, 0.F, 2.F), std::memory_order_relaxed);
+}
+void NativeProcessor::set_input_polarity(bool invert_left, bool invert_right) noexcept {
+  impl_->input_polarity.store((invert_left ? 1U : 0U) | (invert_right ? 2U : 0U), std::memory_order_relaxed);
+}
 void NativeProcessor::set_input_gain(float value) noexcept { impl_->input_gain.store(std::clamp(value, 0.F, 2.F)); }
 void NativeProcessor::set_output_gain(float value) noexcept { impl_->output_gain.store(std::clamp(value, 0.F, 1.5F)); }
 void NativeProcessor::set_stack_drive(float value) noexcept { impl_->stack_one.set_drive(value); impl_->stack_two.set_drive(value); }

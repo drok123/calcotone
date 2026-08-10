@@ -1,3 +1,33 @@
+const DRIFT_TANH_MIN = -8;
+const DRIFT_TANH_MAX = 8;
+const DRIFT_TANH_LUT = new Float32Array(2048);
+const DRIFT_TANH_SCALE = (DRIFT_TANH_LUT.length - 1) / (DRIFT_TANH_MAX - DRIFT_TANH_MIN);
+for (let index = 0; index < DRIFT_TANH_LUT.length; index += 1) {
+  const x = DRIFT_TANH_MIN + index / DRIFT_TANH_SCALE;
+  DRIFT_TANH_LUT[index] = Math.tanh(x);
+}
+
+function driftHermite(y0, y1, y2, y3, mu) {
+  const mu2 = mu * mu;
+  const a0 = -0.5 * y0 + 1.5 * y1 - 1.5 * y2 + 0.5 * y3;
+  const a1 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+  const a2 = -0.5 * y0 + 0.5 * y2;
+  return a0 * mu * mu2 + a1 * mu2 + a2 * mu + y1;
+}
+
+function driftTanh(value) {
+  if (value <= DRIFT_TANH_MIN) return -1;
+  if (value >= DRIFT_TANH_MAX) return 1;
+  const position = (value - DRIFT_TANH_MIN) * DRIFT_TANH_SCALE;
+  const index = Math.floor(position);
+  const mu = position - index;
+  const last = DRIFT_TANH_LUT.length - 1;
+  const i0 = index > 0 ? index - 1 : 0;
+  const i2 = index < last ? index + 1 : last;
+  const i3 = index + 2 < last ? index + 2 : last;
+  return driftHermite(DRIFT_TANH_LUT[i0], DRIFT_TANH_LUT[index], DRIFT_TANH_LUT[i2], DRIFT_TANH_LUT[i3], mu);
+}
+
 class CalcotoneDriftClassicProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
@@ -46,6 +76,8 @@ class CalcotoneDriftClassicProcessor extends AudioWorkletProcessor {
     this.delayR = new Float32Array(2048);
     this.delayIndex = 0;
     this.panPosition = 0;
+    this.leslieShape = -1;
+    this.leslieCrossover = 0;
   }
 
   coefficient(frequency) {
@@ -81,7 +113,15 @@ class CalcotoneDriftClassicProcessor extends AudioWorkletProcessor {
   // Unity-slope soft limiting approximates the level-dependent FET/op-amp
   // behavior in the circuit studies without turning a phaser into a drive box.
   normalizedSoftClip(input, drive) {
-    return Math.tanh(input * drive) / Math.max(1e-6, drive);
+    return driftTanh(input * drive) / Math.max(1e-6, drive);
+  }
+
+  leslieCrossoverCoefficient(shape) {
+    if (shape !== this.leslieShape) {
+      this.leslieShape = shape;
+      this.leslieCrossover = 1 - Math.exp(-2 * Math.PI * (650 + shape * 500) / sampleRate);
+    }
+    return this.leslieCrossover;
   }
 
   shouldRefreshCoefficients(model) {
@@ -202,7 +242,7 @@ class CalcotoneDriftClassicProcessor extends AudioWorkletProcessor {
     if (this.rotorHornPhase > Math.PI * 2) this.rotorHornPhase -= Math.PI * 2;
     if (this.rotorDrumPhase > Math.PI * 2) this.rotorDrumPhase -= Math.PI * 2;
 
-    const crossover = 1 - Math.exp(-2 * Math.PI * (650 + shape * 500) / sampleRate);
+    const crossover = this.leslieCrossoverCoefficient(shape);
     this.rotorLowL += (left - this.rotorLowL) * crossover;
     this.rotorLowR += (right - this.rotorLowR) * crossover;
     const lowL = this.rotorLowL;

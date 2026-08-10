@@ -1,3 +1,33 @@
+const BEHAVIOR_TANH_MIN = -8;
+const BEHAVIOR_TANH_MAX = 8;
+const BEHAVIOR_TANH_LUT = new Float32Array(2048);
+const BEHAVIOR_TANH_SCALE = (BEHAVIOR_TANH_LUT.length - 1) / (BEHAVIOR_TANH_MAX - BEHAVIOR_TANH_MIN);
+for (let index = 0; index < BEHAVIOR_TANH_LUT.length; index += 1) {
+  const x = BEHAVIOR_TANH_MIN + index / BEHAVIOR_TANH_SCALE;
+  BEHAVIOR_TANH_LUT[index] = Math.tanh(x);
+}
+
+function behaviorHermite(y0, y1, y2, y3, mu) {
+  const mu2 = mu * mu;
+  const a0 = -0.5 * y0 + 1.5 * y1 - 1.5 * y2 + 0.5 * y3;
+  const a1 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+  const a2 = -0.5 * y0 + 0.5 * y2;
+  return a0 * mu * mu2 + a1 * mu2 + a2 * mu + y1;
+}
+
+function behaviorTanh(value) {
+  if (value <= BEHAVIOR_TANH_MIN) return -1;
+  if (value >= BEHAVIOR_TANH_MAX) return 1;
+  const position = (value - BEHAVIOR_TANH_MIN) * BEHAVIOR_TANH_SCALE;
+  const index = Math.floor(position);
+  const mu = position - index;
+  const last = BEHAVIOR_TANH_LUT.length - 1;
+  const i0 = index > 0 ? index - 1 : 0;
+  const i2 = index < last ? index + 1 : last;
+  const i3 = index + 2 < last ? index + 2 : last;
+  return behaviorHermite(BEHAVIOR_TANH_LUT[i0], BEHAVIOR_TANH_LUT[index], BEHAVIOR_TANH_LUT[i2], BEHAVIOR_TANH_LUT[i3], mu);
+}
+
 class CalcotoneBehaviorMemoryProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
@@ -84,14 +114,14 @@ class CalcotoneBehaviorMemoryProcessor extends AudioWorkletProcessor {
         s.velocity = s.velocity * drag + delta * (0.012 + motion * 0.03);
         s.position += s.velocity;
         const eccentricity = Math.sin(s.phase) * s.envelope * (0.0015 + color * 0.0025);
-        residual = Math.tanh(s.velocity * 3.2) * 0.043 + s.slow * s.velocity * 0.03 + eccentricity;
+        residual = behaviorTanh(s.velocity * 3.2) * 0.043 + s.slow * s.velocity * 0.03 + eccentricity;
         break;
       }
       case 3: { // fluid: slow bulk motion + viscosity/shear + thermal thinning
         s.position += (input - s.position) * (0.0007 + (1 - memory) * 0.0032);
         const shear = input - s.position;
         const viscosity = (1.15 + color * 2.75) * (1 - Math.min(0.18, s.thermal * 0.06));
-        residual = Math.tanh(shear * viscosity) * (0.034 + motion * 0.04) - s.slew * s.fatigue * 0.006;
+        residual = behaviorTanh(shear * viscosity) * (0.034 + motion * 0.04) - s.slew * s.fatigue * 0.006;
         break;
       }
       case 4: { // orbital: inertial phase memory with envelope-weighted trajectory error
@@ -107,13 +137,13 @@ class CalcotoneBehaviorMemoryProcessor extends AudioWorkletProcessor {
         s.absorption += (s.charge - s.absorption) * (0.00045 + memory * 0.0014);
         const dielectricReturn = (s.absorption - s.charge) * (0.018 + memory * 0.018);
         const transferError = (input - s.charge) * (0.017 + color * 0.034);
-        residual = transferError + dielectricReturn + Math.tanh(s.charge * 2.2) * 0.011;
+        residual = transferError + dielectricReturn + behaviorTanh(s.charge * 2.2) * 0.011;
         break;
       }
       case 6: { // magnetic: dynamic coercion, remanence, core loss and thermal permeability drift
         const coercion = (0.0017 + (1 - memory) * 0.0052) * (1 - Math.min(0.16, s.thermal * 0.055));
         const field = input + s.remanence * (0.20 + memory * 0.055);
-        const target = Math.tanh(field * (1.08 + color * 1.72));
+        const target = behaviorTanh(field * (1.08 + color * 1.72));
         s.remanence += (target - s.remanence) * coercion;
         s.loss += (Math.abs(delta) - s.loss) * (0.0035 + motion * 0.0012);
         const dynamicLoss = Math.sign(input || 1) * s.loss * (0.003 + motion * 0.006);
@@ -131,7 +161,7 @@ class CalcotoneBehaviorMemoryProcessor extends AudioWorkletProcessor {
         s.charge = s.charge * (0.97 + memory * 0.024) + input * (0.03 - memory * 0.018);
         const edge = input - s.charge;
         s.fatigue += (Math.abs(edge) - s.fatigue) * 0.0011;
-        residual = Math.tanh(edge * (1.18 + color * 2.22)) * (0.024 + motion * 0.034) + s.slew * s.fatigue * 0.004;
+        residual = behaviorTanh(edge * (1.18 + color * 2.22)) * (0.024 + motion * 0.034) + s.slew * s.fatigue * 0.004;
         break;
       }
       case 9: { // transport: capstan inertia, belt elasticity, head-contact drag and periodic eccentricity
@@ -146,7 +176,7 @@ class CalcotoneBehaviorMemoryProcessor extends AudioWorkletProcessor {
         const railError = input * (s.rail - 1);
         const slewError = (s.slew - delta) * (0.012 + color * 0.018);
         const thermalBias = Math.sign(input || 1) * s.thermal * (color - 0.5) * 0.0018;
-        const soft = Math.tanh((input + thermalBias) * (1.015 + color * 0.18)) - input;
+        const soft = behaviorTanh((input + thermalBias) * (1.015 + color * 0.18)) - input;
         residual = railError + slewError + soft * 0.34;
         break;
       }
@@ -164,7 +194,7 @@ class CalcotoneBehaviorMemoryProcessor extends AudioWorkletProcessor {
         s.remanence = s.remanence * 0.9991 + Math.sign(input || 1) * s.envelope * 0.00003;
         const stress = Math.max(0, s.envelope - (0.28 + (1 - memory) * 0.32));
         const chatter = Math.sin(s.phase * (5 + color * 7)) * stress * (0.012 + motion * 0.018);
-        residual = Math.tanh((s.position + s.remanence) * (1.4 + color * 2.5)) * 0.043 + chatter;
+        residual = behaviorTanh((s.position + s.remanence) * (1.4 + color * 2.5)) * 0.043 + chatter;
         break;
       }
       default:

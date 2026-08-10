@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/pitch_tracker_test.dir/link.d CMakeFiles/pitch_tracker_test.dir/tests/pitch_tracker_test.cpp.o -o pitch_tracker_test  libcalcotone_dsp.a

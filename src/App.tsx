@@ -20,8 +20,14 @@ import { DEFAULT_PRESET } from './audio/Preset';
 import { NativeAudioBridge, type NativeAudioHealth } from './audio/NativeAudioBridge';
 import { NativeVisualSpectrum } from './visual/NativeVisualSpectrum';
 import { nativeWaveToRecordedWav } from './audio/NativeRecording';
-import { SIGNAL_LAB_MODES, SIGNAL_LAB_STYLES, type SignalLabState } from './audio/SignalLab';
-import { getPressureState } from './components/signal/pressureStore';
+import {
+  getLoopState,
+  setLoopRuntime,
+  LOOP_CHANGE_EVENT,
+  LOOP_COMMAND_EVENT,
+  type LoopCommand,
+  type LoopSettings,
+} from './components/signal/loopStore';
 import type { InputMode } from './audio/InputMatrix';
 import {
   runGpuCabinetExperiment,
@@ -102,12 +108,8 @@ const DEFAULT_RACK_ORDERS: RackOrders = {
 const RAIL_C_MODULE_NAMES: Record<RailCRandomModuleId, string> = {
   stomp: 'Stomp',
   chaos: 'Stack',
-  pressure: 'Pressure',
 };
 type RoutingRail = RackRail;
-
-
-
 
 interface RandomUiPlan {
   finalModules: ModuleState[];
@@ -216,14 +218,9 @@ const INITIAL_MODULES: ModuleState[] = [
   },
 ];
 
-
 type MusicalRange = readonly [number, number];
 
-
-
 function randomMusicalValue(range: MusicalRange, centerBias = 0.35): number {
-  // Blend one uniform draw with the average of two draws. This still reaches extremes,
-  // but lands in useful middle territory more often than raw full-range randomness.
   const uniform = Math.random();
   const centered = (Math.random() + Math.random()) * 0.5;
   const t = uniform * (1 - centerBias) + centered * centerBias;
@@ -232,6 +229,11 @@ function randomMusicalValue(range: MusicalRange, centerBias = 0.35): number {
 
 function chooseMusical<T>(values: readonly T[]): T {
   return values[Math.floor(Math.random() * values.length)]!;
+}
+
+function chooseMusicalDifferent<T>(values: readonly T[], current: T | undefined): T {
+  const alternatives = values.filter((value) => value !== current);
+  return chooseMusical(alternatives.length ? alternatives : values);
 }
 
 const MUSICAL_RANDOM_RANGES: Record<string, Record<string, MusicalRange>> = {
@@ -385,9 +387,6 @@ interface SweetSpotRecipe {
   parameters: Record<string, MusicalRange>;
 }
 
-// Named hardware modes do not use the generic full-module random ranges. Each recipe
-// represents a recognizable operating point, then MUSICAL RANDOM adds a small amount
-// of variation around that center so the result stays in the machine's useful zone.
 const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
   'saturation:goldlion': [
     { name: 'OPEN COLOR', parameters: { drive:[0.16,0.30], tone:[0.60,0.78], heat:[0.14,0.30], character:[0.46,0.58], dynamics:[0.34,0.50], mix:[0.18,0.30] } },
@@ -404,7 +403,6 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
   'saturation:rcablack': [
     { name: 'THICK COLOR', parameters: { drive:[0.18,0.33], tone:[0.38,0.58], heat:[0.30,0.48], character:[0.56,0.70], dynamics:[0.52,0.68], mix:[0.20,0.34] } },
   ],
-
   'chorus:ce1': [
     { name: 'CLASSIC MID INTENSITY', parameters: { rate:[0.09,0.11], depth:[0.27,0.31], shape:[0.46,0.66], spread:[0.80,0.86], motion:[0.16,0.30], mix:[0.20,0.34] } },
   ],
@@ -428,7 +426,6 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
     { name: 'TRIANGLE PAN', parameters: { rate:[0.08,0.24], depth:[0.52,0.78], shape:[0.04,0.28], spread:[0.64,0.92], motion:[0.20,0.46], mix:[0.16,0.30] } },
     { name: 'SQUARE CHOP', parameters: { rate:[0.18,0.40], depth:[0.72,0.94], shape:[0.74,0.96], spread:[0.56,0.86], motion:[0.68,0.92], mix:[0.12,0.26] } },
   ],
-
   'delay:re201': [
     { name: 'MODE 3 SYNCOPATED', parameters: { time:[0.20,0.36], feedback:[0.24,0.40], color:[0.45,0.62], character:[0.14,0.30], width:[0.31,0.39], mix:[0.18,0.30] } },
     { name: 'MODE 6 DUB', parameters: { time:[0.14,0.28], feedback:[0.38,0.56], color:[0.38,0.55], character:[0.22,0.38], width:[0.74,0.82], mix:[0.20,0.34] } },
@@ -449,7 +446,6 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
     { name: 'DIGITAL DOUBLE', parameters: { time:[0.06,0.12], feedback:[0.12,0.24], color:[0.58,0.78], character:[0.10,0.22], width:[0.68,0.88], mix:[0.14,0.26] } },
     { name: 'PITCH SPACE', parameters: { time:[0.18,0.34], feedback:[0.24,0.42], color:[0.52,0.72], character:[0.30,0.50], width:[0.72,0.92], mix:[0.18,0.30] } },
   ],
-
   'reverb:emt140': [
     { name: 'PLATE A · 3.0 S', parameters: { decay:[0.48,0.52], size:[0.49,0.51], color:[0.52,0.68], diffusion:[0.68,0.84], motion:[0.00,0.00], mix:[0.18,0.30] } },
   ],
@@ -457,7 +453,6 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
     { name: 'ROOM A STYLE', parameters: { decay:[0.60,0.68], size:[0.48,0.64], color:[0.36,0.54], diffusion:[0.68,0.86], motion:[0.14,0.28], mix:[0.16,0.30] } },
     { name: 'VOCAL PLATE STYLE', parameters: { decay:[0.46,0.58], size:[0.18,0.34], color:[0.55,0.74], diffusion:[0.42,0.62], motion:[0.08,0.20], mix:[0.18,0.32] } },
   ],
-
   'bitcrusher:clouds': [
     { name: 'DIFFUSE CLOUD', parameters: { bits:[0.34,0.58], density:[0.58,0.76], pitch:[0.00,0.16], chaos:[0.26,0.48], bloom:[0.46,0.66], mix:[0.20,0.34] } },
     { name: 'FROZEN DISSOLVE', parameters: { bits:[0.58,0.82], density:[0.48,0.68], pitch:[0.08,0.28], chaos:[0.48,0.72], bloom:[0.68,0.84], mix:[0.22,0.38] } },
@@ -482,7 +477,6 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
     { name: 'MOSAIC CASCADE', parameters: { bits:[0.28,0.48], density:[0.44,0.66], pitch:[0.20,0.42], chaos:[0.24,0.48], bloom:[0.46,0.68], mix:[0.20,0.36] } },
     { name: 'GLITCH SEQUENCE', parameters: { bits:[0.52,0.74], density:[0.54,0.78], pitch:[0.36,0.62], chaos:[0.52,0.76], bloom:[0.32,0.56], mix:[0.18,0.34] } },
   ],
-
   'saturation:sp1200': [
     { name: 'FILTERED DRUM BUS', parameters: { drive:[0.42,0.62], tone:[0.05,0.20], heat:[0.12,0.28], character:[0.46,0.66], dynamics:[0.32,0.50], mix:[0.18,0.32] } },
   ],
@@ -501,7 +495,6 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
   'saturation:fairlightiix': [
     { name: 'EARLY DIGITAL', parameters: { drive:[0.30,0.50], tone:[0.30,0.74], heat:[0.20,0.38], character:[0.44,0.72], dynamics:[0.34,0.54], mix:[0.18,0.31] } },
   ],
-
   'media:tascam424': [
     { name: 'ELASTIC DI', parameters: { wear:[0.28,0.42], wow:[0.14,0.19], noise:[0.09,0.13], tone:[0.30,0.44], mix:[0.22,0.36] } },
     { name: 'PUSHED PREAMP', parameters: { wear:[0.40,0.54], wow:[0.13,0.18], noise:[0.08,0.13], tone:[0.46,0.58], mix:[0.24,0.38] } },
@@ -530,12 +523,12 @@ const HARDWARE_SWEET_SPOTS: Record<string, readonly SweetSpotRecipe[]> = {
 };
 
 function withMusicalRandomMode(module: ModuleState): ModuleState {
-  if (module.id === 'saturation') return { ...module, emberMode: chooseMusical(MUSICAL_EMBER_MODES) };
-  if (module.id === 'chorus') return { ...module, driftMode: chooseMusical(MUSICAL_DRIFT_MODES) };
-  if (module.id === 'delay') return { ...module, delayAlgorithm: chooseMusical(MUSICAL_HALO_MODES) };
-  if (module.id === 'reverb') return { ...module, algorithm: chooseMusical(MUSICAL_ATMOS_MODES) };
-  if (module.id === 'bitcrusher') return { ...module, grainMode: chooseMusical(MUSICAL_GRAIN_MODES) };
-  if (module.id === 'media') return { ...module, mediaMode: chooseMusical(MUSICAL_MEDIA_MODES) };
+  if (module.id === 'saturation') return { ...module, emberMode: chooseMusicalDifferent(MUSICAL_EMBER_MODES, module.emberMode) };
+  if (module.id === 'chorus') return { ...module, driftMode: chooseMusicalDifferent(MUSICAL_DRIFT_MODES, module.driftMode) };
+  if (module.id === 'delay') return { ...module, delayAlgorithm: chooseMusicalDifferent(MUSICAL_HALO_MODES, module.delayAlgorithm) };
+  if (module.id === 'reverb') return { ...module, algorithm: chooseMusicalDifferent(MUSICAL_ATMOS_MODES, module.algorithm) };
+  if (module.id === 'bitcrusher') return { ...module, grainMode: chooseMusicalDifferent(MUSICAL_GRAIN_MODES, module.grainMode) };
+  if (module.id === 'media') return { ...module, mediaMode: chooseMusicalDifferent(MUSICAL_MEDIA_MODES, module.mediaMode) };
   return module;
 }
 
@@ -563,6 +556,19 @@ const MUSICAL_ATMOS_MODES: readonly ReverbAlgorithm[] = [...REVERB_ALGORITHM_ORD
 const MUSICAL_GRAIN_MODES: readonly GrainMode[] = [...GRAIN_MODE_ORDER];
 const MUSICAL_MEDIA_MODES: readonly MediaMode[] = [...MEDIA_MODE_ORDER];
 
+function nativeInputModeIndex(mode: InputMode): number {
+  return mode === 'stereo' ? 0
+    : mode === 'mono-to-stereo' ? 1
+    : mode === 'left' ? 2
+    : mode === 'right' ? 3
+    : mode === 'sum-mono' ? 4
+    : 5;
+}
+
+function nativeInputPolarityBits(invertLeft: boolean, invertRight: boolean): number {
+  return (invertLeft ? 1 : 0) | (invertRight ? 2 : 0);
+}
+
 export default function App() {
   const nativeShell = new URLSearchParams(window.location.search).has('native-shell');
   const diagnosticAudio = import.meta.env.DEV
@@ -583,7 +589,9 @@ export default function App() {
   const [draggedModuleId, setDraggedModuleId] = useState<string | null>(null);
   const [dragOverModuleId, setDragOverModuleId] = useState<string | null>(null);
   const [inputGain, setInputGain] = useState(1);
-  const [inputMode, setInputMode] = useState<InputMode>('mono-to-stereo');
+  // Native desktop starts in dual-lane stereo mode so Input 1/2 remain independent
+  // for Tablet/Guitar routing. Browser fallback keeps its historical mono-1 default.
+  const [inputMode, setInputMode] = useState<InputMode>(nativeShell ? 'stereo' : 'mono-to-stereo');
   const [inputWidth, setInputWidth] = useState(1);
   const [invertLeft, setInvertLeft] = useState(false);
   const [invertRight, setInvertRight] = useState(false);
@@ -624,6 +632,18 @@ export default function App() {
       if (!cancelled && health) {
         setNativeTuner({ hz: health.tunerHz || 0, level: health.tunerLevel || 0 });
         setNativeHealth(health);
+        const loopTransports = ['empty', 'stopped', 'playing', 'recording', 'overdubbing'] as const;
+        setLoopRuntime({
+          transport: loopTransports[health.loopTransport ?? 0] ?? 'empty',
+          trackMask: health.loopTrackMask ?? 0,
+          loopFrames: health.loopFrames ?? 0,
+          rawFrames: health.loopRawFrames ?? health.loopFrames ?? 0,
+          position: health.loopPosition ?? 0,
+          sampleRate: health.sampleRate,
+          trimStart: health.loopTrimStart ?? 0,
+          trimEnd: health.loopTrimEnd ?? 1,
+          waveform: health.loopWaveform ?? [],
+        });
       }
     };
     void refresh();
@@ -632,18 +652,37 @@ export default function App() {
   }, [audioBackend, engineState]);
 
   useEffect(() => {
-    const syncNativePressure = (event: Event): void => {
+    const sendSettings = (settings: LoopSettings): void => {
       if (backendRef.current !== 'native') return;
-      const state = (event as CustomEvent<SignalLabState>).detail ?? getPressureState();
       const bridge = nativeBridgeRef.current;
-      void bridge.commandLine(`moduleBypass pressure ${state.enabled ? 0 : 1}`);
-      void bridge.commandLine(`param pressure mode ${SIGNAL_LAB_MODES.indexOf(state.mode)}`);
-      void bridge.commandLine(`param pressure style ${SIGNAL_LAB_STYLES.indexOf(state.style)}`);
-      for (const key of ['drive', 'time', 'character', 'mix'] as const)
-        void bridge.commandLine(`param pressure ${key} ${state[key]}`);
+      void bridge.commandLine(`loopParam enabled ${settings.enabled ? 1 : 0}`);
+      void bridge.commandLine(`loopParam track ${settings.selectedTrack}`);
+      void bridge.commandLine(`loopParam masterLevel ${settings.masterLevel}`);
+      void bridge.commandLine(`loopParam overdub ${settings.overdub}`);
+      void bridge.commandLine(`loopParam fade ${settings.fade}`);
+      settings.trackLevels.forEach((level, index) => void bridge.commandLine(`loopTrackLevel ${index} ${level}`));
     };
-    window.addEventListener('calcotone:pressure-change', syncNativePressure);
-    return () => window.removeEventListener('calcotone:pressure-change', syncNativePressure);
+    const syncNativeLoop = (event: Event): void => sendSettings((event as CustomEvent<LoopSettings>).detail ?? getLoopState());
+    const syncNativeLoopCommand = (event: Event): void => {
+      if (backendRef.current !== 'native') return;
+      const command = (event as CustomEvent<LoopCommand>).detail;
+      if (!command) return;
+      if (typeof command === 'string') {
+        void nativeBridgeRef.current.commandLine(`loop ${command}`);
+      } else if (command.type === 'trim') {
+        void nativeBridgeRef.current.commandLine(`loop trim ${command.start} ${command.end}`);
+      } else if (command.type === 'autoTrim') {
+        void nativeBridgeRef.current.commandLine('loop autoTrim');
+      } else if (command.type === 'resetTrim') {
+        void nativeBridgeRef.current.commandLine('loop resetTrim');
+      }
+    };
+    window.addEventListener(LOOP_CHANGE_EVENT, syncNativeLoop);
+    window.addEventListener(LOOP_COMMAND_EVENT, syncNativeLoopCommand);
+    return () => {
+      window.removeEventListener(LOOP_CHANGE_EVENT, syncNativeLoop);
+      window.removeEventListener(LOOP_COMMAND_EVENT, syncNativeLoopCommand);
+    };
   }, []);
   const [recordingState, setRecordingState] = useState<
     'idle' | 'recording' | 'ready' | 'error'
@@ -747,7 +786,6 @@ export default function App() {
     return modules.find((module) => module.id === moduleId);
   }
 
-
   async function applyRoutingOrder(nextA: string[], nextB: string[], nextC: string[]): Promise<void> {
     const order = serialOrderFromRack({ A: nextA, B: nextB, C: nextC });
     if (backendRef.current === 'native') {
@@ -844,6 +882,9 @@ export default function App() {
           nativeBridgeRef.current.command('inputGain', inputGain),
           nativeBridgeRef.current.command('outputGain', outputGain),
           nativeBridgeRef.current.command('quality', performanceMode === 'studio' ? 4 : performanceMode === 'balanced' ? 2 : 1),
+          nativeBridgeRef.current.commandLine(`param pressure inputMode ${nativeInputModeIndex(inputMode)}`),
+          nativeBridgeRef.current.commandLine(`param pressure inputWidth ${inputWidth}`),
+          nativeBridgeRef.current.commandLine(`param pressure inputPolarity ${nativeInputPolarityBits(invertLeft, invertRight)}`),
         ]);
         const nativeSync: Promise<boolean>[] = [];
         for (const module of modules) {
@@ -860,12 +901,13 @@ export default function App() {
           if (module.id === 'bitcrusher' && module.grainMode) nativeSync.push(nativeBridgeRef.current.commandLine(`param bitcrusher mode ${GRAIN_MODE_ORDER.indexOf(module.grainMode)}`));
           if (module.id === 'media' && module.mediaMode) nativeSync.push(nativeBridgeRef.current.commandLine(`param media mode ${MEDIA_MODE_ORDER.indexOf(module.mediaMode)}`));
         }
-        const pressure = getPressureState();
-        nativeSync.push(nativeBridgeRef.current.commandLine(`moduleBypass pressure ${pressure.enabled ? 0 : 1}`));
-        nativeSync.push(nativeBridgeRef.current.commandLine(`param pressure mode ${SIGNAL_LAB_MODES.indexOf(pressure.mode)}`));
-        nativeSync.push(nativeBridgeRef.current.commandLine(`param pressure style ${SIGNAL_LAB_STYLES.indexOf(pressure.style)}`));
-        for (const key of ['drive', 'time', 'character', 'mix'] as const)
-          nativeSync.push(nativeBridgeRef.current.commandLine(`param pressure ${key} ${pressure[key]}`));
+        const loop = getLoopState();
+        nativeSync.push(nativeBridgeRef.current.commandLine(`loopParam enabled ${loop.enabled ? 1 : 0}`));
+        nativeSync.push(nativeBridgeRef.current.commandLine(`loopParam track ${loop.selectedTrack}`));
+        nativeSync.push(nativeBridgeRef.current.commandLine(`loopParam masterLevel ${loop.masterLevel}`));
+        nativeSync.push(nativeBridgeRef.current.commandLine(`loopParam overdub ${loop.overdub}`));
+        nativeSync.push(nativeBridgeRef.current.commandLine(`loopParam fade ${loop.fade}`));
+        loop.trackLevels.forEach((level, index) => nativeSync.push(nativeBridgeRef.current.commandLine(`loopTrackLevel ${index} ${level}`)));
         nativeSync.push(nativeBridgeRef.current.commandLine(`order ${serialOrderFromRack({ A: railAOrder, B: railBOrder, C: railCOrder }).join(' ')}`));
         await Promise.all(nativeSync);
         setInputDevice(native.captureDevice || 'Windows native input');
@@ -932,9 +974,6 @@ export default function App() {
         `WEB AUDIO FALLBACK · ${nativeBridgeRef.current.getLastProbeFailure()}`
       );
     } catch (error) {
-      // engine.start() is transactional internally, but failures after it returns
-      // (preset construction, UI/DSP audit, later startup sync) must also tear
-      // down the opened MediaStream/AudioContext before showing ERROR.
       try {
         await engineRef.current?.stop();
       } catch (cleanupError) {
@@ -1171,23 +1210,35 @@ export default function App() {
 
   function updateInputMode(mode: InputMode): void {
     setInputMode(mode);
-    engineRef.current?.setInputMode(mode);
+    if (backendRef.current === 'native') {
+      void nativeBridgeRef.current.commandLine(`param pressure inputMode ${nativeInputModeIndex(mode)}`);
+    } else {
+      engineRef.current?.setInputMode(mode);
+    }
     setMessage(
       mode === 'mono-to-stereo'
-        ? 'Input 1 is duplicated to both channels before the stereo effects rack.'
+        ? 'Input 1 is duplicated to the native stereo rack.'
         : `Input routing changed to ${mode.replaceAll('-', ' ')}.`
     );
   }
 
   function updateInputWidth(value: number): void {
     setInputWidth(value);
-    engineRef.current?.setInputWidth(value);
+    if (backendRef.current === 'native') {
+      void nativeBridgeRef.current.commandLine(`param pressure inputWidth ${value}`);
+    } else {
+      engineRef.current?.setInputWidth(value);
+    }
   }
 
   function updatePolarity(left: boolean, right: boolean): void {
     setInvertLeft(left);
     setInvertRight(right);
-    engineRef.current?.setInputPolarity(left, right);
+    if (backendRef.current === 'native') {
+      void nativeBridgeRef.current.commandLine(`param pressure inputPolarity ${nativeInputPolarityBits(left, right)}`);
+    } else {
+      engineRef.current?.setInputPolarity(left, right);
+    }
     const active = [left ? 'L' : '', right ? 'R' : ''].filter(Boolean).join(' + ');
     setMessage(active ? `Polarity inverted on ${active}.` : 'Input polarity normal.');
   }
@@ -1205,6 +1256,12 @@ export default function App() {
   }
 
   function toggleAdaptiveMode(): void {
+    if (backendRef.current === 'native') {
+      // Native FIFO/recovery safety is transport-critical and remains active.
+      // Keep the UI truthful instead of pretending this browser-only switch can disable it.
+      setMessage('Native I/O safety remains enabled to protect realtime audio.');
+      return;
+    }
     const next = !adaptiveMode;
     setAdaptiveMode(next);
     engineRef.current?.setAdaptiveMode(next);
@@ -1306,7 +1363,6 @@ export default function App() {
     setMessage(`Artifact changed to ${mode}.`);
   }
 
-
   function randomizeActiveModules(profile: RandomizationProfile = randomProfile): void {
     const activeModules = modules.filter((module) => module.enabled && module.available);
     const activeRailC = getActiveRailCRandomModuleIds();
@@ -1320,8 +1376,6 @@ export default function App() {
     const nextModules = modules.map((module) => {
       if (!module.enabled || !module.available) return module;
 
-      // Pick the module mode first. Hardware recipes depend on the selected machine,
-      // so its operating point must be chosen before the knobs are randomized.
       const profileRecipe = RANDOM_PROFILE_RECIPES[profile]?.[module.id];
       const modeModule = profile === 'mutate'
         ? module
@@ -1338,13 +1392,10 @@ export default function App() {
           ?? genericRanges[parameter.id];
         if (!range) return parameter;
 
-        // Hardware recipes are intentionally tighter and more center-biased than the
-        // creative modes: variation around a known good setting, not a lottery ticket.
         let next = profile === 'mutate'
           ? parameter.value + (Math.random() * 2 - 1) * RANDOM_MUTATION_AMOUNT
           : randomMusicalValue(range, sweetSpot || profileRecipe ? 0.60 : 0.35);
 
-        // Extra guardrails for parameters where combinations can get unruly.
         if (modeModule.id === 'delay' && parameter.id === 'feedback') {
           next = Math.min(next, (modeModule.delayAlgorithm === 'constellation' || modeModule.delayAlgorithm === 'scatter') ? 0.56 : 0.68);
         }
@@ -1360,7 +1411,6 @@ export default function App() {
           if (parameter.id === 'mix') next = Math.min(next, 0.38);
         }
         if (parameter.id === 'mix') {
-          // Wet/dry is deliberately conservative so a randomized patch stays playable.
           next = Math.min(next, 0.52);
         }
 
@@ -1417,6 +1467,19 @@ export default function App() {
           for (const parameter of module.parameters)
             void nativeBridgeRef.current.commandLine(`param ${module.id} ${parameter.id} ${toDspParameterValue(module.id, parameter.id, parameter.value)}`);
         }
+
+        const orderedTargets = [
+          ...RANDOM_UI_EFFECT_ORDER.filter((effectId) => targets.has(effectId)),
+          ...activeRailC,
+        ];
+        for (const [index, effectId] of orderedTargets.entries()) {
+          offlineRandomTimersRef.current.push(
+            window.setTimeout(() => revealRandomUiModule(effectId), 48 + index * 96)
+          );
+        }
+        offlineRandomTimersRef.current.push(
+          window.setTimeout(() => completeRandomUiFlow(), 72 + orderedTargets.length * 96)
+        );
         return;
       }
       const engine = engineRef.current;
@@ -1452,8 +1515,6 @@ export default function App() {
         }
       }
     } else {
-      // Without live DSP there is no transfer scheduler to drive the UI. Preserve
-      // the same serial reveal locally so RANDOM never falls back to a visual burst.
       const orderedTargets = [
         ...RANDOM_UI_EFFECT_ORDER.filter((effectId) => targets.has(effectId)),
         ...activeRailC,
@@ -1546,7 +1607,7 @@ export default function App() {
       window.removeEventListener(RANDOM_UI_MODULE_EVENT, revealModule);
       window.removeEventListener(RANDOM_UI_COMPLETE_EVENT, finishFlow);
     };
-  }, [engineState]);
+  }, []);
 
   function changePerformanceMode(mode: PerformanceMode): void {
     setPerformanceMode(mode);
@@ -1619,8 +1680,6 @@ export default function App() {
         return;
       }
     } catch {
-      // WebView2 may reject the browser Fullscreen API. Fall through to the
-      // native-safe viewport mode so the hardware control always works.
     }
     setAppFullscreen(true);
     setMessage('CALCOTONE fullscreen workspace enabled.');
@@ -1662,13 +1721,7 @@ export default function App() {
         <span className="case-screw screw-four" aria-hidden="true" />
 
         <header className="topbar">
-          <button
-            type="button"
-            className={`brand brand-power ${isRunning ? 'running' : ''}`}
-            disabled={engineState === 'starting'}
-            onClick={() => void toggleAudio()}
-            aria-label={isRunning ? 'Power off CALCOTONE' : 'Power on CALCOTONE'}
-          >
+          <div className={`brand brand-power ${isRunning ? 'running' : ''}`}>
             <div className="brand-mark" aria-hidden="true">
               <span />
               <span />
@@ -1678,9 +1731,24 @@ export default function App() {
               <h1>{APP_NAME}</h1>
               <small>CT-86 · STEREO PROCESSOR</small>
             </div>
-          </button>
+          </div>
 
-          <div className="topbar-actions" />
+          <div className="topbar-actions">
+            <button
+              type="button"
+              className={`calcotone-power-rocker ${isRunning ? 'running' : ''}`}
+              disabled={engineState === 'starting'}
+              onClick={() => void toggleAudio()}
+              aria-label={isRunning ? 'Power off CALCOTONE' : 'Power on CALCOTONE'}
+              aria-pressed={isRunning}
+              title={isRunning ? 'Power off CALCOTONE' : 'Power on CALCOTONE'}
+            >
+              <span className="rocker-face" aria-hidden="true">
+                <span className="rocker-mark rocker-on">I</span>
+                <span className="rocker-mark rocker-off">O</span>
+              </span>
+            </button>
+          </div>
         </header>
 
         <section className="status-strip control-strip">
@@ -1769,8 +1837,7 @@ export default function App() {
             <span>STOMP OS <b>2× MIDPOINT</b></span>
             <span>MODELS <b>14</b></span>
             <span title={profiler ? `Requested ${profiler.requestedRenderSize}; context API ${profiler.renderSizeHintSupported ? 'available' : 'unavailable'}` : undefined}>
-              QUANTUM <b>{profiler?.renderQuantumFrames ? `${profiler.renderQuantumFrames}f` : '—'}</b>
-            </span>
+              QUANTUM <b>{profiler?.renderQuantumFrames ? `${profiler.renderQuantumFrames}f` : '—'}</b></span>
             <span>DEVICE MEMORY <b>ACTIVE</b></span>
             <span>GUARD <b>{profiler ? `${profiler.grain.effectiveVoiceLimit}/${profiler.grain.maxVoices}` : '0/0'}</b></span>
             <span>OVERRUN <b className={profiler && profiler.grain.overruns > 0 ? 'warn' : ''}>{profiler?.grain.overruns ?? 0}</b></span>
@@ -1797,13 +1864,12 @@ export default function App() {
                   <span>Input Mode</span>
                   <select
                     value={inputMode}
-                    disabled={audioBackend === 'native'}
                     onChange={(event: ReactChangeEvent<HTMLSelectElement>) =>
                       updateInputMode(event.target.value as InputMode)
                     }
                   >
-                    <option value="mono-to-stereo">{audioBackend === 'native' ? 'Dual Mono → Stereo' : 'Mono 1 → Stereo'}</option>
-                    <option value="stereo">True Stereo</option>
+                    <option value="mono-to-stereo">Input 1 → Stereo</option>
+                    <option value="stereo">{audioBackend === 'native' || nativeShell ? 'Dual Mono / Stereo Rack' : 'True Stereo'}</option>
                     <option value="left">Left → Stereo</option>
                     <option value="right">Right → Stereo</option>
                     <option value="sum-mono">L + R → Stereo</option>
@@ -2060,7 +2126,8 @@ export default function App() {
               className={`footer-safe-toggle ${adaptiveMode ? 'active' : ''}`}
               onClick={toggleAdaptiveMode}
               aria-pressed={adaptiveMode}
-              title={adaptiveMode ? 'Safe mode enabled — click to disable adaptive DSP protection' : 'Safe mode disabled — click to enable adaptive DSP protection'}
+              disabled={audioBackend === 'native'}
+              title={audioBackend === 'native' ? 'Native realtime I/O safety is always enabled' : adaptiveMode ? 'Safe mode enabled — click to disable adaptive DSP protection' : 'Safe mode disabled — click to enable adaptive DSP protection'}
             >
               <i aria-hidden="true" />
               SAFE
@@ -2079,9 +2146,6 @@ export default function App() {
         </footer>
       </main>
       </div>
-
-
-
     </div>
   );
 }
@@ -2099,7 +2163,6 @@ function setEffectParameterIfLoaded(
   engine.setEffectParameter(effectId, parameterId, value);
   return true;
 }
-
 
 function auditUiAgainstEngine(engine: AudioEngine, modules: ModuleState[]): void {
   const failures: string[] = [];
@@ -2135,9 +2198,6 @@ function syncModuleParameters(
   modules: ModuleState[]
 ): void {
   for (const module of modules) {
-    // UI state is authoritative at startup. Presets construct the graph, but a
-    // user may have changed module power before pressing Power. Restore that
-    // state explicitly so the illuminated hardware always matches the DSP.
     engine.setEffectBypassed(module.id, !module.enabled);
 
     if (module.id === 'saturation' && module.emberMode) setEffectParameterIfLoaded(engine, 'saturation', 'mode', EMBER_MODE_ORDER.indexOf(module.emberMode));
@@ -2204,8 +2264,6 @@ function toDspParameterValue(
   }
 
   if (moduleId === 'delay' && parameterId === 'time') {
-    // Halo Time is intentionally front-loaded toward musically obvious echoes.
-    // The first third now spans roughly 30–880 ms, while the top end reaches 4 seconds.
     return 0.03 + Math.pow(value, 1.4) * 3.97;
   }
 
@@ -2316,8 +2374,6 @@ function formatPeak(peak: number): string {
   if (peak <= 0) return '-∞ dBFS';
   return `${(20 * Math.log10(peak)).toFixed(1)} dBFS`;
 }
-
-
 
 function getDefaultParameterValue(moduleId: string, parameterId: string): number {
   return INITIAL_MODULES.find((module) => module.id === moduleId)?.parameters.find(

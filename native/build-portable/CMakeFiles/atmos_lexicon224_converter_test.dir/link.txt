@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/atmos_lexicon224_converter_test.dir/link.d CMakeFiles/atmos_lexicon224_converter_test.dir/tests/atmos_lexicon224_converter_test.cpp.o -o atmos_lexicon224_converter_test  libcalcotone_dsp.a

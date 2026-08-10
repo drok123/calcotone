@@ -1,3 +1,33 @@
+const MAGNETIC_TANH_MIN = -8;
+const MAGNETIC_TANH_MAX = 8;
+const MAGNETIC_TANH_LUT = new Float32Array(4096);
+const MAGNETIC_TANH_SCALE = (MAGNETIC_TANH_LUT.length - 1) / (MAGNETIC_TANH_MAX - MAGNETIC_TANH_MIN);
+for (let index = 0; index < MAGNETIC_TANH_LUT.length; index += 1) {
+  const x = MAGNETIC_TANH_MIN + index / MAGNETIC_TANH_SCALE;
+  MAGNETIC_TANH_LUT[index] = Math.tanh(x);
+}
+
+function magneticHermite(y0, y1, y2, y3, mu) {
+  const mu2 = mu * mu;
+  const a0 = -0.5 * y0 + 1.5 * y1 - 1.5 * y2 + 0.5 * y3;
+  const a1 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+  const a2 = -0.5 * y0 + 0.5 * y2;
+  return a0 * mu * mu2 + a1 * mu2 + a2 * mu + y1;
+}
+
+function magneticTanh(value) {
+  if (value <= MAGNETIC_TANH_MIN) return -1;
+  if (value >= MAGNETIC_TANH_MAX) return 1;
+  const position = (value - MAGNETIC_TANH_MIN) * MAGNETIC_TANH_SCALE;
+  const index = Math.floor(position);
+  const mu = position - index;
+  const last = MAGNETIC_TANH_LUT.length - 1;
+  const i0 = index > 0 ? index - 1 : 0;
+  const i2 = index < last ? index + 1 : last;
+  const i3 = index + 2 < last ? index + 2 : last;
+  return magneticHermite(MAGNETIC_TANH_LUT[i0], MAGNETIC_TANH_LUT[index], MAGNETIC_TANH_LUT[i2], MAGNETIC_TANH_LUT[i3], mu);
+}
+
 class CalcotoneMagneticCoreProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
@@ -77,13 +107,13 @@ class CalcotoneMagneticCoreProcessor extends AudioWorkletProcessor {
       const minorLoop = Math.min(1, Math.abs(field - flux) / Math.max(0.08, saturation));
       const dynamicCoercivity = baseCoercivity * (0.72 + minorLoop * 0.28) * (1 + saturationMemory * 0.08);
       const biasedField = field + remanence * dynamicCoercivity * direction + dcFlux * (0.012 + character * 0.02);
-      const targetFlux = Math.tanh(biasedField / Math.max(0.35, saturation)) * saturation;
+      const targetFlux = magneticTanh(biasedField / Math.max(0.35, saturation)) * saturation;
       flux += (targetFlux - flux) * fluxRate;
 
       const saturationStress = Math.max(0, Math.abs(flux) / Math.max(0.2, saturation) - 0.62);
       saturationMemory += (saturationStress - saturationMemory) * (saturationStress > saturationMemory ? 0.0025 : 0.00008 + dynamics * 0.00005);
 
-      const remanentTarget = Math.tanh((flux + dcFlux * 0.035) * 1.7) * (0.045 + character * 0.055);
+      const remanentTarget = magneticTanh((flux + dcFlux * 0.035) * 1.7) * (0.045 + character * 0.055);
       remanence += (remanentTarget - remanence) * remanenceRate;
 
       const derivative = field - previous * excitation;
@@ -91,7 +121,7 @@ class CalcotoneMagneticCoreProcessor extends AudioWorkletProcessor {
       const eddyLoss = eddy * eddyAmount;
       const hysteresisLoss = Math.sign(flux || 1) * Math.abs(flux - targetFlux) * (0.006 + character * 0.008);
 
-      const core = Math.tanh((flux - eddyLoss - hysteresisLoss) * (1.02 + heat * 0.22));
+      const core = magneticTanh((flux - eddyLoss - hysteresisLoss) * (1.02 + heat * 0.22));
       const residual = core - interpolated;
       const wet = 0.10 + drive * 0.16 + heat * 0.05;
       const thermalTrim = 1 - Math.min(0.025, this.thermalState * (0.006 + heat * 0.006));

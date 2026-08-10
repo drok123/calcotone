@@ -47,13 +47,20 @@ const grain = read('src/audio/effects/Bitcrusher.ts');
 const grainProcessor = read('public/grain-processor.js');
 const artifact = read('src/audio/effects/Media.ts');
 const emberDigitalCapture = read('public/ember-digital-capture-processor.js');
+const app = read('src/App.tsx');
+const nativeBridge = read('src/audio/NativeAudioBridge.ts');
+const railC = read('src/components/effects/RailCModules.tsx');
+const loopStore = read('src/components/signal/loopStore.ts');
+const railCArtwork = read('src/components/ascii/RailCHardwareDisplay.tsx');
+const loopArtwork = read('src/components/ascii/LoopTrackMatrixDisplay.tsx');
 
 const EMBER = ['velvet','tube','console','transformer','furnace','exciter','broken','goldlion','mullard','telefunken','bugleboy','rcablack','sp1200','mpc60','mirage','s950','emulator2','fairlightiix'];
 const DRIFT = ['chorus','ensemble','dimension','vibrato','rotary','doppler','liquid','orbit','ce1','dimensiond','mxrflanger','electricmistress','adaflanger','bf2','biphase','smallstone','univibe','leslie','phase90','instantphaser','schulte','pn2'];
 const HALO = ['clean','tape','bbd','pingpong','diffuse','scatter','constellation','re201','EP-3 Echoplex','Binson Echorec','Deluxe Memory Man','AMS DMX 15-80 S'];
-const ATMOS = ['room','plate','hall','cinema','cloud','freeze','celestial','aurora','nebula','abyss','emt140','lexicon224'];
+const ATMOS = ['room','plate','hall','cinema','cloud','freeze','celestial','aurora','nebula','abyss','emt140','lexicon224','rmx16','quantec','springtank','bloom','veil'];
 const GRAIN = ['mosaic','scatter','smear','prism','slice','freeze','clouds','beads','morphagene','arbhar','particle2','microcosm'];
 const ARTIFACT = ['cassette','reel','vinyl','vhs','radio','wax','broken','archive','tascam424','Neve 1073','SSL 4000E','API 1608','Ampex ATR-102','Neve BCM10'];
+const ARTIFACT_DYNAMICS = ['compressor-fet','compressor-opto','compressor-varimu','compressor-vca'];
 
 requireOrder(ember, 'EMBER_MODE_ORDER', EMBER, 'Ember dropdown');
 requireOrder(drift, 'DRIFT_MODE_ORDER', DRIFT, 'Drift dropdown');
@@ -62,7 +69,6 @@ requireOrder(atmos, 'REVERB_ALGORITHM_ORDER', ATMOS, 'Atmos dropdown');
 requireOrder(grain, 'GRAIN_MODE_ORDER', GRAIN, 'Grain dropdown');
 requireOrder(artifact, 'MEDIA_MODE_ORDER', ARTIFACT, 'Artifact dropdown');
 
-// Ember: named tubes and transformer must use dedicated stages; generic modes share only the intentional shaper path.
 for (const tube of ['goldlion','mullard','telefunken','bugleboy','rcablack']) requireText(ember, `${tube}: '${tube}'`, `Ember ${tube} dedicated tube mapping`);
 requireText(ember, "const magnetic = this.mode === 'transformer'", 'Ember transformer ownership');
 requireText(ember, "'calcotone-ember-digital-capture-processor'", 'Ember digital-capture worklet branch');
@@ -74,7 +80,6 @@ requireText(ember, 'this.setGenericBranchAttached(!(namedTube || magnetic || dig
 forbidText(ember, 'CONSOLE_PATHS', 'Ember console path ownership');
 requireText(ember, 'const MAX_CURVE_CACHE = 192', 'Ember bounded curve cache');
 
-// Drift: standard modulation and dedicated classic hardware must remain mutually exclusive.
 for (const mode of ['mxrflanger','electricmistress','adaflanger','bf2']) requireText(drift, mode, `Drift ${mode} implementation`);
 for (const mode of ['biphase','smallstone','univibe','leslie','phase90','instantphaser','schulte','pn2']) requireText(drift, `mode === '${mode}'`, `Drift ${mode} classic mapping`);
 requireText(drift, 'this.setStandardBranchAttached(false)', 'Drift classic standard-network suspension');
@@ -86,18 +91,14 @@ forbidText(driftClassic, 'return [vibeL * tremL, vibeR * tremR]', 'Uni-Vibe per-
 for (const engine of ['processPhase90','processInstantPhaser','processSchulte','processPn2']) requireText(driftClassic, engine, `Drift ${engine} engine`);
 requireText(driftClassic, 'Math.cos(angle) * Math.SQRT2', 'PN-2 equal-power pan law');
 
-// Halo: every non-RE-201 entry owns a config; RE-201 stays a dedicated network.
 for (const mode of HALO.filter((mode) => mode !== 're201')) requireObjectKey(halo, mode, `Halo ${mode}`);
 requireText(halo, "algorithm === 're201'", 'Halo RE-201 dedicated path');
 requireText(halo, 'class DualGrainPitchShifter', 'Halo pitch mechanism');
 
-// Atmos: every dropdown entry owns a reverb configuration and network changes are bounded/live-fed natively.
 for (const mode of ATMOS) requireObjectKey(atmos, mode, `Atmos ${mode}`);
 requireText(atmos, 'const MAX_RETIRED_REVERB_NETWORKS = 1', 'Atmos retiring network cap');
 forbidText(atmos, 'this.input.disconnect(previous.network.input)', 'Atmos premature outgoing disconnect');
 
-// Grain: live-memory algorithms and granular hardware studies share bounded
-// resources. Converter quantization and classic sampler playback belong to Ember.
 requireText(grainProcessor, 'this.voices = Array.from({ length: 8 }', 'Grain bounded voice pool');
 requireText(grainProcessor, 'spawnGranularVoice(', 'Grain granular memory engine');
 requireText(grainProcessor, 'processSlice(', 'Grain deterministic slice engine');
@@ -116,7 +117,6 @@ requireText(grain, 'this.processor.connect(this.wetGain)', 'Grain single owned D
 forbidText(grainProcessor, 'processHardware(', 'Grain must not contain sampler hardware');
 forbidText(grainProcessor, 'quantizeNonlinear12', 'Grain must not contain converter quantization');
 
-// Artifact: media, tape, transmission, and console paths retain mechanism-specific paths.
 requireText(artifact, "this.mode === 'Ampex ATR-102'", 'Artifact ATR-102 implementation');
 requireText(artifact, "this.mode === 'tascam424'", 'Artifact TASCAM 424 path');
 for (const mode of ['Neve 1073','SSL 4000E','API 1608','Neve BCM10']) requireText(artifact, `this.mode === '${mode}'`, `Artifact ${mode} console path`);
@@ -128,6 +128,39 @@ requireText(artifact, 'getSummingCurve(point.busCompression, point.busAsymmetry)
 forbidText(artifact, 'AudioWorkletNode', 'Artifact digital-capture ownership');
 requireText(artifact, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve caches');
 
+// RANDOM must keep controlled dropdown state synchronized with native DSP and visibly move when alternatives exist.
+requireText(app, 'chooseMusicalDifferent(MUSICAL_EMBER_MODES, module.emberMode)', 'Core random mode changes');
+requireText(app, "if (backendRef.current === 'native') {", 'Native RANDOM branch');
+requireText(app, 'for (const module of nextModules)', 'Native RANDOM module traversal');
+requireText(app, 'for (const parameter of module.parameters)', 'Native RANDOM full parameter sync');
+requireText(app, 'void nativeBridgeRef.current.commandLine(`param ${module.id} ${parameter.id} ${toDspParameterValue(module.id, parameter.id, parameter.value)}`)', 'Native RANDOM parameter commit');
+requireText(app, 'window.setTimeout(() => revealRandomUiModule(effectId), 48 + index * 96)', 'Native RANDOM serial reveal');
+requireText(railC, 'chooseDifferent(pool, mode)', 'Stomp random mode changes');
+requireText(railC, 'chooseDifferent(modelPool, model)', 'Stack random model changes');
+requireText(loopStore, 'export const LOOP_TRACK_COUNT = 8', 'Loop eight-buffer backend contract');
+requireText(loopStore, 'export const LOOP_VISIBLE_TRACK_COUNT = 4', 'Loop four-track faceplate contract');
+forbidText(railC, "useRailCRandomController('pressure'", 'Loop RANDOM isolation');
+for (const mode of ARTIFACT_DYNAMICS) requireText(artifact, `'${mode}'`, `Artifact ${mode} dynamics dropdown`);
+
+requireText(nativeBridge, "const PROFILE_SELECTOR_PARAMETERS = new Set(['mode', 'algorithm'])", 'Native selector classification');
+requireText(nativeBridge, "const STACK_PROFILE_SELECTORS = new Set(['model', 'cab'])", 'Native Stack selector classification');
+requireText(nativeBridge, 'private readonly parameterSnapshot', 'Native module profile snapshot');
+requireText(nativeBridge, 'private readonly stackSnapshot', 'Native Stack profile snapshot');
+requireText(nativeBridge, 'this.rememberDesiredState(line)', 'Native desired-state capture');
+requireText(nativeBridge, 'this.profileReplayLines(line)', 'Native selector profile replay');
+requireText(nativeBridge, '.then(() => this.sendCommand(line))', 'Native FIFO selector commit');
+
+for (const kind of ['stomp', 'stack']) requireText(railCArtwork, `${kind}: {`, `Rail C ${kind} artwork profile`);
+for (const kind of ['stomp', 'stack']) requireText(railC, `kind=\"${kind}\"`, `Rail C ${kind} artwork mount`);
+requireText(railCArtwork, 'subscribeViewportAnimation(render)', 'Rail C artwork shared scheduler');
+requireText(railCArtwork, 'canvasPixelRatio(width, height, 5_400_000)', 'Rail C artwork high-DPI backing');
+requireText(railC, '<LoopTrackMatrixDisplay', 'Loop transient utility mount');
+requireText(loopArtwork, 'function drawTransientEditor(', 'Loop transient utility renderer');
+requireText(loopArtwork, 'const waveform = runtime?.waveform ?? state.waveform', 'Loop selected-track transient source');
+requireText(loopArtwork, 'subscribeViewportAnimation(render)', 'Loop utility shared scheduler');
+requireText(loopArtwork, 'canvasPixelRatio(width, height, 2_400_000)', 'Loop compact utility high-DPI backing');
+forbidText(loopArtwork, 'LOOP_VISIBLE_TRACK_COUNT', 'Loop utility canvas must not regress to four-track hero artwork');
+
 if (failures.length) {
   console.error('\nCALCOTONE dropdown audit failed:\n');
   for (const failure of failures) console.error(` - ${failure}`);
@@ -135,4 +168,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`CALCOTONE dropdown audit passed (${EMBER.length + DRIFT.length + HALO.length + ATMOS.length + GRAIN.length + ARTIFACT.length} modes checked).`);
+console.log(`CALCOTONE dropdown audit passed (${EMBER.length + DRIFT.length + HALO.length + ATMOS.length + GRAIN.length + ARTIFACT.length + ARTIFACT_DYNAMICS.length} modes checked with immediate native profile commits).`);

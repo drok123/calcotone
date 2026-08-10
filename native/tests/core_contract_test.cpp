@@ -41,22 +41,23 @@ int main() {
   if (!ember || ember->name != "Ember" || ember->model_count != 18 || ember->control_count != 6) return EXIT_FAILURE;
   if (!drift || drift->name != "Drift" || drift->model_count != 22 || drift->control_count != 6) return EXIT_FAILURE;
   if (!halo || halo->name != "Halo" || halo->model_count != 12 || halo->default_model_index != 1) return EXIT_FAILURE;
-  if (!atmos || atmos->name != "Atmos" || atmos->model_count != 12 || atmos->default_model_index != 2) return EXIT_FAILURE;
+  if (!atmos || atmos->name != "Atmos" || atmos->model_count != 17 || atmos->default_model_index != 2) return EXIT_FAILURE;
   if (!grain || grain->name != "Grain" || grain->model_count != 12 || grain->default_model_index != 2) return EXIT_FAILURE;
-  if (!artifact || artifact->name != "Artifact" || artifact->model_count != 14 || artifact->control_count != 5) return EXIT_FAILURE;
+  if (!artifact || artifact->name != "Artifact" || artifact->model_count != 18 || artifact->control_count != 5) return EXIT_FAILURE;
   if (!stomp || stomp->name != "Stomp" || stomp->rail != 'C' || stomp->model_count != 14 || stomp->default_model_index != 0) return EXIT_FAILURE;
   if (!stack || stack->name != "Stack" || stack->rail != 'C' || stack->model_count != 6 || stack->default_model_index != 5) return EXIT_FAILURE;
-  if (!pressure || pressure->name != "Pressure" || pressure->rail != 'C' || pressure->model_count != 4 || pressure->default_model_index != 0) return EXIT_FAILURE;
+  if (!pressure || pressure->name != "Loop" || pressure->rail != 'C' || pressure->model_count != 1 || pressure->default_model_index != 0) return EXIT_FAILURE;
 
   if (kSaturationModels.front() != "velvet" || kSaturationModels.back() != "fairlightiix") return EXIT_FAILURE;
   if (kChorusModels[8] != "ce1" || kChorusModels.back() != "pn2") return EXIT_FAILURE;
   if (kDelayModels[1] != "tape" || kDelayModels.back() != "AMS DMX 15-80 S") return EXIT_FAILURE;
-  if (kReverbModels[2] != "hall" || kReverbModels.back() != "lexicon224") return EXIT_FAILURE;
+  if (kReverbModels[2] != "hall" || kReverbModels[12] != "rmx16" || kReverbModels[13] != "quantec"
+      || kReverbModels[14] != "springtank" || kReverbModels[15] != "bloom" || kReverbModels.back() != "veil") return EXIT_FAILURE;
   if (kBitcrusherModels[2] != "smear" || kBitcrusherModels.back() != "microcosm") return EXIT_FAILURE;
-  if (kMediaModels.front() != "cassette" || kMediaModels.back() != "Neve BCM10") return EXIT_FAILURE;
+  if (kMediaModels.front() != "cassette" || kMediaModels.back() != "compressor-vca") return EXIT_FAILURE;
   if (kStompModels.front() != "808 Overdrive" || kStompModels.back() != "Dyna Comp") return EXIT_FAILURE;
   if (kChaosModels.front() != "blackface" || kChaosModels.back() != "calcotone") return EXIT_FAILURE;
-  if (kPressureModels.front() != "fet" || kPressureModels.back() != "vca") return EXIT_FAILURE;
+  if (kPressureModels.front() != "loop" || kPressureModels.back() != "loop") return EXIT_FAILURE;
 
   if (kSaturationControls[0].id != "drive" || !near(kSaturationControls[0].default_ui, .14F)) return EXIT_FAILURE;
   if (kMediaControls.size() != 5 || kMediaControls.back().id != "mix" || !near(kMediaControls.back().default_ui, .26F)) return EXIT_FAILURE;
@@ -77,9 +78,9 @@ int main() {
     if (kChaosControls[index].id != stack_control_ids[index]
         || !near(kChaosControls[index].default_ui, stack_defaults[index])) return EXIT_FAILURE;
 
-  constexpr std::array<std::string_view, 5> pressure_control_ids{
-      "style", "drive", "time", "character", "mix"};
-  constexpr std::array<float, 5> pressure_defaults{2.F,.42F,.46F,.38F,.72F};
+  constexpr std::array<std::string_view, 4> pressure_control_ids{
+      "track", "masterLevel", "overdub", "fade"};
+  constexpr std::array<float, 4> pressure_defaults{0.F,.78F,0.F,.18F};
   if (kPressureControls.size() != pressure_control_ids.size()) return EXIT_FAILURE;
   for (std::size_t index = 0; index < pressure_control_ids.size(); ++index)
     if (kPressureControls[index].id != pressure_control_ids[index]

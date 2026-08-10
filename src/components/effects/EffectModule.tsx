@@ -1,6 +1,6 @@
 import type { CSSProperties, ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { REVERB_ALGORITHM_ORDER, type ReverbAlgorithm } from '../../audio/effects/Reverb';
-import { ARTIFACT_CONSOLE_MODES, MEDIA_MODE_GROUPS, type MediaMode } from '../../audio/effects/Media';
+import { ARTIFACT_CONSOLE_MODES, ARTIFACT_DYNAMICS_MODES, MEDIA_MODE_GROUPS, type MediaMode } from '../../audio/effects/Media';
 import { EMBER_DIGITAL_CAPTURE_MODES, EMBER_MODE_GROUPS, type EmberMode } from '../../audio/effects/Saturation';
 import { DRIFT_MODE_ORDER, type DriftMode } from '../../audio/effects/Chorus';
 import { GRAIN_MODE_GROUPS, type GrainMode } from '../../audio/effects/Bitcrusher';
@@ -400,6 +400,10 @@ function formatReverbMode(mode: ReverbAlgorithm): string {
 
 function formatMediaMode(mode: MediaMode): string {
   if (mode === 'tascam424') return 'TASCAM 424 MKI';
+  if (mode === 'compressor-fet') return 'FET 76';
+  if (mode === 'compressor-opto') return 'OPTO 2A';
+  if (mode === 'compressor-varimu') return 'VARI-MU';
+  if (mode === 'compressor-vca') return 'VCA BUS';
   return mode.charAt(0).toUpperCase() + mode.slice(1);
 }
 
@@ -522,6 +526,17 @@ function parameterPresentation(module: ModuleState, parameterId: string, label: 
       };
       return { label: labelByMode[mode], display };
     }
+  }
+
+  if (module.id === 'media' && module.mediaMode && ARTIFACT_DYNAMICS_MODES.some((mode) => mode === module.mediaMode)) {
+    if (parameterId === 'wear') return { label: 'Drive', display };
+    if (parameterId === 'wow') return { label: 'Time', display };
+    if (parameterId === 'noise') {
+      const styles = ['SOFT', 'PUNCH', 'GLUE', 'CRUSH'];
+      return { label: 'Style', display: styles[Math.min(3, Math.floor(value * 4))] ?? 'GLUE' };
+    }
+    if (parameterId === 'tone') return { label: 'Character', display };
+    if (parameterId === 'mix') return { label: 'Mix', display };
   }
 
   if (module.id === 'media' && module.mediaMode && ARTIFACT_CONSOLE_MODES.some((mode) => mode === module.mediaMode)) {

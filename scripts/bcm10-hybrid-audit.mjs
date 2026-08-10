@@ -45,11 +45,23 @@ for (const [index, capture] of captures.entries()) {
   }
 }
 
-if (!appSource.includes("'media:Neve BCM10'")) {
+const bcm10RecipeStart = appSource.indexOf("'media:Neve BCM10': [");
+const bcm10RecipeEnd = bcm10RecipeStart < 0 ? -1 : appSource.indexOf('\n  ],', bcm10RecipeStart);
+if (bcm10RecipeStart < 0 || bcm10RecipeEnd < 0) {
   failures.push('BCM10 is missing mode-specific musical randomization recipes');
+} else {
+  const recipe = appSource.slice(bcm10RecipeStart, bcm10RecipeEnd);
+  for (const safeRange of [
+    'wear:[0.14,0.28]', 'tone:[0.24,0.40]', 'mix:[0.18,0.30]',
+    'wear:[0.28,0.46]', 'tone:[0.40,0.58]', 'mix:[0.20,0.34]',
+  ]) {
+    if (!recipe.includes(safeRange)) failures.push(`BCM10 SMART random recipe lost safe range ${safeRange}`);
+  }
 }
+// MUTATE preserves the currently selected machine, so this guard applies when
+// the user is already on BCM10. SMART mode is protected by the dedicated ranges above.
 if (!appSource.includes("modeModule.mediaMode === 'Neve BCM10'")) {
-  failures.push('BCM10 random mutation is missing mode-specific drive/mix guardrails');
+  failures.push('BCM10 MUTATE path is missing mode-specific drive/mix guardrails');
 }
 if (!readFileSync(resolve(process.cwd(), 'src/audio/models/Bcm10Calibration.ts'), 'utf8').includes('const a0 = -0.5 * y0')) {
   failures.push('BCM10 capture lookup is missing cubic Hermite interpolation');

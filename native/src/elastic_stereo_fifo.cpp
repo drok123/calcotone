@@ -20,8 +20,15 @@ ElasticStereoFifo::ElasticStereoFifo(std::uint64_t target_frames) noexcept
       filtered_depth_(static_cast<double>(target_frames_)) {}
 
 bool ElasticStereoFifo::push(float left, float right, bool discontinuity) noexcept {
-  const auto write = write_.load(std::memory_order_relaxed);
-  const auto read = read_.load(std::memory_order_acquire);
+  const auto write = producer_.write.load(std::memory_order_relaxed);
+  auto read = producer_.cached_read;
+  // The producer only needs a fresh consumer cursor periodically. Near the full
+  // boundary it always refreshes before deciding to drop a frame, so caching can
+  // never cause an overwrite of unread audio.
+  if ((producer_.refresh++ & 63U) == 0U || write - read >= capacity_frames - 256U) {
+    read = consumer_.read.load(std::memory_order_acquire);
+    producer_.cached_read = read;
+  }
   if (write - read >= capacity_frames) {
     overruns_.fetch_add(1, std::memory_order_relaxed);
     return false;
@@ -30,7 +37,7 @@ bool ElasticStereoFifo::push(float left, float right, bool discontinuity) noexce
   data_[slot * 2U] = left;
   data_[slot * 2U + 1U] = right;
   markers_[slot] = discontinuity ? 1U : 0U;
-  write_.store(write + 1U, std::memory_order_release);
+  producer_.write.store(write + 1U, std::memory_order_release);
   const auto depth = write + 1U - read;
   auto peak = high_water_.load(std::memory_order_relaxed);
   while (depth > peak && !high_water_.compare_exchange_weak(
@@ -40,9 +47,18 @@ bool ElasticStereoFifo::push(float left, float right, bool discontinuity) noexce
 
 bool ElasticStereoFifo::pull(float& left, float& right, bool* discontinuity) noexcept {
   if (discontinuity) *discontinuity = false;
-  const auto read = read_.load(std::memory_order_relaxed);
-  const auto write = write_.load(std::memory_order_acquire);
-  const auto depth = write - read;
+  const auto read = consumer_.read.load(std::memory_order_relaxed);
+  auto write = consumer_.cached_write;
+  auto depth = write - read;
+  // Refresh the producer cursor once per short burst, and immediately whenever
+  // the cached view approaches starvation. This removes almost all cross-core
+  // cursor traffic during healthy steady-state playback without hiding new data
+  // when the FIFO is near empty.
+  if ((consumer_.refresh++ & 31U) == 0U || depth < 8U) {
+    write = producer_.write.load(std::memory_order_acquire);
+    consumer_.cached_write = write;
+    depth = write - read;
+  }
   // Retain two future frames for Hermite interpolation. Startup priming makes this the
   // normal boundary condition instead of adding another full device period.
   if (depth < 3U) return false;
@@ -57,9 +73,14 @@ bool ElasticStereoFifo::pull(float& left, float& right, bool* discontinuity) noe
   // About a 21 ms coefficient ramp at 48 kHz: quick enough to follow device
   // drift, slow enough that the resampling ratio itself cannot zipper.
   ratio_ += (desired - ratio_) * 0.001;
-  published_ratio_.store(static_cast<float>(ratio_), std::memory_order_relaxed);
-  if (std::abs(ratio_ - 1.0) > 1e-6)
-    resampled_frames_.fetch_add(1, std::memory_order_relaxed);
+  if (std::abs(ratio_ - 1.0) > 1e-6) ++resampled_frames_local_;
+  // Health telemetry is read at human/UI cadence. Publishing it every 256 audio
+  // frames keeps it effectively realtime while removing an atomic store/RMW from
+  // every rendered sample in the MMCSS callback.
+  if ((telemetry_refresh_++ & 255U) == 0U) {
+    published_ratio_.store(static_cast<float>(ratio_), std::memory_order_relaxed);
+    resampled_frames_.store(resampled_frames_local_, std::memory_order_relaxed);
+  }
 
   const auto current = static_cast<std::size_t>(read) & mask_;
   const auto next = static_cast<std::size_t>(read + 1U) & mask_;
@@ -112,7 +133,7 @@ bool ElasticStereoFifo::pull(float& left, float& right, bool* discontinuity) noe
     previous_right_ = data_[previous * 2U + 1U];
     history_valid_ = true;
   }
-  read_.store(read + advance, std::memory_order_release);
+  consumer_.read.store(read + advance, std::memory_order_release);
   return true;
 }
 
@@ -122,22 +143,26 @@ void ElasticStereoFifo::set_target_frames(std::uint64_t target_frames) noexcept 
 }
 
 void ElasticStereoFifo::trim_to_target() noexcept {
-  const auto write = write_.load(std::memory_order_acquire);
-  const auto read = read_.load(std::memory_order_relaxed);
+  const auto write = producer_.write.load(std::memory_order_acquire);
+  const auto read = consumer_.read.load(std::memory_order_relaxed);
   if (write - read > target_frames_)
-    read_.store(write - target_frames_, std::memory_order_release);
+    consumer_.read.store(write - target_frames_, std::memory_order_release);
+  consumer_.cached_write = write;
+  consumer_.refresh = 0U;
   phase_ = 0.0;
   ratio_ = 1.0;
   filtered_depth_ = static_cast<double>(target_frames_);
   history_valid_ = false;
   pending_discontinuity_ = false;
   published_ratio_.store(1.F, std::memory_order_relaxed);
+  resampled_frames_.store(resampled_frames_local_, std::memory_order_relaxed);
+  telemetry_refresh_ = 0U;
   high_water_.store(target_frames_, std::memory_order_relaxed);
 }
 
 std::uint64_t ElasticStereoFifo::available() const noexcept {
-  const auto write = write_.load(std::memory_order_acquire);
-  const auto read = read_.load(std::memory_order_acquire);
+  const auto write = producer_.write.load(std::memory_order_acquire);
+  const auto read = consumer_.read.load(std::memory_order_acquire);
   return write - read;
 }
 

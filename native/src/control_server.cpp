@@ -4,6 +4,7 @@
 #include <ws2tcpip.h>
 
 #include "calcotone/control_server.hpp"
+#include "calcotone/native_visual_spectrum.hpp"
 
 #include <algorithm>
 #include <array>
@@ -230,6 +231,8 @@ void ControlServer::run() noexcept {
       send_response(client, 200, "{}", origin);
     } else if (request.starts_with("GET /health ")) {
       send_response(client, 200, handler_("health"), origin);
+    } else if (request.starts_with("GET /spectrum ")) {
+      send_response(client, 200, native_visual_spectrum().json(), origin);
     } else if (request.starts_with("POST /command ")) {
       const auto separator = request.find("\r\n\r\n");
       const auto command = separator == std::string_view::npos ? std::string_view{} : trim(request.substr(separator + 4));

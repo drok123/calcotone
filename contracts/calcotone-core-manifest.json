@@ -194,7 +194,12 @@
         "nebula",
         "abyss",
         "emt140",
-        "lexicon224"
+        "lexicon224",
+        "rmx16",
+        "quantec",
+        "springtank",
+        "bloom",
+        "veil"
       ],
       "controls": [
         {
@@ -290,7 +295,11 @@
         "SSL 4000E",
         "API 1608",
         "Ampex ATR-102",
-        "Neve BCM10"
+        "Neve BCM10",
+        "compressor-fet",
+        "compressor-opto",
+        "compressor-varimu",
+        "compressor-vca"
       ],
       "controls": [
         {
@@ -360,7 +369,7 @@
         },
         {
           "id": "mix",
-          "defaultUi": 1.0
+          "defaultUi": 1
         }
       ]
     },
@@ -381,7 +390,7 @@
       "controls": [
         {
           "id": "cabinet",
-          "defaultUi": 2.0
+          "defaultUi": 2
         },
         {
           "id": "drive",
@@ -403,36 +412,29 @@
     },
     {
       "id": "pressure",
-      "name": "Pressure",
+      "name": "Loop",
       "rail": "C",
-      "defaultModel": "fet",
-      "modelOrderSymbol": "SIGNAL_LAB_MODES",
+      "defaultModel": "loop",
+      "modelOrderSymbol": "LOOP_TRACK_MODES",
       "models": [
-        "fet",
-        "opto",
-        "varimu",
-        "vca"
+        "loop"
       ],
       "controls": [
         {
-          "id": "style",
-          "defaultUi": 2.0
+          "id": "track",
+          "defaultUi": 0
         },
         {
-          "id": "drive",
-          "defaultUi": 0.42
+          "id": "masterLevel",
+          "defaultUi": 0.78
         },
         {
-          "id": "time",
-          "defaultUi": 0.46
+          "id": "overdub",
+          "defaultUi": 0
         },
         {
-          "id": "character",
-          "defaultUi": 0.38
-        },
-        {
-          "id": "mix",
-          "defaultUi": 0.72
+          "id": "fade",
+          "defaultUi": 0.18
         }
       ]
     }

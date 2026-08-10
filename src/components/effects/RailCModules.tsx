@@ -11,13 +11,8 @@ import {
 import type { VisualAudioState } from '../../visual/VisualEngine';
 import type { ModuleState } from '../../ui/types';
 import { Knob } from '../controls/Knob';
-import {
-  SIGNAL_LAB_LABELS,
-  SIGNAL_LAB_MODES,
-  SIGNAL_LAB_STYLES,
-  type SignalLabMode,
-  type SignalLabStyle,
-} from '../../audio/SignalLab';
+import { RailCHardwareDisplay } from '../ascii/RailCHardwareDisplay';
+import { LoopTrackMatrixDisplay } from '../ascii/LoopTrackMatrixDisplay';
 import {
   STACK_AMP_MODELS,
   STACK_CABINETS,
@@ -31,10 +26,13 @@ import {
   type RandomizationProfile,
 } from '../../features/random/randomProfiles';
 import {
-  randomizePressure,
-  setPressureState,
-  usePressureState,
-} from '../signal/pressureStore';
+  LOOP_VISIBLE_TRACK_COUNT,
+  clearLoopTrack,
+  pressLoopTrack,
+  sendLoopCommand,
+  setLoopState,
+  useLoopState,
+} from '../signal/loopStore';
 import {
   registerRailCRandomController,
   type RailCRandomModuleId,
@@ -86,6 +84,12 @@ function centeredRandom(minimum: number, maximum: number): number {
   return minimum + (maximum - minimum) * centerBiased;
 }
 
+function chooseDifferent<T>(values: readonly T[], current: T): T {
+  const alternatives = values.filter((value) => value !== current);
+  const pool = alternatives.length ? alternatives : values;
+  return pool[Math.floor(Math.random() * pool.length)]!;
+}
+
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0.5));
 }
@@ -132,13 +136,14 @@ function RailModuleFrame({
       <header className="module-header">
         <div
           className="module-title module-drag-handle"
-          draggable={!faceplateEditor.editing}
+          draggable={!faceplateEditor.editing && id !== 'pressure'}
           role="button"
-          tabIndex={faceplateEditor.editing ? -1 : 0}
+          tabIndex={faceplateEditor.editing || id === 'pressure' ? -1 : 0}
           aria-label={`${name}, signal slot ${slotLabel}. Drag to reorder or exchange rack rails; use left and right arrow keys within this rail.`}
-          onDragStart={onRoutingDragStart}
+          onDragStart={id !== 'pressure' ? onRoutingDragStart : undefined}
           onDragEnd={onRoutingDragEnd}
           onKeyDown={(event: ReactKeyboardEvent<HTMLDivElement>) => {
+            if (id === 'pressure') return;
             if (event.key === 'ArrowLeft') {
               event.preventDefault();
               onRoutingNudge(-1);
@@ -147,13 +152,13 @@ function RailModuleFrame({
               onRoutingNudge(1);
             }
           }}
-          title="Drag to any rack slot · or focus and use ← / → within this rail"
+          title={id === 'pressure' ? 'LOOP is a standalone post-rack recorder' : 'Drag to any rack slot · or focus and use ← / → within this rail'}
         >
           <span className="module-number" aria-hidden="true">{slotLabel}</span>
           <span className="module-jewel" aria-hidden="true" />
           <h3>{name}</h3>
           {titleAccessory}
-          <span className="module-route-cue" aria-hidden="true">↔</span>
+          <span className="module-route-cue" aria-hidden="true">{id === 'pressure' ? '∞' : '↔'}</span>
         </div>
         <div className="module-header-control">{headerControl}</div>
         <button
@@ -316,7 +321,7 @@ function RailCFaceplateSurface({
         })}
       </div>
       {buttons.length > 0 && (
-        <div className="pressure-style-strip rail-c-button-surface" role="group" aria-label="Pressure operating style">
+        <div className="pressure-style-strip rail-c-button-surface" role="group" aria-label="Rail C transport controls">
           {buttons.map((button, index) => {
             const point = layout.buttons[index];
             return (
@@ -325,7 +330,7 @@ function RailCFaceplateSurface({
                 className="faceplate-pressure-slot"
                 style={{ '--faceplate-x': `${point.x * 100}%`, '--faceplate-y': `${point.y}px` } as CSSProperties}
                 onPointerDownCapture={editor.editing ? (event) => beginControlDrag('button', index, event) : undefined}
-                title={editor.editing ? 'Move Pressure style button independently' : undefined}
+                title={editor.editing ? 'Move Rail C button independently' : undefined}
               >
                 {button}
               </div>
@@ -336,6 +341,8 @@ function RailCFaceplateSurface({
     </div>
   );
 }
+
+export const LOOP_TRACK_MODES = ['loop'] as const;
 
 export const STOMP_MODE_LABELS = [
   '808 Overdrive', 'RAT Distortion', 'Big Muff', 'Fuzz Face', 'DS-1 Distortion',
@@ -364,13 +371,14 @@ const STOMP_RACK_STATE = { enabled: false, mode: 0, inputSource: 'input-2' as St
 
 type StompModuleProps = RailInteractionProps & {
   engineRunning: boolean;
+  visualState: VisualAudioState;
   onEnabledChange: (enabled: boolean) => void;
   onModeChange: (mode: number) => void;
   onInputSourceChange: (source: StackInputSource) => void;
   onParametersChange: (values: readonly number[]) => void;
 };
 
-function StompModule({ engineRunning, onEnabledChange, onModeChange, onInputSourceChange, onParametersChange, ...props }: StompModuleProps) {
+function StompModule({ engineRunning, visualState, onEnabledChange, onModeChange, onInputSourceChange, onParametersChange, ...props }: StompModuleProps) {
   const [enabled, setEnabled] = useState(STOMP_RACK_STATE.enabled);
   const [mode, setMode] = useState(STOMP_RACK_STATE.mode);
   const [presetId, setPresetId] = useState(STOMP_RACK_STATE.presetId);
@@ -394,7 +402,7 @@ function StompModule({ engineRunning, onEnabledChange, onModeChange, onInputSour
   }
   function randomizeStomp(profile: RandomizationProfile): string | null {
     const pool = profile === 'bass' ? [0,2,3,6,10,13] : profile === 'pad' || profile === 'retro-ambient' ? [5,6,9,11,12,13] : profile === 'lead' ? [0,1,4,5,6,9,12] : [0,1,2,3,4,5,6,7,8,9,10,11,12,13];
-    const nextMode = profile === 'mutate' ? mode : pool[Math.floor(Math.random()*pool.length)]!;
+    const nextMode = profile === 'mutate' ? mode : chooseDifferent(pool, mode);
     const amount = profile === 'mutate' ? RANDOM_MUTATION_AMOUNT : 1;
     const next = values.map((value, index) => {
       const ranges: readonly MusicalRange[] = [[.16,.76],[.24,.78],[.48,.78],[.18,.72],[.28,.74],[.42,1]];
@@ -439,7 +447,17 @@ function StompModule({ engineRunning, onEnabledChange, onModeChange, onInputSour
       <RailCFaceplateSurface
         moduleId="stomp"
         knobRowClass="synth-knob-row stomp-knob-row"
-        viewport={<div className={`stomp-display dsp-viewport ${enabled?'active':'is-off'}`}><span className="stomp-led"/><strong>STOMP</strong><small>{STOMP_MODE_LABELS[mode]}</small><div className="stomp-circuit-lines" aria-hidden="true"/></div>}
+        viewport={(
+          <div className={`stomp-display dsp-viewport ${enabled ? 'active' : 'is-off'}`}>
+            <RailCHardwareDisplay
+              kind="stomp"
+              enabled={enabled}
+              visualState={visualState}
+              modeLabel={STOMP_MODE_LABELS[mode]}
+              detailLabel={presetId === 'custom' ? 'CUSTOM SIGNAL PATH' : STOMP_PRESETS[mode]?.find((preset) => preset.id === presetId)?.label ?? 'PEDAL PATH'}
+            />
+          </div>
+        )}
         knobs={controls.map((label,index)=><Knob key={`${mode}-${label}`} label={label} value={values[index]!} display={`${Math.round(values[index]!*100)}%`} onChange={(value)=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?value:item));}} onReset={()=>{setPresetId('custom');setValues((current)=>current.map((item,i)=>i===index?0.5:item));}}/>) }
       />
     </RailModuleFrame>
@@ -542,12 +560,12 @@ function ChaosModule({
       : profile === 'lead' || profile === 'gritty-drive' ? ['plexi', 'model-t', 'calcotone']
       : profile === 'pad' || profile === 'retro-ambient' ? ['blackface', 'ac30', 'calcotone']
       : STACK_AMP_MODELS;
-    const nextModel = modelPool[Math.floor(Math.random() * modelPool.length)] ?? 'calcotone';
+    const nextModel = chooseDifferent(modelPool, model);
     const cabinetPool: readonly StackCabinet[] = nextModel === 'svt' ? ['8x10', 'direct']
       : nextModel === 'blackface' ? ['1x12', '2x12']
       : nextModel === 'ac30' ? ['2x12', '1x12']
       : ['4x12', '2x12'];
-    const nextCabinet = cabinetPool[Math.floor(Math.random() * cabinetPool.length)] ?? '4x12';
+    const nextCabinet = chooseDifferent(cabinetPool, cabinet);
     setModel(nextModel);
     setCabinet(nextCabinet);
     const driveRange: MusicalRange = profile === 'gritty-drive' ? [0.52, 0.74] : profile === 'pad' ? [0.12, 0.32] : [0.24, 0.58];
@@ -609,11 +627,13 @@ function ChaosModule({
         knobRowClass="chaos-knob-row"
         viewport={(
           <div className={`chaos-pad-shell dsp-viewport ${enabled ? 'active' : 'is-off'}`}>
-            <div className="stack-amp-readout" aria-hidden="true">
-              <strong>{STACK_MODEL_LABELS[model]}</strong>
-              <pre>{`┌─ PRE ─┬─ POWER ─┬─ ${cabinet.toUpperCase()} ─┐\n│  ▸▸▸  │  ≋ SAG  │  ◉  ◉  ◉  ◉ │\n└───────┴─────────┴────────────┘`}</pre>
-              <i style={{ '--stack-level': `${Math.round((enabled ? visualState.level : 0) * 100)}%` } as CSSProperties} />
-            </div>
+            <RailCHardwareDisplay
+              kind="stack"
+              enabled={enabled}
+              visualState={visualState}
+              modeLabel={STACK_MODEL_LABELS[model]}
+              detailLabel={STACK_CABINET_LABELS[cabinet]}
+            />
           </div>
         )}
         knobs={labels.map((label, index) => (
@@ -631,7 +651,66 @@ function ChaosModule({
   );
 }
 
-function PressureModule({
+type LoopUtilitySliderProps = {
+  label: string;
+  value: number;
+  display: string;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+};
+
+function LoopUtilitySlider({ label, value, display, onChange, disabled = false }: LoopUtilitySliderProps) {
+  return (
+    <label className="loop-utility-slider" title={`${label} ${display}`}>
+      <span>{label}</span>
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.001"
+        value={value}
+        disabled={disabled}
+        aria-label={`Loop ${label}`}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <output>{display}</output>
+    </label>
+  );
+}
+
+type LoopTrackFaderProps = {
+  track: number;
+  value: number;
+  selected: boolean;
+  occupied: boolean;
+  locked: boolean;
+  onSelect: () => void;
+  onChange: (value: number) => void;
+};
+
+function LoopTrackFader({ track, value, selected, occupied, locked, onSelect, onChange }: LoopTrackFaderProps) {
+  return (
+    <label className={`loop-track-fader ${selected ? 'is-selected' : ''} ${occupied ? 'is-occupied' : 'is-empty'} ${locked ? 'is-locked' : ''}`}>
+      <span className="loop-fader-channel">T{track + 1}</span>
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.001"
+        value={value}
+        disabled={locked}
+        aria-label={`Loop track ${track + 1} level`}
+        onPointerDown={onSelect}
+        onFocus={onSelect}
+        onDoubleClick={() => onChange(0.72)}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <output>{Math.round(value * 100)}</output>
+    </label>
+  );
+}
+
+function LoopModule({
   running,
   visualState,
   ...props
@@ -639,72 +718,163 @@ function PressureModule({
   running: boolean;
   visualState: VisualAudioState;
 }) {
-  const state = usePressureState();
-  const meter = Math.max(0, Math.round((state.enabled ? visualState.level : 0) * 18));
-  const meterText = `${'█'.repeat(meter)}${'░'.repeat(18 - meter)}`;
+  const state = useLoopState();
+  const [trimEditing, setTrimEditing] = useState(false);
+  const selectedFilled = (state.trackMask & (1 << state.selectedTrack)) !== 0;
+  const writing = state.transport === 'recording' || state.transport === 'overdubbing';
+  const minimumTrim = state.rawFrames > 0 ? Math.min(0.25, 64 / state.rawFrames) : 0.001;
 
-  function randomizePressureProfile(profile: RandomizationProfile): string | null {
-    if (profile !== 'mutate') return randomizePressure();
-    setPressureState({
-      drive: clamp01(state.drive + (Math.random() * 2 - 1) * RANDOM_MUTATION_AMOUNT),
-      time: clamp01(state.time + (Math.random() * 2 - 1) * RANDOM_MUTATION_AMOUNT),
-      character: clamp01(state.character + (Math.random() * 2 - 1) * RANDOM_MUTATION_AMOUNT),
-      mix: Math.min(.82, clamp01(state.mix + (Math.random() * 2 - 1) * RANDOM_MUTATION_AMOUNT)),
-    });
-    return 'Mutate 10% · current dynamics profile';
+  useEffect(() => {
+    if ((!selectedFilled || writing) && trimEditing) setTrimEditing(false);
+  }, [selectedFilled, trimEditing, writing]);
+
+  function setTrackLevel(track: number, value: number): void {
+    const levels = [...state.trackLevels];
+    levels[track] = clamp01(value);
+    setLoopState({ trackLevels: levels });
   }
 
-  useRailCRandomController('pressure', state.enabled, randomizePressureProfile);
+  function selectTrack(track: number): void {
+    if (writing && track !== state.selectedTrack) return;
+    if (track !== state.selectedTrack) setLoopState({ selectedTrack: track });
+  }
+
+  function setTrimStart(value: number): void {
+    sendLoopCommand({
+      type: 'trim',
+      start: Math.min(clamp01(value), state.trimEnd - minimumTrim),
+      end: state.trimEnd,
+    });
+  }
+
+  function setTrimEnd(value: number): void {
+    sendLoopCommand({
+      type: 'trim',
+      start: state.trimStart,
+      end: Math.max(clamp01(value), state.trimStart + minimumTrim),
+    });
+  }
+
+  function toggleAllTransport(): void {
+    if (writing || state.trackMask === 0) return;
+    sendLoopCommand('play');
+  }
+
+  const buttons = Array.from({ length: LOOP_VISIBLE_TRACK_COUNT }, (_, track) => {
+    const occupied = (state.trackMask & (1 << track)) !== 0;
+    const selected = track === state.selectedTrack;
+    const recording = selected && state.transport === 'recording';
+    const overdubbing = selected && state.transport === 'overdubbing';
+    const playing = occupied && state.transport !== 'stopped' && state.transport !== 'empty';
+    const label = recording ? 'REC' : overdubbing ? 'DUB' : occupied ? (playing ? 'PLAY' : 'STOP') : 'REC';
+    const locked = writing && !selected;
+    return {
+      key: `track-${track}`,
+      label: `T${track + 1} ${label}`,
+      active: recording || overdubbing || playing,
+      className: recording ? 'is-recording' : overdubbing ? 'is-overdubbing' : playing ? 'is-playing' : occupied ? 'is-stopped' : 'is-empty',
+      locked,
+      action: (shiftKey: boolean) => {
+        if (locked) return;
+        setTrimEditing(false);
+        if (shiftKey) clearLoopTrack(track);
+        else pressLoopTrack(track);
+      },
+    };
+  });
 
   return (
     <RailModuleFrame
       {...props}
       id="pressure"
-      name="Pressure"
+      name="Loop"
       enabled={state.enabled}
-      onToggle={() => setPressureState({ enabled: !state.enabled })}
+      onToggle={() => setLoopState({ enabled: !state.enabled })}
       headerControl={(
-        <label className="algorithm-selector pressure-machine-selector">
-          <span className="sr-only">Pressure machine</span>
-          <select aria-label="Pressure machine" value={state.mode} onChange={(event) => setPressureState({ mode: event.target.value as SignalLabMode })}>
-            {SIGNAL_LAB_MODES.map((mode) => <option value={mode} key={mode}>{SIGNAL_LAB_LABELS[mode]}</option>)}
-          </select>
-        </label>
+        <div className="loop-header-controls">
+          <span className="loop-track-bank" aria-label={`Four track Loop bank, track ${state.selectedTrack + 1} selected`}>
+            4 TRK · T{state.selectedTrack + 1} · {running ? 'LIVE' : 'READY'}
+          </span>
+          <div className="loop-utility-bank" aria-label={trimEditing ? 'Loop trim utilities' : 'Loop master utilities'}>
+            {trimEditing ? (
+              <>
+                <LoopUtilitySlider label="IN" value={state.trimStart} display={`${Math.round(state.trimStart * 100)}`} onChange={setTrimStart} disabled={writing} />
+                <LoopUtilitySlider label="OUT" value={state.trimEnd} display={`${Math.round(state.trimEnd * 100)}`} onChange={setTrimEnd} disabled={writing} />
+                <LoopUtilitySlider label="FADE" value={state.fade} display={`${Math.round(state.fade * 20)}ms`} onChange={(value) => setLoopState({ fade: value })} disabled={writing} />
+                <button type="button" className="loop-utility-button" disabled={writing || !selectedFilled} onClick={() => sendLoopCommand({ type: 'autoTrim' })}>AUTO</button>
+                <button type="button" className="loop-utility-button" disabled={writing || !selectedFilled} onClick={() => sendLoopCommand({ type: 'resetTrim' })}>RESET</button>
+              </>
+            ) : (
+              <>
+                <LoopUtilitySlider label="MSTR" value={state.masterLevel} display={`${Math.round(state.masterLevel * 100)}`} onChange={(value) => setLoopState({ masterLevel: value })} />
+                <LoopUtilitySlider label="RET" value={state.overdub} display={`${Math.round(state.overdub * 100)}`} onChange={(value) => setLoopState({ overdub: value })} />
+                <LoopUtilitySlider label="FADE" value={state.fade} display={`${Math.round(state.fade * 20)}ms`} onChange={(value) => setLoopState({ fade: value })} />
+                <button
+                  type="button"
+                  className={`loop-utility-button loop-all-toggle ${state.transport === 'playing' ? 'active' : ''}`}
+                  disabled={writing || state.trackMask === 0}
+                  onClick={toggleAllTransport}
+                  aria-label={state.transport === 'stopped' ? 'Play all Loop tracks' : 'Stop all Loop tracks'}
+                >
+                  {state.transport === 'stopped' ? 'ALL ▶' : 'ALL ■'}
+                </button>
+              </>
+            )}
+          </div>
+          <button
+            type="button"
+            className={`loop-trim-toggle ${trimEditing ? 'active' : ''}`}
+            disabled={!selectedFilled || writing}
+            aria-pressed={trimEditing}
+            onClick={() => setTrimEditing((current) => !current)}
+            title={selectedFilled ? 'Edit the selected track non-destructively' : 'Record this track before trimming'}
+          >
+            TRIM
+          </button>
+        </div>
       )}
     >
       <RailCFaceplateSurface
         moduleId="pressure"
-        knobRowClass="pressure-rail-knobs"
+        knobRowClass="pressure-rail-faders"
         viewport={(
-          <div className={`pressure-ascii dsp-viewport ${state.enabled ? 'active' : 'is-off'}`} aria-label="Pressure compressor display">
-            <pre aria-hidden="true">{`╔══════════════════════════╗
-║      P R E S S U R E     ║
-║    HARDWARE DYNAMICS     ║
-╠══════════════════════════╣
-║ IN  ${meterText} ║
-║ GR  ${state.enabled && running ? '▾▾▾▾' : '····'}  ${state.style.toUpperCase().padEnd(9, ' ')} ║
-╚══════════════════════════╝`}</pre>
-            <div className="pressure-scanline" aria-hidden="true" />
+          <div className={`pressure-ascii dsp-viewport ${state.enabled ? 'active' : 'is-off'}`} aria-label="Four track Loop memory display">
+            <LoopTrackMatrixDisplay
+              enabled={state.enabled}
+              visualState={visualState}
+              trimEditing={trimEditing}
+            />
           </div>
         )}
-        knobs={([
-          ['Drive', 'drive'],
-          ['Time', 'time'],
-          ['Character', 'character'],
-          ['Mix', 'mix'],
-        ] as const).map(([label, key]) => (
-          <Knob
-            key={key}
-            label={label}
-            value={state[key]}
-            display={`${Math.round(state[key] * 100)}%`}
-            onChange={(value) => setPressureState({ [key]: value })}
-            onReset={() => setPressureState({ [key]: key === 'mix' ? 0.72 : key === 'time' ? 0.46 : key === 'drive' ? 0.42 : 0.38 })}
-          />
-        ))}
-        buttons={SIGNAL_LAB_STYLES.map((style) => (
-          <button type="button" key={style} className={state.style === style ? 'active' : ''} aria-pressed={state.style === style} onClick={() => setPressureState({ style: style as SignalLabStyle })}>
-            {style.toUpperCase()}
+        knobs={Array.from({ length: LOOP_VISIBLE_TRACK_COUNT }, (_, track) => {
+          const selected = track === state.selectedTrack;
+          const occupied = (state.trackMask & (1 << track)) !== 0;
+          const locked = writing && !selected;
+          return (
+            <LoopTrackFader
+              key={`fader-${track}`}
+              track={track}
+              value={state.trackLevels[track] ?? 0.72}
+              selected={selected}
+              occupied={occupied}
+              locked={locked}
+              onSelect={() => selectTrack(track)}
+              onChange={(value) => setTrackLevel(track, value)}
+            />
+          );
+        })}
+        buttons={buttons.map((button) => (
+          <button
+            type="button"
+            key={button.key}
+            className={`loop-track-pad ${button.className} ${button.active ? 'active' : ''}`}
+            aria-pressed={button.active}
+            aria-label={`${button.label}. Click for record/play/overdub. Shift click to clear this track.`}
+            disabled={button.locked}
+            title={button.locked ? 'Finish the active REC/DUB pass before changing tracks' : 'Click: REC / PLAY / DUB · Shift-click: clear track'}
+            onClick={(event) => button.action(event.shiftKey)}
+          >
+            {button.label}
           </button>
         ))}
       />
@@ -750,7 +920,7 @@ export function RailCModule({
 }) {
   void modules;
   if (moduleId === 'stomp') {
-    return <StompModule {...interaction} engineRunning={running} onEnabledChange={onStompEnabledChange} onModeChange={onStompModeChange} onInputSourceChange={onStompInputSourceChange} onParametersChange={onStompParametersChange} />;
+    return <StompModule {...interaction} engineRunning={running} visualState={visualState} onEnabledChange={onStompEnabledChange} onModeChange={onStompModeChange} onInputSourceChange={onStompInputSourceChange} onParametersChange={onStompParametersChange} />;
   }
   if (moduleId === 'chaos') return (
     <ChaosModule
@@ -767,6 +937,6 @@ export function RailCModule({
       tunerLevel={tunerLevel}
     />
   );
-  if (moduleId === 'pressure') return <PressureModule {...interaction} running={running} visualState={visualState} />;
+  if (moduleId === 'pressure') return <LoopModule {...interaction} running={running} visualState={visualState} />;
   return null;
 }

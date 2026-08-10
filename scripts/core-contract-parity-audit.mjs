@@ -5,11 +5,16 @@ const compact = (source) => source.replace(/\s+/g, '');
 const manifest = JSON.parse(read('contracts/calcotone-core-manifest.json'));
 const app = read('src/App.tsx');
 const nativeRack = read('native/src/native_rack.cpp');
+const atmosNative = read('native/src/atmos_parity_processor.cpp');
+const atmosProfiles = read('native/include/calcotone/atmos_parity_profiles.hpp');
 const railC = read('src/components/effects/RailCModules.tsx');
 const stackSource = read('src/audio/effects/StackAmp.ts');
-const pressureSource = read('src/audio/SignalLab.ts');
-const stompNative = read('native/src/stomp_parity_processor.cpp');
+const loopSource = read('src/components/signal/loopStore.ts');
+const loopHeader = read('native/include/calcotone/loop_processor.hpp');
+const loopNative = read('native/src/loop_processor.cpp');
 const pressureNative = read('native/src/pressure_parity_processor.cpp');
+const artifactNative = read('native/src/artifact_parity_processor.cpp');
+const stompNative = read('native/src/stomp_parity_processor.cpp');
 const stompHeader = read('native/include/calcotone/stomp_parity_processor.hpp');
 const stackNative = read('native/src/stack_amp.cpp');
 
@@ -22,7 +27,9 @@ const sourceByModule = {
   media: read('src/audio/effects/Media.ts'),
   stomp: railC,
   chaos: stackSource,
-  pressure: pressureSource,
+  // The legacy manifest/layout id remains pressure, but its canonical visible
+  // module is now LOOP in RailCModules.tsx.
+  pressure: railC,
 };
 
 const modelFieldByModule = {
@@ -30,7 +37,7 @@ const modelFieldByModule = {
   reverb: 'algorithm', bitcrusher: 'grainMode', media: 'mediaMode',
 };
 const nativeStructByModule = {
-  saturation: 'Ember', chorus: 'Drift', delay: 'Halo', reverb: 'Atmos',
+  saturation: 'Ember', chorus: 'Drift', delay: 'Halo', reverb: 'AtmosState',
   bitcrusher: 'Grain', media: 'Artifact',
 };
 
@@ -38,10 +45,28 @@ const failures = [];
 const pass = [];
 const check = (condition, label) => (condition ? pass : failures).push(label);
 const quotedValues = (source) => [...source.matchAll(/'([^']+)'/g)].map((match) => match[1]);
-function extractOrder(source, symbol) {
-  const pattern = new RegExp(`export const ${symbol}[^=]*=\\s*\\[([\\s\\S]*?)\\](?:\\s*as const)?;`);
+function extractOrder(source, symbol, seen = new Set()) {
+  if (seen.has(symbol)) return [];
+  seen.add(symbol);
+  const pattern = new RegExp(`export const ${symbol}[^=]*=\\s*\\[([\\s\\S]*?)\\]`);
   const match = source.match(pattern);
-  return match ? quotedValues(match[1]) : null;
+  if (!match) return null;
+  const values = [];
+  for (const chunk of match[1].split(',')) {
+    const token = chunk.trim();
+    const quoted = token.match(/^'([^']+)'$/);
+    if (quoted) {
+      values.push(quoted[1]);
+      continue;
+    }
+    const spread = token.match(/^\.\.\.([A-Za-z0-9_]+)$/);
+    if (spread) {
+      const expanded = extractOrder(source, spread[1], seen);
+      if (!expanded) return null;
+      values.push(...expanded);
+    }
+  }
+  return values;
 }
 function extractModuleBlock(moduleId) {
   const marker = `id: '${moduleId}',`;
@@ -92,9 +117,19 @@ for (const module of manifest.modules) {
     }
     const nativeStruct = nativeStructByModule[module.id];
     check(nativeRack.includes(`struct ${nativeStruct}`), `${module.name} native processor exists`);
-    check(nativeRack.includes(`std::min(${module.models.length - 1}U`)
-      || nativeRack.includes(`std::min(${module.models.length - 1}u`),
-      `${module.name} native model-index ceiling ${module.models.length - 1}`);
+    if (module.id === 'reverb') {
+      check(nativeRack.includes('AtmosParityProcessor atmos_parity'), 'Atmos NativeRack owns canonical parity processor');
+      check(nativeRack.includes('case RackModule::Atmos: atmos_parity.process(data, frames);'), 'Atmos NativeRack delegates audio to parity processor');
+      check(nativeRack.includes('if (module == RackModule::Atmos) return impl_->atmos_parity.set_parameter(name, value);'), 'Atmos NativeRack delegates controls to parity processor');
+      check(!nativeRack.includes('struct Atmos {'), 'legacy duplicate NativeRack Atmos DSP is absent');
+      check(atmosNative.includes('max_model_index()') && atmosNative.includes('kAtmosParityProfiles.size() - 1U'), 'Atmos native model ceiling is profile-driven');
+      check(atmosProfiles.includes(`std::array<AtmosParityProfile, ${module.models.length}>`), `Atmos native profile count ${module.models.length}`);
+      check(atmosProfiles.includes(`std::array<AtmosEarlyProfile, ${module.models.length}>`), `Atmos native early-profile count ${module.models.length}`);
+    } else {
+      check(nativeRack.includes(`std::min(${module.models.length - 1}U`)
+        || nativeRack.includes(`std::min(${module.models.length - 1}u`),
+        `${module.name} native model-index ceiling ${module.models.length - 1}`);
+    }
     continue;
   }
 
@@ -112,20 +147,22 @@ for (const module of manifest.modules) {
     check(stackNative.includes('std::min(static_cast<unsigned>(value), 4U)'), 'Stack native cabinet-index ceiling 4');
     check(stackNative.includes('std::copy(kModels[5]') && stackNative.includes('std::copy(kCabs[2]'), 'Stack native model and cabinet defaults');
   } else if (module.id === 'pressure') {
-    check(railC.includes('name="Pressure"'), 'Pressure product label');
-    check(compact(pressureSource).includes("enabled:false,mode:'fet',style:'glue',drive:0.42,time:0.46,character:0.38,mix:0.72"), 'Pressure UI defaults');
-    check(pressureNative.includes('PressureParityProcessor::set_parameter'), 'Pressure dedicated native processor exists');
-    check(pressureNative.includes('target{0.F, 2.F, .42F, .46F, .38F, .72F}'), 'Pressure native defaults');
-    check(pressureNative.includes('std::clamp(std::round(value), 0.F, 3.F)'), 'Pressure native model/style ceilings');
-    check(nativeRack.includes('PressureParityProcessor processor')
-      && nativeRack.includes('impl_->processor.set_parameter(name, value)'), 'Pressure live wrapper delegates to dedicated processor');
+    check(railC.includes('name="Loop"'), 'Loop product label');
+    check(loopSource.includes('export const LOOP_TRACK_COUNT = 8'), 'Loop exposes eight fixed tracks');
+    check(compact(loopSource).includes('enabled:false,selectedTrack:0,masterLevel:0.78,') && compact(loopSource).includes('overdub:0,') && compact(loopSource).includes('fade:0.18,'), 'Loop UI defaults');
+    check(loopHeader.includes('kLoopTrackCount = 8U') && loopHeader.includes('kLoopMaxSeconds = 60.F'), 'Loop native capacity contract');
+    check(loopNative.includes('LoopProcessor::process') && loopNative.includes('LoopCommand::Overdub'), 'Loop dedicated native processor exists');
+    check(app.includes("LOOP_CHANGE_EVENT") && app.includes("LOOP_COMMAND_EVENT"), 'Loop native control bridge is synchronized from App');
+    check(!read('src/features/random/railCRandomRegistry.ts').includes("'pressure'"), 'Loop is excluded from Rail C RANDOM');
+    check(read('src/routing/serialRouting.ts').includes("LOOP_MODULE_ID = 'pressure'"), 'Loop remains standalone from serial routing');
+    check(artifactNative.includes('PressureParityProcessor dynamics') && pressureNative.includes('PressureParityProcessor::set_parameter'), 'Pressure compressor DSP moved behind Artifact dynamics modes');
   }
 }
 
 check(!app.includes("moduleId === 'synth'"), 'retired Synth module branch absent from checked-in App');
 check(!app.includes('SynthModule'), 'retired Synth component absent from checked-in App');
 check(!app.includes('onSynthEnabledChange'), 'retired Synth callback contract absent from checked-in App');
-check(app.includes("DEFAULT_RAIL_C_ORDER = ['stomp', 'chaos', 'pressure']"), 'Rail C is Stomp → Stack → Pressure');
+check(app.includes("DEFAULT_RAIL_C_ORDER = ['stomp', 'chaos', 'pressure']"), 'Rail C is Stomp → Stack → Loop (legacy pressure layout key)');
 
 for (const label of pass) console.log(`PASS: ${label}`);
 if (failures.length) {

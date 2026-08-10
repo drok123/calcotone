@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ModuleState } from '../../ui/types';
 import type { VisualAudioState } from '../../visual/VisualEngine';
-import { moduleModeKey } from '../ascii/AsciiArtEngine';
-import { PressureStyleDisplay } from '../ascii/PressureStyleDisplay';
+import { AsciiArtEngine, moduleModeKey } from '../ascii/AsciiArtEngine';
 
 export function ModuleViewport({ module, visualState }: { module: ModuleState; visualState: VisualAudioState }) {
   const sceneKey = moduleModeKey(module);
@@ -34,7 +33,7 @@ export function ModuleViewport({ module, visualState }: { module: ModuleState; v
       data-audio-level={Math.max(0, Math.min(1, visualState.level)).toFixed(3)}
       data-visual-mode={sceneKey}
     >
-      <PressureStyleDisplay module={module} visualState={visualState} />
+      <AsciiArtEngine kind="module" module={module} className="module-spectacle-ascii" />
     </div>
   );
 }

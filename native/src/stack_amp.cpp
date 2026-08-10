@@ -82,6 +82,7 @@ void StackAmp::process(const float* input, float* output, std::size_t frames) no
   const auto model = kModels[model_.load(std::memory_order_relaxed)];
   const auto cab = kCabs[cabinet_.load(std::memory_order_relaxed)];
   const unsigned steps = quality_.load(std::memory_order_relaxed);
+  const bool filtered_oversampling = steps > 1U;
   const float drive = drive_.load(std::memory_order_relaxed);
   const float tone = tone_.load(std::memory_order_relaxed);
   const float sag_control = sag_.load(std::memory_order_relaxed);
@@ -97,21 +98,23 @@ void StackAmp::process(const float* input, float* output, std::size_t frames) no
   const float feedback_g = coefficient(1250.F, internal_rate);
   const float cab_hp_g = coefficient(c[7], internal_rate), cab_lp_g = coefficient(c[8], internal_rate);
   const float body_g = coefficient(c[9], internal_rate);
+  const float oversampling_guard_g = dsp::tpt_coefficient(sample_rate_ * .455F, internal_rate);
   const float sag_attack = 1.F - std::exp(-1.F / (internal_rate * .004F));
   const float sag_release = 1.F - std::exp(-1.F / (internal_rate * .11F));
   const float input_gain = 1.F + std::pow(drive, 1.38F) * c[0];
   const float drive_makeup = 1.F / (1.F + drive * .85F);
   const float sag_depth = sag_control * c[3] * .52F;
   const float bias_zero = shape(c[2] * input_gain);
-  const float dry_gain = std::cos(mix * .5F * kPi), wet_gain = std::sin(mix * .5F * kPi);
+  const auto [dry_gain, wet_gain] = dsp::equal_power_gains(mix);
 
   for (std::size_t frame = 0; frame < frames; ++frame) {
     for (std::size_t channel = 0; channel < 2; ++channel) {
       auto& s = channels_[channel];
-      const float dry = input[frame * 2 + channel];
+      const float dry = dsp::sanitize_audio(input[frame * 2 + channel], 2.F);
       float accumulated = 0.F;
       for (unsigned step = 1; step <= steps; ++step) {
-        const float x = s.previous_input + (dry - s.previous_input) * (static_cast<float>(step) / steps);
+        float x = s.previous_input + (dry - s.previous_input) * (static_cast<float>(step) / steps);
+        if (filtered_oversampling) x = s.anti_imaging.process(x, oversampling_guard_g);
         const float highpassed = x - lowpass(x, s.input_low, input_hp);
         const float feedback_signal = lowpass(s.transformer_memory, s.feedback_low, feedback_g);
         float preamp = (shape((highpassed - feedback_signal * c[4]) * input_gain + c[2]) - bias_zero) * (.88F + drive * .32F);
@@ -121,15 +124,22 @@ void StackAmp::process(const float* input, float* output, std::size_t frames) no
             + (preamp - high_low) * (.56F + tone * (.74F + c[1] * .28F));
         const float magnitude = std::abs(preamp);
         s.sag_envelope += (magnitude - s.sag_envelope) * (magnitude > s.sag_envelope ? sag_attack : sag_release);
-        const float power = shape(preamp / (1.F + s.sag_envelope * sag_depth) * (1.15F + drive * 1.05F));
+        const float power_input = preamp / (1.F + s.sag_envelope * sag_depth) * (1.15F + drive * 1.05F);
+        const float power = filtered_oversampling ? s.power_shape.process(power_input) : shape(power_input);
         s.transformer_memory += (power - s.transformer_memory) * (.06F + c[5] * .11F);
-        float transformed = power * (1.F - c[5] * .18F)
-            + shape((power + s.transformer_memory * .22F) * (1.F + c[5])) * c[5] * .34F;
+        const float transformer_input = (power + s.transformer_memory * .22F) * (1.F + c[5]);
+        const float transformer_nonlinear = filtered_oversampling
+            ? s.transformer_shape.process(transformer_input)
+            : shape(transformer_input);
+        float transformed = power * (1.F - c[5] * .18F) + transformer_nonlinear * c[5] * .34F;
         transformed -= lowpass(transformed, s.cab_highpass_low, cab_hp_g);
         const float cab_one = lowpass(transformed, s.cab_low_one, cab_lp_g);
         const float cab_two = lowpass(cab_one, s.cab_low_two, cab_lp_g);
         const float body = lowpass(transformed, s.cab_body_low, body_g);
-        accumulated += shape((cab_two + body * c[10]) * c[6] * c[11] * drive_makeup * 1.08F) * 1.04F;
+        const float output_input = (cab_two + body * c[10]) * c[6] * c[11] * drive_makeup * 1.08F;
+        float stage_output = (filtered_oversampling ? s.output_shape.process(output_input) : shape(output_input)) * 1.04F;
+        if (filtered_oversampling) stage_output = s.anti_alias.process(stage_output, oversampling_guard_g);
+        accumulated += stage_output;
       }
       s.previous_input = dry;
       float wet = accumulated / static_cast<float>(steps);

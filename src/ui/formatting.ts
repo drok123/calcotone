@@ -22,6 +22,11 @@ const HARDWARE_LABELS: Record<string, string> = {
   s950: 'Akai S950',
   emulator2: 'E-mu Emulator II',
   fairlightiix: 'Fairlight CMI IIx',
+  emt140: 'EMT 140 Plate',
+  lexicon224: 'Lexicon 224',
+  rmx16: 'AMS RMX16 Ambience',
+  quantec: 'Quantec Room Simulator',
+  springtank: 'Mechanical Spring Tank',
 };
 
 export function formatAlgorithmName(algorithm: string): string {

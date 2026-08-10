@@ -9,13 +9,44 @@ namespace calcotone {
 namespace {
 constexpr float kPi = 3.14159265358979323846F;
 constexpr float kTwoPi = kPi * 2.F;
+constexpr std::size_t kControlPeriod = 32U;
+constexpr std::size_t kTanhTableSize = 4097U;
+constexpr float kTanhRange = 5.F;
 
 float clamp01(float value) noexcept {
   return std::clamp(std::isfinite(value) ? value : 0.F, 0.F, 1.F);
 }
 
 float triangle(float phase) noexcept {
-  return (2.F / kPi) * std::asin(std::sin(phase));
+  constexpr float scale = 2.F / kPi;
+  if (phase < kPi * .5F) return phase * scale;
+  if (phase < kPi * 1.5F) return 2.F - phase * scale;
+  return -4.F + phase * scale;
+}
+
+const std::array<float, kTanhTableSize>& tanh_table() noexcept {
+  static const auto table = [] {
+    std::array<float, kTanhTableSize> result{};
+    for (std::size_t index = 0; index < result.size(); ++index) {
+      const float normalized = static_cast<float>(index)
+          / static_cast<float>(result.size() - 1U);
+      result[index] = std::tanh(normalized * (kTanhRange * 2.F) - kTanhRange);
+    }
+    return result;
+  }();
+  return table;
+}
+
+float fast_tanh(float value) noexcept {
+  if (value <= -kTanhRange) return -1.F;
+  if (value >= kTanhRange) return 1.F;
+  const auto& table = tanh_table();
+  const float position = (value + kTanhRange)
+      * (static_cast<float>(kTanhTableSize - 1U) / (kTanhRange * 2.F));
+  const auto first = static_cast<std::size_t>(position);
+  const auto second = std::min(first + 1U, kTanhTableSize - 1U);
+  const float fraction = position - static_cast<float>(first);
+  return table[first] + (table[second] - table[first]) * fraction;
 }
 
 enum class FilterType { Lowpass, Highpass };
@@ -85,13 +116,6 @@ struct Settings {
   float sum_gain{1.F};
   std::array<VoiceSettings, 4> voices{};
 };
-
-float preamp_shape(float input, float drive, float asymmetry) noexcept {
-  if (drive <= .0001F) return input;
-  const float gain = 1.F + drive * 5.2F;
-  const float shifted = input + std::max(0.F, input) * asymmetry;
-  return std::tanh(shifted * gain) / std::max(1e-6F, std::tanh(gain));
-}
 
 Settings calculate_settings(unsigned mode, float rate, float depth, float shape,
                             float spread, float motion) noexcept {
@@ -216,6 +240,7 @@ struct DriftStandardProcessor::Impl {
       : sample_rate(std::clamp(requested_rate, 8000.F, 384000.F)) {
     const auto capacity = static_cast<std::size_t>(sample_rate * .10F) + 64U;
     for (auto& buffer : delay) buffer.assign(capacity, 0.F);
+    (void)tanh_table();
     reset();
   }
 
@@ -225,79 +250,153 @@ struct DriftStandardProcessor::Impl {
     for (auto& filter : highpass) filter.reset();
     for (auto& filter : lowpass) filter.reset();
     phase = {0.F,.71F,1.93F,3.17F};
-    write = 0;
+    for (unsigned voice = 0; voice < 4; ++voice) {
+      lfo_sine[voice] = std::sin(phase[voice]);
+      lfo_cosine[voice] = std::cos(phase[voice]);
+    }
+    write = 0U;
+    control_countdown = 0U;
+    oscillator_renormalize = 0U;
     previous_input = {};
   }
 
-  float shaped_input(float input, unsigned channel, float drive, float asymmetry) noexcept {
-    if (drive <= .0001F) {
+  void refresh_control(float rate, float depth, float shape, float spread, float motion) noexcept {
+    settings = calculate_settings(mode, rate, depth, shape, spread, motion);
+    preamp_active = settings.preamp_drive > .0001F;
+    preamp_gain = 1.F + settings.preamp_drive * 5.2F;
+    preamp_normalization = preamp_active
+        ? 1.F / std::max(1e-6F, fast_tanh(preamp_gain)) : 1.F;
+
+    for (unsigned channel = 0; channel < 2; ++channel)
+      input_tone[channel].configure(FilterType::Lowpass, settings.input_lowpass, .45F, sample_rate);
+
+    for (unsigned voice = 0; voice < 4; ++voice) {
+      const auto& current = settings.voices[voice];
+      highpass[voice].configure(FilterType::Highpass, current.highpass_hz, .5F, sample_rate);
+      lowpass[voice].configure(FilterType::Lowpass, current.lowpass_hz, .5F, sample_rate);
+      const float pan = std::clamp(current.pan, -1.F, 1.F);
+      const float angle = (pan + 1.F) * kPi * .25F;
+      pan_left[voice] = std::cos(angle);
+      pan_right[voice] = std::sin(angle);
+      const float increment = kTwoPi * std::max(0.F, current.lfo_hz) / sample_rate;
+      rotation_sine[voice] = std::sin(increment);
+      rotation_cosine[voice] = std::cos(increment);
+    }
+  }
+
+  float shaped_input(float input, unsigned channel) noexcept {
+    if (!preamp_active) {
       previous_input[channel] = input;
       return input;
     }
     const float midpoint = (previous_input[channel] + input) * .5F;
     previous_input[channel] = input;
-    return (preamp_shape(midpoint, drive, asymmetry) + preamp_shape(input, drive, asymmetry)) * .5F;
+    const auto shape = [this](float value) noexcept {
+      const float shifted = value + std::max(0.F, value) * settings.preamp_asymmetry;
+      return fast_tanh(shifted * preamp_gain) * preamp_normalization;
+    };
+    return (shape(midpoint) + shape(input)) * .5F;
   }
 
   float read_delay(unsigned voice, float delay_samples) const noexcept {
     const auto& buffer = delay[voice];
     float position = static_cast<float>(write) - std::max(1.F, delay_samples);
     const float size = static_cast<float>(buffer.size());
-    while (position < 0.F) position += size;
-    while (position >= size) position -= size;
-    const auto floor_position = std::floor(position);
-    const auto a = static_cast<std::size_t>(floor_position) % buffer.size();
-    const auto b = (a + 1U) % buffer.size();
-    const float fraction = position - floor_position;
-    return buffer[a] + (buffer[b] - buffer[a]) * fraction;
+    if (position < 0.F) position += size;
+    if (position >= size) position -= size;
+    const auto first = static_cast<std::size_t>(position);
+    auto second = first + 1U;
+    if (second == buffer.size()) second = 0U;
+    const float fraction = position - static_cast<float>(first);
+    return buffer[first] + (buffer[second] - buffer[first]) * fraction;
+  }
+
+  float advance_lfo(unsigned voice) noexcept {
+    phase[voice] += kTwoPi * std::max(0.F, settings.voices[voice].lfo_hz) / sample_rate;
+    if (phase[voice] >= kTwoPi) phase[voice] -= kTwoPi;
+
+    const float next_sine = lfo_sine[voice] * rotation_cosine[voice]
+        + lfo_cosine[voice] * rotation_sine[voice];
+    const float next_cosine = lfo_cosine[voice] * rotation_cosine[voice]
+        - lfo_sine[voice] * rotation_sine[voice];
+    lfo_sine[voice] = next_sine;
+    lfo_cosine[voice] = next_cosine;
+    return voice % 2U ? triangle(phase[voice]) : next_sine;
+  }
+
+  void renormalize_oscillators() noexcept {
+    if ((++oscillator_renormalize & 4095U) != 0U) return;
+    for (unsigned voice = 0; voice < 4; ++voice) {
+      const float length = std::sqrt(
+          lfo_sine[voice] * lfo_sine[voice] + lfo_cosine[voice] * lfo_cosine[voice]);
+      const float inverse = 1.F / std::max(1e-9F, length);
+      lfo_sine[voice] *= inverse;
+      lfo_cosine[voice] *= inverse;
+    }
   }
 
   std::array<float, 2> process_sample(float left, float right, float rate, float depth,
                                       float shape, float spread, float motion) noexcept {
-    const Settings settings = calculate_settings(mode, rate, depth, shape, spread, motion);
-    std::array<float, 2> source{
-      shaped_input(std::isfinite(left) ? left : 0.F, 0, settings.preamp_drive, settings.preamp_asymmetry),
-      shaped_input(std::isfinite(right) ? right : left, 1, settings.preamp_drive, settings.preamp_asymmetry),
-    };
-    for (unsigned ch = 0; ch < 2; ++ch) {
-      input_tone[ch].configure(FilterType::Lowpass, settings.input_lowpass, .45F, sample_rate);
-      source[ch] = input_tone[ch].process(source[ch]);
+    if (control_countdown == 0U) {
+      refresh_control(rate, depth, shape, spread, motion);
+      control_countdown = kControlPeriod - 1U;
+    } else {
+      --control_countdown;
     }
+
+    std::array<float, 2> source{
+      shaped_input(std::isfinite(left) ? left : 0.F, 0),
+      shaped_input(std::isfinite(right) ? right : left, 1),
+    };
+    source[0] = input_tone[0].process(source[0]);
+    source[1] = input_tone[1].process(source[1]);
 
     float output_l = 0.F;
     float output_r = 0.F;
     for (unsigned voice = 0; voice < 4; ++voice) {
-      const auto& v = settings.voices[voice];
-      phase[voice] += kTwoPi * std::max(0.F, v.lfo_hz) / sample_rate;
-      if (phase[voice] >= kTwoPi) phase[voice] -= kTwoPi;
-      const float lfo = voice % 2U ? triangle(phase[voice]) : std::sin(phase[voice]);
-      const float delay_seconds = std::clamp(v.delay_seconds + v.depth_seconds * lfo, .00002F, .089F);
+      const auto& current = settings.voices[voice];
+      const float lfo = advance_lfo(voice);
+      const float delay_seconds = std::clamp(
+          current.delay_seconds + current.depth_seconds * lfo, .00002F, .089F);
       float sample = read_delay(voice, delay_seconds * sample_rate);
-      highpass[voice].configure(FilterType::Highpass, v.highpass_hz, .5F, sample_rate);
-      lowpass[voice].configure(FilterType::Lowpass, v.lowpass_hz, .5F, sample_rate);
       sample = lowpass[voice].process(highpass[voice].process(sample));
-      const float input = source[voice % 2U] + sample * v.feedback;
+      const float input = source[voice % 2U] + sample * current.feedback;
       delay[voice][write] = std::clamp(input, -1.35F, 1.35F);
-
-      const float pan = std::clamp(v.pan, -1.F, 1.F);
-      const float angle = (pan + 1.F) * kPi * .25F;
-      const float gain_l = std::cos(angle);
-      const float gain_r = std::sin(angle);
-      output_l += sample * v.gain * gain_l;
-      output_r += sample * v.gain * gain_r;
+      output_l += sample * current.gain * pan_left[voice];
+      output_r += sample * current.gain * pan_right[voice];
     }
-    write = (write + 1U) % delay[0].size();
+    renormalize_oscillators();
+    if (++write == delay[0].size()) write = 0U;
     return {
       std::clamp(output_l * settings.sum_gain, -1.2F, 1.2F),
       std::clamp(output_r * settings.sum_gain, -1.2F, 1.2F),
     };
   }
 
+  void set_mode(unsigned requested) noexcept {
+    const unsigned next = std::min(requested, 13U);
+    if (next == mode) return;
+    mode = next;
+    control_countdown = 0U;
+  }
+
   float sample_rate;
   unsigned mode{};
+  Settings settings{};
+  bool preamp_active{};
+  float preamp_gain{1.F};
+  float preamp_normalization{1.F};
   std::array<std::vector<float>, 4> delay;
   std::size_t write{};
+  std::size_t control_countdown{};
+  std::size_t oscillator_renormalize{};
   std::array<float, 4> phase{};
+  std::array<float, 4> lfo_sine{};
+  std::array<float, 4> lfo_cosine{};
+  std::array<float, 4> rotation_sine{};
+  std::array<float, 4> rotation_cosine{1.F,1.F,1.F,1.F};
+  std::array<float, 4> pan_left{};
+  std::array<float, 4> pan_right{};
   std::array<float, 2> previous_input{};
   std::array<Biquad, 2> input_tone{};
   std::array<Biquad, 4> highpass{};
@@ -308,7 +407,7 @@ DriftStandardProcessor::DriftStandardProcessor(float sample_rate)
     : impl_(std::make_unique<Impl>(sample_rate)) {}
 DriftStandardProcessor::~DriftStandardProcessor() = default;
 void DriftStandardProcessor::reset() noexcept { impl_->reset(); }
-void DriftStandardProcessor::set_mode(unsigned mode) noexcept { impl_->mode = std::min(mode, 13U); }
+void DriftStandardProcessor::set_mode(unsigned mode) noexcept { impl_->set_mode(mode); }
 std::array<float, 2> DriftStandardProcessor::process_sample(
     float left, float right, float rate, float depth, float shape, float spread, float motion) noexcept {
   return impl_->process_sample(left, right, rate, depth, shape, spread, motion);

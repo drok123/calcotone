@@ -14,7 +14,11 @@ class PitchTracker final {
 
   void push(float sample) noexcept {
     envelope_ += (std::abs(sample) - envelope_) * .0025F;
-    level_.store(envelope_, std::memory_order_relaxed);
+    // The detector remains sample-accurate; only UI telemetry is decimated.
+    // 64 samples is ~1.3 ms at 48 kHz, far faster than the tuner can paint while
+    // avoiding an atomic cache-line write for every captured sample.
+    if ((level_publish_counter_++ & 63U) == 0U)
+      level_.store(envelope_, std::memory_order_relaxed);
     ++frames_since_crossing_;
     const float threshold = std::max(.0035F, envelope_ * .28F);
     if (sample < -threshold) armed_ = true;
@@ -26,8 +30,11 @@ class PitchTracker final {
       }
       frames_since_crossing_ = 0; armed_ = false;
     }
-    if (envelope_ < .0025F && frames_since_crossing_ > static_cast<unsigned>(sample_rate_ * .25F)) {
-      smoothed_ = 0.F; frequency_.store(0.F, std::memory_order_relaxed);
+    if (envelope_ < .0025F
+        && frames_since_crossing_ > static_cast<unsigned>(sample_rate_ * .25F)
+        && smoothed_ != 0.F) {
+      smoothed_ = 0.F;
+      frequency_.store(0.F, std::memory_order_relaxed);
     }
   }
 
@@ -37,6 +44,7 @@ class PitchTracker final {
  private:
   float sample_rate_, envelope_{}, smoothed_{};
   unsigned frames_since_crossing_{};
+  unsigned level_publish_counter_{};
   bool armed_{};
   std::atomic<float> frequency_{};
   std::atomic<float> level_{};

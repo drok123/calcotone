@@ -57,25 +57,25 @@ export interface FaceplateEditorSnapshot {
 const STORAGE_KEY = 'calcotone.faceplate-layout.v2';
 const LEGACY_STORAGE_KEY = 'calcotone.faceplate-layout.v1';
 const FACTORY_LAYOUT_REVISION_KEY = 'calcotone.faceplate-layout.factory-revision';
-const FACTORY_LAYOUT_REVISION = '2026-08-05-web-ui-1to1-restoration';
+const FACTORY_LAYOUT_REVISION = '2026-08-09-railc-latest-loop-centered-v4';
 const KNOB_COUNT = 6;
 const listeners = new Set<() => void>();
 const CORE_FACEPLATE_IDS: readonly CoreFaceplateId[] = ['saturation', 'chorus', 'delay', 'reverb', 'bitcrusher', 'media'];
 const RAIL_C_FACEPLATE_IDS: readonly RailCFaceplateId[] = ['stomp', 'chaos', 'pressure'];
 
 const MASTER_KNOBS: FaceplatePoint[] = [
-  { x: 0.07, y: 246 },
-  { x: 0.2099125364431487, y: 246 },
-  { x: 0.3498542274052478, y: 246 },
-  { x: 0.6530612244897959, y: 246 },
-  { x: 0.793002915451895, y: 246 },
-  { x: 0.93, y: 246 },
+  { x: 0.09523809523809523, y: 224 },
+  { x: 0.21428571428571427, y: 224 },
+  { x: 0.3333333333333333, y: 224 },
+  { x: 0.6785714285714286, y: 224 },
+  { x: 0.7976190476190477, y: 224 },
+  { x: 0.9166666666666666, y: 224 },
 ];
 
 function createCoreFactoryLayouts(): Record<CoreFaceplateId, RailCFaceplateModuleLayout> {
   return Object.fromEntries(CORE_FACEPLATE_IDS.map((id) => [id, {
     viewportHeight: 168,
-    stageHeight: 292,
+    stageHeight: 304,
     knobs: MASTER_KNOBS.map((point) => ({ ...point })),
     buttons: [],
   }])) as unknown as Record<CoreFaceplateId, RailCFaceplateModuleLayout>;
@@ -85,53 +85,63 @@ export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
   version: 2,
   custom: true,
   viewportHeight: 168,
-  stageHeight: 292,
+  stageHeight: 304,
   knobs: MASTER_KNOBS.map((point) => ({ ...point })),
   core: createCoreFactoryLayouts(),
   railC: {
     stomp: {
       viewportHeight: 168,
-      stageHeight: 292,
+      stageHeight: 304,
       knobs: [
-        { x: 0.07, y: 246 },
-        { x: 0.2099125364431487, y: 246 },
-        { x: 0.3498542274052478, y: 246 },
-        { x: 0.6530612244897959, y: 246 },
-        { x: 0.793002915451895, y: 246 },
-        { x: 0.93, y: 246 },
+        { x: 0.08187134502923976, y: 224 },
+        { x: 0.21052631578947367, y: 224 },
+        { x: 0.32748538011695905, y: 224 },
+        { x: 0.6549707602339181, y: 224 },
+        { x: 0.7719298245614035, y: 224 },
+        { x: 0.8888888888888888, y: 224 },
       ],
       buttons: [],
     },
     chaos: {
       viewportHeight: 168,
-      stageHeight: 292,
+      stageHeight: 304,
       knobs: [
-        { x: 0.14, y: 246 },
-        { x: 0.38, y: 246 },
-        { x: 0.62, y: 246 },
-        { x: 0.86, y: 246 },
+        { x: 0.11695906432748537, y: 240 },
+        { x: 0.3742690058479532, y: 240 },
+        { x: 0.6432748538011696, y: 240 },
+        { x: 0.8888888888888888, y: 240 },
       ],
       buttons: [],
     },
     pressure: {
       viewportHeight: 168,
-      stageHeight: 292,
+      stageHeight: 304,
       knobs: [
-        { x: 0.14, y: 240 },
-        { x: 0.38, y: 240 },
-        { x: 0.62, y: 240 },
-        { x: 0.86, y: 240 },
+        { x: 0.14327485380116955, y: 216 },
+        { x: 0.38888888888888884, y: 216 },
+        { x: 0.6345029239766081, y: 216 },
+        { x: 0.8567251461988303, y: 216 },
       ],
       buttons: [
-        { x: 0.14, y: 278 },
-        { x: 0.38, y: 278 },
-        { x: 0.62, y: 278 },
-        { x: 0.86, y: 278 },
+        { x: 0.14327485380116955, y: 272 },
+        { x: 0.38888888888888884, y: 272 },
+        { x: 0.6345029239766081, y: 272 },
+        { x: 0.8567251461988303, y: 272 },
       ],
     },
   },
   snap: 8,
 };
+
+function controlViewportCeiling(
+  knobs: readonly FaceplatePoint[],
+  buttons: readonly FaceplatePoint[],
+  stageHeight: number,
+): number {
+  const knobLimit = knobs.length ? Math.min(...knobs.map((point) => point.y - 48)) : stageHeight;
+  const buttonLimit = buttons.length ? Math.min(...buttons.map((point) => point.y - 14)) : stageHeight;
+  return Math.max(96, Math.min(stageHeight, knobLimit, buttonLimit));
+}
 
 let state: FaceplateEditorState = {
   savedLayout: loadSavedLayout(),
@@ -328,16 +338,12 @@ export function setRailCFaceplateViewportHeight(
 ): void {
   if (!state.editing) return;
   const moduleLayout = state.layout.railC[moduleId];
-  const firstControlY = Math.min(
-    ...moduleLayout.knobs.map((point) => point.y),
-    ...moduleLayout.buttons.map((point) => point.y),
-  );
-  const collisionSafeMaximum = Math.max(110, firstControlY - 48);
+  const collisionSafeMaximum = controlViewportCeiling(moduleLayout.knobs, moduleLayout.buttons, moduleLayout.stageHeight);
   const nextRailC = state.linkedModules
     ? Object.fromEntries(RAIL_C_FACEPLATE_IDS.map((id) => {
         const candidate = state.layout.railC[id];
-        const firstY = Math.min(...candidate.knobs.map((point) => point.y), ...candidate.buttons.map((point) => point.y));
-        return [id, { ...candidate, viewportHeight: clamp(height, 96, Math.min(260, Math.max(110, firstY - 48))) }];
+        const maximum = controlViewportCeiling(candidate.knobs, candidate.buttons, candidate.stageHeight);
+        return [id, { ...candidate, viewportHeight: clamp(height, 96, Math.min(260, maximum)) }];
       })) as Record<RailCFaceplateId, RailCFaceplateModuleLayout>
     : {
         ...state.layout.railC,
@@ -699,13 +705,9 @@ function sanitizeV2Layout(layout: Partial<FaceplateLayout>): FaceplateLayout {
     });
     const candidateKnobs = sanitizePoints(candidate?.knobs, fallback.knobs, knobCount, 'knob');
     const candidateButtons = sanitizePoints(candidate?.buttons, fallback.buttons, buttonCount, 'button');
-    const firstControlY = Math.min(
-      ...candidateKnobs.map((point) => point.y),
-      ...candidateButtons.map((point) => point.y),
-      candidateStage
-    );
+    const viewportMaximum = controlViewportCeiling(candidateKnobs, candidateButtons, candidateStage);
     return {
-      viewportHeight: clamp(Number(candidate?.viewportHeight) || fallback.viewportHeight, 96, Math.min(520, Math.max(96, firstControlY - 48))),
+      viewportHeight: clamp(Number(candidate?.viewportHeight) || fallback.viewportHeight, 96, Math.min(520, viewportMaximum)),
       stageHeight: candidateStage,
       knobs: candidateKnobs,
       buttons: candidateButtons,

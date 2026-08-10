@@ -8,9 +8,37 @@ namespace calcotone {
 namespace {
 constexpr double kPi = 3.1415926535897932384626433832795;
 constexpr double kTwoPi = kPi * 2.0;
+constexpr std::size_t kTanhTableSize = 4097U;
+constexpr double kTanhRange = 5.0;
+constexpr int kLeslieControlPeriod = 32;
 
 double clamp01(double value) noexcept {
   return std::clamp(std::isfinite(value) ? value : 0.0, 0.0, 1.0);
+}
+
+const std::array<double, kTanhTableSize>& tanh_table() noexcept {
+  static const auto table = [] {
+    std::array<double, kTanhTableSize> result{};
+    for (std::size_t index = 0; index < result.size(); ++index) {
+      const double normalized = static_cast<double>(index)
+          / static_cast<double>(result.size() - 1U);
+      result[index] = std::tanh(normalized * (kTanhRange * 2.0) - kTanhRange);
+    }
+    return result;
+  }();
+  return table;
+}
+
+double fast_tanh(double value) noexcept {
+  if (value <= -kTanhRange) return -1.0;
+  if (value >= kTanhRange) return 1.0;
+  const auto& table = tanh_table();
+  const double position = (value + kTanhRange)
+      * (static_cast<double>(kTanhTableSize - 1U) / (kTanhRange * 2.0));
+  const auto first = static_cast<std::size_t>(position);
+  const auto second = std::min(first + 1U, kTanhTableSize - 1U);
+  const double fraction = position - static_cast<double>(first);
+  return table[first] + (table[second] - table[first]) * fraction;
 }
 
 struct AllpassState {
@@ -22,6 +50,7 @@ struct AllpassState {
 struct DriftClassicProcessor::Impl {
   explicit Impl(float requested_rate)
       : sample_rate(std::clamp(static_cast<double>(requested_rate), 8'000.0, 384'000.0)) {
+    (void)tanh_table();
     reset();
   }
 
@@ -48,6 +77,11 @@ struct DriftClassicProcessor::Impl {
     rotor_drum_phase = kPi * .37;
     rotor_low_l = 0.0;
     rotor_low_r = 0.0;
+    leslie_control_countdown = 0;
+    leslie_crossover = 0.0;
+    leslie_horn_delay = 0.0;
+    leslie_drum_delay = 0.0;
+    leslie_horn_mix = .46;
     delay_l.fill(0.F);
     delay_r.fill(0.F);
     delay_index = 0;
@@ -93,7 +127,7 @@ struct DriftClassicProcessor::Impl {
   }
 
   static double normalized_soft_clip(double input, double drive) noexcept {
-    return std::tanh(input * drive) / std::max(1e-6, drive);
+    return fast_tanh(input * drive) / std::max(1e-6, drive);
   }
 
   bool should_refresh_coefficients(int requested_model) noexcept {
@@ -188,16 +222,41 @@ struct DriftClassicProcessor::Impl {
 
   float read_delay(const std::array<float, 2048>& buffer, double delay_samples) const noexcept {
     double position = static_cast<double>(delay_index) - delay_samples;
-    while (position < 0.0) position += static_cast<double>(buffer.size());
-    const double floored = std::floor(position);
-    const auto base = static_cast<std::size_t>(floored) % buffer.size();
-    const auto next = (base + 1U) % buffer.size();
-    const double fraction = position - floored;
+    if (position < 0.0) position += static_cast<double>(buffer.size());
+    const auto base = static_cast<std::size_t>(position);
+    auto next = base + 1U;
+    if (next == buffer.size()) next = 0U;
+    const double fraction = position - static_cast<double>(base);
     return static_cast<float>(buffer[base] + (buffer[next] - buffer[base]) * fraction);
+  }
+
+  void refresh_leslie_control(double depth, double shape, double spread) noexcept {
+    leslie_crossover = 1.0 - std::exp(-kTwoPi * (650.0 + shape * 500.0) / sample_rate);
+    leslie_horn_delay = (.00015 + depth * .00055) * sample_rate;
+    leslie_drum_delay = (.00008 + depth * .00024) * sample_rate;
+    leslie_horn_mix = .46 + shape * .22;
+
+    const std::array<double, 4> offsets{
+      kPi * (.65 + spread * .32),
+      kPi * (.55 + spread * .22),
+      kPi * (.72 + spread * .25),
+      kPi * (.58 + spread * .20),
+    };
+    for (std::size_t index = 0; index < offsets.size(); ++index) {
+      leslie_offset_sine[index] = std::sin(offsets[index]);
+      leslie_offset_cosine[index] = std::cos(offsets[index]);
+    }
   }
 
   std::array<float, 2> process_leslie(double left, double right, double rate, double depth,
                                       double shape, double spread, double motion) noexcept {
+    if (leslie_control_countdown <= 0) {
+      refresh_leslie_control(depth, shape, spread);
+      leslie_control_countdown = kLeslieControlPeriod - 1;
+    } else {
+      --leslie_control_countdown;
+    }
+
     delay_l[delay_index] = static_cast<float>(left);
     delay_r[delay_index] = static_cast<float>(right);
     const bool fast = rate > .52;
@@ -214,33 +273,46 @@ struct DriftClassicProcessor::Impl {
     if (rotor_horn_phase > kTwoPi) rotor_horn_phase -= kTwoPi;
     if (rotor_drum_phase > kTwoPi) rotor_drum_phase -= kTwoPi;
 
-    const double crossover = 1.0 - std::exp(-kTwoPi * (650.0 + shape * 500.0) / sample_rate);
-    rotor_low_l += (left - rotor_low_l) * crossover;
-    rotor_low_r += (right - rotor_low_r) * crossover;
+    rotor_low_l += (left - rotor_low_l) * leslie_crossover;
+    rotor_low_r += (right - rotor_low_r) * leslie_crossover;
     const double low_l = rotor_low_l;
     const double low_r = rotor_low_r;
     const double high_l = left - low_l;
     const double high_r = right - low_r;
-    const double horn_delay = (.00015 + depth * .00055) * sample_rate;
-    const double drum_delay = (.00008 + depth * .00024) * sample_rate;
-    const double h_mod_l = (.5 + .5 * std::sin(rotor_horn_phase)) * horn_delay;
-    const double h_mod_r = (.5 + .5 * std::sin(rotor_horn_phase + kPi * (.65 + spread * .32))) * horn_delay;
-    const double d_mod_l = (.5 + .5 * std::sin(rotor_drum_phase)) * drum_delay;
-    const double d_mod_r = (.5 + .5 * std::sin(rotor_drum_phase + kPi * (.55 + spread * .22))) * drum_delay;
+
+    const double horn_sine = std::sin(rotor_horn_phase);
+    const double horn_cosine = std::cos(rotor_horn_phase);
+    const double drum_sine = std::sin(rotor_drum_phase);
+    const double drum_cosine = std::cos(rotor_drum_phase);
+    const auto shifted = [](double sine, double cosine, double offset_sine, double offset_cosine) noexcept {
+      return sine * offset_cosine + cosine * offset_sine;
+    };
+    const double horn_mod_r = shifted(
+        horn_sine, horn_cosine, leslie_offset_sine[0], leslie_offset_cosine[0]);
+    const double drum_mod_r = shifted(
+        drum_sine, drum_cosine, leslie_offset_sine[1], leslie_offset_cosine[1]);
+    const double horn_amp_r_wave = shifted(
+        horn_sine, horn_cosine, leslie_offset_sine[2], leslie_offset_cosine[2]);
+    const double drum_amp_r_wave = shifted(
+        drum_sine, drum_cosine, leslie_offset_sine[3], leslie_offset_cosine[3]);
+
+    const double h_mod_l = (.5 + .5 * horn_sine) * leslie_horn_delay;
+    const double h_mod_r = (.5 + .5 * horn_mod_r) * leslie_horn_delay;
+    const double d_mod_l = (.5 + .5 * drum_sine) * leslie_drum_delay;
+    const double d_mod_r = (.5 + .5 * drum_mod_r) * leslie_drum_delay;
     const double delayed_h_l = read_delay(delay_l, h_mod_l);
     const double delayed_h_r = read_delay(delay_r, h_mod_r);
     const double delayed_d_l = read_delay(delay_l, d_mod_l);
     const double delayed_d_r = read_delay(delay_r, d_mod_r);
-    const double horn_amp_l = .70 + .30 * std::sin(rotor_horn_phase);
-    const double horn_amp_r = .70 + .30 * std::sin(rotor_horn_phase + kPi * (.72 + spread * .25));
-    const double drum_amp_l = .82 + .18 * std::sin(rotor_drum_phase);
-    const double drum_amp_r = .82 + .18 * std::sin(rotor_drum_phase + kPi * (.58 + spread * .20));
-    const double horn_mix = .46 + shape * .22;
-    const double output_l = low_l * (1.0 - horn_mix) * drum_amp_l + delayed_d_l * .12
-        + high_l * horn_mix * horn_amp_l + delayed_h_l * .18;
-    const double output_r = low_r * (1.0 - horn_mix) * drum_amp_r + delayed_d_r * .12
-        + high_r * horn_mix * horn_amp_r + delayed_h_r * .18;
-    delay_index = (delay_index + 1U) % delay_l.size();
+    const double horn_amp_l = .70 + .30 * horn_sine;
+    const double horn_amp_r = .70 + .30 * horn_amp_r_wave;
+    const double drum_amp_l = .82 + .18 * drum_sine;
+    const double drum_amp_r = .82 + .18 * drum_amp_r_wave;
+    const double output_l = low_l * (1.0 - leslie_horn_mix) * drum_amp_l + delayed_d_l * .12
+        + high_l * leslie_horn_mix * horn_amp_l + delayed_h_l * .18;
+    const double output_r = low_r * (1.0 - leslie_horn_mix) * drum_amp_r + delayed_d_r * .12
+        + high_r * leslie_horn_mix * horn_amp_r + delayed_h_r * .18;
+    if (++delay_index == delay_l.size()) delay_index = 0U;
     return {static_cast<float>(output_l), static_cast<float>(output_r)};
   }
 
@@ -409,6 +481,13 @@ struct DriftClassicProcessor::Impl {
   double rotor_drum_phase{kPi * .37};
   double rotor_low_l{};
   double rotor_low_r{};
+  int leslie_control_countdown{};
+  double leslie_crossover{};
+  double leslie_horn_delay{};
+  double leslie_drum_delay{};
+  double leslie_horn_mix{.46};
+  std::array<double, 4> leslie_offset_sine{};
+  std::array<double, 4> leslie_offset_cosine{1.0,1.0,1.0,1.0};
   std::array<float, 2048> delay_l{};
   std::array<float, 2048> delay_r{};
   std::size_t delay_index{};

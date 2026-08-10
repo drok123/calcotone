@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { clamp } from '../../ui/math';
 
-/** Shared hardware knob. */
 export function Knob({
   label,
   value,

@@ -15,6 +15,9 @@ namespace {
 constexpr float kPi = 3.14159265358979323846F;
 constexpr std::size_t kMaxLines = 12;
 constexpr std::size_t kMaxEarly = 5;
+constexpr std::size_t kEmt140Model = 10U;
+constexpr std::size_t kLexicon224Model = 11U;
+constexpr std::size_t max_model_index() noexcept { return kAtmosParityProfiles.size() - 1U; }
 
 float clamp01(float value) noexcept { return std::clamp(value, 0.F, 1.F); }
 float smooth_coefficient(float seconds, float rate) noexcept {
@@ -106,7 +109,7 @@ class AtmosNetwork {
  public:
   AtmosNetwork(float rate, std::size_t model)
       : rate_(rate),
-        model_(std::min<std::size_t>(11U, model)),
+        model_(std::min(model, max_model_index())),
         lexicon_input_(rate_, Lexicon224ConverterRole::Input),
         lexicon_output_(rate_, Lexicon224ConverterRole::Output) {
     const auto line_capacity = static_cast<std::size_t>(rate_ * .90F) + 64U;
@@ -140,11 +143,12 @@ class AtmosNetwork {
     const float shaped_size = std::pow(size, 1.35F);
     const float size_scale = profile.size_range[0] + shaped_size * (profile.size_range[1] - profile.size_range[0]);
     const float normalized_decay = clamp01(std::log(std::max(.35F, decay) / .35F) / std::log(16.F / .35F));
-    const float effective_decay = model_ == 10U ? .5F + normalized_decay * 5.F
-                                                : std::max(.25F, decay * profile.decay_bias);
+    const float effective_decay = model_ == kEmt140Model ? .5F + normalized_decay * 5.F
+                                                        : std::max(.25F, decay * profile.decay_bias);
     const float color_cutoff = 1700.F * std::pow(10.2F, color) * profile.damping_bias;
     const bool freeze = model_ == 5U;
-    const float loop_budget = freeze ? .958F : .875F;
+    const float loop_budget = freeze ? .997F : .992F;
+    const float feedback_headroom = freeze ? .004F : .010F;
     const float cross_magnitude = std::min(freeze ? .016F : .034F,
         profile.cross_amount * (.14F + diffusion * .22F));
 
@@ -152,14 +156,14 @@ class AtmosNetwork {
     for (unsigned channel = 0; channel < 2; ++channel) {
       converted[channel] = converter_texture(input[channel] * profile.input_trim, profile.converter_bits);
     }
-    if (model_ == 11U) converted = lexicon_input_.process(converted[0], converted[1]);
+    if (model_ == kLexicon224Model) converted = lexicon_input_.process(converted[0], converted[1]);
 
     std::array<float, 2> predelayed{};
     const float input_lowpass_hz = profile.converter_lowpass > 0.F ? profile.converter_lowpass : 16'000.F;
     const float input_hp_coefficient = filter_coefficient(profile.highpass, rate_);
     const float input_lp_coefficient = filter_coefficient(input_lowpass_hz, rate_);
     for (unsigned channel = 0; channel < 2; ++channel) {
-      const float source = model_ == 10U ? converted[0] + converted[1] : converted[channel];
+      const float source = model_ == kEmt140Model ? converted[0] + converted[1] : converted[channel];
       const float filtered = one_pole(highpass(source, input_hp_low_[channel], input_hp_coefficient),
                                       input_lp_state_[channel], input_lp_coefficient);
       predelay_[channel][predelay_write_] = filtered;
@@ -247,7 +251,7 @@ class AtmosNetwork {
           * (.7F + (1.F - color) * .6F);
       const float line_decay = std::pow(.001F, line_time / std::max(.18F, effective_decay * spectral_decay_scale));
       const float spread = .988F - static_cast<float>(index) * .0019F;
-      self_feedback[index] = std::min(loop_budget - cross_magnitude - .042F,
+      self_feedback[index] = std::min(loop_budget - cross_magnitude - feedback_headroom,
           std::max(.18F, line_decay * spread));
       cross_gain[index] = cross_magnitude * (index % 4U < 2U ? 1.F : -1.F);
       late[index % 2U] += raw[index] * output_polarity(index) * base_output * energy_trim;
@@ -272,7 +276,7 @@ class AtmosNetwork {
                                filter_coefficient(converter_cutoff, rate_));
       late[channel] = converter_texture(late[channel], profile.converter_bits);
     }
-    if (model_ == 11U) late = lexicon_output_.process(late[0], late[1]);
+    if (model_ == kLexicon224Model) late = lexicon_output_.process(late[0], late[1]);
 
     const float early_presence = early_profile.early_level * (1.12F - size * .24F)
         * (1.08F - diffusion * .18F);
@@ -321,7 +325,7 @@ struct AtmosParityProcessor::Impl {
   void reset() noexcept {
     for (std::size_t index = 0; index < smooth.size(); ++index)
       smooth[index] = target[index].load(std::memory_order_relaxed);
-    active_model = std::min<std::size_t>(11U, static_cast<std::size_t>(std::max(0.F, std::round(smooth[0]))));
+    active_model = std::min(max_model_index(), static_cast<std::size_t>(std::max(0.F, std::round(smooth[0]))));
     active = std::make_unique<AtmosNetwork>(rate, active_model);
     retiring.reset();
     fade_position = 0U;
@@ -329,7 +333,7 @@ struct AtmosParityProcessor::Impl {
   }
 
   void switch_model(std::size_t requested, const AtmosControls& current) {
-    requested = std::min<std::size_t>(11U, requested);
+    requested = std::min(max_model_index(), requested);
     if (requested == active_model) return;
     if (processed_frames == 0U) {
       active = std::make_unique<AtmosNetwork>(rate, requested);
@@ -351,7 +355,7 @@ struct AtmosParityProcessor::Impl {
         const float coefficient = smooth_coefficient(smoothing_seconds[index], rate);
         smooth[index] += (target[index].load(std::memory_order_relaxed) - smooth[index]) * coefficient;
       }
-      const auto requested_model = std::min<std::size_t>(11U,
+      const auto requested_model = std::min(max_model_index(),
           static_cast<std::size_t>(std::max(0.F, std::round(smooth[0]))));
       const AtmosControls current = controls();
       switch_model(requested_model, current);

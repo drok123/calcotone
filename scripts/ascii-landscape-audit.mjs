@@ -56,8 +56,8 @@ for (const [moduleId, relative, orderName] of effectFiles) {
     requireText(engine, `'${normalizedKey}':`, `${key} named ASCII variant`);
   }
 }
-if (dropdownModeCount !== 90) {
-  failures.push(`Expected 90 dropdown ASCII identities; found ${dropdownModeCount}`);
+if (dropdownModeCount !== 95) {
+  failures.push(`Expected 95 dropdown ASCII identities; found ${dropdownModeCount}`);
 }
 requireText(engine, 'export function moduleModeKey', 'Exact module/mode identity');
 requireText(engine, 'return `${module.id}:${moduleMode(module)}`', 'Module-qualified dropdown key');
@@ -76,8 +76,8 @@ for (const pressureMode of ['fet', 'opto', 'varimu', 'vca']) {
 }
 requireText(engine, 'subscribeViewportAnimation(render)', 'Shared landscape scheduler');
 requireText(engine, 'IntersectionObserver', 'Offscreen landscape suspension');
-requireText(engine, 'Math.min(1.35, window.devicePixelRatio', 'Portable landscape canvas pixel cap');
-requireText(engine, '1000 / 18', 'Low-cost idle landscape cadence');
+requireText(engine, 'canvasPixelRatio(width, height, 6_400_000)', 'Bounded high-DPI landscape canvas');
+requireText(engine, 'profile.reference1440p ? 30 : 24', 'Adaptive landscape cadence');
 forbidText(engine, 'requestAnimationFrame(', 'Per-surface landscape animation loop');
 forbidText(engine, 'Math.random()', 'Nondeterministic landscape art');
 forbidText(engine, 'audio.driftPhase', 'Unbounded non-looping landscape phase');
@@ -88,13 +88,16 @@ requireText(pressureDisplay, "MODULE_ART_OFF_WHITE = '#f2ead8'", 'Unified off-wh
 requireText(pressureDisplay, 'context.fillStyle = textRow ? profile.primary : MODULE_ART_OFF_WHITE', 'Module text-only accent palette');
 requireText(pressureDisplay, 'subscribeViewportAnimation(render)', 'Shared module display scheduler');
 requireText(pressureDisplay, 'IntersectionObserver', 'Offscreen module display suspension');
-requireText(pressureDisplay, 'Math.min(1.35, window.devicePixelRatio', 'Portable module display pixel cap');
-requireText(pressureDisplay, '1000 / 18', 'Low-cost active module cadence');
+requireText(pressureDisplay, 'canvasPixelRatio(width, height, 5_400_000)', 'Bounded high-DPI module canvas');
+requireText(pressureDisplay, 'display.reference1440p ? 30 : 24', 'Adaptive active module cadence');
 forbidText(pressureDisplay, 'requestAnimationFrame(', 'Per-surface module animation loop');
 forbidText(pressureDisplay, 'Math.random()', 'Nondeterministic module display');
 forbidText(viewport, 'viewport-caption', 'Duplicate module artwork label');
-requireText(viewport, '<PressureStyleDisplay module={module}', 'Pressure-style module renderer');
-requireText(scheduler, 'const FRAME_BUDGET_MS = 7.5', 'Shared visual frame budget');
+requireText(viewport, '<AsciiArtEngine kind="module" module={module}', 'High-fidelity module renderer');
+forbidText(viewport, 'PressureStyleDisplay', 'Retired low-density core module renderer');
+requireText(scheduler, 'function frameBudget(): number', 'Adaptive shared visual frame budget');
+requireText(scheduler, 'const HEAVY_FRAME_MS = 10.5', 'Visual overload fallback threshold');
+requireText(scheduler, 'targetInterval = reducedInterval()', 'Automatic visual-rate fallback');
 
 const retired = [
   'src/components/motion/MotionPad.tsx',
@@ -141,4 +144,4 @@ if (failures.length) {
   console.error('');
   process.exit(1);
 }
-console.log(`CALCOTONE ASCII landscape audit passed (${dropdownModeCount} deterministic dropdown identities; Pressure-style module displays; zero decoders).`);
+console.log(`CALCOTONE ASCII landscape audit passed (${dropdownModeCount} deterministic dropdown identities; high-fidelity spectacle module displays; zero decoders).`);

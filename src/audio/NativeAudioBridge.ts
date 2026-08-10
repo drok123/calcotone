@@ -37,14 +37,45 @@ export interface NativeAudioHealth {
   ksPinCount: number;
   tunerHz: number;
   tunerLevel: number;
+  loopTransport?: number;
+  loopTrack?: number;
+  loopTrackMask?: number;
+  loopFrames?: number;
+  loopRawFrames?: number;
+  loopPosition?: number;
+  loopTrimStart?: number;
+  loopTrimEnd?: number;
+  loopWaveform?: number[];
 }
 
 const NATIVE_ORIGIN = 'http://127.0.0.1:48157';
+const PROFILE_SELECTOR_PARAMETERS = new Set(['mode', 'algorithm']);
+const STACK_PROFILE_SELECTORS = new Set(['model', 'cab']);
+const STACK_PROFILE_PARAMETERS = new Set(['drive', 'tone', 'sag', 'mix']);
+const HEALTH_CACHE_MS = 160;
+let nativeBackendEngaged = false;
+
+/** True only while the current Calcotone UI has successfully activated the native engine. */
+export function isNativeBackendEngaged(): boolean {
+  return nativeBackendEngaged;
+}
 
 export class NativeAudioBridge {
   private connected = false;
   private lastProbeFailure = 'Native host was not detected.';
   private commandQueue: Promise<boolean> = Promise.resolve(true);
+  private healthCache: NativeAudioHealth | null = null;
+  private healthCacheAt = 0;
+  private healthRequest: Promise<NativeAudioHealth | null> | null = null;
+  // Native machine selectors can change topology as well as coefficients. Keep the
+  // latest desired operating point beside the transport queue so selecting a new
+  // machine commits one coherent profile instead of waiting for the next knob write.
+  private readonly parameterSnapshot = new Map<string, Map<string, string>>();
+  private readonly stackSnapshot = new Map<string, string>();
+  // Loop settings are published as a complete UI snapshot, but each native bridge
+  // line is an idempotent setter. Remember the latest requested line per field so a
+  // fader move does not resend the other twelve unchanged Loop controls every tick.
+  private readonly loopCommandState = new Map<string, string>();
 
   public isConnected(): boolean { return this.connected; }
   public getLastProbeFailure(): string { return this.lastProbeFailure; }
@@ -55,6 +86,89 @@ export class NativeAudioBridge {
       mode: 'cors',
       credentials: 'omit',
     });
+  }
+
+  private resetDesiredState(): void {
+    this.parameterSnapshot.clear();
+    this.stackSnapshot.clear();
+    this.loopCommandState.clear();
+  }
+
+  private loopStateKey(line: string): string | null {
+    // This classifier sits on every native control gesture, not just Loop. Avoid the
+    // regex split/allocation path for the overwhelmingly common non-Loop commands.
+    const paramPrefix = 'loopParam ';
+    if (line.startsWith(paramPrefix)) {
+      const end = line.indexOf(' ', paramPrefix.length);
+      if (end > paramPrefix.length) return `loopParam:${line.slice(paramPrefix.length, end)}`;
+      return null;
+    }
+    const levelPrefix = 'loopTrackLevel ';
+    if (line.startsWith(levelPrefix)) {
+      const end = line.indexOf(' ', levelPrefix.length);
+      if (end > levelPrefix.length) return `loopTrackLevel:${line.slice(levelPrefix.length, end)}`;
+    }
+    return null;
+  }
+
+  private rememberDesiredState(line: string): void {
+    // Most native commands are neither module parameter writes nor Stack profile
+    // values. Keep them on a no-allocation prefix path instead of regex-splitting
+    // every knob/transport command into a temporary array.
+    const parameterPrefix = 'param ';
+    if (line.startsWith(parameterPrefix)) {
+      const moduleEnd = line.indexOf(' ', parameterPrefix.length);
+      if (moduleEnd < 0) return;
+      const parameterStart = moduleEnd + 1;
+      const parameterEnd = line.indexOf(' ', parameterStart);
+      if (parameterEnd < 0) return;
+      const moduleId = line.slice(parameterPrefix.length, moduleEnd);
+      const parameterId = line.slice(parameterStart, parameterEnd);
+      if (PROFILE_SELECTOR_PARAMETERS.has(parameterId)) return;
+      const value = line.slice(parameterEnd + 1);
+      if (!value) return;
+      let snapshot = this.parameterSnapshot.get(moduleId);
+      if (!snapshot) {
+        snapshot = new Map<string, string>();
+        this.parameterSnapshot.set(moduleId, snapshot);
+      }
+      snapshot.set(parameterId, value);
+      return;
+    }
+
+    const separator = line.indexOf(' ');
+    if (separator <= 0) return;
+    const name = line.slice(0, separator);
+    if (STACK_PROFILE_PARAMETERS.has(name)) {
+      const value = line.slice(separator + 1);
+      if (value) this.stackSnapshot.set(name, value);
+    }
+  }
+
+  private profileReplayLines(line: string): string[] {
+    const parameterPrefix = 'param ';
+    if (line.startsWith(parameterPrefix)) {
+      const moduleEnd = line.indexOf(' ', parameterPrefix.length);
+      if (moduleEnd < 0) return [];
+      const parameterStart = moduleEnd + 1;
+      const parameterEnd = line.indexOf(' ', parameterStart);
+      if (parameterEnd < 0) return [];
+      const parameterId = line.slice(parameterStart, parameterEnd);
+      if (!PROFILE_SELECTOR_PARAMETERS.has(parameterId)) return [];
+      const moduleId = line.slice(parameterPrefix.length, moduleEnd);
+      const snapshot = this.parameterSnapshot.get(moduleId);
+      return snapshot
+        ? [...snapshot.entries()].map(([storedParameterId, value]) => `param ${moduleId} ${storedParameterId} ${value}`)
+        : [];
+    }
+
+    const separator = line.indexOf(' ');
+    if (separator <= 0) return [];
+    const name = line.slice(0, separator);
+    if (STACK_PROFILE_SELECTORS.has(name)) {
+      return [...this.stackSnapshot.entries()].map(([parameterId, value]) => `${parameterId} ${value}`);
+    }
+    return [];
   }
 
   public async probe(timeoutMs = 8_000): Promise<NativeAudioHealth | null> {
@@ -80,9 +194,15 @@ export class NativeAudioBridge {
       }
       this.connected = true;
       this.lastProbeFailure = '';
+      this.healthCache = health;
+      this.healthCacheAt = performance.now();
+      this.resetDesiredState();
       return health;
     } catch (error) {
       this.connected = false;
+      nativeBackendEngaged = false;
+      this.healthCache = null;
+      this.healthCacheAt = 0;
       this.lastProbeFailure = error instanceof DOMException && error.name === 'AbortError'
         ? 'Native bridge timed out.'
         : 'Native bridge was unreachable.';
@@ -94,23 +214,54 @@ export class NativeAudioBridge {
 
   public async command(name: string, value: number): Promise<boolean> {
     if (!Number.isFinite(value)) return false;
-    return this.commandLine(`${name} ${value}`);
+    const sent = await this.commandLine(`${name} ${value}`);
+    if (name === 'active' && sent) nativeBackendEngaged = value >= 0.5;
+    return sent;
   }
 
   public async readHealth(): Promise<NativeAudioHealth | null> {
     if (!this.connected) return null;
-    try {
-      const response = await fetch(this.request(`${NATIVE_ORIGIN}/health`, { cache: 'no-store' }));
-      if (!response.ok) return null;
-      return await response.json() as NativeAudioHealth;
-    } catch {
-      return null;
-    }
+    const now = performance.now();
+    if (this.healthCache && now - this.healthCacheAt < HEALTH_CACHE_MS) return this.healthCache;
+    if (this.healthRequest) return this.healthRequest;
+
+    this.healthRequest = fetch(this.request(`${NATIVE_ORIGIN}/health`, { cache: 'no-store' }))
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const health = await response.json() as NativeAudioHealth;
+        this.healthCache = health;
+        this.healthCacheAt = performance.now();
+        return health;
+      })
+      .catch(() => null)
+      .finally(() => { this.healthRequest = null; });
+    return this.healthRequest;
   }
 
   public async commandLine(line: string): Promise<boolean> {
-    if (!this.connected || !line.trim()) return false;
-    const operation = this.commandQueue.then(() => this.sendCommand(line));
+    const trimmed = line.trim();
+    if (!this.connected || !trimmed) return false;
+    const loopKey = this.loopStateKey(trimmed);
+    if (loopKey && this.loopCommandState.get(loopKey) === trimmed) return true;
+    if (loopKey) this.loopCommandState.set(loopKey, trimmed);
+
+    // Remember synchronously, before the queued request runs. Random/preset flows enqueue
+    // a selector followed by their knob values in one call stack, so the selector replay
+    // sees the final desired snapshot rather than briefly restoring the previous recipe.
+    line = trimmed;
+    this.rememberDesiredState(line);
+    const operation = this.commandQueue.then(() => this.sendCommand(line)).then(async (sent) => {
+      if (!sent) {
+        // A failed setter must be retryable. Only clear it if no newer value for the
+        // same field has superseded this queued request.
+        if (loopKey && this.loopCommandState.get(loopKey) === trimmed) this.loopCommandState.delete(loopKey);
+        return false;
+      }
+      for (const replay of this.profileReplayLines(line)) {
+        if (!await this.sendCommand(replay)) return false;
+      }
+      return true;
+    });
     this.commandQueue = operation.catch(() => false);
     return operation;
   }
@@ -136,5 +287,12 @@ export class NativeAudioBridge {
     }
   }
 
-  public disconnect(): void { this.connected = false; }
+  public disconnect(): void {
+    this.connected = false;
+    nativeBackendEngaged = false;
+    this.healthCache = null;
+    this.healthCacheAt = 0;
+    this.healthRequest = null;
+    this.resetDesiredState();
+  }
 }

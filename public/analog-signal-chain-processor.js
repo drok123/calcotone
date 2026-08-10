@@ -1,3 +1,8 @@
+const ADAA_DOMAIN = 24;
+const ADAA_TABLE_SIZE = 4097;
+const TANH_DOMAIN = 8;
+const TANH_TABLE_SIZE = 2049;
+
 class CalcotoneAnalogSignalChainProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
@@ -15,6 +20,8 @@ class CalcotoneAnalogSignalChainProcessor extends AudioWorkletProcessor {
     super();
     this.states = [this.makeState(), this.makeState()];
     this.lut = this.makeLut(1024);
+    this.adaaAntiderivativeLut = this.makeAntiderivativeLut(ADAA_TABLE_SIZE);
+    this.adaaTanhLut = this.makeTanhLut(TANH_TABLE_SIZE);
     this.port.onmessage = (event) => {
       if (event.data?.type === 'reset') this.resetStates();
       if (event.data?.type === 'lut' && event.data.values instanceof Float32Array && event.data.values.length >= 16) {
@@ -24,7 +31,14 @@ class CalcotoneAnalogSignalChainProcessor extends AudioWorkletProcessor {
   }
 
   makeState() {
-    return { previousAdaInput: 0, previousDcInput: 0, previousDcOutput: 0, tptState: 0 };
+    return {
+      previousAdaInput: 0,
+      previousDcInput: 0,
+      previousDcOutput: 0,
+      tptState: 0,
+      cutoffHz: -1,
+      cutoffG: 0,
+    };
   }
 
   resetStates() {
@@ -34,6 +48,8 @@ class CalcotoneAnalogSignalChainProcessor extends AudioWorkletProcessor {
       state.previousDcInput = 0;
       state.previousDcOutput = 0;
       state.tptState = 0;
+      state.cutoffHz = -1;
+      state.cutoffG = 0;
     }
   }
 
@@ -47,13 +63,47 @@ class CalcotoneAnalogSignalChainProcessor extends AudioWorkletProcessor {
     return table;
   }
 
+  makeAntiderivativeLut(length) {
+    const table = new Float64Array(length);
+    for (let i = 0; i < length; i += 1) {
+      const magnitude = i / (length - 1) * ADAA_DOMAIN;
+      table[i] = magnitude + Math.log1p(Math.exp(-2 * magnitude)) - Math.LN2;
+    }
+    return table;
+  }
+
+  makeTanhLut(length) {
+    const table = new Float32Array(length);
+    for (let i = 0; i < length; i += 1) {
+      const x = i / (length - 1) * TANH_DOMAIN * 2 - TANH_DOMAIN;
+      table[i] = Math.tanh(x);
+    }
+    return table;
+  }
+
   value(values, index) {
     return values.length === 1 ? values[0] : values[index];
   }
 
   antiderivative(x) {
-    const magnitude = Math.abs(Math.max(-24, Math.min(24, x)));
-    return magnitude + Math.log1p(Math.exp(-2 * magnitude)) - Math.LN2;
+    const magnitude = Math.abs(Math.max(-ADAA_DOMAIN, Math.min(ADAA_DOMAIN, x)));
+    const table = this.adaaAntiderivativeLut;
+    const position = magnitude / ADAA_DOMAIN * (table.length - 1);
+    const index = Math.floor(position);
+    const next = index < table.length - 1 ? index + 1 : index;
+    const fraction = position - index;
+    return table[index] + (table[next] - table[index]) * fraction;
+  }
+
+  fastTanh(x) {
+    if (x <= -TANH_DOMAIN) return -1;
+    if (x >= TANH_DOMAIN) return 1;
+    const table = this.adaaTanhLut;
+    const position = (x + TANH_DOMAIN) / (TANH_DOMAIN * 2) * (table.length - 1);
+    const index = Math.floor(position);
+    const next = index < table.length - 1 ? index + 1 : index;
+    const fraction = position - index;
+    return table[index] + (table[next] - table[index]) * fraction;
   }
 
   adaTanh(x, state) {
@@ -61,7 +111,7 @@ class CalcotoneAnalogSignalChainProcessor extends AudioWorkletProcessor {
     const delta = x - previous;
     const output = Math.abs(delta) > 1e-6
       ? (this.antiderivative(x) - this.antiderivative(previous)) / delta
-      : Math.tanh((x + previous) * 0.5);
+      : this.fastTanh((x + previous) * 0.5);
     state.previousAdaInput = x;
     return output;
   }
@@ -85,6 +135,16 @@ class CalcotoneAnalogSignalChainProcessor extends AudioWorkletProcessor {
     const i2 = index < last ? index + 1 : last;
     const i3 = index + 2 < last ? index + 2 : last;
     return this.hermite(table[i0], table[i1], table[i2], table[i3], mu);
+  }
+
+  lowpassCoefficient(cutoffValue, state) {
+    const cutoff = Math.max(10, Math.min(sampleRate * 0.475, cutoffValue));
+    if (cutoff !== state.cutoffHz) {
+      const g = Math.tan(Math.PI * cutoff / sampleRate);
+      state.cutoffHz = cutoff;
+      state.cutoffG = g;
+    }
+    return state.cutoffG;
   }
 
   process(inputs, outputs, parameters) {
@@ -113,8 +173,7 @@ class CalcotoneAnalogSignalChainProcessor extends AudioWorkletProcessor {
         state.previousDcInput = shaped;
         state.previousDcOutput = Math.abs(dcOut) < 1e-20 ? 0 : dcOut;
 
-        const cutoff = Math.max(10, Math.min(sampleRate * 0.475, this.value(parameters.cutoff, i)));
-        const g = Math.tan(Math.PI * cutoff / sampleRate);
+        const g = this.lowpassCoefficient(this.value(parameters.cutoff, i), state);
         const v = (state.previousDcOutput - state.tptState) * g / (1 + g);
         const lowpass = v + state.tptState;
         state.tptState = lowpass + v;

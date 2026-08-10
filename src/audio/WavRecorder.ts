@@ -73,6 +73,8 @@ export class WavRecorder {
     processor.port.onmessage = (
       event: MessageEvent<{
         type?: string;
+        slot?: number;
+        frames?: number;
         left?: Float32Array;
         right?: Float32Array;
         peak?: number;
@@ -80,13 +82,44 @@ export class WavRecorder {
     ) => {
       const data = event.data;
       if (data?.type === 'chunk' && data.left && data.right) {
-        this.leftChunks.push(data.left);
-        this.rightChunks.push(data.right);
-        this.frameCount += Math.min(data.left.length, data.right.length);
-        this.peak = Math.max(
-          this.peak,
-          Number.isFinite(data.peak) ? data.peak ?? 0 : 0
-        );
+        const frames = Math.max(0, Math.min(
+          data.left.length,
+          data.right.length,
+          Math.trunc(data.frames ?? Math.min(data.left.length, data.right.length)),
+        ));
+        if (frames > 0) {
+          // The worklet owns a fixed transfer-buffer pool. Copy on the main thread,
+          // where allocation is safe, then immediately return the detached-capable
+          // buffers so the render thread never slices/allocates audio chunks.
+          this.leftChunks.push(data.left.slice(0, frames));
+          this.rightChunks.push(data.right.slice(0, frames));
+          this.frameCount += frames;
+          this.peak = Math.max(
+            this.peak,
+            Number.isFinite(data.peak) ? data.peak ?? 0 : 0
+          );
+        }
+        const leftBuffer = data.left.buffer;
+        const rightBuffer = data.right.buffer;
+        if (
+          Number.isInteger(data.slot)
+          && leftBuffer instanceof ArrayBuffer
+          && rightBuffer instanceof ArrayBuffer
+        ) {
+          processor.port.postMessage({
+            type: 'recycle',
+            slot: data.slot,
+            leftBuffer,
+            rightBuffer,
+          }, [leftBuffer, rightBuffer]);
+        }
+        return;
+      }
+      if (data?.type === 'overflow') {
+        this.recording = false;
+        this.stopResolver?.();
+        this.stopResolver = null;
+        console.error('CALCOTONE recorder transfer pool exhausted.');
         return;
       }
       if (data?.type === 'stopped') {

@@ -79,7 +79,8 @@ requireText(randomDspScheduler, 'await yieldForUiPaint();', 'RANDOM UI paint yie
 requireText(randomDspScheduler, 'revealModule(effectId);', 'RANDOM per-module reveal');
 requireText(randomUiFlow, "RANDOM_UI_MODULE_EVENT = 'calcotone:random-ui-module'", 'RANDOM typed UI stream event');
 requireText(randomBridge, 'releasePlanningHold();', 'RANDOM short planning hold release');
-requireText(railCRandom, "RAIL_C_RANDOM_ORDER = ['stomp', 'chaos', 'pressure']", 'Rail C RANDOM order');
+requireText(railCRandom, "RAIL_C_RANDOM_ORDER = ['stomp', 'chaos']", 'Rail C RANDOM order excludes Loop');
+forbidText(railCRandom, "'pressure'", 'Loop must stay out of Rail C RANDOM registry');
 requireText(railCRandom, 'return serialOrder.filter(', 'Rail C active-module planning');
 requireText(randomBridge, 'const railCModuleIds = getActiveRailCRandomModuleIds()', 'Rail C bridge planning');
 requireText(randomDspScheduler, 'for (const moduleId of deferredModuleIds)', 'Rail C serialized scheduler');
@@ -88,7 +89,7 @@ requireText(app, 'railCTargets: new Set(activeRailC)', 'Rail C UI transaction ta
 requireText(app, 'randomizeRailCModule(railCId, plan.profile)', 'Rail C profile-aware reveal-time randomization');
 requireText(railCModules, "useRailCRandomController('stomp', enabled, randomizeStomp)", 'Stomp RANDOM controller');
 requireText(railCModules, "useRailCRandomController('chaos', enabled, randomizeChaos)", 'Chaos RANDOM controller');
-requireText(railCModules, "useRailCRandomController('pressure', state.enabled, randomizePressureProfile)", 'Pressure profile-aware RANDOM controller');
+forbidText(railCModules, "useRailCRandomController('pressure'", 'Loop must not register a RANDOM controller');
 if (randomBridge.indexOf('releasePlanningHold();') > randomBridge.indexOf('void flushCapturedRandom(')) {
   failures.push('RANDOM planning hold must end before staged DSP begins');
 }
@@ -199,13 +200,17 @@ requireText(ember, 'if (curveCache.size >= MAX_CURVE_CACHE)', 'Ember curve cache
  // sleeps while offscreen, and never owns a decoder or animation loop.
 forbidText(main, "import './videoStabilityPatch'", 'Removed video repair monkey patch');
 forbidText(main, "import './components/effects/VideoColorStability.css'", 'Retired video stylesheet');
-requireText(viewport, '<PressureStyleDisplay module={module}', 'Module ASCII wiring');
+requireText(viewport, '<AsciiArtEngine kind="module" module={module}', 'High-fidelity module ASCII wiring');
+requireText(viewport, 'module-spectacle-ascii', 'Dedicated spectacle module surface');
+forbidText(viewport, 'PressureStyleDisplay', 'Retired low-density module renderer');
 requireText(ascii, 'subscribeViewportAnimation(render)', 'ASCII shared scheduler');
 requireText(ascii, 'IntersectionObserver', 'ASCII offscreen suspension');
-requireText(ascii, '1000 / 18', 'ASCII bounded active cadence');
-requireText(ascii, 'Math.min(1.35, window.devicePixelRatio', 'ASCII pixel-density cap');
-requireText(pressureDisplay, 'subscribeViewportAnimation(render)', 'Module display shared scheduler');
-requireText(pressureDisplay, 'if (canvas.width !== pixelWidth)', 'Module display resize allocation guard');
+requireText(ascii, 'profile.reference1440p ? 30 : 24', 'ASCII adaptive active cadence');
+requireText(ascii, 'canvasPixelRatio(width, height, 6_400_000)', 'ASCII bounded high-DPI budget');
+requireText(ascii, "const MODULE_SHADE_RAMP = ' .:-=+*#%@'", 'Module spectacle density ramp');
+requireText(ascii, 'const MODULE_BAYER_4', 'Module spectacle ordered dithering');
+requireText(ascii, 'function moduleEdgeGlyph', 'Module spectacle edge reconstruction');
+requireText(ascii, 'const supersampled = (center * 3 + left + right + up + down) / 7', 'Module spectacle supersampling');
 forbidText(ascii, 'requestAnimationFrame(', 'Independent ASCII animation loop');
 forbidText(viewport, '<video', 'Module decoder');
 forbidText(viewport, '.mp4', 'Module video payload');

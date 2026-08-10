@@ -74,7 +74,9 @@ function randomIn(range: readonly [number, number]): number {
 /** Randomize Pressure only when the hardware section is switched on. */
 export function randomizePressure(): string | null {
   if (!state.enabled) return null;
-  const recipe = SIGNAL_LAB_SWEET_SPOTS[Math.floor(Math.random() * SIGNAL_LAB_SWEET_SPOTS.length)];
+  const alternatives = SIGNAL_LAB_SWEET_SPOTS.filter((recipe) => recipe.mode !== state.mode || recipe.style !== state.style);
+  const pool = alternatives.length ? alternatives : SIGNAL_LAB_SWEET_SPOTS;
+  const recipe = pool[Math.floor(Math.random() * pool.length)];
   if (!recipe) return null;
   setPressureState({
     mode: recipe.mode,

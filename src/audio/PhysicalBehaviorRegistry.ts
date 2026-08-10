@@ -173,6 +173,13 @@ export function syncPhysicalBehavior(effect: Effect): void {
       case 'abyss': behavior = spec('acoustic', 0.065 + size * 0.06, motion, 0.9 + storedEnergy * 0.08, color * 0.7); break;
       case 'emt140': behavior = spec('elastic', 0.06 + decay * 0.045, mix(motion, size, 0.08), 0.86 + diffusion * 0.1, color); break;
       case 'lexicon224': behavior = spec('converter', 0.05 + diffusion * 0.05, motion, 0.68 + storedEnergy * 0.16, color); break;
+      // RMX16 and the mechanical spring study already own their coloration inside the
+      // Atmos network. Keep the shared chassis stage out of those paths to avoid doubling it.
+      case 'rmx16': behavior = BYPASS; break;
+      case 'quantec': behavior = spec('acoustic', 0.035 + diffusion * 0.03, size, 0.72 + storedEnergy * 0.18, color); break;
+      case 'springtank': behavior = BYPASS; break;
+      case 'bloom': behavior = spec('fluid', 0.055 + diffusion * 0.05, motion, 0.86 + storedEnergy * 0.1, mix(color, 0.62, 0.15)); break;
+      case 'veil': behavior = spec('acoustic', 0.045 + size * 0.035, motion * 0.65, 0.88 + storedEnergy * 0.08, color * 0.65); break;
     }
   } else if (effect.id === 'bitcrusher') {
     const mode = GRAIN_MODE_ORDER[index(effect, 'mode', 2)] ?? 'smear';

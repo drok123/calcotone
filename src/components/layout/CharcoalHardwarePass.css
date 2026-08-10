@@ -22,7 +22,6 @@
   text-shadow: none !important;
 }
 
-
 /* Outer knob ring/bezel only. Keep the cream knob face itself intact. */
 .knob-shell::before {
   background: var(--calcotone-charcoal) !important;
@@ -32,10 +31,6 @@
     inset 0 1px rgba(255,255,255,.025),
     inset 0 -2px rgba(0,0,0,.72) !important;
 }
-
-/* Patch hardware stays in the knob-ring charcoal family, with just enough
-   directional highlight to read as machined dark metal. Route identity remains
-   in the labels/glow instead of changing the socket material. */
 
 /* Spectrum housing stays charcoal, now with a clear cream hardware outline. */
 .spectrum-unit {
@@ -86,8 +81,6 @@
     0 0 5px rgba(215,208,189,.38),
     inset 0 1px rgba(255,250,228,.24) !important;
 }
-
-/* Nudge the PATCHES heading right without moving the route count or the box itself. */
 
 /* RAW / CLEAN / LOUD now occupy the selector row directly; the old MASTER label is gone. */
 .recorder-master-selector-buttons-only {

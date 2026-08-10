@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/elastic_stereo_fifo_discontinuity_test.dir/link.d CMakeFiles/elastic_stereo_fifo_discontinuity_test.dir/tests/elastic_stereo_fifo_discontinuity_test.cpp.o -o elastic_stereo_fifo_discontinuity_test  libcalcotone_dsp.a

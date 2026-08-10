@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/ember_magnetic_core_processor_test.dir/link.d CMakeFiles/ember_magnetic_core_processor_test.dir/tests/ember_magnetic_core_processor_test.cpp.o -o ember_magnetic_core_processor_test  libcalcotone_dsp.a

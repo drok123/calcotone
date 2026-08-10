@@ -1,22 +1,38 @@
+import { getDisplayProfile } from '../../ui/displayProfile';
+
 export type ViewportRenderCallback = (time: number) => void;
+
+const HEAVY_FRAME_MS = 10.5;
+const RECOVERY_FRAME_COUNT = 90;
+const MAX_VISUAL_FPS = 20;
 
 const viewportRenderCallbacks = new Set<ViewportRenderCallback>();
 const lastCallbackRender = new Map<ViewportRenderCallback, number>();
 let callbackSnapshot: ViewportRenderCallback[] = [];
 let viewportAnimationFrame = 0;
-let targetInterval = 1000 / 30;
+let targetInterval = preferredInterval();
 let recoveryFrames = 0;
 let callbackCursor = 0;
 let performanceHoldCount = 0;
 let lastFrameCostMs = 0;
 let worstCallbackCostMs = 0;
 
-const NORMAL_INTERVAL = 1000 / 30;
-const REDUCED_INTERVAL = 1000 / 20;
-const FRAME_BUDGET_MS = 7.5;
-const REDUCED_FRAME_BUDGET_MS = 5.5;
-const HEAVY_FRAME_MS = 11;
-const RECOVERY_FRAME_COUNT = 75;
+function preferredInterval(): number {
+  return 1000 / Math.min(getDisplayProfile().visualFps, MAX_VISUAL_FPS);
+}
+
+function reducedInterval(): number {
+  return 1000 / (getDisplayProfile().reference1440p ? 15 : 12);
+}
+
+function frameBudget(): number {
+  const preferred = preferredInterval();
+  return targetInterval > preferred + .25
+    ? 4.5
+    : getDisplayProfile().reference1440p
+      ? 5.5
+      : 6.25;
+}
 
 function refreshCallbackSnapshot(): void {
   callbackSnapshot = Array.from(viewportRenderCallbacks);
@@ -39,9 +55,12 @@ function runViewportAnimationFrame(time: number): void {
   viewportAnimationFrame = 0;
   if (callbackSnapshot.length === 0 || document.hidden || performanceHoldCount > 0) return;
 
+  const preferred = preferredInterval();
+  if (targetInterval < preferred) targetInterval = preferred;
+
   const callbacks = callbackSnapshot;
   const frameStarted = performance.now();
-  const budget = targetInterval > NORMAL_INTERVAL ? REDUCED_FRAME_BUDGET_MS : FRAME_BUDGET_MS;
+  const budget = frameBudget();
   let rendered = 0;
   let visited = 0;
   let frameWorst = 0;
@@ -71,17 +90,21 @@ function runViewportAnimationFrame(time: number): void {
 
   lastFrameCostMs = performance.now() - frameStarted;
 
-  // Visuals are secondary to audio. Back off when either a whole visual slice or a
-  // single renderer becomes expensive, then cautiously recover after sustained calm.
+  // The paint clock is intentionally slower than the audio clock. Renderers always
+  // sample the latest audio-derived phase, so skipped frames reduce CPU without
+  // accumulating visual drift. Heavy frames fall back again before they can compete
+  // with WebView/native control work.
   if (lastFrameCostMs > HEAVY_FRAME_MS || frameWorst > HEAVY_FRAME_MS) {
-    targetInterval = REDUCED_INTERVAL;
+    targetInterval = reducedInterval();
     recoveryFrames = 0;
-  } else if (targetInterval > NORMAL_INTERVAL) {
+  } else if (targetInterval > preferred + .25) {
     recoveryFrames += 1;
     if (recoveryFrames >= RECOVERY_FRAME_COUNT) {
-      targetInterval = NORMAL_INTERVAL;
+      targetInterval = preferred;
       recoveryFrames = 0;
     }
+  } else {
+    targetInterval = preferred;
   }
 
   scheduleNextFrame();
@@ -93,6 +116,7 @@ function handleVisibilityChange(): void {
     viewportAnimationFrame = 0;
     return;
   }
+  targetInterval = preferredInterval();
   scheduleNextFrame();
 }
 
@@ -146,7 +170,7 @@ export function subscribeViewportAnimation(callback: ViewportRenderCallback): ()
     if (viewportRenderCallbacks.size === 0) {
       if (viewportAnimationFrame) cancelAnimationFrame(viewportAnimationFrame);
       viewportAnimationFrame = 0;
-      targetInterval = NORMAL_INTERVAL;
+      targetInterval = preferredInterval();
       recoveryFrames = 0;
       callbackCursor = 0;
       lastFrameCostMs = 0;
@@ -162,7 +186,7 @@ function disposeViewportScheduler(): void {
   viewportRenderCallbacks.clear();
   lastCallbackRender.clear();
   callbackSnapshot = [];
-  targetInterval = NORMAL_INTERVAL;
+  targetInterval = preferredInterval();
   recoveryFrames = 0;
   callbackCursor = 0;
   performanceHoldCount = 0;

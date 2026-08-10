@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/ember_parity_processor_test.dir/link.d CMakeFiles/ember_parity_processor_test.dir/tests/ember_parity_processor_test.cpp.o -o ember_parity_processor_test  libcalcotone_dsp.a
