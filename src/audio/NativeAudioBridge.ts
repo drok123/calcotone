@@ -216,8 +216,8 @@ export class NativeAudioBridge {
     // Remember synchronously, before the queued request runs. Random/preset flows enqueue
     // a selector followed by their knob values in one call stack, so the selector replay
     // sees the final desired snapshot rather than briefly restoring the previous recipe.
-    this.rememberDesiredState(trimmed);
     line = trimmed;
+    this.rememberDesiredState(line);
     const operation = this.commandQueue.then(() => this.sendCommand(line)).then(async (sent) => {
       if (!sent) {
         // A failed setter must be retryable. Only clear it if no newer value for the
