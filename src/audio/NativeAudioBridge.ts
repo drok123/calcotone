@@ -52,6 +52,12 @@ const NATIVE_ORIGIN = 'http://127.0.0.1:48157';
 const PROFILE_SELECTOR_PARAMETERS = new Set(['mode', 'algorithm']);
 const STACK_PROFILE_SELECTORS = new Set(['model', 'cab']);
 const STACK_PROFILE_PARAMETERS = new Set(['drive', 'tone', 'sag', 'mix']);
+let nativeBackendEngaged = false;
+
+/** True only while the current Calcotone UI has successfully activated the native engine. */
+export function isNativeBackendEngaged(): boolean {
+  return nativeBackendEngaged;
+}
 
 export class NativeAudioBridge {
   private connected = false;
@@ -144,6 +150,7 @@ export class NativeAudioBridge {
       return health;
     } catch (error) {
       this.connected = false;
+      nativeBackendEngaged = false;
       this.lastProbeFailure = error instanceof DOMException && error.name === 'AbortError'
         ? 'Native bridge timed out.'
         : 'Native bridge was unreachable.';
@@ -155,7 +162,9 @@ export class NativeAudioBridge {
 
   public async command(name: string, value: number): Promise<boolean> {
     if (!Number.isFinite(value)) return false;
-    return this.commandLine(`${name} ${value}`);
+    const sent = await this.commandLine(`${name} ${value}`);
+    if (name === 'active' && sent) nativeBackendEngaged = value >= 0.5;
+    return sent;
   }
 
   public async readHealth(): Promise<NativeAudioHealth | null> {
@@ -209,6 +218,7 @@ export class NativeAudioBridge {
 
   public disconnect(): void {
     this.connected = false;
+    nativeBackendEngaged = false;
     this.resetDesiredState();
   }
 }
