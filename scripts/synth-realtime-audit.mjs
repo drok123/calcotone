@@ -21,7 +21,7 @@ for (const token of [
   'this.activeVoiceIndices = new Uint8Array(MAX_VOICES)',
   'this.activeVoiceCount = 0',
   'createVoiceSlot()',
-  'captureSourceOffsets: new Int32Array(4)',
+  'const captureSourceOffsets = new Int32Array(4)',
   'findFreeVoiceIndex()',
   'this.activeVoiceIndices[this.activeVoiceCount++] = voiceIndex',
   'voice.opPhases.fill(0)',
