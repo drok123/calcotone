@@ -1,28 +1,39 @@
-/* Loop-only refinement. No selector in this file may target another module. */
+/*
+ * LOOP utility surface
+ * --------------------
+ * Loop intentionally does not behave like the scenic CALCOTONE modules. Its
+ * visual area is a compact transient editor and its four performance strips are
+ * fixed to one uniform 25% grid. No selector in this file may target Stomp/Stack.
+ */
 .module-pressure {
   --loop-grid-gap: 4px;
-  --loop-control-height: 30px;
   --loop-control-radius: 4px;
-  --loop-label-size: .52rem;
-  --loop-value-size: .56rem;
-  --loop-strong-size: .62rem;
-  --loop-header-height: 92px;
-  --loop-header-gap: 7px;
+  --loop-header-height: 68px;
+  --loop-header-gap: 6px;
+  --loop-stage-height: 250px;
+  --loop-trim-height: 88px;
+  --loop-fader-y: 151px;
+  --loop-knob-y: 220px;
+  --loop-control-height: 40px;
   --loop-module-pad: 12px;
-  --loop-border: rgba(255, 190, 114, .24);
-  --loop-border-strong: rgba(215, 200, 255, .56);
+  --loop-label-size: .46rem;
+  --loop-value-size: .46rem;
+  --loop-strong-size: .50rem;
   --loop-panel: #100c08;
   --loop-panel-deep: #090806;
   --loop-ink: rgba(242, 234, 216, .82);
-  --loop-accent: #d7c8ff;
+  --loop-off-white: #f2ead8;
+  --loop-off-white-soft: rgba(242, 234, 216, .62);
+  --loop-purple: #d7c8ff;
+  --loop-border: rgba(242, 234, 216, .20);
+  --loop-border-strong: rgba(242, 234, 216, .46);
 }
 
-/* Keep the chassis separator attached to the real bottom of the taller Loop header. */
+/* The divider follows Loop's compact two-row header rather than the global header. */
 .module-pressure::after {
   top: calc(var(--loop-module-pad) + var(--loop-header-height) + var(--loop-header-gap));
 }
 
-/* LOOP alone gets a second header story so precision controls use full width. */
 .module-pressure .module-header {
   display: grid !important;
   align-items: stretch;
@@ -30,7 +41,7 @@
   height: var(--loop-header-height);
   flex-basis: var(--loop-header-height);
   grid-template-columns: minmax(0, 1fr) 42px;
-  grid-template-rows: 24px 64px;
+  grid-template-rows: 24px 40px;
   gap: 4px 6px;
   margin-bottom: var(--loop-header-gap);
 }
@@ -56,10 +67,11 @@
   max-width: none;
 }
 
+/* Clock is deliberately a small utility readout, never a banner. */
 .module-pressure .loop-header-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 64px;
-  grid-template-rows: repeat(2, var(--loop-control-height));
+  grid-template-columns: 92px minmax(0, 1fr) 48px;
+  grid-template-rows: var(--loop-control-height);
   align-items: stretch;
   gap: var(--loop-grid-gap);
   width: 100%;
@@ -71,31 +83,34 @@
   grid-column: 1;
   grid-row: 1;
   display: grid;
-  place-items: center start;
-  width: 100%;
-  min-width: 0;
+  place-items: center;
+  width: 92px;
+  min-width: 92px;
   height: var(--loop-control-height);
-  padding: 0 10px;
-  border: 1px solid var(--loop-border-strong);
+  padding: 0 5px;
+  overflow: hidden;
+  border: 1px solid var(--loop-border);
   border-radius: var(--loop-control-radius);
-  color: var(--loop-accent);
-  background: linear-gradient(180deg, rgba(215, 200, 255, .055), transparent 52%), var(--loop-panel);
-  box-shadow: inset 0 0 10px rgba(0, 0, 0, .34);
+  color: var(--loop-off-white);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .025), transparent 54%), var(--loop-panel);
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, .38);
   font: 900 var(--loop-strong-size)/1 var(--mono);
-  letter-spacing: .055em;
+  letter-spacing: .025em;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .module-pressure .loop-trim-toggle {
-  grid-column: 2;
+  grid-column: 3;
   grid-row: 1;
-  width: 64px;
-  min-width: 64px;
+  width: 48px;
+  min-width: 48px;
 }
 
-/* Seven equal columns are the Loop placement contract. */
+/* MSTR / RET / FADE / ALL / UNDO / REDO / BNC all share one exact row. */
 .module-pressure .loop-utility-bank {
-  grid-column: 1 / -1;
-  grid-row: 2;
+  grid-column: 2;
+  grid-row: 1;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   align-items: stretch;
@@ -105,7 +120,6 @@
   overflow: visible;
 }
 
-/* Dynamically inserted UNDO / REDO / BNC become direct members of that grid. */
 .module-pressure .loop-505-tools {
   display: contents;
 }
@@ -120,80 +134,89 @@
   border: 1px solid var(--loop-border);
   border-radius: var(--loop-control-radius);
   color: var(--loop-ink);
-  background: linear-gradient(180deg, rgba(255, 255, 255, .025), transparent 54%), var(--loop-panel);
-  box-shadow: inset 0 0 8px rgba(0, 0, 0, .32);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .022), transparent 54%), var(--loop-panel);
+  box-shadow: inset 0 0 7px rgba(0, 0, 0, .32);
   font-family: var(--mono);
 }
 
 .module-pressure .loop-utility-slider {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: 14px 20px;
   align-items: center;
-  gap: 5px;
-  padding: 0 7px;
+  gap: 1px 2px;
+  padding: 2px 4px;
   font: 900 var(--loop-label-size)/1 var(--mono);
-  letter-spacing: .035em;
+  letter-spacing: .025em;
 }
 
 .module-pressure .loop-utility-slider span {
+  grid-column: 1;
+  grid-row: 1;
+  overflow: hidden;
   color: var(--loop-ink);
+  white-space: nowrap;
 }
 
 .module-pressure .loop-utility-slider output {
-  min-width: 22px;
-  overflow: visible;
-  color: var(--loop-accent);
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--loop-off-white-soft);
   font: 900 var(--loop-value-size)/1 var(--mono);
   text-align: right;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .module-pressure .loop-utility-slider input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
+  grid-column: 1 / -1;
+  grid-row: 2;
   width: 100%;
   min-width: 18px;
   height: 18px;
   margin: 0;
   background: transparent;
-  accent-color: var(--loop-accent);
+  accent-color: var(--loop-off-white);
   cursor: ew-resize;
 }
 
 .module-pressure .loop-utility-slider input[type='range']::-webkit-slider-runnable-track {
-  height: 6px;
-  border: 1px solid rgba(242, 234, 216, .22);
+  height: 5px;
+  border: 1px solid rgba(242, 234, 216, .18);
   border-radius: 3px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, .05), transparent 50%), var(--loop-panel-deep);
+  background: var(--loop-panel-deep);
   box-shadow: inset 0 0 4px rgba(0, 0, 0, .78);
 }
 
 .module-pressure .loop-utility-slider input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 15px;
-  height: 19px;
-  margin-top: -7px;
+  width: 11px;
+  height: 15px;
+  margin-top: -6px;
   border: 1px solid rgba(242, 234, 216, .58);
-  border-radius: 3px;
+  border-radius: 2px;
   background: linear-gradient(90deg, #47433c, #91897b 28%, #555047 50%, #91897b 72%, #47433c);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .72), 0 0 0 1px rgba(0, 0, 0, .24);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .72);
 }
 
 .module-pressure .loop-utility-slider input[type='range']::-moz-range-track {
-  height: 6px;
-  border: 1px solid rgba(242, 234, 216, .22);
+  height: 5px;
+  border: 1px solid rgba(242, 234, 216, .18);
   border-radius: 3px;
   background: var(--loop-panel-deep);
 }
 
 .module-pressure .loop-utility-slider input[type='range']::-moz-range-thumb {
-  width: 15px;
-  height: 19px;
+  width: 11px;
+  height: 15px;
   border: 1px solid rgba(242, 234, 216, .58);
-  border-radius: 3px;
+  border-radius: 2px;
   background: #555047;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .72);
 }
 
 .module-pressure .loop-utility-button,
@@ -201,9 +224,9 @@
 .module-pressure .loop-trim-toggle {
   display: grid;
   place-items: center;
-  padding: 0 5px;
+  padding: 0 3px;
   font: 900 var(--loop-label-size)/1 var(--mono);
-  letter-spacing: .045em;
+  letter-spacing: .025em;
   white-space: nowrap;
 }
 
@@ -211,16 +234,16 @@
 .module-pressure .loop-505-action:not(:disabled):hover,
 .module-pressure .loop-trim-toggle:not(:disabled):hover {
   border-color: var(--loop-border-strong);
-  color: #fffaf0;
-  background: rgba(95, 84, 122, .26);
+  color: #fffdf6;
+  background: rgba(242, 234, 216, .055);
 }
 
 .module-pressure .loop-utility-button.active,
 .module-pressure .loop-trim-toggle.active {
-  border-color: rgba(215, 200, 255, .78);
-  color: #fffaf0;
-  background: rgba(95, 84, 122, .36);
-  box-shadow: inset 0 0 9px rgba(215, 200, 255, .10), 0 0 6px rgba(215, 200, 255, .08);
+  border-color: rgba(215, 200, 255, .64);
+  color: #fffdf6;
+  background: rgba(95, 84, 122, .24);
+  box-shadow: inset 0 0 8px rgba(215, 200, 255, .08);
 }
 
 .module-pressure .loop-utility-slider:focus-within,
@@ -228,134 +251,286 @@
 .module-pressure .loop-505-action:focus-visible,
 .module-pressure .loop-trim-toggle:focus-visible,
 .module-pressure .loop-clock-bank:focus-visible {
-  border-color: rgba(215, 200, 255, .82);
-  box-shadow: 0 0 0 1px rgba(215, 200, 255, .22), inset 0 0 9px rgba(215, 200, 255, .08);
+  border-color: rgba(242, 234, 216, .72);
+  box-shadow: 0 0 0 1px rgba(242, 234, 216, .16), inset 0 0 8px rgba(0, 0, 0, .28);
 }
 
-/* TRIM uses the same 7-column math: IN 2 + OUT 2 + FADE 1 + AUTO 1 + RESET 1. */
+/* In trim mode the real transient screen does the precision work. Header controls
+   simply provide compact numeric backup and AUTO / RESET access. */
 .module-pressure:has(.loop-trim-toggle.active) .loop-505-tools {
   display: none;
 }
 
+.module-pressure:has(.loop-trim-toggle.active) .loop-utility-bank {
+  grid-template-columns: 1.45fr 1.45fr 1fr .82fr .82fr;
+}
+
 .module-pressure:has(.loop-trim-toggle.active) .loop-utility-slider:nth-child(1),
 .module-pressure:has(.loop-trim-toggle.active) .loop-utility-slider:nth-child(2) {
-  grid-column: span 2;
-  border-color: rgba(215, 200, 255, .42);
-  background: linear-gradient(180deg, rgba(215, 200, 255, .075), transparent 56%), var(--loop-panel);
+  border-color: rgba(215, 200, 255, .38);
 }
 
-.module-pressure:has(.loop-trim-toggle.active) .loop-utility-slider:nth-child(1) output,
-.module-pressure:has(.loop-trim-toggle.active) .loop-utility-slider:nth-child(2) output {
-  min-width: 28px;
-  color: #fffaf0;
-  font-size: .60rem;
+/* -------------------------------------------------------------------------- */
+/* Compact transient utility screen                                           */
+/* -------------------------------------------------------------------------- */
+.module-pressure .rail-c-faceplate-stage {
+  height: var(--loop-stage-height) !important;
+  min-height: var(--loop-stage-height) !important;
 }
 
-/* Retain the display, but give it stronger CALCOTONE hardware framing. */
+.module-pressure .faceplate-viewport-shell {
+  height: var(--loop-trim-height) !important;
+}
+
 .module-pressure .pressure-ascii {
-  border: 1px solid rgba(255, 190, 114, .25);
-  border-radius: 6px;
-  background: linear-gradient(180deg, rgba(215, 200, 255, .025), transparent 30%), radial-gradient(circle at 50% 50%, rgba(150, 83, 30, .11), transparent 62%), #0b0806;
-  box-shadow: inset 0 0 18px rgba(0, 0, 0, .52), 0 1px 0 rgba(255, 255, 255, .025);
+  width: 100% !important;
+  height: var(--loop-trim-height) !important;
+  min-height: var(--loop-trim-height) !important;
+  max-height: var(--loop-trim-height) !important;
+  flex-basis: var(--loop-trim-height) !important;
+  margin: 0 !important;
+  overflow: hidden;
+  border: 1px solid rgba(242, 234, 216, .18);
+  border-radius: 5px;
+  background: #090806;
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, .54);
+  color: var(--loop-off-white);
+  text-shadow: none;
 }
 
-.module-pressure .loop-track-matrix {
+.module-pressure .loop-track-matrix,
+.module-pressure .loop-transient-trim {
   width: 100%;
   height: 100%;
+  cursor: default;
+  touch-action: none;
 }
 
-/* Four identical channel strips: same width, same labels, same pad footprint. */
-.module-pressure .rail-c-control-surface .faceplate-knob-slot {
-  width: 66px;
+.module-pressure .loop-transient-trim.is-editing {
+  cursor: ew-resize;
 }
+
+/* Loop is intentionally fixed-layout. The generic faceplate editor may not move
+   these controls out of the four-column performance grid. */
+.module-pressure .faceplate-viewport-resize,
+.module-pressure.faceplate-layout-editing .faceplate-guide {
+  display: none !important;
+}
+
+.module-pressure.faceplate-layout-editing .rail-c-control-surface,
+.module-pressure.faceplate-layout-editing .rail-c-button-surface,
+.module-pressure.faceplate-layout-editing .faceplate-knob-slot,
+.module-pressure.faceplate-layout-editing .faceplate-pressure-slot {
+  pointer-events: none !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Four identical performance strips                                           */
+/* -------------------------------------------------------------------------- */
+.module-pressure .rail-c-control-surface .faceplate-knob-slot {
+  top: var(--loop-fader-y) !important;
+  width: 72px !important;
+}
+
+.module-pressure .rail-c-control-surface .faceplate-knob-slot:nth-of-type(1) { left: 12.5% !important; }
+.module-pressure .rail-c-control-surface .faceplate-knob-slot:nth-of-type(2) { left: 37.5% !important; }
+.module-pressure .rail-c-control-surface .faceplate-knob-slot:nth-of-type(3) { left: 62.5% !important; }
+.module-pressure .rail-c-control-surface .faceplate-knob-slot:nth-of-type(4) { left: 87.5% !important; }
+
+.module-pressure .rail-c-button-surface .faceplate-pressure-slot {
+  top: var(--loop-knob-y) !important;
+  width: 56px !important;
+  max-width: 56px !important;
+}
+
+.module-pressure .rail-c-button-surface .faceplate-pressure-slot:nth-child(1) { left: 12.5% !important; }
+.module-pressure .rail-c-button-surface .faceplate-pressure-slot:nth-child(2) { left: 37.5% !important; }
+.module-pressure .rail-c-button-surface .faceplate-pressure-slot:nth-child(3) { left: 62.5% !important; }
+.module-pressure .rail-c-button-surface .faceplate-pressure-slot:nth-child(4) { left: 87.5% !important; }
 
 .module-pressure .loop-track-fader {
-  width: 66px;
+  position: relative;
+  display: block;
+  width: 72px;
+  height: 84px;
   color: var(--loop-ink);
+  font-family: var(--mono);
+  touch-action: none;
+  user-select: none;
+}
+
+.module-pressure .loop-track-fader::before {
+  top: 17px;
+  bottom: 14px;
+  width: 6px;
+  border-color: rgba(242, 234, 216, .24);
+}
+
+.module-pressure .loop-track-fader::after {
+  left: calc(50% - 13px);
+  right: calc(50% - 13px);
+  top: 39px;
+  background: rgba(242, 234, 216, .18);
+  box-shadow: 0 -15px rgba(242, 234, 216, .08), 0 15px rgba(242, 234, 216, .08);
 }
 
 .module-pressure .loop-fader-channel {
+  top: 0;
   left: 2px;
-  color: #fffaf0;
+  color: #fffdf6;
   font: 900 .58rem/1 var(--mono);
-  letter-spacing: .07em;
+  letter-spacing: .06em;
 }
 
 .module-pressure .loop-track-fader output {
   right: 1px;
+  bottom: 0;
   min-width: 24px;
-  color: var(--loop-accent);
-  font: 900 .56rem/1 var(--mono);
+  color: rgba(242, 234, 216, .72);
+  font: 900 .54rem/1 var(--mono);
   font-variant-numeric: tabular-nums;
 }
 
-.module-pressure .loop-track-fader::before {
-  width: 6px;
-  border-color: rgba(242, 234, 216, .25);
+.module-pressure .loop-track-fader input[type='range'] {
+  left: 9px;
+  top: 39px;
+  width: 54px;
+  height: 20px;
 }
 
 .module-pressure .loop-track-fader input[type='range']::-webkit-slider-thumb {
   width: 14px;
-  border-color: rgba(242, 234, 216, .62);
+  height: 25px;
+  margin-top: -11px;
+  border-color: rgba(242, 234, 216, .64);
 }
 
 .module-pressure .loop-track-fader input[type='range']::-moz-range-thumb {
   width: 14px;
-  border-color: rgba(242, 234, 216, .62);
+  height: 25px;
+  border-color: rgba(242, 234, 216, .64);
 }
 
-.module-pressure .faceplate-pressure-slot {
-  width: 18%;
-  max-width: 84px;
+.module-pressure .loop-track-fader.is-selected::before {
+  border-color: rgba(242, 234, 216, .52);
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, .88), 0 0 6px rgba(242, 234, 216, .10);
 }
 
+/* The track pad becomes the Loop knob. Its segmented halo is the 505-style
+   indicator, deliberately off-white for every transport state. */
 .module-pressure .loop-track-pad {
-  min-height: 31px !important;
-  padding: 0 6px !important;
-  border-radius: var(--loop-control-radius) !important;
-  color: var(--loop-ink);
-  font: 900 .56rem/1 var(--mono) !important;
-  letter-spacing: .045em;
+  --loop-ring-opacity: .14;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 52px !important;
+  min-width: 52px !important;
+  height: 52px !important;
+  min-height: 52px !important;
+  padding: 0 4px !important;
+  overflow: visible;
+  border: 1px solid rgba(242, 234, 216, .30) !important;
+  border-radius: 50% !important;
+  color: rgba(242, 234, 216, .76);
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, .10), transparent 22%),
+    radial-gradient(circle, #393833 0 48%, #1c1c19 62%, #090907 100%) !important;
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, .035), inset 0 -4px 8px rgba(0, 0, 0, .55), 0 2px 5px rgba(0, 0, 0, .46) !important;
+  font: 900 .45rem/1.05 var(--mono) !important;
+  letter-spacing: .025em;
+  text-align: center;
+  white-space: normal;
+  isolation: isolate;
 }
 
-.module-pressure .loop-track-pad.is-selected-track {
-  outline: 1px solid rgba(215, 200, 255, .52);
-  outline-offset: 2px;
+.module-pressure .loop-track-pad::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -7px;
+  border-radius: 50%;
+  opacity: var(--loop-ring-opacity);
+  background: repeating-conic-gradient(
+    from -90deg,
+    rgba(248, 244, 232, .98) 0deg 5deg,
+    transparent 5deg 30deg
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  filter: drop-shadow(0 0 0 rgba(248, 244, 232, 0));
+  transition: opacity 100ms linear, filter 120ms linear;
+  pointer-events: none;
 }
 
+.module-pressure .loop-track-pad.is-empty { --loop-ring-opacity: .10; opacity: .72; }
+.module-pressure .loop-track-pad.is-stopped,
+.module-pressure .loop-track-pad.is-track-stopped { --loop-ring-opacity: .24; opacity: .88; border-style: solid !important; }
+.module-pressure .loop-track-pad.is-playing { --loop-ring-opacity: .88; color: #fffdf6; }
+.module-pressure .loop-track-pad.is-playing::before {
+  filter: drop-shadow(0 0 3px rgba(248, 244, 232, .54)) drop-shadow(0 0 7px rgba(248, 244, 232, .18));
+}
 .module-pressure .loop-track-pad.is-recording,
 .module-pressure .loop-track-pad.is-overdubbing {
-  color: #fffaf0;
-  border-color: rgba(255, 190, 114, .78);
+  --loop-ring-opacity: 1;
+  color: #fffdf6;
+  border-color: rgba(242, 234, 216, .74) !important;
+}
+.module-pressure .loop-track-pad.is-recording::before,
+.module-pressure .loop-track-pad.is-overdubbing::before {
+  filter: drop-shadow(0 0 4px rgba(248, 244, 232, .72)) drop-shadow(0 0 9px rgba(248, 244, 232, .28));
+  animation: loop-505-ring-breathe 850ms ease-in-out infinite alternate;
+}
+.module-pressure .loop-track-pad.is-muted { --loop-ring-opacity: .16; opacity: .50; }
+.module-pressure .loop-track-pad.is-solo:not(.is-muted) { --loop-ring-opacity: 1; color: #fffdf6; }
+.module-pressure .loop-track-pad.is-solo:not(.is-muted)::before {
+  filter: drop-shadow(0 0 4px rgba(248, 244, 232, .68)) drop-shadow(0 0 9px rgba(248, 244, 232, .24));
+}
+.module-pressure .loop-track-pad.is-selected-track {
+  outline: 1px solid rgba(242, 234, 216, .48);
+  outline-offset: 2px;
+}
+.module-pressure .loop-track-pad:disabled {
+  opacity: .30;
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, .02), inset 0 -4px 8px rgba(0, 0, 0, .55) !important;
 }
 
-.module-pressure .loop-track-pad.is-solo:not(.is-muted) {
-  border-color: rgba(215, 200, 255, .86);
+@keyframes loop-505-ring-breathe {
+  from { opacity: .64; }
+  to { opacity: 1; }
 }
 
 .module-pressure .loop-utility-slider input:disabled,
 .module-pressure .loop-utility-button:disabled,
 .module-pressure .loop-505-action:disabled,
-.module-pressure .loop-trim-toggle:disabled,
-.module-pressure .loop-track-pad:disabled {
-  opacity: .44;
+.module-pressure .loop-trim-toggle:disabled {
+  opacity: .38;
 }
 
 @media (max-width: 1180px) {
   .module-pressure {
     --loop-grid-gap: 3px;
-    --loop-label-size: .47rem;
-    --loop-value-size: .50rem;
-    --loop-strong-size: .56rem;
+    --loop-label-size: .42rem;
+    --loop-value-size: .42rem;
+    --loop-strong-size: .46rem;
   }
 
-  .module-pressure .loop-utility-slider {
-    gap: 3px;
-    padding-inline: 4px;
+  .module-pressure .loop-header-controls {
+    grid-template-columns: 84px minmax(0, 1fr) 44px;
   }
 
   .module-pressure .loop-track-bank,
   .module-pressure .loop-clock-bank {
-    padding-inline: 7px;
+    width: 84px;
+    min-width: 84px;
+    padding-inline: 3px;
+  }
+
+  .module-pressure .loop-trim-toggle {
+    width: 44px;
+    min-width: 44px;
+  }
+
+  .module-pressure .loop-utility-slider {
+    padding-inline: 2px;
   }
 }
