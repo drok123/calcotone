@@ -57,7 +57,7 @@ export interface FaceplateEditorSnapshot {
 const STORAGE_KEY = 'calcotone.faceplate-layout.v2';
 const LEGACY_STORAGE_KEY = 'calcotone.faceplate-layout.v1';
 const FACTORY_LAYOUT_REVISION_KEY = 'calcotone.faceplate-layout.factory-revision';
-const FACTORY_LAYOUT_REVISION = '2026-08-06-uploaded-approved-faceplate-1440p-v1';
+const FACTORY_LAYOUT_REVISION = '2026-08-09-loop505-fader-faceplate-v2';
 const KNOB_COUNT = 6;
 const listeners = new Set<() => void>();
 const CORE_FACEPLATE_IDS: readonly CoreFaceplateId[] = ['saturation', 'chorus', 'delay', 'reverb', 'bitcrusher', 'media'];
@@ -117,21 +117,31 @@ export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
       viewportHeight: 168,
       stageHeight: 304,
       knobs: [
-        { x: 0.3391812865497076, y: 216 },
+        { x: 0.19883040935672514, y: 216 },
         { x: 0.4444444444444444, y: 216 },
-        { x: 0.5497076023391813, y: 216 },
-        { x: 0.6549707602339181, y: 216 },
+        { x: 0.6900584795321637, y: 216 },
+        { x: 0.9122807017543859, y: 216 },
       ],
       buttons: [
-        { x: 0.14, y: 278 },
-        { x: 0.38, y: 278 },
-        { x: 0.62, y: 278 },
-        { x: 0.86, y: 278 },
+        { x: 0.19883040935672514, y: 182 },
+        { x: 0.4444444444444444, y: 182 },
+        { x: 0.6900584795321637, y: 182 },
+        { x: 0.9122807017543859, y: 182 },
       ],
     },
   },
   snap: 8,
 };
+
+function controlViewportCeiling(
+  knobs: readonly FaceplatePoint[],
+  buttons: readonly FaceplatePoint[],
+  stageHeight: number,
+): number {
+  const knobLimit = knobs.length ? Math.min(...knobs.map((point) => point.y - 48)) : stageHeight;
+  const buttonLimit = buttons.length ? Math.min(...buttons.map((point) => point.y - 14)) : stageHeight;
+  return Math.max(96, Math.min(stageHeight, knobLimit, buttonLimit));
+}
 
 let state: FaceplateEditorState = {
   savedLayout: loadSavedLayout(),
@@ -328,16 +338,12 @@ export function setRailCFaceplateViewportHeight(
 ): void {
   if (!state.editing) return;
   const moduleLayout = state.layout.railC[moduleId];
-  const firstControlY = Math.min(
-    ...moduleLayout.knobs.map((point) => point.y),
-    ...moduleLayout.buttons.map((point) => point.y),
-  );
-  const collisionSafeMaximum = Math.max(110, firstControlY - 48);
+  const collisionSafeMaximum = controlViewportCeiling(moduleLayout.knobs, moduleLayout.buttons, moduleLayout.stageHeight);
   const nextRailC = state.linkedModules
     ? Object.fromEntries(RAIL_C_FACEPLATE_IDS.map((id) => {
         const candidate = state.layout.railC[id];
-        const firstY = Math.min(...candidate.knobs.map((point) => point.y), ...candidate.buttons.map((point) => point.y));
-        return [id, { ...candidate, viewportHeight: clamp(height, 96, Math.min(260, Math.max(110, firstY - 48))) }];
+        const maximum = controlViewportCeiling(candidate.knobs, candidate.buttons, candidate.stageHeight);
+        return [id, { ...candidate, viewportHeight: clamp(height, 96, Math.min(260, maximum)) }];
       })) as Record<RailCFaceplateId, RailCFaceplateModuleLayout>
     : {
         ...state.layout.railC,
@@ -699,13 +705,9 @@ function sanitizeV2Layout(layout: Partial<FaceplateLayout>): FaceplateLayout {
     });
     const candidateKnobs = sanitizePoints(candidate?.knobs, fallback.knobs, knobCount, 'knob');
     const candidateButtons = sanitizePoints(candidate?.buttons, fallback.buttons, buttonCount, 'button');
-    const firstControlY = Math.min(
-      ...candidateKnobs.map((point) => point.y),
-      ...candidateButtons.map((point) => point.y),
-      candidateStage
-    );
+    const viewportMaximum = controlViewportCeiling(candidateKnobs, candidateButtons, candidateStage);
     return {
-      viewportHeight: clamp(Number(candidate?.viewportHeight) || fallback.viewportHeight, 96, Math.min(520, Math.max(96, firstControlY - 48))),
+      viewportHeight: clamp(Number(candidate?.viewportHeight) || fallback.viewportHeight, 96, Math.min(520, viewportMaximum)),
       stageHeight: candidateStage,
       knobs: candidateKnobs,
       buttons: candidateButtons,
