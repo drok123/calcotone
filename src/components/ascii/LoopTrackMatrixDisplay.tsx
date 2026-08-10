@@ -314,11 +314,15 @@ function drawTransientEditor(
   drawTopControl(context, clockBounds(width), `${state.bpm} BPM · ${quantizeLabel}`, true);
 
   if (occupied) {
+    context.fillStyle = 'rgba(215, 200, 255, .52)';
+    context.font = '800 7px "IBM Plex Mono", Consolas, monospace';
+    context.textAlign = 'left';
+    context.textBaseline = 'bottom';
+    context.fillText('DRAG I / O · • FADE', bounds.left, height - 1);
+
     const info = `IN ${(trimStart * 100).toFixed(1)}   OUT ${(trimEnd * 100).toFixed(1)}   XFD ${Math.round(state.fade * 20)}ms`;
     context.fillStyle = 'rgba(242, 234, 216, .55)';
-    context.font = '800 7px "IBM Plex Mono", Consolas, monospace';
     context.textAlign = 'right';
-    context.textBaseline = 'bottom';
     context.fillText(info, bounds.right, height - 1);
   }
 }
@@ -417,7 +421,7 @@ export function LoopTrackMatrixDisplay({ enabled, visualState }: LoopTrackMatrix
     updateDrag(handle, event.clientX, canvas);
   }
 
-  function movePointer(event: ReactPointerEvent<HTMLCanvasElement>): void {
+  function moveTrimDrag(event: ReactPointerEvent<HTMLCanvasElement>): void {
     const handle = dragHandleRef.current;
     if (!handle) return;
     event.preventDefault();
@@ -527,7 +531,7 @@ export function LoopTrackMatrixDisplay({ enabled, visualState }: LoopTrackMatrix
       tabIndex={0}
       aria-label={`Loop track ${state.selectedTrack + 1} transient editor. Drag IN and OUT bars, drag either fade point for seam crossfade, wheel the BPM readout to change tempo, click it to cycle quantize.`}
       onPointerDown={beginTrimDrag}
-      onPointerMove={movePointer}
+      onPointerMove={moveTrimDrag}
       onPointerUp={finishPointer}
       onPointerCancel={finishPointer}
       onWheel={handleWheel}
