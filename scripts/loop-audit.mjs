@@ -11,13 +11,15 @@ const worklet = read('public/loop-processor.js');
 const native = read('native/src/loop_processor.cpp');
 const nativeHeader = read('native/include/calcotone/loop_processor.hpp');
 const rail = read('src/components/effects/RailCModules.tsx');
+const railCss = read('src/components/effects/RailCModules.css');
+const faceplate = read('src/ui/faceplateLayout.ts');
 const display = read('src/components/ascii/LoopTrackMatrixDisplay.tsx');
 const random = read('src/features/random/railCRandomRegistry.ts');
 
 // Loop keeps the proven eight-buffer backend as its storage/capacity contract while
 // exposing the first four tracks as a deliberate RC-style performance faceplate.
-// Each visible track owns cached runtime/waveform state so the four mechanical ASCII
-// clocks stay truthful at once. REC/DUB targets remain latched in the realtime engine.
+// Each visible track owns cached runtime/waveform state, a REC/PLAY/DUB pad and a
+// permanent channel fader backed by the realtime per-track gain array.
 requireText(store, 'export const LOOP_TRACK_COUNT = 8', 'Loop backend hard track limit');
 requireText(store, 'export const LOOP_VISIBLE_TRACK_COUNT = 4', 'Loop four-track performance faceplate');
 requireText(worklet, 'this.rawFrames = new Uint32Array(TRACKS)', 'browser independent track lengths');
@@ -36,7 +38,6 @@ requireText(worklet, 'this.recordTrack = 0', 'browser REC target latch');
 requireText(native, 'ensure_track_buffer(unsigned track)', 'native lazy Loop audio allocation');
 requireText(native, 'pending_track{0U}', 'native command target latch');
 requireText(store, 'overdub: 0', 'Loop live-replace default');
-requireText(rail, "['Track', 'Loop', 'RETAIN', 'Fade']", 'Loop RETAIN hardware label');
 requireText(worklet, 'rolling tape-style replacement pass', 'browser continuous live replace');
 requireText(native, 'previous performance is completely gone after one full orbit', 'native continuous live replace');
 requireText(native, 'auto_trim_window(unsigned track)', 'native auto trim');
@@ -52,10 +53,28 @@ requireText(store, "else sendLoopCommand('overdub')", 'Occupied playing track en
 requireText(store, 'writing && target !== state.selectedTrack', 'Write-target theft guard');
 requireText(store, 'export function clearLoopTrack(track: number): boolean', 'Per-track clear path');
 requireText(store, 'export function loopTrackProgress(track: number', 'Independent display orbit extrapolation');
-requireText(rail, 'Array.from({ length: LOOP_VISIBLE_TRACK_COUNT }', 'Four physical track pads');
+requireText(rail, 'Array.from({ length: LOOP_VISIBLE_TRACK_COUNT }', 'Four physical track pads/faders');
 requireText(rail, 'button.action(event.shiftKey)', 'Track-pad shift clear gesture');
+requireText(rail, 'function LoopTrackFader(', 'Dedicated Loop channel fader');
+requireText(rail, 'onDoubleClick={() => onChange(0.72)}', 'Loop fader unity reset gesture');
+requireText(rail, 'levels[track] = clamp01(value)', 'Independent track fader write');
+requireText(rail, 'label="MSTR"', 'Master level moved to utility bank');
+requireText(rail, 'label="RET"', 'Retain moved to utility bank');
+requireText(rail, 'label="FADE"', 'Loop seam fade moved to utility bank');
+requireText(rail, 'toggleAllTransport', 'All-track play/stop utility');
+requireText(rail, 'sendLoopCommand({ type: \'autoTrim\' })', 'Auto trim surfaced in faceplate');
+requireText(rail, 'sendLoopCommand({ type: \'resetTrim\' })', 'Reset trim surfaced in faceplate');
 requireText(rail, '<LoopTrackMatrixDisplay', 'Four-clock Loop display wired');
+forbidText(rail, "['Track', 'Loop', 'RETAIN', 'Fade']", 'Retired modal macro knobs');
 forbidText(rail, 'aria-label="Loop track"', 'Retired selected-track dropdown');
+requireText(railCss, '.loop-track-fader', 'Loop fader hardware styling');
+requireText(railCss, "transform: rotate(-90deg)", 'Loop vertical fader orientation');
+requireText(faceplate, '{ x: 0.19883040935672514, y: 216 }', 'User-supplied T1 fader position');
+requireText(faceplate, '{ x: 0.4444444444444444, y: 216 }', 'User-supplied T2 fader position');
+requireText(faceplate, '{ x: 0.6900584795321637, y: 216 }', 'User-supplied T3 fader position');
+requireText(faceplate, '{ x: 0.9122807017543859, y: 216 }', 'User-supplied T4 fader position');
+requireText(faceplate, '{ x: 0.19883040935672514, y: 182 }', 'T1 pad aligned above fader');
+requireText(faceplate, 'controlViewportCeiling(', 'Button-aware viewport collision geometry');
 requireText(display, 'L O O P  //  4 TRACK MEMORY', 'Four-track display identity');
 requireText(display, 'REC > PLAY > DUB  //  SHIFT + TRACK = CLEAR', 'Faceplate transport legend');
 requireText(display, 'const cellWidth = Math.floor(columns / 2)', '2x2 track matrix');
@@ -77,4 +96,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('CALCOTONE Loop audit passed · 8-buffer backend, 4-track performance faceplate, live-replace DUB, trim, and four orbital ASCII clocks locked');
+console.log('CALCOTONE Loop audit passed · 8-buffer backend, 4 RC-style track faders/pads, utility transport, trim, and four orbital ASCII clocks locked');
