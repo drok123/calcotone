@@ -52,6 +52,7 @@ const clamp = (value, low = 0, high = 1) => Math.min(high, Math.max(low, Number.
 const midiToFrequency = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
 const wrap = (phase) => phase - Math.floor(phase);
 const thermalVoltage = (temperatureK) => BOLTZMANN_CONSTANT * temperatureK / ELECTRON_CHARGE;
+const componentDrift = (seed, offset) => ((((seed >>> offset) & 255) / 255) * 2 - 1);
 
 function interpolateHermite(y0, y1, y2, y3, mu) {
   const mu2 = mu * mu;
@@ -80,7 +81,7 @@ function fastTanh(value) {
  * a bounded differential-pair current suitable for a realtime Newton solve.
  */
 function bjtDifferentialPair(normalizedVoltage) {
-  return Math.tanh(clamp(normalizedVoltage, -12, 12));
+  return fastTanh(clamp(normalizedVoltage, -12, 12));
 }
 
 /**
@@ -151,7 +152,9 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     this.quality = 2;
     this.renderMode = 'auto';
     this.captureBank = null;
-    this.voices = [];
+    this.voices = Array.from({ length: MAX_VOICES }, () => this.createVoiceSlot());
+    this.activeVoiceIndices = new Uint8Array(MAX_VOICES);
+    this.activeVoiceCount = 0;
     this.frameCounter = 0;
     this.telemetryCountdown = sampleRate >> 2;
     this.peak = 0;
@@ -171,19 +174,127 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       stepFrames: sampleRate * .15,
       nextStepFrame: 0,
     };
+    this.sequencerStepMessage = {
+      type: 'sequencer-step',
+      step: 0,
+      patternIndex: 0,
+      chainPosition: 0,
+      frame: 0,
+    };
+    this.telemetryMessage = {
+      type: 'telemetry',
+      activeVoices: 0,
+      maxVoices: MAX_VOICES,
+      peak: 0,
+      oversample: this.quality,
+      machine: this.machine,
+      topology: PROFILES[this.machine].topology,
+      solver: PROFILES[this.machine].solver,
+      solverIterations: 1,
+      renderMode: 'circuit',
+      captureReady: false,
+      temperatureC: 27,
+      renderQuantumFrames: 0,
+      clippedSamples: 0,
+    };
     this.hybridBusL = this.createHybridBus(-1);
     this.hybridBusR = this.createHybridBus(1);
     this.port.onmessage = (event) => this.handleMessage(event.data);
+  }
+
+  createVoiceSlot() {
+    const parameters = new Float64Array(6);
+    const captureSourceOffsets = new Int32Array(4);
+    captureSourceOffsets.fill(-1);
+    return {
+      active: false,
+      machine: 'model-d',
+      archetype: 'panel',
+      profile: PROFILES['model-d'],
+      parameters,
+      frequency: 440,
+      velocity: 0,
+      duration: .2,
+      age: 0,
+      releaseAge: 0,
+      releasing: false,
+      env: 0,
+      phaseA: 0,
+      phaseB: 0,
+      subPhase: 0,
+      opPhases: new Float64Array(6),
+      opMemory: new Float64Array(6),
+      poles: new Float64Array(6),
+      filterOutputs: new Float64Array(4),
+      ladderCurrents: new Float64Array(4),
+      ladderSolve: new Float64Array(2),
+      ladderCapacitances: new Float64Array(4),
+      ladderMismatch: new Float64Array(4),
+      spiceCompanionScales: new Float64Array(4),
+      fmRatios: new Float64Array(6),
+      fmLevels: new Float64Array(6),
+      temperatureK: ROOM_TEMPERATURE_K,
+      thermalVoltage: thermalVoltage(ROOM_TEMPERATURE_K),
+      supplySag: 0,
+      previous: 0,
+      hold: 0,
+      holdCounter: 0,
+      noise: 1,
+      pan: 0,
+      panL: Math.SQRT1_2,
+      panR: Math.SQRT1_2,
+      attackRate: 0,
+      attackSeconds: .01,
+      decayRate: 0,
+      releaseMultiplier: 1,
+      phaseIncrementA: 0,
+      phaseIncrementB: 0,
+      subPhaseIncrement: 0,
+      pulseWidth: .5,
+      sourceMixA: .5,
+      sourceMixB: .5,
+      ladderTptAlpha: 0,
+      ladderFeedback: 0,
+      ladderDrive: 1,
+      spiceJunctionVoltage: 0,
+      spiceInverseTwoJunctionVoltage: 0,
+      spiceTailCurrent: 0,
+      spiceConductanceScale: 0,
+      spiceFeedback: 0,
+      spiceSignalVoltage: MODEL_D_SIGNAL_VOLTAGE,
+      spiceDrive: 1,
+      spiceSupplyCoefficient: 0,
+      otaTptAlpha: 0,
+      otaFeedback: 0,
+      otaDrive: 1,
+      otaStageDrive: 1,
+      korgG: 0,
+      korgDamp: 1,
+      korgDrive: 1,
+      korgFeedback: 0,
+      korgHighpass: false,
+      fmAlgorithm: 0,
+      digitalPhaseIncrement: 0,
+      digitalHarmonic: 2,
+      phaseDistortionHarmonic: 2,
+      sampleHarmonic: 2,
+      sampleHoldLength: 2,
+      captureToneOffset: -1,
+      captureSourceOffsets,
+      captureLength: 0,
+      captureCrossfade: 0,
+      capturePosition: 0,
+      captureRootMidi: 69,
+      capturePitchRate: 0,
+      captureIncrement: 0,
+    };
   }
 
   handleMessage(data) {
     if (!data || typeof data.type !== 'string') return;
     if (data.type === 'enabled') {
       this.enabled = Boolean(data.value);
-      if (!this.enabled) {
-        this.releaseAll();
-        this.voices.length = 0;
-      }
+      if (!this.enabled) this.deactivateAllVoices();
     } else if (data.type === 'machine' && PROFILES[data.value]) {
       this.machine = data.value;
       if (this.machine === 'model-d') this.refreshHybridBuses(true);
@@ -199,8 +310,8 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       const nextQuality = data.factor >= 4 ? 4 : data.factor >= 2 ? 2 : 1;
       if (nextQuality !== this.quality) {
         this.quality = nextQuality;
-        for (let index = 0; index < this.voices.length; index += 1) {
-          this.refreshVoiceCoefficients(this.voices[index]);
+        for (let active = 0; active < this.activeVoiceCount; active += 1) {
+          this.refreshVoiceCoefficients(this.voices[this.activeVoiceIndices[active]]);
         }
         this.refreshHybridBuses();
       }
@@ -212,7 +323,18 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     } else if (data.type === 'sequencer-state') {
       this.setSequencerState(data);
     } else if (data.type === 'note-on' && this.enabled) {
-      this.noteOn(data);
+      this.noteOn(data.midi, data.durationSeconds, data.velocity, data.seed);
+    } else if (data.type === 'chord-on' && this.enabled && Array.isArray(data.notes)) {
+      const limit = Math.min(MAX_VOICES, data.notes.length);
+      for (let noteIndex = 0; noteIndex < limit; noteIndex += 1) {
+        const midi = data.notes[noteIndex];
+        if (!Number.isFinite(midi)) continue;
+        let duplicate = false;
+        for (let previous = 0; previous < noteIndex; previous += 1) {
+          if (data.notes[previous] === midi) { duplicate = true; break; }
+        }
+        if (!duplicate) this.noteOn(midi, data.durationSeconds, data.velocity, 0);
+      }
     } else if (data.type === 'all-notes-off' || data.type === 'dispose') {
       this.releaseAll();
     }
@@ -238,8 +360,8 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
   }
 
   refreshMorphedVoices() {
-    for (let voiceIndex = 0; voiceIndex < this.voices.length; voiceIndex += 1) {
-      const voice = this.voices[voiceIndex];
+    for (let active = 0; active < this.activeVoiceCount; active += 1) {
+      const voice = this.voices[this.activeVoiceIndices[active]];
       for (let index = 0; index < 6; index += 1) voice.parameters[index] = this.parameters[index];
       this.refreshVoiceCoefficients(voice);
     }
@@ -301,20 +423,20 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     if (this.enabled) {
       for (let noteIndex = 0; noteIndex < notes.length; noteIndex += 1) {
         const note = notes[noteIndex];
-        this.noteOn({
-          midi: 71 - note.pitch,
-          durationSeconds: sequence.stepFrames / sampleRate * note.length * .92,
-          velocity: .78,
-        });
+        this.noteOn(
+          71 - note.pitch,
+          sequence.stepFrames / sampleRate * note.length * .92,
+          .78,
+          0,
+        );
       }
     }
-    this.port.postMessage({
-      type: 'sequencer-step',
-      step: sequence.step,
-      patternIndex: sequence.patternIndex,
-      chainPosition: sequence.chainPosition,
-      frame: this.frameCounter,
-    });
+    const message = this.sequencerStepMessage;
+    message.step = sequence.step;
+    message.patternIndex = sequence.patternIndex;
+    message.chainPosition = sequence.chainPosition;
+    message.frame = this.frameCounter;
+    this.port.postMessage(message);
     sequence.step = (sequence.step + 1) & 15;
     if (sequence.step === 0 && sequence.chainArmed && sequence.chain.length > 0) {
       sequence.chainPosition = (sequence.chainPosition + 1) % sequence.chain.length;
@@ -323,73 +445,88 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     sequence.nextStepFrame += sequence.stepFrames;
   }
 
-  noteOn(data) {
-    if (this.voices.length >= MAX_VOICES) {
-      let stealIndex = 0;
-      for (let index = 1; index < this.voices.length; index += 1) {
-        const candidate = this.voices[index];
-        const selected = this.voices[stealIndex];
+  findFreeVoiceIndex() {
+    for (let index = 0; index < MAX_VOICES; index += 1) {
+      if (!this.voices[index].active) return index;
+    }
+    return 0;
+  }
+
+  noteOn(midiValue, durationSeconds, velocityValue = .78, seedValue = 0) {
+    const voiceCountForSeed = this.activeVoiceCount;
+    let voiceIndex = 0;
+    if (this.activeVoiceCount >= MAX_VOICES) {
+      let stealPosition = 0;
+      for (let active = 1; active < this.activeVoiceCount; active += 1) {
+        const candidate = this.voices[this.activeVoiceIndices[active]];
+        const selected = this.voices[this.activeVoiceIndices[stealPosition]];
         if (candidate.env < selected.env || (candidate.env === selected.env && candidate.age > selected.age)) {
-          stealIndex = index;
+          stealPosition = active;
         }
       }
-      this.voices.splice(stealIndex, 1);
+      voiceIndex = this.activeVoiceIndices[stealPosition];
+    } else {
+      voiceIndex = this.findFreeVoiceIndex();
+      this.activeVoiceIndices[this.activeVoiceCount++] = voiceIndex;
     }
-    const midi = clamp(data.midi, 0, 127);
+
+    const voice = this.voices[voiceIndex];
+    const midi = clamp(midiValue, 0, 127);
     const profile = PROFILES[this.machine];
-    const requestedSeed = Number.isFinite(data.seed) ? Math.trunc(data.seed) >>> 0 : 0;
+    const requestedSeed = Number.isFinite(seedValue) ? Math.trunc(seedValue) >>> 0 : 0;
     const seed = requestedSeed
-      || ((midi * 1103515245 + this.frameCounter + this.voices.length * 7919) >>> 0)
+      || ((midi * 1103515245 + this.frameCounter + voiceCountForSeed * 7919) >>> 0)
       || 1;
-    const componentDrift = (offset) => ((((seed >>> offset) & 255) / 255) * 2 - 1);
-    const temperatureK = ROOM_TEMPERATURE_K + componentDrift(4) * 4;
-    const ladderCapacitances = new Float64Array(4);
-    const ladderMismatch = new Float64Array(4);
+    const temperatureK = ROOM_TEMPERATURE_K + componentDrift(seed, 4) * 4;
+
+    voice.active = true;
+    voice.machine = this.machine;
+    voice.archetype = this.archetype;
+    voice.profile = profile;
+    for (let index = 0; index < 6; index += 1) voice.parameters[index] = this.parameters[index];
+    voice.frequency = midiToFrequency(midi);
+    voice.velocity = clamp(velocityValue ?? .78);
+    voice.duration = Math.max(.035, Math.min(12, durationSeconds ?? .2));
+    voice.age = 0;
+    voice.releaseAge = 0;
+    voice.releasing = false;
+    voice.env = 0;
+    voice.phaseA = (seed & 65535) / 65536;
+    voice.phaseB = ((seed >>> 16) & 65535) / 65536;
+    voice.subPhase = 0;
+    voice.opPhases.fill(0);
+    voice.opMemory.fill(0);
+    voice.poles.fill(0);
+    voice.filterOutputs.fill(0);
+    voice.ladderCurrents.fill(0);
+    voice.ladderSolve.fill(0);
+    voice.spiceCompanionScales.fill(0);
+    voice.fmRatios.fill(0);
+    voice.fmLevels.fill(0);
     for (let pole = 0; pole < 4; pole += 1) {
-      ladderCapacitances[pole] = MODEL_D_CAPACITANCE_F * (1 + componentDrift(pole * 4) * .018);
-      ladderMismatch[pole] = componentDrift(12 + pole * 3) * .009;
+      voice.ladderCapacitances[pole] = MODEL_D_CAPACITANCE_F * (1 + componentDrift(seed, pole * 4) * .018);
+      voice.ladderMismatch[pole] = componentDrift(seed, 12 + pole * 3) * .009;
     }
-    const pan = ((((seed >>> 8) & 255) / 255) * 2 - 1) * this.parameters[5] * .24;
-    const voice = {
-      machine: this.machine,
-      archetype: this.archetype,
-      profile,
-      parameters: [...this.parameters],
-      frequency: midiToFrequency(midi),
-      velocity: clamp(data.velocity ?? .78),
-      duration: Math.max(.035, Math.min(12, data.durationSeconds ?? .2)),
-      age: 0,
-      releaseAge: 0,
-      releasing: false,
-      env: 0,
-      phaseA: (seed & 65535) / 65536,
-      phaseB: ((seed >>> 16) & 65535) / 65536,
-      subPhase: 0,
-      opPhases: new Float64Array(6),
-      opMemory: new Float64Array(6),
-      poles: new Float64Array(6),
-      filterOutputs: new Float64Array(4),
-      ladderCurrents: new Float64Array(4),
-      ladderSolve: new Float64Array(2),
-      ladderCapacitances,
-      ladderMismatch,
-      spiceCompanionScales: new Float64Array(4),
-      fmRatios: new Float64Array(6),
-      fmLevels: new Float64Array(6),
-      temperatureK,
-      thermalVoltage: thermalVoltage(temperatureK),
-      supplySag: 0,
-      previous: 0,
-      hold: 0,
-      holdCounter: 0,
-      noise: seed,
-      pan,
-      panL: Math.sqrt((1 - pan) * .5),
-      panR: Math.sqrt((1 + pan) * .5),
-    };
+    voice.temperatureK = temperatureK;
+    voice.thermalVoltage = thermalVoltage(temperatureK);
+    voice.supplySag = 0;
+    voice.previous = 0;
+    voice.hold = 0;
+    voice.holdCounter = 0;
+    voice.noise = seed;
+    voice.pan = ((((seed >>> 8) & 255) / 255) * 2 - 1) * this.parameters[5] * .24;
+    voice.panL = Math.sqrt((1 - voice.pan) * .5);
+    voice.panR = Math.sqrt((1 + voice.pan) * .5);
+    voice.captureToneOffset = -1;
+    voice.captureSourceOffsets.fill(-1);
+    voice.captureLength = 0;
+    voice.captureCrossfade = 0;
+    voice.capturePosition = 0;
+    voice.captureRootMidi = 69;
+    voice.capturePitchRate = 0;
+    voice.captureIncrement = 0;
     this.refreshVoiceCoefficients(voice);
     this.assignCaptureVoice(voice, seed);
-    this.voices.push(voice);
   }
 
   refreshVoiceCoefficients(voice) {
@@ -502,6 +639,8 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
 
   createHybridBus(mismatchPolarity) {
     const profile = PROFILES['model-d'];
+    const parameters = new Float64Array(6);
+    for (let index = 0; index < 6; index += 1) parameters[index] = this.parameters[index];
     const ladderCapacitances = new Float64Array(4);
     const ladderMismatch = new Float64Array(4);
     for (let pole = 0; pole < 4; pole += 1) {
@@ -510,8 +649,9 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     }
     const bus = {
       machine: 'model-d',
+      archetype: 'panel',
       profile,
-      parameters: [...this.parameters],
+      parameters,
       frequency: 440,
       poles: new Float64Array(6),
       filterOutputs: new Float64Array(4),
@@ -525,15 +665,18 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       temperatureK: ROOM_TEMPERATURE_K + mismatchPolarity * .85,
       thermalVoltage: thermalVoltage(ROOM_TEMPERATURE_K + mismatchPolarity * .85),
       supplySag: 0,
+      capturePitchRate: 0,
     };
     this.refreshVoiceCoefficients(bus);
     return bus;
   }
 
   refreshHybridBuses(reset = false) {
-    for (const bus of [this.hybridBusL, this.hybridBusR]) {
+    const buses = [this.hybridBusL, this.hybridBusR];
+    for (let busIndex = 0; busIndex < buses.length; busIndex += 1) {
+      const bus = buses[busIndex];
       if (!bus) continue;
-      bus.parameters = [...this.parameters];
+      for (let index = 0; index < 6; index += 1) bus.parameters[index] = this.parameters[index];
       if (reset) {
         bus.poles.fill(0);
         bus.filterOutputs.fill(0);
@@ -611,7 +754,8 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     if (!this.captureBank) return null;
     let selected = null;
     let selectedDistance = Infinity;
-    for (const entry of this.captureBank.entries) {
+    for (let index = 0; index < this.captureBank.entries.length; index += 1) {
+      const entry = this.captureBank.entries[index];
       if (entry.tap !== tap) continue;
       const variantPenalty = entry.variant === variant ? 0 : 1_000;
       const distance = Math.abs(entry.rootMidi - midi) + variantPenalty;
@@ -626,13 +770,20 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
   assignCaptureVoice(voice, seed) {
     if (!this.captureBank || voice.machine !== 'model-d') return;
     const variant = Math.abs(seed) % this.captureBank.variants;
-    const tone = this.findCaptureEntry('tone', voice.frequency ? 69 + 12 * Math.log2(voice.frequency / 440) : 69, variant);
-    const sources = ['source-00', 'source-10', 'source-01', 'source-11']
-      .map((tap) => this.findCaptureEntry(tap, tone?.rootMidi ?? 69, variant));
-    const reference = tone || sources.find(Boolean);
-    if (!reference || sources.some((entry) => !entry)) return;
+    const midi = voice.frequency ? 69 + 12 * Math.log2(voice.frequency / 440) : 69;
+    const tone = this.findCaptureEntry('tone', midi, variant);
+    const rootMidi = tone?.rootMidi ?? 69;
+    const source00 = this.findCaptureEntry('source-00', rootMidi, variant);
+    const source10 = this.findCaptureEntry('source-10', rootMidi, variant);
+    const source01 = this.findCaptureEntry('source-01', rootMidi, variant);
+    const source11 = this.findCaptureEntry('source-11', rootMidi, variant);
+    const reference = tone || source00 || source10 || source01 || source11;
+    if (!reference || !source00 || !source10 || !source01 || !source11) return;
     voice.captureToneOffset = tone?.offsetFrames ?? -1;
-    voice.captureSourceOffsets = sources.map((entry) => entry.offsetFrames);
+    voice.captureSourceOffsets[0] = source00.offsetFrames;
+    voice.captureSourceOffsets[1] = source10.offsetFrames;
+    voice.captureSourceOffsets[2] = source01.offsetFrames;
+    voice.captureSourceOffsets[3] = source11.offsetFrames;
     voice.captureLength = reference.frameLength;
     voice.captureCrossfade = Math.min(
       Math.max(0, this.captureBank.crossfadeFrames),
@@ -640,7 +791,6 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     );
     voice.capturePosition = 0;
     voice.captureRootMidi = reference.rootMidi;
-    const midi = 69 + 12 * Math.log2(voice.frequency / 440);
     voice.capturePitchRate = Math.pow(2, (midi - reference.rootMidi) / 12);
     voice.captureIncrement = voice.capturePitchRate
       * this.captureBank.sampleRate
@@ -653,8 +803,17 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     return this.renderMode === 'auto' ? 'hybrid' : this.renderMode;
   }
 
+  deactivateAllVoices() {
+    for (let active = 0; active < this.activeVoiceCount; active += 1) {
+      this.voices[this.activeVoiceIndices[active]].active = false;
+    }
+    this.activeVoiceCount = 0;
+  }
+
   releaseAll() {
-    for (const voice of this.voices) voice.releasing = true;
+    for (let active = 0; active < this.activeVoiceCount; active += 1) {
+      this.voices[this.activeVoiceIndices[active]].releasing = true;
+    }
   }
 
   envelope(voice, dt) {
@@ -707,7 +866,7 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
   spiceLadder(voice, input) {
     const character = voice.parameters[4];
     const signalVoltage = voice.spiceSignalVoltage;
-    const drivenInput = Math.tanh(input * voice.spiceDrive) * signalVoltage;
+    const drivenInput = fastTanh(input * voice.spiceDrive) * signalVoltage;
     const railVoltage = Math.max(.24, .42 - voice.supplySag);
     const iterations = this.quality >= 4 ? 2 : 1;
     let stageVoltage = drivenInput - voice.poles[3] * voice.spiceFeedback;
@@ -731,15 +890,13 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       stageVoltage = voice.ladderSolve[0];
     }
 
-    // A resistor/capacitor supply companion adds small, slow rail movement under
-    // load without requiring a full power-supply netlist in the render callback.
     const supplyLoad = clamp(
       (Math.abs(drivenInput) + Math.abs(voice.poles[3])) * (.07 + character * .05),
       0,
       .075,
     );
     voice.supplySag += voice.spiceSupplyCoefficient * (supplyLoad - voice.supplySag);
-    return Math.tanh(voice.poles[3] / signalVoltage * 1.18);
+    return fastTanh(voice.poles[3] / signalVoltage * 1.18);
   }
 
   ota(voice, input) {
@@ -902,14 +1059,17 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
   }
 
   compactVoices() {
-    let writeIndex = 0;
-    for (let readIndex = 0; readIndex < this.voices.length; readIndex += 1) {
-      const voice = this.voices[readIndex];
-      if (voice.releasing && voice.env < .00008) continue;
-      this.voices[writeIndex] = voice;
-      writeIndex += 1;
+    let write = 0;
+    for (let read = 0; read < this.activeVoiceCount; read += 1) {
+      const voiceIndex = this.activeVoiceIndices[read];
+      const voice = this.voices[voiceIndex];
+      if (voice.releasing && voice.env < .00008) {
+        voice.active = false;
+        continue;
+      }
+      this.activeVoiceIndices[write++] = voiceIndex;
     }
-    this.voices.length = writeIndex;
+    this.activeVoiceCount = write;
   }
 
   process(_inputs, outputs) {
@@ -944,10 +1104,10 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
           let subR = 0;
           let hybridL = 0;
           let hybridR = 0;
-          for (let voiceIndex = 0; voiceIndex < this.voices.length; voiceIndex += 1) {
-            const voice = this.voices[voiceIndex];
+          for (let active = 0; active < this.activeVoiceCount; active += 1) {
+            const voice = this.voices[this.activeVoiceIndices[active]];
             const envelope = this.envelope(voice, dt);
-            const captureReady = voice.captureSourceOffsets && voice.captureToneOffset >= 0;
+            const captureReady = voice.captureLength > 0 && voice.captureToneOffset >= 0;
             if (renderMode === 'hybrid' && captureReady) {
               const source = this.renderCapturedSource(voice) * envelope * voice.velocity;
               hybridL += source * voice.panL;
@@ -972,8 +1132,8 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
         }
       }
       if (hasFinishedVoice) this.compactVoices();
-      if (normalizationVoiceCount !== this.voices.length) {
-        normalizationVoiceCount = this.voices.length;
+      if (normalizationVoiceCount !== this.activeVoiceCount) {
+        normalizationVoiceCount = this.activeVoiceCount;
         normalization = quality * Math.sqrt(Math.max(1, normalizationVoiceCount) * .72);
       }
       let outL = this.dcBlock(sumL / normalization, this.dcL);
@@ -994,28 +1154,26 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
         : renderMode === 'capture'
           ? 'LOSSLESS FLOAT32 CIRCUIT CAPTURE'
           : profile.topology;
-      this.port.postMessage({
-        type: 'telemetry',
-        activeVoices: this.voices.length,
-        maxVoices: MAX_VOICES,
-        peak: this.peak,
-        oversample: this.quality,
-        machine: this.machine,
-        topology,
-        solver: renderMode === 'capture' ? 'PCM INTERPOLATOR' : profile.solver || 'TOPOLOGY DSP',
-        solverIterations: renderMode === 'capture'
-          ? 0
-          : profile.family === 'ladder'
-            ? (this.quality >= 4 ? 2 : 1)
-            : 0,
-        renderMode,
-        captureReady: Boolean(this.captureBank),
-        temperatureC: profile.family === 'ladder' && this.voices[0]
-          ? this.voices[0].temperatureK - 273.15
-          : 27,
-        renderQuantumFrames: this.renderQuantumFrames,
-        clippedSamples: this.clippedSamples,
-      });
+      const message = this.telemetryMessage;
+      message.activeVoices = this.activeVoiceCount;
+      message.peak = this.peak;
+      message.oversample = this.quality;
+      message.machine = this.machine;
+      message.topology = topology;
+      message.solver = renderMode === 'capture' ? 'PCM INTERPOLATOR' : profile.solver || 'TOPOLOGY DSP';
+      message.solverIterations = renderMode === 'capture'
+        ? 0
+        : profile.family === 'ladder'
+          ? (this.quality >= 4 ? 2 : 1)
+          : 0;
+      message.renderMode = renderMode;
+      message.captureReady = Boolean(this.captureBank);
+      message.temperatureC = profile.family === 'ladder' && this.activeVoiceCount > 0
+        ? this.voices[this.activeVoiceIndices[0]].temperatureK - 273.15
+        : 27;
+      message.renderQuantumFrames = this.renderQuantumFrames;
+      message.clippedSamples = this.clippedSamples;
+      this.port.postMessage(message);
       this.telemetryCountdown += sampleRate >> 2;
     }
     return true;
