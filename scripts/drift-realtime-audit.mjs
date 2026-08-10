@@ -6,10 +6,12 @@ const SAMPLE_RATE = 48_000;
 const BLOCK_SIZE = 128;
 const source = readFileSync(resolve(process.cwd(), 'public/drift-classic-processor.js'), 'utf8');
 const nativeWrapper = readFileSync(resolve(process.cwd(), 'native/src/drift_parity_processor.cpp'), 'utf8');
+const nativeStandard = readFileSync(resolve(process.cwd(), 'native/src/drift_standard_processor.cpp'), 'utf8');
 const failures = [];
 const reports = [];
 const requireText = (needle) => { if (!source.includes(needle)) failures.push(`Drift realtime contract: missing ${JSON.stringify(needle)}`); };
 const requireNative = (needle) => { if (!nativeWrapper.includes(needle)) failures.push(`Native Drift realtime contract: missing ${JSON.stringify(needle)}`); };
+const requireStandard = (needle) => { if (!nativeStandard.includes(needle)) failures.push(`Native Drift Standard contract: missing ${JSON.stringify(needle)}`); };
 
 for (const token of [
   'const DRIFT_TANH_LUT = new Float32Array(2048)',
@@ -32,6 +34,22 @@ for (const token of [
   'wet_gain = std::sin(mix * kPi * .5F)',
 ]) requireNative(token);
 
+for (const token of [
+  'constexpr std::size_t kControlPeriod = 32U',
+  'constexpr std::size_t kTanhTableSize = 4097U',
+  'float fast_tanh(float value) noexcept',
+  'settings = calculate_settings(mode, rate, depth, shape, spread, motion)',
+  'input_tone[channel].configure(FilterType::Lowpass',
+  'highpass[voice].configure(FilterType::Highpass',
+  'lowpass[voice].configure(FilterType::Lowpass',
+  'pan_left[voice] = std::cos(angle)',
+  'pan_right[voice] = std::sin(angle)',
+  'rotation_sine[voice] = std::sin(increment)',
+  'rotation_cosine[voice] = std::cos(increment)',
+  'return fast_tanh(shifted * preamp_gain) * preamp_normalization',
+  'if (++write == delay[0].size()) write = 0U',
+]) requireStandard(token);
+
 const nativeProcessStart = nativeWrapper.indexOf('  void process(float* data, std::size_t frames) noexcept');
 const nativeProcessEnd = nativeWrapper.indexOf('\n  }\n};', nativeProcessStart);
 const nativeProcess = nativeProcessStart >= 0 && nativeProcessEnd > nativeProcessStart
@@ -44,6 +62,24 @@ else {
   if (nativeProcess.includes('std::cos(mix')) failures.push('Native Drift sample loop recalculates mix cosine directly');
   if (nativeProcess.includes('std::sin(mix')) failures.push('Native Drift sample loop recalculates mix sine directly');
 }
+
+const standardProcessStart = nativeStandard.indexOf('  std::array<float, 2> process_sample(');
+const standardProcessEnd = nativeStandard.indexOf('\n  }\n\n  void set_mode', standardProcessStart);
+const standardProcess = standardProcessStart >= 0 && standardProcessEnd > standardProcessStart
+  ? nativeStandard.slice(standardProcessStart, standardProcessEnd)
+  : '';
+if (!standardProcess) failures.push('Native Drift Standard process_sample() boundary missing');
+else {
+  for (const token of [
+    'calculate_settings(', '.configure(', 'std::tanh(', 'std::sin(', 'std::cos(',
+    'std::asin(', 'std::pow(', 'std::exp(', '% delay[0].size()',
+  ]) {
+    if (standardProcess.includes(token)) failures.push(`Native Drift Standard sample loop must not evaluate ${token}`);
+  }
+}
+if (nativeStandard.includes('std::asin(std::sin(phase))')) failures.push('Native Drift Standard triangle LFO still uses sin+asin');
+if (nativeStandard.includes('write = (write + 1U) % delay[0].size()')) failures.push('Native Drift Standard write cursor still uses modulo');
+if (nativeStandard.includes('std::tanh(shifted * gain)')) failures.push('Native Drift Standard preamp still uses runtime tanh');
 
 const clipStart = source.indexOf('  normalizedSoftClip(');
 const clipEnd = source.indexOf('  leslieCrossoverCoefficient(', clipStart);
@@ -129,4 +165,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('Drift realtime audit passed · browser nonlinear hot paths and native wrapper control traffic are amortized');
+console.log('Drift realtime audit passed · browser nonlinear hot paths and native wrapper/Standard control traffic are amortized');
