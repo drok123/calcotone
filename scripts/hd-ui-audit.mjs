@@ -65,6 +65,10 @@ for (const [name, source, tokens] of [
     'canvasPixelRatio(width, height, 5_400_000)',
     'display.reference1440p ? 30 : 24',
     'subscribeDisplayProfile(resize)',
+    "const graphCharacters = new Array<string>(innerWidth).fill(' ')",
+    "const graphAccents = new Array<string>(innerWidth).fill(' ')",
+    "graphCharacters.fill(' ')",
+    "graphAccents.fill(' ')",
   ]],
   ['ASCII engine', ascii, [
     'canvasPixelRatio(width, height, 6_400_000)',
@@ -80,6 +84,13 @@ for (const [name, source, tokens] of [
   for (const token of tokens) {
     if (!source.includes(token)) failures.push(`${name} is missing ${token}`);
   }
+}
+
+for (const retired of [
+  "const chars = Array.from({ length: innerWidth }, () => ' ')",
+  "const accents = Array.from({ length: innerWidth }, () => ' ')",
+]) {
+  if (moduleDisplay.includes(retired)) failures.push(`module display must not allocate a graph-row array via ${retired}`);
 }
 
 for (const token of [
@@ -155,4 +166,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('1440p UI fidelity audit passed · sharp raster targets remain intact while shared animated canvases are capped at an audio-safe 20 FPS');
+console.log('1440p UI fidelity audit passed · sharp raster targets remain intact while animated graph rows reuse buffers and shared canvases stay audio-safe');
