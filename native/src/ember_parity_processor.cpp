@@ -35,6 +35,11 @@ struct EmberParityProcessor::Impl {
   float rate;
   std::array<std::atomic<float>, 7> target{};
   std::array<float, 7> value{0.F, .14F, 9500.F, .18F, .22F, .38F, .22F};
+  int active_mode{-1};
+  unsigned pending_mode{};
+  float mode_mix{1.F};
+  float mode_fade_step{};
+  unsigned mode_transition{};
 
   std::array<float, 2> input_hp_in{}, input_hp_out{};
   std::array<float, 2> tone{}, presence{}, compressor_envelope{}, compressor_gain{1.F, 1.F};
@@ -58,6 +63,41 @@ struct EmberParityProcessor::Impl {
 
   explicit Impl(float sample_rate) : rate(std::clamp(sample_rate, 8000.F, 384000.F)) {
     for (std::size_t i = 0; i < value.size(); ++i) target[i].store(value[i]);
+    mode_fade_step = 1.F / std::max(1.F, rate * .003F);
+  }
+
+  unsigned requested_mode() const noexcept {
+    return std::min(17U, static_cast<unsigned>(std::max(0.F, std::round(target[0].load(std::memory_order_relaxed)))));
+  }
+
+  void prepare_mode_transition() noexcept {
+    const unsigned requested = requested_mode();
+    if (active_mode < 0) {
+      active_mode = static_cast<int>(requested);
+      pending_mode = requested;
+      mode_mix = 1.F;
+      mode_transition = 0U;
+    } else if (requested != static_cast<unsigned>(active_mode)) {
+      pending_mode = requested;
+      if (mode_transition == 0U || mode_transition == 2U) mode_transition = 1U;
+    }
+  }
+
+  void advance_mode_transition() noexcept {
+    if (mode_transition == 1U) {
+      mode_mix = std::max(0.F, mode_mix - mode_fade_step);
+      if (mode_mix <= 0.F) {
+        mode_mix = 0.F;
+        active_mode = static_cast<int>(pending_mode);
+        mode_transition = 2U;
+      }
+    } else if (mode_transition == 2U) {
+      mode_mix = std::min(1.F, mode_mix + mode_fade_step);
+      if (mode_mix >= 1.F) {
+        mode_mix = 1.F;
+        mode_transition = 0U;
+      }
+    }
   }
 
   float highpass_input(float input, unsigned channel) noexcept {
@@ -301,12 +341,14 @@ struct EmberParityProcessor::Impl {
 
   void process(float* data, std::size_t frames) noexcept {
     const float glide = 1.F - std::exp(-1.F / (rate * .045F));
+    prepare_mode_transition();
     for (std::size_t frame = 0; frame < frames; ++frame) {
-      value[0] = target[0].load(std::memory_order_relaxed);
       for (std::size_t i = 1; i < value.size(); ++i)
         value[i] += (target[i].load(std::memory_order_relaxed) - value[i]) * glide;
+      prepare_mode_transition();
+      advance_mode_transition();
 
-      const unsigned mode = std::min(17U, static_cast<unsigned>(std::round(value[0])));
+      const unsigned mode = static_cast<unsigned>(std::max(0, active_mode));
       const auto& profile = ember_parity_profile(mode);
       const float drive = clamp01(value[1]);
       const float tone_hz = std::clamp(value[2], 200.F, 18000.F);
@@ -330,7 +372,8 @@ struct EmberParityProcessor::Impl {
           wet = digital(dry[channel], profile.digital_capture_mode, drive, tone_norm,
                         heat, character, dynamics, channel);
           // Saturation.ts intentionally uses linear routing for the digital-capture branch.
-          data[frame * 2 + channel] = std::clamp(dry[channel] * (1.F - mix) + wet * mix, -1.2F, 1.2F);
+          const float processed = std::clamp(dry[channel] * (1.F - mix) + wet * mix, -1.2F, 1.2F);
+          data[frame * 2 + channel] = dry[channel] + (processed - dry[channel]) * mode_mix;
           continue;
         }
 
@@ -347,7 +390,8 @@ struct EmberParityProcessor::Impl {
         wet = analog_post(wet, mode, profile, drive, tone_hz, heat, character, dynamics, channel);
         const float dry_gain = std::cos(mix * kPi * .5F);
         const float wet_gain = std::sin(mix * kPi * .5F);
-        data[frame * 2 + channel] = std::clamp(dry[channel] * dry_gain + wet * wet_gain, -1.2F, 1.2F);
+        const float processed = std::clamp(dry[channel] * dry_gain + wet * wet_gain, -1.2F, 1.2F);
+        data[frame * 2 + channel] = dry[channel] + (processed - dry[channel]) * mode_mix;
       }
     }
   }
@@ -374,6 +418,7 @@ void EmberParityProcessor::reset() noexcept {
   impl_->tube_previous_input = {}; impl_->tube_bias_memory = {}; impl_->tube_cathode_memory = {};
   impl_->tube_blocking_memory = {}; impl_->tube_output_memory = {}; impl_->tube_plate_charge = {};
   impl_->tube_supply_demand = 0.F; impl_->tube_supply_sag = 0.F; impl_->tube_thermal_state = 0.F;
+  impl_->active_mode = -1; impl_->pending_mode = 0U; impl_->mode_mix = 1.F; impl_->mode_transition = 0U;
 }
 
 }  // namespace calcotone

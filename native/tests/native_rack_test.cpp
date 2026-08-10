@@ -67,6 +67,70 @@ int main() {
     const float peak = *std::max_element(output.begin(), output.end(), [](float a, float b) { return std::abs(a) < std::abs(b); });
     assert(std::abs(peak) > .001F);
   }
+  // Live hardware/model changes must reach a true dry crossing rather than
+  // numerically gliding through unrelated model indices. At 48 kHz the native
+  // handoff uses a 3 ms / 144-frame fade-out before committing the new model.
+  {
+    calcotone::NativeRack transition(kRate);
+    transition.set_bypassed(calcotone::RackModule::Stomp, false);
+    assert(transition.set_parameter(calcotone::RackModule::Stomp, "mode", 0.F));
+    assert(transition.set_parameter(calcotone::RackModule::Stomp, "drive", .82F));
+    assert(transition.set_parameter(calcotone::RackModule::Stomp, "mix", 1.F));
+    std::vector<float> warmup(4096U * 2U);
+    for (std::size_t frame = 0; frame < 4096U; ++frame) {
+      const float sample = .22F * std::sin(static_cast<float>(frame) * 6.283185307F * 173.F / kRate);
+      warmup[frame * 2U] = sample; warmup[frame * 2U + 1U] = sample;
+    }
+    transition.process(warmup.data(), warmup.data(), 4096U);
+    assert(transition.set_parameter(calcotone::RackModule::Stomp, "mode", 13.F));
+    std::vector<float> changing(512U * 2U);
+    for (std::size_t frame = 0; frame < 512U; ++frame) {
+      const float sample = .22F * std::sin(static_cast<float>(frame + 4096U) * 6.283185307F * 173.F / kRate);
+      changing[frame * 2U] = sample; changing[frame * 2U + 1U] = sample;
+    }
+    const auto dry_change = changing;
+    transition.process(changing.data(), changing.data(), 512U);
+    require_safe(changing);
+    constexpr std::size_t dry_crossing = 143U;
+    assert(std::abs(changing[dry_crossing * 2U] - dry_change[dry_crossing * 2U]) < 1e-5F);
+    assert(std::abs(changing[dry_crossing * 2U + 1U] - dry_change[dry_crossing * 2U + 1U]) < 1e-5F);
+  }
+
+  // Generated parity wrappers must keep the old model active through fade-out.
+  {
+    calcotone::NativeRack reference(kRate);
+    calcotone::NativeRack switched(kRate);
+    for (auto* rack : {&reference, &switched}) {
+      rack->set_bypassed(calcotone::RackModule::Stomp, false);
+      assert(rack->set_parameter(calcotone::RackModule::Stomp, "mode", 0.F));
+      assert(rack->set_parameter(calcotone::RackModule::Stomp, "drive", .82F));
+      assert(rack->set_parameter(calcotone::RackModule::Stomp, "mix", 1.F));
+    }
+    std::vector<float> warmup(4096U * 2U);
+    for (std::size_t frame = 0; frame < 4096U; ++frame) {
+      const float sample = .22F * std::sin(static_cast<float>(frame) * 6.283185307F * 173.F / kRate);
+      warmup[frame * 2U] = sample; warmup[frame * 2U + 1U] = sample;
+    }
+    auto ref_warmup = warmup; auto switched_warmup = warmup;
+    reference.process(ref_warmup.data(), ref_warmup.data(), 4096U);
+    switched.process(switched_warmup.data(), switched_warmup.data(), 4096U);
+    assert(switched.set_parameter(calcotone::RackModule::Stomp, "mode", 13.F));
+    std::vector<float> reference_audio(512U * 2U), switched_audio(512U * 2U);
+    for (std::size_t frame = 0; frame < 512U; ++frame) {
+      const float sample = .22F * std::sin(static_cast<float>(frame + 4096U) * 6.283185307F * 173.F / kRate);
+      reference_audio[frame * 2U] = sample; reference_audio[frame * 2U + 1U] = sample;
+      switched_audio[frame * 2U] = sample; switched_audio[frame * 2U + 1U] = sample;
+    }
+    const auto dry = switched_audio;
+    reference.process(reference_audio.data(), reference_audio.data(), 512U);
+    switched.process(switched_audio.data(), switched_audio.data(), 512U);
+    constexpr float first_mode_mix = 1.F - 1.F / 144.F;
+    for (unsigned channel = 0; channel < 2U; ++channel) {
+      const float expected = dry[channel] + (reference_audio[channel] - dry[channel]) * first_mode_mix;
+      assert(std::abs(switched_audio[channel] - expected) < 2e-4F);
+    }
+  }
+
   assert(calcotone::rack_module_from_name("saturation") == calcotone::RackModule::Ember);
   assert(calcotone::rack_module_from_name("bitcrusher") == calcotone::RackModule::Grain);
   assert(calcotone::rack_module_from_name("media") == calcotone::RackModule::Artifact);

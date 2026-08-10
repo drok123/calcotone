@@ -35,7 +35,7 @@ def main() -> int:
   int active_mode{-1};
   explicit Ember(float rate) : processor(rate), magnetic(rate), digital(rate) {}
   void process(float* data, std::size_t frames, float) noexcept {
-    const float mode_value = p.target[0].load(std::memory_order_relaxed);
+    const float mode_value = p.value[0];
     const int mode = std::clamp(static_cast<int>(std::lround(mode_value)), 0, 17);
     if (mode != active_mode) {
       if (mode == 3) magnetic.reset();
