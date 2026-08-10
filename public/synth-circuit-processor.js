@@ -27,6 +27,19 @@ for (let index = 0; index < TANH_LUT.length; index += 1) {
   const x = TANH_LUT_MIN + index / TANH_LUT_SCALE;
   TANH_LUT[index] = Math.tanh(x);
 }
+// Unity-DC 15-tap half-band FIR. Even-offset symmetry leaves only four paired
+// coefficients plus the 0.5 center tap, keeping 2:1 decimation cheap enough for
+// the AudioWorklet. 4× quality cascades two identical stages.
+const HALF_BAND_15 = new Float64Array([
+  -0.0036651758475024465, 0,
+  0.0162400359265754, 0,
+  -0.06866866623420201, 0,
+  0.3060938061551291, 0.5,
+  0.3060938061551291, 0,
+  -0.06866866623420201, 0,
+  0.0162400359265754, 0,
+  -0.0036651758475024465,
+]);
 const FM_RATIOS = [
   [1, 1, 2, 3, 4, 6],
   [1, 2, 3, 1, 5, 7],
@@ -140,6 +153,52 @@ function pulse(phase, increment, width) {
   return value;
 }
 
+class HalfBandDecimator2 {
+  constructor() {
+    this.left = new Float64Array(HALF_BAND_15.length);
+    this.right = new Float64Array(HALF_BAND_15.length);
+    this.write = 0;
+    this.phase = 0;
+    this.outputL = 0;
+    this.outputR = 0;
+  }
+
+  reset() {
+    this.left.fill(0);
+    this.right.fill(0);
+    this.write = 0;
+    this.phase = 0;
+    this.outputL = 0;
+    this.outputR = 0;
+  }
+
+  read(buffer, delay) {
+    let index = this.write - 1 - delay;
+    if (index < 0) index += HALF_BAND_15.length;
+    return buffer[index];
+  }
+
+  filter(buffer) {
+    return HALF_BAND_15[0] * (this.read(buffer, 0) + this.read(buffer, 14))
+      + HALF_BAND_15[2] * (this.read(buffer, 2) + this.read(buffer, 12))
+      + HALF_BAND_15[4] * (this.read(buffer, 4) + this.read(buffer, 10))
+      + HALF_BAND_15[6] * (this.read(buffer, 6) + this.read(buffer, 8))
+      + HALF_BAND_15[7] * this.read(buffer, 7);
+  }
+
+  push(left, right) {
+    this.left[this.write] = left;
+    this.right[this.write] = right;
+    this.write += 1;
+    if (this.write === HALF_BAND_15.length) this.write = 0;
+    this.phase ^= 1;
+    if (this.phase !== 0) return false;
+    this.outputL = this.filter(this.left);
+    this.outputR = this.filter(this.right);
+    return true;
+  }
+}
+
 class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -162,6 +221,9 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     this.renderQuantumFrames = 0;
     this.dcL = { input: 0, output: 0 };
     this.dcR = { input: 0, output: 0 };
+    this.decimator2x = new HalfBandDecimator2();
+    this.decimator4xStage1 = new HalfBandDecimator2();
+    this.decimator4xStage2 = new HalfBandDecimator2();
     this.sequencer = {
       patterns: Array.from({ length: 4 }, () => Array.from({ length: 16 }, () => [])),
       patternIndex: 0,
@@ -310,6 +372,7 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       const nextQuality = data.factor >= 4 ? 4 : data.factor >= 2 ? 2 : 1;
       if (nextQuality !== this.quality) {
         this.quality = nextQuality;
+        this.resetDecimators();
         for (let active = 0; active < this.activeVoiceCount; active += 1) {
           this.refreshVoiceCoefficients(this.voices[this.activeVoiceIndices[active]]);
         }
@@ -672,9 +735,8 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
   }
 
   refreshHybridBuses(reset = false) {
-    const buses = [this.hybridBusL, this.hybridBusR];
-    for (let busIndex = 0; busIndex < buses.length; busIndex += 1) {
-      const bus = buses[busIndex];
+    for (let busIndex = 0; busIndex < 2; busIndex += 1) {
+      const bus = busIndex === 0 ? this.hybridBusL : this.hybridBusR;
       if (!bus) continue;
       for (let index = 0; index < 6; index += 1) bus.parameters[index] = this.parameters[index];
       if (reset) {
@@ -685,6 +747,12 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
       }
       this.refreshVoiceCoefficients(bus);
     }
+  }
+
+  resetDecimators() {
+    this.decimator2x.reset();
+    this.decimator4xStage1.reset();
+    this.decimator4xStage2.reset();
   }
 
   installCaptureBank(data) {
@@ -1083,7 +1151,7 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
     const dt = 1 / (sampleRate * quality);
     const renderMode = this.resolveRenderMode();
     let normalizationVoiceCount = -1;
-    let normalization = quality;
+    let voiceNormalization = 1;
     for (let i = 0; i < left.length; i += 1) {
       if (this.sequencer.playing) {
         let scheduledSteps = 0;
@@ -1095,15 +1163,19 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
           this.sequencer.nextStepFrame = this.frameCounter + this.sequencer.stepFrames;
         }
       }
-      let sumL = 0;
-      let sumR = 0;
+      if (normalizationVoiceCount !== this.activeVoiceCount) {
+        normalizationVoiceCount = this.activeVoiceCount;
+        voiceNormalization = Math.sqrt(Math.max(1, normalizationVoiceCount) * .72);
+      }
+      let decimatedL = 0;
+      let decimatedR = 0;
       let hasFinishedVoice = false;
-      if (this.enabled) {
-        for (let sub = 0; sub < quality; sub += 1) {
-          let subL = 0;
-          let subR = 0;
-          let hybridL = 0;
-          let hybridR = 0;
+      for (let sub = 0; sub < quality; sub += 1) {
+        let subL = 0;
+        let subR = 0;
+        let hybridL = 0;
+        let hybridR = 0;
+        if (this.enabled) {
           for (let active = 0; active < this.activeVoiceCount; active += 1) {
             const voice = this.voices[this.activeVoiceIndices[active]];
             const envelope = this.envelope(voice, dt);
@@ -1127,17 +1199,30 @@ class CalcotoneSynthCircuitProcessor extends AudioWorkletProcessor {
             subL += this.spiceLadder(this.hybridBusL, hybridL) * level;
             subR += this.spiceLadder(this.hybridBusR, hybridR) * level;
           }
-          sumL += subL;
-          sumR += subR;
+        }
+
+        const normalizedSubL = subL / voiceNormalization;
+        const normalizedSubR = subR / voiceNormalization;
+        if (quality === 1) {
+          decimatedL = normalizedSubL;
+          decimatedR = normalizedSubR;
+        } else if (quality === 2) {
+          if (this.decimator2x.push(normalizedSubL, normalizedSubR)) {
+            decimatedL = this.decimator2x.outputL;
+            decimatedR = this.decimator2x.outputR;
+          }
+        } else if (this.decimator4xStage1.push(normalizedSubL, normalizedSubR)
+            && this.decimator4xStage2.push(
+              this.decimator4xStage1.outputL,
+              this.decimator4xStage1.outputR,
+            )) {
+          decimatedL = this.decimator4xStage2.outputL;
+          decimatedR = this.decimator4xStage2.outputR;
         }
       }
       if (hasFinishedVoice) this.compactVoices();
-      if (normalizationVoiceCount !== this.activeVoiceCount) {
-        normalizationVoiceCount = this.activeVoiceCount;
-        normalization = quality * Math.sqrt(Math.max(1, normalizationVoiceCount) * .72);
-      }
-      let outL = this.dcBlock(sumL / normalization, this.dcL);
-      let outR = this.dcBlock(sumR / normalization, this.dcR);
+      let outL = this.dcBlock(decimatedL, this.dcL);
+      let outR = this.dcBlock(decimatedR, this.dcR);
       if (Math.abs(outL) > .98 || Math.abs(outR) > .98) this.clippedSamples += 1;
       outL = fastTanh(outL * OUTPUT_SATURATION_GAIN) * OUTPUT_SATURATION_NORMALIZATION;
       outR = fastTanh(outR * OUTPUT_SATURATION_GAIN) * OUTPUT_SATURATION_NORMALIZATION;
