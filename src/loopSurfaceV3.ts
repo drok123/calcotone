@@ -1,17 +1,19 @@
 import {
   getLoopState,
-  setLoopRuntime,
+  loopTrackProgress,
   setLoopState,
 } from './components/signal/loopStore';
 import './loopSurfaceV3.css';
 
 const NATIVE_HEALTH_URL = 'http://127.0.0.1:48157/health';
-const NATIVE_LOOP_POLL_MS = 100;
+// App owns native Loop runtime telemetry. This slow poll exists only to learn the
+// listener-facing output-path delay used by the phase ring; it never writes Loop state.
+const NATIVE_LATENCY_POLL_MS = 1_000;
 
 let refreshFrame = 0;
 let animationFrame = 0;
-let nativePollTimer = 0;
-let nativePollPending = false;
+let nativeLatencyTimer = 0;
+let nativeLatencyPending = false;
 let nativePathLatencyMs = 0;
 let cachedPads: HTMLButtonElement[] = [];
 let lastHeaderRefresh = Number.NEGATIVE_INFINITY;
@@ -150,6 +152,8 @@ function refreshHeader(): void {
     trackAction.setAttribute('aria-label', trackAction.title);
   }
 
+  // Header refresh is low frequency; the defensive snapshot is appropriate here.
+  // The per-frame phase path below never calls getLoopState().
   const state = getLoopState();
   refreshParameter(bank, 'masterLevel', state.masterLevel);
   refreshParameter(bank, 'overdub', state.overdub);
@@ -191,27 +195,10 @@ function handleInput(event: Event): void {
 }
 
 function presentationProgress(track: number, stamp: number): number {
-  const state = getLoopState();
-  const runtime = state.trackRuntime[track];
-  if (!runtime || runtime.loopFrames <= 0) return 0;
-
-  const bit = 1 << track;
-  const writingTarget = track === state.selectedTrack
-    && (state.transport === 'recording' || state.transport === 'overdubbing');
-  const active = (state.trackActiveMask & bit) !== 0;
-  const transportRunning = state.transport === 'playing'
-    || state.transport === 'recording'
-    || state.transport === 'overdubbing';
-  const moving = writingTarget || (transportRunning && active);
-  let position = runtime.position;
-
-  if (moving && ((state.trackMask & bit) !== 0 || writingTarget)) {
-    const elapsedFrames = Math.max(0, stamp - runtime.updatedAtMs) * state.sampleRate / 1000;
-    const latencyFrames = Math.max(0, nativePathLatencyMs) * state.sampleRate / 1000;
-    const phaseFrames = position + elapsedFrames - latencyFrames;
-    position = ((phaseFrames % runtime.loopFrames) + runtime.loopFrames) % runtime.loopFrames;
-  }
-  return Math.max(0, Math.min(1, position / runtime.loopFrames));
+  // loopTrackProgress reads the store's internal runtime directly and allocates
+  // nothing. Passing listener time minus the measured output path aligns the
+  // visual restart to the sample that is reaching the speakers now.
+  return loopTrackProgress(track, stamp - nativePathLatencyMs);
 }
 
 function animateRings(stamp: number): void {
@@ -232,45 +219,24 @@ function animateRings(stamp: number): void {
   animationFrame = window.requestAnimationFrame(animateRings);
 }
 
-type NativeLoopHealth = {
+type NativeLatencyHealth = {
   engine?: string;
-  sampleRate?: number;
   estimatedPathMs?: number;
-  loopTransport?: number;
-  loopTrackMask?: number;
-  loopFrames?: number;
-  loopRawFrames?: number;
-  loopPosition?: number;
-  loopTrimStart?: number;
-  loopTrimEnd?: number;
-  loopWaveform?: number[];
 };
 
-async function pollNativeLoopRuntime(): Promise<void> {
-  if (!nativeShellActive() || nativePollPending || document.hidden) return;
-  nativePollPending = true;
+async function pollNativePathLatency(): Promise<void> {
+  if (!nativeShellActive() || nativeLatencyPending || document.hidden) return;
+  nativeLatencyPending = true;
   try {
     const response = await fetch(NATIVE_HEALTH_URL, { cache: 'no-store', credentials: 'omit' });
     if (!response.ok) return;
-    const health = await response.json() as NativeLoopHealth;
+    const health = await response.json() as NativeLatencyHealth;
     if (health.engine !== 'calcotone-native') return;
     nativePathLatencyMs = Math.max(0, Math.min(250, Number(health.estimatedPathMs) || 0));
-    const transports = ['empty', 'stopped', 'playing', 'recording', 'overdubbing'] as const;
-    setLoopRuntime({
-      transport: transports[Math.max(0, Math.min(4, Math.round(Number(health.loopTransport) || 0)))] ?? 'empty',
-      trackMask: Math.max(0, Math.round(Number(health.loopTrackMask) || 0)),
-      loopFrames: Math.max(0, Math.round(Number(health.loopFrames) || 0)),
-      rawFrames: Math.max(0, Math.round(Number(health.loopRawFrames ?? health.loopFrames) || 0)),
-      position: Math.max(0, Math.round(Number(health.loopPosition) || 0)),
-      sampleRate: Math.max(8_000, Math.round(Number(health.sampleRate) || 48_000)),
-      trimStart: Math.max(0, Math.min(1, Number(health.loopTrimStart) || 0)),
-      trimEnd: Math.max(0, Math.min(1, Number(health.loopTrimEnd) || 1)),
-      waveform: Array.isArray(health.loopWaveform) ? health.loopWaveform : undefined,
-    });
   } catch {
-    // Native bridge may be restarting. Existing UI state continues to extrapolate.
+    // Native bridge may be restarting. Retain the last stable path estimate.
   } finally {
-    nativePollPending = false;
+    nativeLatencyPending = false;
   }
 }
 
@@ -285,8 +251,8 @@ if (document.body) observer.observe(document.body, { subtree: true, childList: t
 scheduleRefresh();
 animationFrame = window.requestAnimationFrame(animateRings);
 if (nativeShellActive()) {
-  void pollNativeLoopRuntime();
-  nativePollTimer = window.setInterval(() => { void pollNativeLoopRuntime(); }, NATIVE_LOOP_POLL_MS);
+  void pollNativePathLatency();
+  nativeLatencyTimer = window.setInterval(() => { void pollNativePathLatency(); }, NATIVE_LATENCY_POLL_MS);
 }
 
 function uninstall(): void {
@@ -295,11 +261,11 @@ function uninstall(): void {
   observer.disconnect();
   if (refreshFrame) window.cancelAnimationFrame(refreshFrame);
   if (animationFrame) window.cancelAnimationFrame(animationFrame);
-  if (nativePollTimer) window.clearInterval(nativePollTimer);
+  if (nativeLatencyTimer) window.clearInterval(nativeLatencyTimer);
   refreshFrame = 0;
   animationFrame = 0;
-  nativePollTimer = 0;
-  nativePollPending = false;
+  nativeLatencyTimer = 0;
+  nativeLatencyPending = false;
   nativePathLatencyMs = 0;
   cachedPads = [];
 }
