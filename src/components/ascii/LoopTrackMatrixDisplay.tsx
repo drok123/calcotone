@@ -1,9 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react';
 import type { VisualAudioState } from '../../visual/VisualEngine';
 import { canvasPixelRatio, getDisplayProfile, subscribeDisplayProfile } from '../../ui/displayProfile';
 import {
-  LOOP_VISIBLE_TRACK_COUNT,
   loopTrackProgress,
+  sendLoopCommand,
   useLoopState,
   type LoopState,
   type LoopTrackRuntime,
@@ -17,65 +17,68 @@ interface LoopTrackMatrixDisplayProps {
   trimEditing?: boolean;
 }
 
+type TrimHandle = 'start' | 'end';
+
 const OFF_WHITE = '#f2ead8';
+const OFF_WHITE_DIM = 'rgba(242, 234, 216, .34)';
 const LOOP_PURPLE = '#d7c8ff';
-const TAU = Math.PI * 2;
-const SHADE_RAMP = ' .:-=+*#%@';
-const BAYER_4 = [
-  [0, 8, 2, 10],
-  [12, 4, 14, 6],
-  [3, 11, 1, 9],
-  [15, 7, 13, 5],
-] as const;
+const PLAYHEAD = '#ffbe72';
+const PLOT_INSET_X = 12;
+const PLOT_TOP = 23;
+const PLOT_BOTTOM = 10;
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
 }
 
-function edgeGlyph(gx: number, gy: number): string {
-  const ax = Math.abs(gx);
-  const ay = Math.abs(gy);
-  if (ax > ay * 1.8) return '|';
-  if (ay > ax * 1.8) return '-';
-  return gx * gy >= 0 ? '/' : '\\';
+function selectedRuntime(state: LoopState): LoopTrackRuntime | undefined {
+  return state.trackRuntime[state.selectedTrack];
 }
 
-function trackStateLabel(state: LoopState, track: number): string {
-  const bit = 1 << track;
-  const occupied = (state.trackMask & bit) !== 0;
-  if (track === state.selectedTrack && state.transport === 'recording') return 'REC';
-  if (track === state.selectedTrack && state.transport === 'overdubbing') return 'DUB';
-  if (!occupied) return 'EMPTY';
-  if ((state.trackMuteMask & bit) !== 0) return 'MUTE';
-  if ((state.trackSoloMask & bit) !== 0) return 'SOLO';
-  return (state.trackActiveMask & bit) !== 0 ? 'PLAY' : 'STOP';
+function minimumTrim(state: LoopState): number {
+  const rawFrames = selectedRuntime(state)?.rawFrames ?? state.rawFrames;
+  return rawFrames > 0 ? Math.min(0.25, 64 / rawFrames) : 0.001;
 }
 
-function trackMoving(state: LoopState, track: number): boolean {
-  if (track === state.selectedTrack && (state.transport === 'recording' || state.transport === 'overdubbing')) return true;
-  const bit = 1 << track;
-  const transportRunning = state.transport === 'playing' || state.transport === 'recording' || state.transport === 'overdubbing';
-  return (state.trackMask & bit) !== 0
-    && (state.trackActiveMask & bit) !== 0
-    && transportRunning;
+function plotBounds(width: number, height: number): { left: number; right: number; top: number; bottom: number; width: number; height: number; mid: number } {
+  const left = PLOT_INSET_X;
+  const right = Math.max(left + 1, width - PLOT_INSET_X);
+  const top = PLOT_TOP;
+  const bottom = Math.max(top + 1, height - PLOT_BOTTOM);
+  const plotWidth = Math.max(1, right - left);
+  const plotHeight = Math.max(1, bottom - top);
+  return { left, right, top, bottom, width: plotWidth, height: plotHeight, mid: top + plotHeight * 0.5 };
 }
 
-function runningTrackProgress(state: LoopState, track: number, runtime: LoopTrackRuntime | undefined, stamp: number): number {
-  if (!runtime || runtime.loopFrames <= 0) return 0;
-  const siblingDuringWrite = track !== state.selectedTrack
-    && (state.transport === 'recording' || state.transport === 'overdubbing')
-    && (state.trackMask & (1 << track)) !== 0
-    && (state.trackActiveMask & (1 << track)) !== 0;
-  if (!siblingDuringWrite) return loopTrackProgress(track, stamp);
-  const elapsedFrames = Math.max(0, stamp - runtime.updatedAtMs) * state.sampleRate / 1000;
-  return clamp01(((runtime.position + elapsedFrames) % runtime.loopFrames) / runtime.loopFrames);
+function drawHandle(
+  context: CanvasRenderingContext2D,
+  x: number,
+  top: number,
+  bottom: number,
+  label: string,
+  active: boolean,
+): void {
+  context.save();
+  context.strokeStyle = active ? LOOP_PURPLE : 'rgba(215, 200, 255, .56)';
+  context.fillStyle = active ? '#fffaf0' : 'rgba(242, 234, 216, .82)';
+  context.lineWidth = active ? 2 : 1;
+  context.shadowColor = LOOP_PURPLE;
+  context.shadowBlur = active ? 5 : 0;
+  context.beginPath();
+  context.moveTo(x + 0.5, top);
+  context.lineTo(x + 0.5, bottom);
+  context.stroke();
+  context.shadowBlur = 0;
+  context.fillRect(Math.round(x - 4), Math.round(top - 1), 9, 9);
+  context.fillStyle = '#100c08';
+  context.font = '900 7px "IBM Plex Mono", Consolas, monospace';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(label, x + 0.5, top + 3.6);
+  context.restore();
 }
 
-function fourBitMask(value: number): string {
-  return value.toString(2).padStart(4, '0').slice(-4);
-}
-
-function drawMatrix(
+function drawTransientEditor(
   context: CanvasRenderingContext2D,
   width: number,
   height: number,
@@ -86,181 +89,208 @@ function drawMatrix(
   trimEditing: boolean,
   stamp: number,
 ): void {
-  const highDefinition = getDisplayProfile().reference1440p;
-
-  // The old matrix packed 84-112 columns and a forced 24 rows into this small
-  // display. That preserved detail but crushed the final glyphs after the canvas
-  // was scaled back into the physical viewport. Loop deliberately spends pixels
-  // on legibility instead: fewer, heavier cells with a bounded 16-20 row grid.
-  const columns = highDefinition
-    ? Math.max(62, Math.min(72, Math.floor(width / 5.4)))
-    : Math.max(58, Math.min(68, Math.floor(width / 5.8)));
-  const fontSize = highDefinition
-    ? Math.max(6.4, Math.min(9.2, width / columns * 1.55))
-    : Math.max(6.0, Math.min(8.6, width / columns * 1.50));
-  const lineHeight = fontSize * 1.08;
-  const rows = Math.max(16, Math.min(20, Math.floor(height / lineHeight)));
-  const headerRows = 3;
-  const footerRows = 1;
-  const graphStart = headerRows;
-  const graphRows = Math.max(10, rows - headerRows - footerRows);
-  const cellWidth = Math.floor(columns / 2);
-  const cellHeight = Math.floor(graphRows / 2);
-  const chars = Array.from({ length: rows }, () => Array.from({ length: columns }, () => ' '));
-  const accents = Array.from({ length: rows }, () => Array.from({ length: columns }, () => ' '));
-  const activity = enabled ? clamp01(visualState.level * 0.72 + visualState.transient * 0.28) : 0;
-
-  const title = 'L O O P  //  4 TRACK MEMORY';
-  const status = trimEditing
-    ? `TRIM T${state.selectedTrack + 1}  IN ${(state.trimStart * 100).toFixed(1)}%  OUT ${(state.trimEnd * 100).toFixed(1)}%`
-    : 'CLICK REC/DUB  RMB STOP  CTRL MUTE  ALT SOLO  SHIFT CLEAR';
-  const writeCentered = (row: number, text: string): void => {
-    const value = text.slice(0, columns);
-    const start = Math.max(0, Math.floor((columns - value.length) / 2));
-    for (let index = 0; index < value.length; index += 1) chars[row]![start + index] = value[index]!;
-  };
-  writeCentered(0, title);
-  writeCentered(1, status);
-  for (let column = 0; column < columns; column += 1) chars[2]![column] = column % 2 === 0 ? '-' : ' ';
-
-  for (let track = 0; track < LOOP_VISIBLE_TRACK_COUNT; track += 1) {
-    const cellColumn = track % 2;
-    const cellRow = Math.floor(track / 2);
-    const left = cellColumn * cellWidth;
-    const top = graphStart + cellRow * cellHeight;
-    const right = cellColumn === 1 ? columns : left + cellWidth;
-    const bottom = cellRow === 1 ? graphStart + graphRows : top + cellHeight;
-    const localWidth = Math.max(12, right - left);
-    const localHeight = Math.max(6, bottom - top);
-    const centerColumn = left + (localWidth - 1) * 0.5;
-    const centerRow = top + (localHeight - 1) * 0.5;
-    const radiusX = Math.max(5.5, localWidth * 0.315);
-    const radiusY = Math.max(2.0, localHeight * 0.37);
-    const occupied = (state.trackMask & (1 << track)) !== 0;
-    const recording = track === state.selectedTrack && state.transport === 'recording';
-    const moving = trackMoving(state, track);
-    const runtime = state.trackRuntime[track];
-    const waveform = runtime?.waveform ?? [];
-    const progress = recording ? ((stamp / 1000) % 4) / 4 : runningTrackProgress(state, track, runtime, stamp);
-    const selected = track === state.selectedTrack;
-
-    for (let row = top; row < bottom; row += 1) {
-      for (let column = left; column < right; column += 1) {
-        const nx = (column - centerColumn) / radiusX;
-        const ny = (row - centerRow) / radiusY;
-        const radius = Math.sqrt(nx * nx + ny * ny);
-        const angle = Math.atan2(ny, nx);
-        const orbitPosition = ((angle + Math.PI * 0.5 + TAU) % TAU) / TAU;
-        const wiperDelta = Math.abs(((orbitPosition - progress + 1.5) % 1) - 0.5);
-        const trailDelta = (progress - orbitPosition + 1) % 1;
-
-        const outerRim = clamp01(1 - Math.abs(radius - 1.025) / 0.13);
-        const rimBody = clamp01(1 - Math.abs(radius - 0.955) / 0.14) * 0.56;
-        const innerGroove = clamp01(1 - Math.abs(radius - 0.855) / 0.075) * 0.72;
-        const indexTick = Math.max(0, 1 - Math.abs(Math.sin(angle * 6)) / 0.14)
-          * clamp01(1 - Math.abs(radius - 1.13) / 0.09) * 0.92;
-        const ordered = BAYER_4[(row - top) & 3]![(column - left) & 3]! / 15 - 0.5;
-        const shellIntensity = clamp01(Math.max(outerRim * 0.96, rimBody, innerGroove, indexTick) + ordered * 0.04);
-
-        if (shellIntensity > 0.08) {
-          chars[row]![column] = shellIntensity > 0.68
-            ? edgeGlyph(nx, ny)
-            : SHADE_RAMP[Math.min(
-                SHADE_RAMP.length - 1,
-                Math.max(1, Math.round(shellIntensity * (SHADE_RAMP.length - 1))),
-              )] ?? '.';
-        }
-
-        const onOuterMotionBand = Math.abs(radius - 1.025) < 0.19;
-        if ((occupied || recording) && moving && onOuterMotionBand && trailDelta < 0.105) {
-          accents[row]![column] = trailDelta < 0.025 || wiperDelta < 0.018 ? '*' : '+';
-        }
-        if ((occupied || recording) && onOuterMotionBand && wiperDelta < 0.016) accents[row]![column] = '*';
-
-        // TRIM stays on the selected orbit, but its active arc and boundary marks
-        // are deliberately wider now so the display reads at a glance.
-        if (trimEditing && selected && occupied && onOuterMotionBand) {
-          const insideTrim = state.trimEnd >= state.trimStart
-            ? orbitPosition >= state.trimStart && orbitPosition <= state.trimEnd
-            : orbitPosition >= state.trimStart || orbitPosition <= state.trimEnd;
-          if (insideTrim && accents[row]![column] === ' ') accents[row]![column] = '+';
-          const inDelta = Math.abs(((orbitPosition - state.trimStart + 1.5) % 1) - 0.5);
-          const outDelta = Math.abs(((orbitPosition - state.trimEnd + 1.5) % 1) - 0.5);
-          if (inDelta < 0.022) accents[row]![column] = '[';
-          if (outDelta < 0.022) accents[row]![column] = ']';
-        }
-
-        const waveLeft = centerColumn - radiusX * 0.72;
-        const waveRight = centerColumn + radiusX * 0.72;
-        if (column >= waveLeft && column <= waveRight && waveform.length > 0 && radius < 0.76) {
-          const normalizedX = (column - waveLeft) / Math.max(1, waveRight - waveLeft);
-          const waveformIndex = Math.min(waveform.length - 1, Math.floor(normalizedX * waveform.length));
-          const amplitude = clamp01(waveform[waveformIndex] ?? 0);
-          const normalizedDistance = Math.abs(row - centerRow) / Math.max(1, radiusY * 0.50);
-          if (amplitude > 0.015 && normalizedDistance <= amplitude) {
-            const waveIntensity = clamp01(1 - normalizedDistance / Math.max(0.06, amplitude));
-            chars[row]![column] = waveIntensity > 0.72 ? '|' : waveIntensity > 0.36 ? '+' : ':';
-          } else if (Math.abs(row - centerRow) < 0.45 && chars[row]![column] === ' ') {
-            chars[row]![column] = '.';
-          }
-        }
-      }
-    }
-
-    const label = `${selected ? '[' : ' '}T${track + 1} ${trackStateLabel(state, track)}${selected ? ']' : ' '}`;
-    const labelRow = Math.max(top, Math.min(bottom - 1, Math.round(centerRow)));
-    const labelStart = Math.max(left, Math.round(centerColumn - label.length / 2));
-    for (let index = 0; index < label.length && labelStart + index < right; index += 1) {
-      const column = labelStart + index;
-      if (selected) {
-        chars[labelRow]![column] = ' ';
-        accents[labelRow]![column] = label[index]!;
-      } else {
-        chars[labelRow]![column] = label[index]!;
-        accents[labelRow]![column] = ' ';
-      }
-    }
-  }
-
-  const footer = `${state.transport.toUpperCase()} // A:${fourBitMask(state.trackActiveMask)} M:${fourBitMask(state.trackMuteMask)} S:${fourBitMask(state.trackSoloMask)} // ${enabled ? 'ONLINE' : 'STANDBY'}`;
-  writeCentered(rows - 1, footer);
+  const runtime = selectedRuntime(state);
+  const bit = 1 << state.selectedTrack;
+  const occupied = (state.trackMask & bit) !== 0;
+  const waveform = runtime?.waveform ?? state.waveform;
+  const bounds = plotBounds(width, height);
+  const activity = enabled ? clamp01(visualState.level * 0.35 + visualState.transient * 0.65) : 0;
+  const trimStart = clamp01(runtime?.trimStart ?? state.trimStart);
+  const trimEnd = clamp01(runtime?.trimEnd ?? state.trimEnd);
+  const startX = bounds.left + bounds.width * trimStart;
+  const endX = bounds.left + bounds.width * trimEnd;
 
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
-  context.fillStyle = '#050706';
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = '#090806';
   context.fillRect(0, 0, width, height);
-  context.font = `800 ${fontSize}px "IBM Plex Mono", "SFMono-Regular", Consolas, monospace`;
-  const textWidth = Math.max(1, context.measureText('M'.repeat(columns)).width);
-  const textHeight = Math.max(1, (rows - 1) * lineHeight + fontSize);
-  context.setTransform(dpr * width / textWidth, 0, 0, dpr * height / textHeight, 0, 0);
-  context.textBaseline = 'top';
-  context.shadowBlur = enabled ? (highDefinition ? 1.4 : 1.8) : 0.6;
 
-  for (let row = 0; row < rows; row += 1) {
-    const structure = chars[row]!.join('');
-    const motion = accents[row]!.join('');
-    const textRow = row < headerRows || row === rows - 1;
-    context.globalAlpha = enabled ? (textRow ? 0.94 : 0.72 + activity * 0.16) : 0.34;
-    context.fillStyle = textRow ? LOOP_PURPLE : OFF_WHITE;
-    context.shadowColor = textRow ? LOOP_PURPLE : OFF_WHITE;
-    context.fillText(structure, 0, row * lineHeight);
-    if (motion.trim()) {
-      context.globalAlpha = enabled ? 0.94 + activity * 0.05 : 0.24;
-      context.fillStyle = LOOP_PURPLE;
-      context.shadowColor = LOOP_PURPLE;
-      context.fillText(motion, 0, row * lineHeight);
-    }
+  // Functional editor grid only: no ASCII scenery and no ornamental display world.
+  context.strokeStyle = 'rgba(242, 234, 216, .075)';
+  context.lineWidth = 1;
+  for (let division = 0; division <= 8; division += 1) {
+    const x = bounds.left + bounds.width * division / 8;
+    context.beginPath();
+    context.moveTo(Math.round(x) + 0.5, bounds.top);
+    context.lineTo(Math.round(x) + 0.5, bounds.bottom);
+    context.stroke();
   }
-  context.globalAlpha = 1;
+  context.strokeStyle = 'rgba(242, 234, 216, .10)';
+  context.beginPath();
+  context.moveTo(bounds.left, Math.round(bounds.mid) + 0.5);
+  context.lineTo(bounds.right, Math.round(bounds.mid) + 0.5);
+  context.stroke();
+
+  if (occupied && waveform.length > 0) {
+    const halfHeight = bounds.height * 0.42;
+    const step = Math.max(1, Math.floor(bounds.width / Math.max(1, waveform.length)));
+
+    context.beginPath();
+    context.moveTo(bounds.left, bounds.mid);
+    for (let x = 0; x <= bounds.width; x += step) {
+      const t = clamp01(x / bounds.width);
+      const index = Math.min(waveform.length - 1, Math.floor(t * waveform.length));
+      const amplitude = clamp01(waveform[index] ?? 0);
+      context.lineTo(bounds.left + x, bounds.mid - amplitude * halfHeight);
+    }
+    for (let x = bounds.width; x >= 0; x -= step) {
+      const t = clamp01(x / bounds.width);
+      const index = Math.min(waveform.length - 1, Math.floor(t * waveform.length));
+      const amplitude = clamp01(waveform[index] ?? 0);
+      context.lineTo(bounds.left + x, bounds.mid + amplitude * halfHeight);
+    }
+    context.closePath();
+    context.fillStyle = `rgba(242, 234, 216, ${0.11 + activity * 0.06})`;
+    context.fill();
+    context.strokeStyle = `rgba(242, 234, 216, ${0.58 + activity * 0.20})`;
+    context.lineWidth = 1.15;
+    context.stroke();
+
+    // Transient spikes remain visually truthful to the stored high-resolution envelope.
+    context.strokeStyle = `rgba(242, 234, 216, ${0.18 + activity * 0.12})`;
+    context.lineWidth = 1;
+    for (let index = 0; index < waveform.length; index += 1) {
+      const amplitude = clamp01(waveform[index] ?? 0);
+      if (amplitude < 0.16) continue;
+      const x = bounds.left + bounds.width * index / Math.max(1, waveform.length - 1);
+      const span = amplitude * halfHeight;
+      context.beginPath();
+      context.moveTo(Math.round(x) + 0.5, bounds.mid - span);
+      context.lineTo(Math.round(x) + 0.5, bounds.mid + span);
+      context.stroke();
+    }
+  } else {
+    context.fillStyle = 'rgba(242, 234, 216, .36)';
+    context.font = '800 9px "IBM Plex Mono", Consolas, monospace';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('RECORD TRACK TO EDIT TRANSIENT', width * 0.5, bounds.mid);
+  }
+
+  // Darken discarded regions so the active trim window reads immediately.
+  context.fillStyle = trimEditing ? 'rgba(0, 0, 0, .50)' : 'rgba(0, 0, 0, .32)';
+  if (startX > bounds.left) context.fillRect(bounds.left, bounds.top, startX - bounds.left, bounds.height);
+  if (endX < bounds.right) context.fillRect(endX, bounds.top, bounds.right - endX, bounds.height);
+
+  // Seam fade is shown as a small utility gradient inside the selected trim bounds.
+  const rawFrames = runtime?.rawFrames ?? state.rawFrames;
+  const durationSeconds = rawFrames > 0 ? rawFrames / Math.max(8_000, state.sampleRate) : 0;
+  const fadeFraction = durationSeconds > 0 ? Math.min(0.12, (state.fade * 0.020) / durationSeconds) : 0;
+  if (fadeFraction > 0 && endX > startX) {
+    const fadeWidth = Math.max(1, bounds.width * fadeFraction);
+    const inGradient = context.createLinearGradient(startX, 0, startX + fadeWidth, 0);
+    inGradient.addColorStop(0, 'rgba(215, 200, 255, .22)');
+    inGradient.addColorStop(1, 'rgba(215, 200, 255, 0)');
+    context.fillStyle = inGradient;
+    context.fillRect(startX, bounds.top, Math.min(fadeWidth, endX - startX), bounds.height);
+    const outGradient = context.createLinearGradient(endX - fadeWidth, 0, endX, 0);
+    outGradient.addColorStop(0, 'rgba(215, 200, 255, 0)');
+    outGradient.addColorStop(1, 'rgba(215, 200, 255, .22)');
+    context.fillStyle = outGradient;
+    context.fillRect(Math.max(startX, endX - fadeWidth), bounds.top, Math.min(fadeWidth, endX - startX), bounds.height);
+  }
+
+  if (occupied) {
+    drawHandle(context, startX, bounds.top, bounds.bottom, 'I', trimEditing);
+    drawHandle(context, endX, bounds.top, bounds.bottom, 'O', trimEditing);
+  }
+
+  const progress = occupied ? loopTrackProgress(state.selectedTrack, stamp) : 0;
+  if (occupied) {
+    const playheadX = bounds.left + bounds.width * progress;
+    context.strokeStyle = 'rgba(255, 190, 114, .72)';
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(Math.round(playheadX) + 0.5, bounds.top + 9);
+    context.lineTo(Math.round(playheadX) + 0.5, bounds.bottom);
+    context.stroke();
+  }
+
   context.shadowBlur = 0;
+  context.fillStyle = enabled ? OFF_WHITE : OFF_WHITE_DIM;
+  context.font = '900 9px "IBM Plex Mono", Consolas, monospace';
+  context.textBaseline = 'top';
+  context.textAlign = 'left';
+  context.fillText(`T${state.selectedTrack + 1}`, bounds.left, 7);
+  context.fillStyle = trimEditing ? LOOP_PURPLE : 'rgba(242, 234, 216, .58)';
+  context.fillText(trimEditing ? 'TRIM' : 'TRANSIENT', bounds.left + 24, 7);
+
+  const info = occupied
+    ? `IN ${(trimStart * 100).toFixed(1)}   OUT ${(trimEnd * 100).toFixed(1)}`
+    : 'EMPTY';
+  context.fillStyle = enabled ? 'rgba(242, 234, 216, .72)' : OFF_WHITE_DIM;
+  context.textAlign = 'right';
+  context.fillText(info, bounds.right, 7);
+
+  if (trimEditing && occupied) {
+    context.fillStyle = 'rgba(215, 200, 255, .66)';
+    context.font = '800 7px "IBM Plex Mono", Consolas, monospace';
+    context.textAlign = 'right';
+    context.textBaseline = 'bottom';
+    context.fillText('DRAG I / O', bounds.right, height - 2);
+  }
 }
 
 export function LoopTrackMatrixDisplay({ enabled, visualState, trimEditing = false }: LoopTrackMatrixDisplayProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const dragHandleRef = useRef<TrimHandle | null>(null);
   const state = useLoopState();
   const stateRef = useRef(state);
   const propsRef = useRef({ enabled, visualState, trimEditing });
   stateRef.current = state;
   propsRef.current = { enabled, visualState, trimEditing };
+
+  function updateTrim(handle: TrimHandle, clientX: number, canvas: HTMLCanvasElement): void {
+    const current = stateRef.current;
+    const bounds = canvas.getBoundingClientRect();
+    const plot = plotBounds(bounds.width, bounds.height);
+    const value = clamp01((clientX - bounds.left - plot.left) / plot.width);
+    const minimum = minimumTrim(current);
+    if (handle === 'start') {
+      sendLoopCommand({
+        type: 'trim',
+        start: Math.min(value, current.trimEnd - minimum),
+        end: current.trimEnd,
+      });
+    } else {
+      sendLoopCommand({
+        type: 'trim',
+        start: current.trimStart,
+        end: Math.max(value, current.trimStart + minimum),
+      });
+    }
+  }
+
+  function beginTrimDrag(event: ReactPointerEvent<HTMLCanvasElement>): void {
+    const current = stateRef.current;
+    const occupied = (current.trackMask & (1 << current.selectedTrack)) !== 0;
+    const writing = current.transport === 'recording' || current.transport === 'overdubbing';
+    if (!propsRef.current.trimEditing || !occupied || writing || event.button !== 0) return;
+    event.preventDefault();
+    const canvas = event.currentTarget;
+    const bounds = canvas.getBoundingClientRect();
+    const plot = plotBounds(bounds.width, bounds.height);
+    const pointerX = event.clientX - bounds.left;
+    const startX = plot.left + plot.width * current.trimStart;
+    const endX = plot.left + plot.width * current.trimEnd;
+    const handle: TrimHandle = Math.abs(pointerX - startX) <= Math.abs(pointerX - endX) ? 'start' : 'end';
+    dragHandleRef.current = handle;
+    canvas.setPointerCapture(event.pointerId);
+    updateTrim(handle, event.clientX, canvas);
+  }
+
+  function moveTrimDrag(event: ReactPointerEvent<HTMLCanvasElement>): void {
+    const handle = dragHandleRef.current;
+    if (!handle) return;
+    event.preventDefault();
+    updateTrim(handle, event.clientX, event.currentTarget);
+  }
+
+  function finishTrimDrag(event: ReactPointerEvent<HTMLCanvasElement>): void {
+    if (!dragHandleRef.current) return;
+    dragHandleRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  }
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -270,7 +300,7 @@ export function LoopTrackMatrixDisplay({ enabled, visualState, trimEditing = fal
 
     let width = 1;
     let height = 1;
-    let dpr = canvasPixelRatio(1, 1, 5_400_000);
+    let dpr = canvasPixelRatio(1, 1, 2_400_000);
     let visible = true;
     let lastDraw = Number.NEGATIVE_INFINITY;
 
@@ -278,7 +308,7 @@ export function LoopTrackMatrixDisplay({ enabled, visualState, trimEditing = fal
       const bounds = canvas.getBoundingClientRect();
       width = Math.max(1, bounds.width);
       height = Math.max(1, bounds.height);
-      dpr = canvasPixelRatio(width, height, 5_400_000);
+      dpr = canvasPixelRatio(width, height, 2_400_000);
       const pixelWidth = Math.max(1, Math.round(width * dpr));
       const pixelHeight = Math.max(1, Math.round(height * dpr));
       if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
@@ -305,7 +335,7 @@ export function LoopTrackMatrixDisplay({ enabled, visualState, trimEditing = fal
       const interval = current.enabled ? 1000 / (display.reference1440p ? 30 : 24) : 250;
       if (stamp - lastDraw < interval) return;
       lastDraw = stamp;
-      drawMatrix(
+      drawTransientEditor(
         context,
         width,
         height,
@@ -330,9 +360,13 @@ export function LoopTrackMatrixDisplay({ enabled, visualState, trimEditing = fal
   return (
     <canvas
       ref={canvasRef}
-      className={`pressure-style-display rail-c-hardware-art loop-track-matrix ${enabled ? 'is-active' : 'is-standby'}`}
-      data-pressure-variant="loop"
-      aria-hidden="true"
+      className={`pressure-style-display rail-c-hardware-art loop-track-matrix loop-transient-trim ${enabled ? 'is-active' : 'is-standby'} ${trimEditing ? 'is-editing' : ''}`}
+      data-pressure-variant="loop-trim"
+      aria-label={`Loop track ${state.selectedTrack + 1} transient trim editor. IN ${(state.trimStart * 100).toFixed(1)} percent, OUT ${(state.trimEnd * 100).toFixed(1)} percent.`}
+      onPointerDown={beginTrimDrag}
+      onPointerMove={moveTrimDrag}
+      onPointerUp={finishTrimDrag}
+      onPointerCancel={finishTrimDrag}
     />
   );
 }
