@@ -5,9 +5,11 @@ import { runInNewContext } from 'node:vm';
 const SAMPLE_RATE = 48_000;
 const BLOCK_SIZE = 128;
 const source = readFileSync(resolve(process.cwd(), 'public/drift-classic-processor.js'), 'utf8');
+const nativeWrapper = readFileSync(resolve(process.cwd(), 'native/src/drift_parity_processor.cpp'), 'utf8');
 const failures = [];
 const reports = [];
 const requireText = (needle) => { if (!source.includes(needle)) failures.push(`Drift realtime contract: missing ${JSON.stringify(needle)}`); };
+const requireNative = (needle) => { if (!nativeWrapper.includes(needle)) failures.push(`Native Drift realtime contract: missing ${JSON.stringify(needle)}`); };
 
 for (const token of [
   'const DRIFT_TANH_LUT = new Float32Array(2048)',
@@ -18,6 +20,30 @@ for (const token of [
   'if (shape !== this.leslieShape)',
   'const crossover = this.leslieCrossoverCoefficient(shape)',
 ]) requireText(token);
+
+for (const token of [
+  'constexpr std::size_t kControlPeriod = 32U',
+  'glide_amount = 1.F - std::exp',
+  'void snapshot_targets() noexcept',
+  'target_snapshot[i] = target[i].load(std::memory_order_relaxed)',
+  'value[i] += (target_snapshot[i] - value[i]) * glide_amount',
+  'if (refresh_control) refresh_routing_and_mix()',
+  'dry_gain = std::cos(mix * kPi * .5F)',
+  'wet_gain = std::sin(mix * kPi * .5F)',
+]) requireNative(token);
+
+const nativeProcessStart = nativeWrapper.indexOf('  void process(float* data, std::size_t frames) noexcept');
+const nativeProcessEnd = nativeWrapper.indexOf('\n  }\n};', nativeProcessStart);
+const nativeProcess = nativeProcessStart >= 0 && nativeProcessEnd > nativeProcessStart
+  ? nativeWrapper.slice(nativeProcessStart, nativeProcessEnd)
+  : '';
+if (!nativeProcess) failures.push('Native Drift process() boundary missing');
+else {
+  if (nativeProcess.includes('std::exp(')) failures.push('Native Drift sample loop recomputes smoothing exponential');
+  if (nativeProcess.includes('target[i].load(')) failures.push('Native Drift sample loop loads atomic targets directly');
+  if (nativeProcess.includes('std::cos(mix')) failures.push('Native Drift sample loop recalculates mix cosine directly');
+  if (nativeProcess.includes('std::sin(mix')) failures.push('Native Drift sample loop recalculates mix sine directly');
+}
 
 const clipStart = source.indexOf('  normalizedSoftClip(');
 const clipEnd = source.indexOf('  leslieCrossoverCoefficient(', clipStart);
@@ -103,4 +129,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('Drift realtime audit passed · nonlinear phasers use LUT tanh and Leslie caches its static crossover coefficient');
+console.log('Drift realtime audit passed · browser nonlinear hot paths and native wrapper control traffic are amortized');
