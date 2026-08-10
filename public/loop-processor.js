@@ -16,6 +16,12 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
     this.trackLevels = new Float32Array(TRACKS);
     this.trackLevels.fill(0.72);
     this.occupied = new Uint8Array(TRACKS);
+    // RC-style performance state is intentionally independent from track level.
+    // STOP removes a track from the running clock, MUTE leaves its clock running,
+    // and SOLO is resolved only at the summing stage.
+    this.active = new Uint8Array(TRACKS);
+    this.muted = new Uint8Array(TRACKS);
+    this.soloed = new Uint8Array(TRACKS);
     this.rawFrames = new Uint32Array(TRACKS);
     this.trimStartFrames = new Uint32Array(TRACKS);
     this.trimEndFrames = new Uint32Array(TRACKS);
@@ -60,6 +66,16 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
     return false;
   }
 
+  anyActiveOccupied() {
+    for (let track = 0; track < TRACKS; track += 1) if (this.occupied[track] && this.active[track]) return true;
+    return false;
+  }
+
+  anySoloOccupied() {
+    for (let track = 0; track < TRACKS; track += 1) if (this.occupied[track] && this.soloed[track]) return true;
+    return false;
+  }
+
   activeLength(track) {
     if (!this.occupied[track]) return 0;
     return Math.max(0, this.trimEndFrames[track] - this.trimStartFrames[track]);
@@ -101,6 +117,9 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
     if (!this.ensureBuffer(track)) return false;
     this.recordTrack = track;
     this.occupied[track] = 0;
+    this.active[track] = 1;
+    this.muted[track] = 0;
+    this.soloed[track] = 0;
     this.rawFrames[track] = 0;
     this.trimStartFrames[track] = 0;
     this.trimEndFrames[track] = 0;
@@ -121,15 +140,19 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
       this.trimEndFrames[track] = frames;
       this.positions[track] = 0;
       this.occupied[track] = 1;
+      this.active[track] = 1;
       this.playing = true;
     }
     this.recording = false;
     this.recordCount = 0;
-    if (!this.anyOccupied()) this.playing = false;
+    if (!this.anyActiveOccupied()) this.playing = false;
   }
 
   clearTrack(track) {
     this.occupied[track] = 0;
+    this.active[track] = 0;
+    this.muted[track] = 0;
+    this.soloed[track] = 0;
     this.rawFrames[track] = 0;
     this.trimStartFrames[track] = 0;
     this.trimEndFrames[track] = 0;
@@ -139,7 +162,7 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
       this.recordCount = 0;
     }
     if (this.overdubbing && this.overdubTrack === track) this.overdubbing = false;
-    if (!this.anyOccupied()) this.playing = false;
+    if (!this.anyActiveOccupied()) this.playing = false;
   }
 
   setTrimNormalized(track, requestedStart, requestedEnd) {
@@ -196,6 +219,21 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
     this.positions[track] = 0;
   }
 
+  playTrack(track) {
+    if (!this.occupied[track] || this.activeLength(track) <= 0) return;
+    this.active[track] = 1;
+    this.positions[track] = 0;
+    this.playing = true;
+  }
+
+  stopTrack(track) {
+    if (this.recording && this.recordTrack === track) this.finishRecording(track);
+    if (this.overdubbing && this.overdubTrack === track) this.overdubbing = false;
+    this.active[track] = 0;
+    this.positions[track] = 0;
+    if (!this.anyActiveOccupied()) this.playing = false;
+  }
+
   command(command) {
     const track = this.selectedTrack;
     if (typeof command === 'object' && command) {
@@ -214,6 +252,7 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
         this.overdubbing = false;
       } else if (this.occupied[track] && this.activeLength(track) > 0) {
         this.overdubTrack = track;
+        this.active[track] = 1;
         this.overdubbing = true;
         this.replaceEnvelopeBin = -1;
         this.recording = false;
@@ -221,13 +260,27 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
       }
     } else if (command === 'play') {
       if (this.anyOccupied()) {
-        this.playing = !this.playing;
+        const stopAll = this.anyActiveOccupied();
+        for (let index = 0; index < TRACKS; index += 1) {
+          if (!this.occupied[index]) continue;
+          this.active[index] = stopAll ? 0 : 1;
+          this.positions[index] = 0;
+        }
+        this.playing = !stopAll;
         this.overdubbing = false;
         this.recording = false;
         this.recordCount = 0;
       }
     } else if (command === 'clear') {
       this.clearTrack(track);
+    } else if (command === 'trackPlay') {
+      this.playTrack(track);
+    } else if (command === 'trackStop') {
+      this.stopTrack(track);
+    } else if (command === 'mute') {
+      if (this.occupied[track]) this.muted[track] ^= 1;
+    } else if (command === 'solo') {
+      if (this.occupied[track]) this.soloed[track] ^= 1;
     }
     this.publishRuntime();
   }
@@ -238,11 +291,17 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
     return mask;
   }
 
+  stateMask(values) {
+    let mask = 0;
+    for (let i = 0; i < TRACKS; i += 1) if (values[i]) mask |= 1 << i;
+    return mask;
+  }
+
   transport() {
     if (this.recording) return 'recording';
     if (this.overdubbing) return 'overdubbing';
     if (!this.anyOccupied()) return 'empty';
-    return this.playing ? 'playing' : 'stopped';
+    return this.playing && this.anyActiveOccupied() ? 'playing' : 'stopped';
   }
 
   selectedWaveform() {
@@ -272,6 +331,9 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
       type: 'runtime',
       transport: this.transport(),
       trackMask: this.trackMask(),
+      trackActiveMask: this.stateMask(this.active),
+      trackMuteMask: this.stateMask(this.muted),
+      trackSoloMask: this.stateMask(this.soloed),
       loopFrames: length,
       rawFrames: raw,
       position: Math.min(this.positions[track], Math.max(0, length - 1)),
@@ -317,6 +379,7 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
     const leftOut = output[0];
     const rightOut = output[1] || leftOut;
     if (!leftOut || !rightOut) return true;
+    const soloing = this.anySoloOccupied();
 
     for (let frame = 0; frame < leftOut.length; frame += 1) {
       const liveL = leftIn ? (Number.isFinite(leftIn[frame]) ? leftIn[frame] : 0) : 0;
@@ -326,7 +389,8 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
 
       if (this.enabled && this.playing) {
         for (let track = 0; track < TRACKS; track += 1) {
-          if (!this.occupied[track] || this.activeLength(track) <= 0) continue;
+          if (!this.occupied[track] || !this.active[track] || this.muted[track] || this.activeLength(track) <= 0) continue;
+          if (soloing && !this.soloed[track]) continue;
           const level = this.trackLevels[track];
           loopL += this.readTrack(track, 0) * level;
           loopR += this.readTrack(track, 1) * level;
@@ -368,7 +432,7 @@ class CalcotoneLoopProcessor extends AudioWorkletProcessor {
 
       if (this.playing) {
         for (let trackIndex = 0; trackIndex < TRACKS; trackIndex += 1) {
-          if (this.occupied[trackIndex]) this.advanceTrack(trackIndex);
+          if (this.occupied[trackIndex] && this.active[trackIndex]) this.advanceTrack(trackIndex);
         }
       }
     }
