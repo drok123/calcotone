@@ -2,6 +2,10 @@ import { getDisplayProfile } from '../../ui/displayProfile';
 
 export type ViewportRenderCallback = (time: number) => void;
 
+const HEAVY_FRAME_MS = 10.5;
+const RECOVERY_FRAME_COUNT = 90;
+const MAX_VISUAL_FPS = 20;
+
 const viewportRenderCallbacks = new Set<ViewportRenderCallback>();
 const lastCallbackRender = new Map<ViewportRenderCallback, number>();
 let callbackSnapshot: ViewportRenderCallback[] = [];
@@ -12,10 +16,6 @@ let callbackCursor = 0;
 let performanceHoldCount = 0;
 let lastFrameCostMs = 0;
 let worstCallbackCostMs = 0;
-
-const HEAVY_FRAME_MS = 10.5;
-const RECOVERY_FRAME_COUNT = 90;
-const MAX_VISUAL_FPS = 20;
 
 function preferredInterval(): number {
   return 1000 / Math.min(getDisplayProfile().visualFps, MAX_VISUAL_FPS);
