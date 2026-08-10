@@ -35,6 +35,16 @@ for (const token of [
   'return fastTanh(voice.poles[3] / signalVoltage * 1.18)',
   'return fastTanh(clamp(normalizedVoltage, -12, 12))',
   "data.type === 'chord-on'",
+  'const HALF_BAND_15 = new Float64Array([',
+  'class HalfBandDecimator2',
+  'this.decimator2x = new HalfBandDecimator2()',
+  'this.decimator4xStage1 = new HalfBandDecimator2()',
+  'this.decimator4xStage2 = new HalfBandDecimator2()',
+  'this.resetDecimators()',
+  'this.decimator2x.push(normalizedSubL, normalizedSubR)',
+  'this.decimator4xStage1.push(normalizedSubL, normalizedSubR)',
+  'this.decimator4xStage2.push(',
+  'voiceNormalization = Math.sqrt(Math.max(1, normalizationVoiceCount) * .72)',
 ]) requireText(source, token, 'Synth realtime contract');
 
 for (const token of [
@@ -43,7 +53,35 @@ for (const token of [
   'this.voices.push(',
   'const ladderCapacitances = new Float64Array(4);\n    const ladderMismatch = new Float64Array(4);\n    for (let pole = 0; pole < 4; pole += 1) {\n      ladderCapacitances[pole] = MODEL_D_CAPACITANCE_F * (1 + componentDrift',
   'this.noteOn({',
-]) forbidText(source, token, 'Synth retired allocation path');
+  'const buses = [this.hybridBusL, this.hybridBusR]',
+  'sumL += subL',
+  'sumR += subR',
+  'normalization = quality * Math.sqrt',
+]) forbidText(source, token, 'Synth retired allocation/box-decimation path');
+
+const halfBandMatch = source.match(/const HALF_BAND_15 = new Float64Array\(\[([\s\S]*?)\]\);/);
+if (!halfBandMatch) {
+  failures.push('Synth half-band contract: coefficient table not found');
+} else {
+  const coefficients = halfBandMatch[1]
+    .split(',')
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isFinite(value));
+  if (coefficients.length !== 15) failures.push(`Synth half-band contract: expected 15 taps, found ${coefficients.length}`);
+  const sum = coefficients.reduce((total, value) => total + value, 0);
+  if (Math.abs(sum - 1) > 1e-9) failures.push(`Synth half-band contract: DC gain must equal 1, found ${sum}`);
+  if (Math.abs((coefficients[7] ?? 0) - .5) > 1e-12) failures.push('Synth half-band contract: center tap must remain 0.5');
+  for (const index of [1, 3, 5, 9, 11, 13]) {
+    if (Math.abs(coefficients[index] ?? 1) > 1e-12) failures.push(`Synth half-band contract: odd tap ${index} must be zero`);
+  }
+  for (let index = 0; index < coefficients.length; index += 1) {
+    const mirror = coefficients.length - 1 - index;
+    if (Math.abs(coefficients[index] - coefficients[mirror]) > 1e-12) {
+      failures.push(`Synth half-band contract: taps ${index}/${mirror} are not symmetric`);
+      break;
+    }
+  }
+}
 
 const tanhCalls = source.match(/Math\.tanh\(/g)?.length ?? 0;
 if (tanhCalls !== 2) failures.push(`Synth tanh LUT contract: expected exactly 2 setup-time Math.tanh calls, found ${tanhCalls}`);
@@ -57,6 +95,15 @@ else {
   forbidText(noteBody, 'new Int', 'Synth noteOn typed-array allocation');
   forbidText(noteBody, '.push(', 'Synth noteOn dynamic collection growth');
   forbidText(noteBody, '.splice(', 'Synth noteOn dynamic collection mutation');
+}
+
+const hybridStart = source.indexOf('  refreshHybridBuses(');
+const hybridEnd = source.indexOf('  resetDecimators()', hybridStart);
+if (hybridStart < 0 || hybridEnd < 0) failures.push('Synth hybrid-bus allocation audit: function boundaries missing');
+else {
+  const hybridBody = source.slice(hybridStart, hybridEnd);
+  forbidText(hybridBody, '[this.hybridBusL, this.hybridBusR]', 'Synth hybrid-bus scratch allocation');
+  forbidText(hybridBody, '.map(', 'Synth hybrid-bus scratch allocation');
 }
 
 for (const token of [
@@ -83,13 +130,14 @@ class MockAudioWorkletProcessor {
 }
 
 let Processor = null;
-runInNewContext(source, {
+const vmContext = {
   sampleRate: SAMPLE_RATE,
   AudioWorkletProcessor: MockAudioWorkletProcessor,
   registerProcessor(name, registered) {
     if (name === 'calcotone-synth-circuit-processor') Processor = registered;
   },
-});
+};
+runInNewContext(source, vmContext);
 if (!Processor) failures.push('Synth worklet did not register');
 
 function renderScenario(quality, machine) {
@@ -130,6 +178,22 @@ if (Processor) {
   for (const quality of [1, 2, 4]) renderScenario(quality, 'model-d');
   for (const machine of ['dx7', 'ms-20', 'ppg-wave', 'calcotone']) renderScenario(2, machine);
 
+  const qualitySwitch = new Processor();
+  qualitySwitch.port.onmessage({ data: { type: 'enabled', value: true } });
+  qualitySwitch.port.onmessage({ data: { type: 'note-on', midi: 52, durationSeconds: .4, velocity: .7 } });
+  for (const factor of [1, 2, 4, 2, 1]) {
+    qualitySwitch.port.onmessage({ data: { type: 'quality', factor } });
+    const left = new Float32Array(BLOCK_SIZE);
+    const right = new Float32Array(BLOCK_SIZE);
+    qualitySwitch.process([], [[left, right]]);
+    for (let sample = 0; sample < BLOCK_SIZE; sample += 1) {
+      if (!Number.isFinite(left[sample]) || !Number.isFinite(right[sample])) {
+        failures.push(`Synth quality switch ${factor}x: non-finite sample`);
+        break;
+      }
+    }
+  }
+
   const sequencer = new Processor();
   sequencer.port.onmessage({ data: { type: 'enabled', value: true } });
   sequencer.port.onmessage({
@@ -161,4 +225,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('Synth realtime audit passed · fixed voice pool, diffed controller, LUT nonlinearities and finite 1x/2x/4x rendering are intact');
+console.log('Synth realtime audit passed · fixed voice pool, allocation-free hybrid refresh, LUT nonlinearities and half-band 1x/2x/4x rendering are intact');
