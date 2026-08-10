@@ -12,7 +12,17 @@ inline constexpr float kLoopMaxSeconds = 60.F;
 inline constexpr unsigned kLoopWaveformBins = 256U;
 inline constexpr unsigned kLoopEnvelopeBins = 16'384U;
 
-enum class LoopCommand : unsigned { Record = 0U, Overdub = 1U, Play = 2U, Clear = 3U };
+// Values 4-6 are deliberately reserved by the internal trim command queue.
+enum class LoopCommand : unsigned {
+  Record = 0U,
+  Overdub = 1U,
+  Play = 2U,
+  Clear = 3U,
+  TrackPlay = 7U,
+  TrackStop = 8U,
+  Mute = 9U,
+  Solo = 10U,
+};
 enum class LoopTransport : unsigned { Empty = 0U, Stopped = 1U, Playing = 2U, Recording = 3U, Overdubbing = 4U };
 
 class LoopProcessor final {
