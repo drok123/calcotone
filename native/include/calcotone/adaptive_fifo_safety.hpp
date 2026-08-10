@@ -30,8 +30,8 @@ class AdaptiveFifoSafety final {
                      std::uint64_t discontinuity_recoveries,
                      std::uint64_t overrun_events) noexcept;
 
-  // A render callback that consumes its whole scheduling budget is treated as
-  // instability even if the capture FIFO has not starved yet.
+  // Deadline misses are early warnings, not audible starvation by themselves.
+  // Require recurrence inside a short confirmation window before adding latency.
   bool observe_deadline_miss() noexcept;
 
   void reset() noexcept;
@@ -55,6 +55,8 @@ class AdaptiveFifoSafety final {
   std::uint64_t adjustment_cooldown_frames_{};
   std::uint64_t cooldown_remaining_frames_{};
   std::uint64_t pending_pressure_{};
+  std::uint64_t deadline_pressure_{};
+  std::uint64_t deadline_quiet_frames_{};
   std::uint64_t raises_{};
   std::uint64_t relaxations_{};
   std::uint64_t instability_events_{};
