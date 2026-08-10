@@ -5,6 +5,7 @@ export class LoopDeck {
   public readonly input: GainNode;
   public readonly output: GainNode;
   private readonly node: AudioWorkletNode;
+  private lastSettings: LoopSettings | null = null;
 
   private constructor(context: AudioContext, onRuntime: (runtime: LoopRuntime) => void) {
     this.input = context.createGain();
@@ -45,7 +46,44 @@ export class LoopDeck {
   }
 
   public setSettings(settings: LoopSettings): void {
-    this.node.port.postMessage({ type: 'settings', ...settings });
+    const previous = this.lastSettings;
+    const message: { type: 'settings' } & Partial<LoopSettings> = { type: 'settings' };
+    let changed = false;
+    const assign = <K extends keyof Omit<LoopSettings, 'trackLevels'>>(key: K): void => {
+      if (!previous || previous[key] !== settings[key]) {
+        message[key] = settings[key];
+        changed = true;
+      }
+    };
+
+    assign('enabled');
+    assign('selectedTrack');
+    assign('masterLevel');
+    assign('overdub');
+    assign('fade');
+    assign('bpm');
+    assign('quantize');
+
+    const levelsChanged = !previous
+      || previous.trackLevels.length !== settings.trackLevels.length
+      || settings.trackLevels.some((level, index) => previous.trackLevels[index] !== level);
+    if (levelsChanged) {
+      message.trackLevels = [...settings.trackLevels];
+      changed = true;
+    }
+    if (!changed) return;
+
+    this.lastSettings = {
+      enabled: settings.enabled,
+      selectedTrack: settings.selectedTrack,
+      masterLevel: settings.masterLevel,
+      overdub: settings.overdub,
+      fade: settings.fade,
+      bpm: settings.bpm,
+      quantize: settings.quantize,
+      trackLevels: levelsChanged ? [...settings.trackLevels] : [...previous!.trackLevels],
+    };
+    this.node.port.postMessage(message);
   }
 
   public command(command: LoopCommand): void {
@@ -54,6 +92,7 @@ export class LoopDeck {
 
   public dispose(): void {
     this.node.port.onmessage = null;
+    this.lastSettings = null;
     try { this.input.disconnect(); } catch { /* already disconnected */ }
     try { this.node.disconnect(); } catch { /* already disconnected */ }
     try { this.output.disconnect(); } catch { /* already disconnected */ }
