@@ -92,11 +92,23 @@ void test_overrun_drains_an_elevated_target() {
   assert(policy.target_frames() == raised - kPeriod);
 }
 
-void test_deadline_miss_preemptively_adds_safety() {
+void test_isolated_deadline_miss_does_not_add_latency() {
   calcotone::AdaptiveFifoSafety policy(kBase, kPeriod, kRate);
+  assert(!policy.observe_deadline_miss());
+  assert(policy.target_frames() == kBase);
+  assert(policy.state().instability_events == 1U);
+  advance(policy, .30);
+  assert(!policy.observe_deadline_miss());
+  assert(policy.target_frames() == kBase);
+}
+
+void test_recurring_deadline_misses_preemptively_add_safety() {
+  calcotone::AdaptiveFifoSafety policy(kBase, kPeriod, kRate);
+  assert(!policy.observe_deadline_miss());
+  advance(policy, .10);
   assert(policy.observe_deadline_miss());
   assert(policy.target_frames() == kBase + kPeriod);
-  assert(policy.state().instability_events == 1U);
+  assert(policy.state().instability_events == 2U);
 }
 
 void test_large_period_keeps_added_latency_bounded_to_one_period() {
@@ -134,6 +146,7 @@ void test_policy_target_reaches_live_fifo_and_trim() {
 void test_reset_restores_baseline_and_telemetry() {
   calcotone::AdaptiveFifoSafety policy(kBase, kPeriod, kRate);
   policy.observe_block(128U, 1U, 1U, 0U);
+  policy.observe_deadline_miss();
   policy.reset();
   const auto state = policy.state();
   assert(state.target_frames == kBase);
@@ -141,6 +154,8 @@ void test_reset_restores_baseline_and_telemetry() {
   assert(state.relaxations == 0U);
   assert(state.instability_events == 0U);
   assert(state.stable_seconds == 0.0);
+  assert(!policy.observe_deadline_miss());
+  assert(policy.target_frames() == kBase);
 }
 }  // namespace
 
@@ -151,7 +166,8 @@ int main() {
   test_burst_inside_cooldown_requires_recurrence();
   test_stable_playback_relaxes_to_baseline();
   test_overrun_drains_an_elevated_target();
-  test_deadline_miss_preemptively_adds_safety();
+  test_isolated_deadline_miss_does_not_add_latency();
+  test_recurring_deadline_misses_preemptively_add_safety();
   test_large_period_keeps_added_latency_bounded_to_one_period();
   test_policy_target_reaches_live_fifo_and_trim();
   test_reset_restores_baseline_and_telemetry();
