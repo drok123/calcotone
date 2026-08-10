@@ -918,7 +918,7 @@ function drawAscii(
     ? THEMES[scene.module.id] ?? THEMES.landscape
     : THEMES.landscape;
   const audio = getLatestVisualAudioState();
-  const time = stamp / 1000;
+  const time = audio.time > 0 ? audio.time : stamp / 1000;
   const loopAngle = loopAngleForTime(time);
   const displayProfile = getDisplayProfile();
   // Core module screens are artwork-first. At the 1440p reference tier the
@@ -948,6 +948,8 @@ function drawAscii(
   const moduleStepX = 2 / Math.max(1, columns - 1);
   const moduleStepY = 2 / Math.max(1, rows - 1);
   const moduleLayer = isModule ? scene.layers[0] : undefined;
+  const characters = new Array<string>(columns).fill(' ');
+  const accents = isModule ? new Array<string>(columns).fill(' ') : null;
 
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.fillStyle = '#050706';
@@ -979,8 +981,8 @@ function drawAscii(
       line = framedLine(columns, footer);
       lineIntensity = 0.86;
     } else {
-      const characters = Array.from({ length: columns }, () => ' ');
-      const accents = isModule ? Array.from({ length: columns }, () => ' ') : null;
+      characters.fill(' ');
+      accents?.fill(' ');
       if (!isModule) {
         characters[0] = '|';
         characters[columns - 1] = '|';
