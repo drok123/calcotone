@@ -88,13 +88,16 @@ export class SharedVisualSpectrum implements VisualSpectrumSource {
   public getPresentationTimeSeconds(): number {
     try {
       const timestamp = this.context.getOutputTimestamp?.();
+      const contextTime = timestamp?.contextTime;
+      const performanceTime = timestamp?.performanceTime;
       if (
-        timestamp
-        && Number.isFinite(timestamp.contextTime)
-        && Number.isFinite(timestamp.performanceTime)
-        && timestamp.contextTime >= 0
+        typeof contextTime === 'number'
+        && typeof performanceTime === 'number'
+        && Number.isFinite(contextTime)
+        && Number.isFinite(performanceTime)
+        && contextTime >= 0
       ) {
-        return Math.max(0, timestamp.contextTime + (performance.now() - timestamp.performanceTime) / 1000);
+        return Math.max(0, contextTime + (performance.now() - performanceTime) / 1000);
       }
     } catch { /* browser may expose the method before the output clock is ready */ }
 
