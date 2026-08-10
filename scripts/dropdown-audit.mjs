@@ -69,7 +69,6 @@ requireOrder(atmos, 'REVERB_ALGORITHM_ORDER', ATMOS, 'Atmos dropdown');
 requireOrder(grain, 'GRAIN_MODE_ORDER', GRAIN, 'Grain dropdown');
 requireOrder(artifact, 'MEDIA_MODE_ORDER', ARTIFACT, 'Artifact dropdown');
 
-// Ember: named tubes and transformer must use dedicated stages; generic modes share only the intentional shaper path.
 for (const tube of ['goldlion','mullard','telefunken','bugleboy','rcablack']) requireText(ember, `${tube}: '${tube}'`, `Ember ${tube} dedicated tube mapping`);
 requireText(ember, "const magnetic = this.mode === 'transformer'", 'Ember transformer ownership');
 requireText(ember, "'calcotone-ember-digital-capture-processor'", 'Ember digital-capture worklet branch');
@@ -81,7 +80,6 @@ requireText(ember, 'this.setGenericBranchAttached(!(namedTube || magnetic || dig
 forbidText(ember, 'CONSOLE_PATHS', 'Ember console path ownership');
 requireText(ember, 'const MAX_CURVE_CACHE = 192', 'Ember bounded curve cache');
 
-// Drift: standard modulation and dedicated classic hardware must remain mutually exclusive.
 for (const mode of ['mxrflanger','electricmistress','adaflanger','bf2']) requireText(drift, mode, `Drift ${mode} implementation`);
 for (const mode of ['biphase','smallstone','univibe','leslie','phase90','instantphaser','schulte','pn2']) requireText(drift, `mode === '${mode}'`, `Drift ${mode} classic mapping`);
 requireText(drift, 'this.setStandardBranchAttached(false)', 'Drift classic standard-network suspension');
@@ -93,18 +91,14 @@ forbidText(driftClassic, 'return [vibeL * tremL, vibeR * tremR]', 'Uni-Vibe per-
 for (const engine of ['processPhase90','processInstantPhaser','processSchulte','processPn2']) requireText(driftClassic, engine, `Drift ${engine} engine`);
 requireText(driftClassic, 'Math.cos(angle) * Math.SQRT2', 'PN-2 equal-power pan law');
 
-// Halo: every non-RE-201 entry owns a config; RE-201 stays a dedicated network.
 for (const mode of HALO.filter((mode) => mode !== 're201')) requireObjectKey(halo, mode, `Halo ${mode}`);
 requireText(halo, "algorithm === 're201'", 'Halo RE-201 dedicated path');
 requireText(halo, 'class DualGrainPitchShifter', 'Halo pitch mechanism');
 
-// Atmos: every dropdown entry owns a reverb configuration and network changes are bounded/live-fed natively.
 for (const mode of ATMOS) requireObjectKey(atmos, mode, `Atmos ${mode}`);
 requireText(atmos, 'const MAX_RETIRED_REVERB_NETWORKS = 1', 'Atmos retiring network cap');
 forbidText(atmos, 'this.input.disconnect(previous.network.input)', 'Atmos premature outgoing disconnect');
 
-// Grain: live-memory algorithms and granular hardware studies share bounded
-// resources. Converter quantization and classic sampler playback belong to Ember.
 requireText(grainProcessor, 'this.voices = Array.from({ length: 8 }', 'Grain bounded voice pool');
 requireText(grainProcessor, 'spawnGranularVoice(', 'Grain granular memory engine');
 requireText(grainProcessor, 'processSlice(', 'Grain deterministic slice engine');
@@ -123,7 +117,6 @@ requireText(grain, 'this.processor.connect(this.wetGain)', 'Grain single owned D
 forbidText(grainProcessor, 'processHardware(', 'Grain must not contain sampler hardware');
 forbidText(grainProcessor, 'quantizeNonlinear12', 'Grain must not contain converter quantization');
 
-// Artifact: media, tape, transmission, and console paths retain mechanism-specific paths.
 requireText(artifact, "this.mode === 'Ampex ATR-102'", 'Artifact ATR-102 implementation');
 requireText(artifact, "this.mode === 'tascam424'", 'Artifact TASCAM 424 path');
 for (const mode of ['Neve 1073','SSL 4000E','API 1608','Neve BCM10']) requireText(artifact, `this.mode === '${mode}'`, `Artifact ${mode} console path`);
@@ -137,7 +130,10 @@ requireText(artifact, 'const MAX_CURVE_CACHE = 384', 'Artifact bounded curve cac
 
 // RANDOM must keep controlled dropdown state synchronized with native DSP and visibly move when alternatives exist.
 requireText(app, 'chooseMusicalDifferent(MUSICAL_EMBER_MODES, module.emberMode)', 'Core random mode changes');
-requireText(app, 'Native DSP receives the new values immediately', 'Native RANDOM UI synchronization');
+requireText(app, "if (backendRef.current === 'native') {", 'Native RANDOM branch');
+requireText(app, 'for (const module of nextModules)', 'Native RANDOM module traversal');
+requireText(app, 'for (const parameter of module.parameters)', 'Native RANDOM full parameter sync');
+requireText(app, 'void nativeBridgeRef.current.commandLine(`param ${module.id} ${parameter.id} ${toDspParameterValue(module.id, parameter.id, parameter.value)}`)', 'Native RANDOM parameter commit');
 requireText(app, 'window.setTimeout(() => revealRandomUiModule(effectId), 48 + index * 96)', 'Native RANDOM serial reveal');
 requireText(railC, 'chooseDifferent(pool, mode)', 'Stomp random mode changes');
 requireText(railC, 'chooseDifferent(modelPool, model)', 'Stack random model changes');
@@ -146,9 +142,6 @@ requireText(loopStore, 'export const LOOP_VISIBLE_TRACK_COUNT = 4', 'Loop four-t
 forbidText(railC, "useRailCRandomController('pressure'", 'Loop RANDOM isolation');
 for (const mode of ARTIFACT_DYNAMICS) requireText(artifact, `'${mode}'`, `Artifact ${mode} dynamics dropdown`);
 
-// A selector is not allowed to leave native topology and controls in different generations.
-// The bridge snapshots the latest desired knob state and replays it immediately after mode,
-// algorithm, model, or cabinet changes while preserving the serialized command queue.
 requireText(nativeBridge, "const PROFILE_SELECTOR_PARAMETERS = new Set(['mode', 'algorithm'])", 'Native selector classification');
 requireText(nativeBridge, "const STACK_PROFILE_SELECTORS = new Set(['model', 'cab'])", 'Native Stack selector classification');
 requireText(nativeBridge, 'private readonly parameterSnapshot', 'Native module profile snapshot');
@@ -157,8 +150,6 @@ requireText(nativeBridge, 'this.rememberDesiredState(line)', 'Native desired-sta
 requireText(nativeBridge, 'this.profileReplayLines(line)', 'Native selector profile replay');
 requireText(nativeBridge, '.then(() => this.sendCommand(line))', 'Native FIFO selector commit');
 
-// Stomp/Stack retain the shared high-DPI hardware renderer. Loop is deliberately
-// not dropdown artwork: its compact canvas is a selected-track transient utility.
 for (const kind of ['stomp', 'stack']) requireText(railCArtwork, `${kind}: {`, `Rail C ${kind} artwork profile`);
 for (const kind of ['stomp', 'stack']) requireText(railC, `kind=\"${kind}\"`, `Rail C ${kind} artwork mount`);
 requireText(railCArtwork, 'subscribeViewportAnimation(render)', 'Rail C artwork shared scheduler');
