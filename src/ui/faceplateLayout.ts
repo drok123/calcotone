@@ -57,7 +57,7 @@ export interface FaceplateEditorSnapshot {
 const STORAGE_KEY = 'calcotone.faceplate-layout.v2';
 const LEGACY_STORAGE_KEY = 'calcotone.faceplate-layout.v1';
 const FACTORY_LAYOUT_REVISION_KEY = 'calcotone.faceplate-layout.factory-revision';
-const FACTORY_LAYOUT_REVISION = '2026-08-09-loop505-fader-faceplate-v2';
+const FACTORY_LAYOUT_REVISION = '2026-08-09-loop505-centered-fader-faceplate-v3';
 const KNOB_COUNT = 6;
 const listeners = new Set<() => void>();
 const CORE_FACEPLATE_IDS: readonly CoreFaceplateId[] = ['saturation', 'chorus', 'delay', 'reverb', 'bitcrusher', 'media'];
@@ -117,16 +117,16 @@ export const FACTORY_FACEPLATE_LAYOUT: FaceplateLayout = {
       viewportHeight: 168,
       stageHeight: 304,
       knobs: [
-        { x: 0.19883040935672514, y: 216 },
-        { x: 0.4444444444444444, y: 216 },
-        { x: 0.6900584795321637, y: 216 },
-        { x: 0.9122807017543859, y: 216 },
+        { x: 0.13742690058479534, y: 216 },
+        { x: 0.3830409356725146, y: 216 },
+        { x: 0.6286549707602339, y: 216 },
+        { x: 0.8508771929824561, y: 216 },
       ],
       buttons: [
-        { x: 0.19883040935672514, y: 182 },
-        { x: 0.4444444444444444, y: 182 },
-        { x: 0.6900584795321637, y: 182 },
-        { x: 0.9122807017543859, y: 182 },
+        { x: 0.13742690058479534, y: 272 },
+        { x: 0.3830409356725146, y: 272 },
+        { x: 0.6286549707602339, y: 272 },
+        { x: 0.8508771929824561, y: 272 },
       ],
     },
   },
