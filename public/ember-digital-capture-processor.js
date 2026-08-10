@@ -1,3 +1,33 @@
+const CAPTURE_TANH_MIN = -8;
+const CAPTURE_TANH_MAX = 8;
+const CAPTURE_TANH_LUT = new Float32Array(2048);
+const CAPTURE_TANH_SCALE = (CAPTURE_TANH_LUT.length - 1) / (CAPTURE_TANH_MAX - CAPTURE_TANH_MIN);
+for (let index = 0; index < CAPTURE_TANH_LUT.length; index += 1) {
+  const x = CAPTURE_TANH_MIN + index / CAPTURE_TANH_SCALE;
+  CAPTURE_TANH_LUT[index] = Math.tanh(x);
+}
+
+function captureHermite(y0, y1, y2, y3, mu) {
+  const mu2 = mu * mu;
+  const a0 = -0.5 * y0 + 1.5 * y1 - 1.5 * y2 + 0.5 * y3;
+  const a1 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+  const a2 = -0.5 * y0 + 0.5 * y2;
+  return a0 * mu * mu2 + a1 * mu2 + a2 * mu + y1;
+}
+
+function captureTanh(value) {
+  if (value <= CAPTURE_TANH_MIN) return -1;
+  if (value >= CAPTURE_TANH_MAX) return 1;
+  const position = (value - CAPTURE_TANH_MIN) * CAPTURE_TANH_SCALE;
+  const index = Math.floor(position);
+  const mu = position - index;
+  const last = CAPTURE_TANH_LUT.length - 1;
+  const i0 = index > 0 ? index - 1 : 0;
+  const i2 = index < last ? index + 1 : last;
+  const i3 = index + 2 < last ? index + 2 : last;
+  return captureHermite(CAPTURE_TANH_LUT[i0], CAPTURE_TANH_LUT[index], CAPTURE_TANH_LUT[i2], CAPTURE_TANH_LUT[i3], mu);
+}
+
 class CalcotoneEmberDigitalCaptureProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
@@ -55,18 +85,21 @@ class CalcotoneEmberDigitalCaptureProcessor extends AudioWorkletProcessor {
     return sign * Math.expm1(quantized * Math.log1p(mu)) / mu;
   }
 
-  onePole(value, cutoff, state, index) {
+  poleCoefficient(cutoff) {
     const safeCutoff = Math.max(60, Math.min(sampleRate * 0.46, cutoff));
-    const coefficient = 1 - Math.exp(-2 * Math.PI * safeCutoff / sampleRate);
+    return 1 - Math.exp(-2 * Math.PI * safeCutoff / sampleRate);
+  }
+
+  onePoleWithCoefficient(value, coefficient, state, index) {
     state[index] += (value - state[index]) * coefficient;
     return state[index];
   }
 
-  fourPole(value, cutoff, resonance, state) {
+  fourPoleWithCoefficient(value, coefficient, resonance, state) {
     const feedback = state[3] * Math.max(0, Math.min(0.88, resonance));
     let out = value - feedback;
     for (let stage = 0; stage < 4; stage += 1) {
-      out = this.onePole(out, cutoff, state, stage);
+      out = this.onePoleWithCoefficient(out, coefficient, state, stage);
     }
     return out;
   }
@@ -119,8 +152,8 @@ class CalcotoneEmberDigitalCaptureProcessor extends AudioWorkletProcessor {
     if (this.phase >= 1) {
       this.phase -= Math.floor(this.phase);
       const headroom = mode === 1 ? 0.98 - drive * 0.12 : 1;
-      const shapedL = Math.tanh((dryL / headroom) * inputDrive) / Math.max(1, inputDrive * 0.72);
-      const shapedR = Math.tanh((dryR / headroom) * inputDrive) / Math.max(1, inputDrive * 0.72);
+      const shapedL = captureTanh((dryL / headroom) * inputDrive) / Math.max(1, inputDrive * 0.72);
+      const shapedR = captureTanh((dryR / headroom) * inputDrive) / Math.max(1, inputDrive * 0.72);
       this.apertureL += (shapedL - this.apertureL) * (0.82 - character * 0.12);
       this.apertureR += (shapedR - this.apertureR) * (0.82 - character * 0.12);
       if (mode === 1) {
@@ -141,46 +174,61 @@ class CalcotoneEmberDigitalCaptureProcessor extends AudioWorkletProcessor {
       const pair = Math.max(0, Math.min(3, Math.floor(clock * 4)));
       if (pair === 0) {
         const cutoff = 3600 + filter * 5600 + this.envelope * (1800 + character * 3200);
-        outL = this.fourPole(outL, cutoff, 0.08 + character * 0.30, this.filterL);
-        outR = this.fourPole(outR, cutoff * 0.985, 0.08 + character * 0.30, this.filterR);
+        const coefficientL = this.poleCoefficient(cutoff);
+        const coefficientR = this.poleCoefficient(cutoff * 0.985);
+        outL = this.fourPoleWithCoefficient(outL, coefficientL, 0.08 + character * 0.30, this.filterL);
+        outR = this.fourPoleWithCoefficient(outR, coefficientR, 0.08 + character * 0.30, this.filterR);
       } else if (pair === 1) {
         const cutoff = 7200 + filter * 2200;
-        outL = this.onePole(this.onePole(outL, cutoff, this.filterL, 0), cutoff, this.filterL, 1);
-        outR = this.onePole(this.onePole(outR, cutoff, this.filterR, 0), cutoff, this.filterR, 1);
+        const coefficient = this.poleCoefficient(cutoff);
+        outL = this.onePoleWithCoefficient(this.onePoleWithCoefficient(outL, coefficient, this.filterL, 0), coefficient, this.filterL, 1);
+        outR = this.onePoleWithCoefficient(this.onePoleWithCoefficient(outR, coefficient, this.filterR, 0), coefficient, this.filterR, 1);
       } else if (pair === 2) {
         const cutoff = 9800 + filter * 2300;
-        outL = this.onePole(outL, cutoff, this.filterL, 0);
-        outR = this.onePole(outR, cutoff, this.filterR, 0);
+        const coefficient = this.poleCoefficient(cutoff);
+        outL = this.onePoleWithCoefficient(outL, coefficient, this.filterL, 0);
+        outR = this.onePoleWithCoefficient(outR, coefficient, this.filterR, 0);
       }
       const imaging = Math.sin(this.sampleCounter * (26040 / sampleRate) * Math.PI * 2) * (0.0015 + character * 0.0035);
       outL += imaging;
       outR -= imaging * 0.82;
     } else if (mode === 1) {
       const cutoff = 15500 + filter * 2600;
-      outL = this.onePole(this.onePole(outL, cutoff, this.filterL, 0), cutoff, this.filterL, 1);
-      outR = this.onePole(this.onePole(outR, cutoff, this.filterR, 0), cutoff, this.filterR, 1);
+      const coefficient = this.poleCoefficient(cutoff);
+      outL = this.onePoleWithCoefficient(this.onePoleWithCoefficient(outL, coefficient, this.filterL, 0), coefficient, this.filterL, 1);
+      outR = this.onePoleWithCoefficient(this.onePoleWithCoefficient(outR, coefficient, this.filterR, 0), coefficient, this.filterR, 1);
       const converterTexture = (character - 0.5) * 0.006;
-      outL = Math.tanh(outL * (1 + converterTexture));
-      outR = Math.tanh(outR * (1 + converterTexture));
+      outL = captureTanh(outL * (1 + converterTexture));
+      outR = captureTanh(outR * (1 + converterTexture));
     } else if (mode === 2) {
       const cutoff = 700 + filter * 13500;
       const resonance = 0.05 + character * 0.72;
-      outL = this.fourPole(outL, cutoff, resonance, this.filterL);
-      outR = this.fourPole(outR, cutoff * 0.992, resonance, this.filterR);
+      const coefficientL = this.poleCoefficient(cutoff);
+      const coefficientR = this.poleCoefficient(cutoff * 0.992);
+      outL = this.fourPoleWithCoefficient(outL, coefficientL, resonance, this.filterL);
+      outR = this.fourPoleWithCoefficient(outR, coefficientR, resonance, this.filterR);
     } else if (mode === 3) {
       const bandwidth = Math.min(19200, effectiveRate * 0.40);
       const cutoff = Math.max(1600, bandwidth * (0.74 + filter * 0.24));
-      outL = this.onePole(this.onePole(outL, cutoff, this.filterL, 0), cutoff, this.filterL, 1);
-      outR = this.onePole(this.onePole(outR, cutoff * 0.994, this.filterR, 0), cutoff * 0.994, this.filterR, 1);
+      const coefficientL = this.poleCoefficient(cutoff);
+      const coefficientR = this.poleCoefficient(cutoff * 0.994);
+      outL = this.onePoleWithCoefficient(this.onePoleWithCoefficient(outL, coefficientL, this.filterL, 0), coefficientL, this.filterL, 1);
+      outR = this.onePoleWithCoefficient(this.onePoleWithCoefficient(outR, coefficientR, this.filterR, 0), coefficientR, this.filterR, 1);
     } else if (mode === 4) {
       const cutoff = 1800 + filter * 10600 + this.envelope * 900;
       const resonance = 0.10 + character * 0.56;
-      outL = this.fourPole(outL, cutoff, resonance, this.filterL);
-      outR = this.fourPole(outR, cutoff * 0.987, resonance, this.filterR);
+      const coefficientL = this.poleCoefficient(cutoff);
+      const coefficientR = this.poleCoefficient(cutoff * 0.987);
+      outL = this.fourPoleWithCoefficient(outL, coefficientL, resonance, this.filterL);
+      outR = this.fourPoleWithCoefficient(outR, coefficientR, resonance, this.filterR);
     } else {
       const cutoff = 3900 + filter * 8200;
-      outL = this.onePole(this.onePole(outL, cutoff, this.filterL, 0), cutoff * 0.86, this.filterL, 1);
-      outR = this.onePole(this.onePole(outR, cutoff * 0.991, this.filterR, 0), cutoff * 0.85, this.filterR, 1);
+      const coefficientL0 = this.poleCoefficient(cutoff);
+      const coefficientL1 = this.poleCoefficient(cutoff * 0.86);
+      const coefficientR0 = this.poleCoefficient(cutoff * 0.991);
+      const coefficientR1 = this.poleCoefficient(cutoff * 0.85);
+      outL = this.onePoleWithCoefficient(this.onePoleWithCoefficient(outL, coefficientL0, this.filterL, 0), coefficientL1, this.filterL, 1);
+      outR = this.onePoleWithCoefficient(this.onePoleWithCoefficient(outR, coefficientR0, this.filterR, 0), coefficientR1, this.filterR, 1);
       const edge = (outL - outR) * character * 0.018;
       outL += edge;
       outR -= edge;
