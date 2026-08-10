@@ -131,8 +131,9 @@ function filterCss(source) {
   return out;
 }
 
-const cssPath = 'src/App.css';
-write(cssPath, filterCss(read(cssPath)));
+for (const cssPath of ['src/App.css', 'src/UnifiedTextPalette.css']) {
+  write(cssPath, filterCss(read(cssPath)));
+}
 
 // These files are the retired Dream/XY pad implementation itself. The app no longer
 // renders them, so keeping them would preserve exactly the dead subsystem being removed.
@@ -169,7 +170,9 @@ for (const filePath of sourceFiles('src')) {
 }
 
 const cssForbidden = /\.xy|xy-|motion-route|route-axis|route-options|knob-patch-jack|patch-is-dragging|persistent-patch-layer|live-patch-layer|knob-modulation-ring|knob-effective-marker|cursor-life|cable-flow/i;
-const cssHit = read(cssPath).match(cssForbidden);
-if (cssHit) throw new Error(`${cssPath} still contains obsolete XY styling: ${cssHit[0]}`);
+for (const cssPath of ['src/App.css', 'src/UnifiedTextPalette.css']) {
+  const cssHit = read(cssPath).match(cssForbidden);
+  if (cssHit) throw new Error(`${cssPath} still contains obsolete XY styling: ${cssHit[0]}`);
+}
 
 console.log('XY cleanup and full src verification complete.');
