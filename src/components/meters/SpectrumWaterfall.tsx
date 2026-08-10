@@ -39,6 +39,18 @@ export function SpectrumWaterfall({
     const frequencyData = new Uint8Array(frequencyBinCount);
     const binStarts = new Uint16Array(pointCount);
     const binEnds = new Uint16Array(pointCount);
+    // These values depend only on row index, so keep them out of the animated path.
+    const rowDepth = new Float32Array(historyLength);
+    const rowLineWidth = new Float32Array(historyLength);
+    const rowStrokeStyle = new Array<string>(historyLength);
+
+    for (let rowIndex = 0; rowIndex < historyLength; rowIndex += 1) {
+      const depthPosition = rowIndex / Math.max(1, historyLength - 1);
+      const opacity = 0.22 + depthPosition * 0.78;
+      rowDepth[rowIndex] = depthPosition;
+      rowLineWidth[rowIndex] = 1 + depthPosition * 1.2;
+      rowStrokeStyle[rowIndex] = `rgba(237, 242, 237, ${0.22 + opacity * 0.72})`;
+    }
 
     if (frequencyBinCount > 0) {
       for (let point = 0; point < pointCount; point += 1) {
@@ -86,24 +98,6 @@ export function SpectrumWaterfall({
       historyCursor = (historyCursor + 1) % historyLength;
     }
 
-    function projectPoint(
-      frequencyPosition: number,
-      depthPosition: number,
-      amplitude: number,
-      width: number,
-      height: number,
-    ): { x: number; y: number } {
-      const horizonY = height * 0.19;
-      const frontY = height * 0.88;
-      const depthScale = 0.35 + depthPosition * 0.65;
-      const halfWidth = width * 0.47 * depthScale;
-      const centerX = width / 2;
-      const baseY = horizonY + depthPosition * (frontY - horizonY);
-      const x = centerX + (frequencyPosition - 0.5) * halfWidth * 2;
-      const amplitudeHeight = height * 0.34 * amplitude * depthScale;
-      return { x, y: baseY - amplitudeHeight };
-    }
-
     function drawBackground(width: number, height: number): void {
       context.fillStyle = '#06110c';
       context.fillRect(0, 0, width, height);
@@ -141,21 +135,30 @@ export function SpectrumWaterfall({
     }
 
     function drawSpectrum(width: number, height: number): void {
+      const horizonY = height * 0.19;
+      const frontY = height * 0.88;
+      const centerX = width * 0.5;
+      const frequencyDenominator = Math.max(1, pointCount - 1);
+
       for (let rowIndex = 0; rowIndex < historyLength; rowIndex += 1) {
-        const depthPosition = rowIndex / Math.max(1, historyLength - 1);
+        const depthPosition = rowDepth[rowIndex];
         const historyIndex = (historyCursor - 1 - rowIndex + historyLength) % historyLength;
         const row = history[historyIndex];
-        const opacity = 0.22 + depthPosition * 0.78;
+        const depthScale = 0.35 + depthPosition * 0.65;
+        const halfWidth = width * 0.47 * depthScale;
+        const baseY = horizonY + depthPosition * (frontY - horizonY);
+        const amplitudeScale = height * 0.34 * depthScale;
 
-        context.strokeStyle = `rgba(237, 242, 237, ${0.22 + opacity * 0.72})`;
-        context.lineWidth = 1 + depthPosition * 1.2;
+        context.strokeStyle = rowStrokeStyle[rowIndex];
+        context.lineWidth = rowLineWidth[rowIndex];
         context.beginPath();
 
         for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
-          const frequencyPosition = pointIndex / Math.max(1, pointCount - 1);
-          const point = projectPoint(frequencyPosition, depthPosition, row[pointIndex], width, height);
-          if (pointIndex === 0) context.moveTo(point.x, point.y);
-          else context.lineTo(point.x, point.y);
+          const frequencyPosition = pointIndex / frequencyDenominator;
+          const x = centerX + (frequencyPosition - 0.5) * halfWidth * 2;
+          const y = baseY - amplitudeScale * row[pointIndex];
+          if (pointIndex === 0) context.moveTo(x, y);
+          else context.lineTo(x, y);
         }
         context.stroke();
       }
