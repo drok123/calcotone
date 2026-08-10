@@ -167,11 +167,12 @@ for (const token of [
   "makeButton('loop-505-action loop-505-undo', 'UNDO'",
   "makeButton('loop-505-action loop-505-redo', 'REDO'",
   "makeButton('loop-505-action loop-505-bounce', 'BNC'",
-  'loopTrackProgress(track, stamp)',
+  'function presentationProgress(track: number, stamp: number)',
+  'const progress = active ? presentationProgress(track, stamp) : 0',
 ]) requireText(surface, token, 'Loop V3 performance surface');
 
 for (const token of [
-  '.loop-header-actions',
+  '.loop-header-action-bank',
   '.loop-track-pad::before',
   '.loop-track-pad::after',
   '--loop-phase-angle',
