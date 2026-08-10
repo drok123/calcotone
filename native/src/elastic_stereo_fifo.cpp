@@ -73,9 +73,14 @@ bool ElasticStereoFifo::pull(float& left, float& right, bool* discontinuity) noe
   // About a 21 ms coefficient ramp at 48 kHz: quick enough to follow device
   // drift, slow enough that the resampling ratio itself cannot zipper.
   ratio_ += (desired - ratio_) * 0.001;
-  published_ratio_.store(static_cast<float>(ratio_), std::memory_order_relaxed);
-  if (std::abs(ratio_ - 1.0) > 1e-6)
-    resampled_frames_.fetch_add(1, std::memory_order_relaxed);
+  if (std::abs(ratio_ - 1.0) > 1e-6) ++resampled_frames_local_;
+  // Health telemetry is read at human/UI cadence. Publishing it every 256 audio
+  // frames keeps it effectively realtime while removing an atomic store/RMW from
+  // every rendered sample in the MMCSS callback.
+  if ((telemetry_refresh_++ & 255U) == 0U) {
+    published_ratio_.store(static_cast<float>(ratio_), std::memory_order_relaxed);
+    resampled_frames_.store(resampled_frames_local_, std::memory_order_relaxed);
+  }
 
   const auto current = static_cast<std::size_t>(read) & mask_;
   const auto next = static_cast<std::size_t>(read + 1U) & mask_;
@@ -150,6 +155,8 @@ void ElasticStereoFifo::trim_to_target() noexcept {
   history_valid_ = false;
   pending_discontinuity_ = false;
   published_ratio_.store(1.F, std::memory_order_relaxed);
+  resampled_frames_.store(resampled_frames_local_, std::memory_order_relaxed);
+  telemetry_refresh_ = 0U;
   high_water_.store(target_frames_, std::memory_order_relaxed);
 }
 
