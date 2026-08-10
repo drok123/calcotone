@@ -134,7 +134,7 @@ for (const token of [
   '.faceplate-viewport-shell{position:absolute;inset:0 0 auto;display:block;width:100%;min-width:0;overflow:hidden}',
   '.faceplate-viewport-shell>.dsp-viewport{width:100%;height:100%!important;min-width:0;margin:0!important;flex:none!important}',
   '.rail-c-module.faceplate-layout-custom .faceplate-viewport-shell>.synth-roll',
-  '.chaos-pad-shell .xy-pad{min-height:158px;height:158px',
+  '.rail-c-module.faceplate-layout-custom .faceplate-viewport-shell>.chaos-pad-shell',
   '2026-08-06-uploaded-approved-faceplate-1440p-v1',
 ]) {
   if (!faceplateCss.includes(token)) failures.push(`approved faceplate stylesheet is missing ${token}`);
