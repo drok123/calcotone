@@ -1,0 +1,33 @@
+name: Export Calcotone source ZIP
+
+on:
+  push:
+    branches: [agent/export-main-zip-20260810]
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact merged main
+        uses: actions/checkout@v4
+        with:
+          ref: b0605272b76939520281e1cf442df4c7f4bd114d
+          fetch-depth: 1
+      - name: Stage clean source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ../Calcotone-main-b0605272
+          rsync -a --exclude='.git' ./ ../Calcotone-main-b0605272/
+      - name: Upload source ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Calcotone-main-b0605272
+          path: ../Calcotone-main-b0605272
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
