@@ -1,16 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import type { XYAssignment } from '../../ui/types';
 import { clamp } from '../../ui/math';
 
-/**
- * Shared hardware knob. Legacy patch props remain temporarily accepted so
- * existing module declarations can migrate independently, but no jack,
- * assignment badge, cable gesture, or patch interaction is rendered.
- */
+/** Shared hardware knob. */
 export function Knob({
   label,
   value,
-  effectiveValue,
+  controlTarget,
   display,
   disabled = false,
   onChange,
@@ -18,20 +13,13 @@ export function Knob({
 }: {
   label: string;
   value: number;
-  effectiveValue: number;
+  controlTarget?: string;
   display: string;
   disabled?: boolean;
-  assignment?: XYAssignment;
-  patchTarget?: string;
   onChange: (value: number) => void;
   onReset: () => void;
-  onPatchStart?: (startX: number, startY: number, pointerX: number, pointerY: number) => void;
-  onPatchMove?: (pointerX: number, pointerY: number) => void;
-  onPatchEnd?: (pointerX: number, pointerY: number) => void;
-  onPatchDisconnect?: () => void;
 }) {
   const rotation = -135 + value * 270;
-  const effectiveRotation = -135 + effectiveValue * 270;
   const valueRef = useRef(value);
   const dragRef = useRef({ pointerId: -1, startX: 0, startY: 0, startValue: 0, moved: false });
   const dragFrameRef = useRef<number | null>(null);
@@ -179,6 +167,7 @@ export function Knob({
       <span className="knob-value" aria-hidden={!isAdjusting}>{display}</span>
       <span
         className="knob-shell"
+        data-control-target={controlTarget}
         onPointerDown={handlePointerDown}
         onKeyDown={handleKeyDown}
         role="slider"
@@ -190,9 +179,7 @@ export function Knob({
         aria-valuetext={display}
         aria-disabled={disabled}
         title="Drag vertically · Shift for fine control · Double-click to reset"
-        style={{ '--effective-rotation': `${effectiveRotation}deg`, '--base-rotation': `${rotation}deg` } as CSSProperties}
       >
-        <span className="knob-effective-marker" aria-hidden="true" />
         <span className="knob-face" style={faceStyle} aria-hidden="true">
           <span className="knob-indicator" />
         </span>

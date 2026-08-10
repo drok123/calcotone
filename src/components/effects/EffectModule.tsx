@@ -6,9 +6,8 @@ import { DRIFT_MODE_ORDER, type DriftMode } from '../../audio/effects/Chorus';
 import { GRAIN_MODE_GROUPS, type GrainMode } from '../../audio/effects/Bitcrusher';
 import { DELAY_ALGORITHM_ORDER, type DelayAlgorithm } from '../../audio/effects/Delay';
 import type { VisualAudioState } from '../../visual/VisualEngine';
-import type { ModuleParameter, ModuleState, XYAssignment } from '../../ui/types';
+import type { ModuleParameter, ModuleState } from '../../ui/types';
 import { formatAlgorithmName } from '../../ui/formatting';
-import { getEffectiveMotionValue } from '../../ui/motion';
 import {
   beginFaceplateGesture,
   endFaceplateGesture,
@@ -44,12 +43,6 @@ export function EffectModule({
   onDriftModeChange,
   onGrainModeChange,
   visualState,
-  assignments,
-  xyPosition,
-  onPatchStart,
-  onPatchMove,
-  onPatchEnd,
-  onPatchDisconnect,
   routingDragging,
   routingDropTarget,
   onRoutingDragStart,
@@ -70,19 +63,6 @@ export function EffectModule({
   onDriftModeChange: (mode: DriftMode) => void;
   onGrainModeChange: (mode: GrainMode) => void;
   visualState: VisualAudioState;
-  assignments: XYAssignment[];
-  xyPosition: { x: number; y: number };
-  onPatchStart: (
-    target: string,
-    label: string,
-    startX: number,
-    startY: number,
-    pointerX: number,
-    pointerY: number
-  ) => void;
-  onPatchMove: (pointerX: number, pointerY: number) => void;
-  onPatchEnd: (pointerX: number, pointerY: number) => void;
-  onPatchDisconnect: (target: string) => void;
   routingDragging: boolean;
   routingDropTarget: boolean;
   onRoutingDragStart: (event: ReactDragEvent<HTMLDivElement>) => void;
@@ -186,25 +166,17 @@ export function EffectModule({
   }
 
   function renderKnob(parameter: ModuleParameter) {
-    const assignment = assignments.find((candidate) => candidate.target === `${module.id}.${parameter.id}`);
-    const effectiveValue = assignment ? getEffectiveMotionValue(parameter.value, assignment, xyPosition) : parameter.value;
     const presentation = parameterPresentation(module, parameter.id, parameter.label, parameter.display, parameter.value);
     return (
       <Knob
         key={parameter.id}
         label={presentation.label}
         value={parameter.value}
-        effectiveValue={effectiveValue}
         display={presentation.display}
+        controlTarget={`${module.id}.${parameter.id}`}
         disabled={!module.available || presentation.disabled === true}
-        patchTarget={`${module.id}.${parameter.id}`}
-        assignment={assignment}
         onReset={() => onParameterReset(parameter.id)}
         onChange={(value: number) => onParameterChange(parameter.id, value)}
-        onPatchStart={(startX: number, startY: number, pointerX: number, pointerY: number) => onPatchStart(`${module.id}.${parameter.id}`, `${module.name} ${presentation.label}`, startX, startY, pointerX, pointerY)}
-        onPatchMove={onPatchMove}
-        onPatchEnd={onPatchEnd}
-        onPatchDisconnect={() => onPatchDisconnect(`${module.id}.${parameter.id}`)}
       />
     );
   }

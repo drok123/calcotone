@@ -38,9 +38,7 @@
 .record-start,
 .record-stop,
 .record-cancel,
-.performance-mode button,
-.route-axis button,
-.route-options button {
+.performance-mode button {
   color: var(--cream-text) !important;
   border-color: var(--cream-outline) !important;
   background: linear-gradient(145deg, var(--cream-top) 0%, var(--cream-mid) 48%, var(--cream-bottom) 100%) !important;
@@ -82,9 +80,7 @@
 .recorder-master-selector button:hover:not(:disabled),
 .footer-safe-toggle:hover:not(:disabled),
 .rail-track button:hover,
-.performance-mode button:hover:not(:disabled),
-.route-axis button:hover:not(:disabled),
-.route-options button:hover:not(:disabled) {
+.performance-mode button:hover:not(:disabled) {
   background: linear-gradient(145deg, var(--cream-hover-top) 0%, var(--cream-hover-mid) 48%, var(--cream-hover-bottom) 100%) !important;
   filter: none !important;
 }
@@ -95,9 +91,7 @@
 .polarity-row button.active,
 .recorder-master-selector button.active,
 .footer-safe-toggle.active,
-.performance-mode button.active,
-.route-axis button.active,
-.route-options button.active {
+.performance-mode button.active {
   color: #fffaf0 !important;
   border-color: rgba(255,249,226,.72) !important;
   background: linear-gradient(145deg, #a19d90 0%, #89867b 48%, #74726a 100%) !important;
@@ -176,19 +170,12 @@
 .input-matrix,
 .meter-pair,
 .output-meter,
-.motion-route-inspector,
-.motion-route,
-.empty-routes,
-.xy-patch-bay,
-.route-options select,
-.route-controls select,
 select,
 input[type="text"],
 .sample-name,
 .linear-header strong,
 .recorder-heading time,
 .take-preview,
-.motion-route header button,
 .rail-modules::before {
   background: var(--signal-box-surface-deep) !important;
 }
@@ -200,9 +187,6 @@ input[type="text"],
 .input-matrix,
 .meter-pair,
 .output-meter,
-.motion-route,
-.empty-routes,
-.xy-patch-bay,
 select,
 input[type="text"],
 .sample-name,
@@ -323,28 +307,6 @@ input[type="text"],
 
   .performance-mode { gap: 9px !important; }
   .performance-mode button { min-height: 40px !important; }
-
-  .performance-panel .xy-pad {
-    width: 100%;
-    height: 100%;
-    min-height: 330px !important;
-    aspect-ratio: auto !important;
-  }
-
-  .performance-panel .xy-patch-bay { min-height: 68px; }
-
-  .performance-panel .motion-route-inspector {
-    min-height: 90px;
-    align-content: start;
-    padding: 4px 0 !important;
-  }
-
-  .performance-panel .empty-routes {
-    min-height: 58px;
-    display: grid;
-    place-items: center;
-    margin: 0;
-  }
 
   .performance-panel .sample-recorder {
     align-self: end;

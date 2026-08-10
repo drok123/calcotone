@@ -57,9 +57,8 @@ import { LevelMeter } from './components/meters/LevelMeter';
 import { SpectrumWaterfall } from './components/meters/SpectrumWaterfall';
 import { RecorderPanel, type RecordedTake } from './components/recorder/RecorderPanel';
 import { FaceplateLayoutEditor } from './components/layout/FaceplateLayoutEditor';
-import type { ModuleState, XYAssignment, XYAxis } from './ui/types';
+import type { ModuleState } from './ui/types';
 import { clamp } from './ui/math';
-import { shapeMotionSource } from './ui/motion';
 import {
   moveRackModule,
   nudgeRackModule,
@@ -108,28 +107,7 @@ const RAIL_C_MODULE_NAMES: Record<RailCRandomModuleId, string> = {
 type RoutingRail = RackRail;
 
 
-const INITIAL_XY_ASSIGNMENTS: XYAssignment[] = [];
 
-
-interface PersistentPatchLine {
-  id: string;
-  axis: XYAxis;
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
-}
-
-
-interface PatchDraft {
-  target: string;
-  label: string;
-  startX: number;
-  startY: number;
-  pointerX: number;
-  pointerY: number;
-  hoverAxis: XYAxis | null;
-}
 
 interface RandomUiPlan {
   finalModules: ModuleState[];
@@ -624,7 +602,6 @@ export default function App() {
   const [sampleRate, setSampleRate] = useState('—');
   const [nativeTuner, setNativeTuner] = useState({ hz: 0, level: 0 });
   const [nativeHealth, setNativeHealth] = useState<NativeAudioHealth | null>(null);
-  const [xyPosition] = useState({ x: 50, y: 50 });
   const [analyser, setAnalyser] = useState<VisualSpectrumSource | null>(null);
   const [performanceMode, setPerformanceMode] =
     useState<PerformanceMode>('live');
@@ -634,13 +611,6 @@ export default function App() {
   const [gpuExperiment, setGpuExperiment] = useState<GpuCabinetExperimentReport | null>(null);
   const [adaptiveMode, setAdaptiveMode] = useState(true);
   const [explainMode, setExplainMode] = useState(false);
-  const [xyAssignments, setXyAssignments] = useState<XYAssignment[]>(
-    INITIAL_XY_ASSIGNMENTS
-  );
-  const [patchDraft, setPatchDraft] = useState<PatchDraft | null>(null);
-  const [persistentPatchLines, setPersistentPatchLines] = useState<
-    PersistentPatchLine[]
-  >([]);
 
   useEffect(() => {
     if (engineState !== 'running' || audioBackend !== 'native') {
@@ -684,9 +654,6 @@ export default function App() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const recordingStartedAtRef = useRef<number | null>(null);
   const recordingTimerRef = useRef<number | null>(null);
-  const xyPadRef = useRef<HTMLDivElement | null>(null);
-  const patchDraftRef = useRef<PatchDraft | null>(null);
-  const motionValueRef = useRef(new Map<string, number>());
   const randomUiPlanRef = useRef<RandomUiPlan | null>(null);
   const randomFlowActiveRef = useRef(false);
   const offlineRandomTimersRef = useRef<number[]>([]);
@@ -1524,57 +1491,6 @@ export default function App() {
     setMessage(`${module.name} ${nextEnabled ? 'enabled' : 'bypassed'}.`);
   }
 
-  function applyXYAssignments(
-    x: number,
-    y: number,
-    moduleSource: ModuleState[] = modules
-  ): void {
-    const activeTargets = new Set(xyAssignments.map((assignment) => assignment.target));
-    for (const target of motionValueRef.current.keys()) {
-      if (!activeTargets.has(target)) motionValueRef.current.delete(target);
-    }
-
-    for (const assignment of xyAssignments) {
-      if (!assignment.target) continue;
-
-      const source = assignment.axis === 'x' ? x : y;
-      const shaped = shapeMotionSource(
-        assignment.inverted ? 1 - source : source,
-        assignment.curve ?? 'linear'
-      );
-      const [moduleId, parameterId] = assignment.target.split('.');
-      const module = moduleSource.find((candidate) => candidate.id === moduleId);
-      const parameter = module?.parameters.find(
-        (candidate) => candidate.id === parameterId
-      );
-
-      if (!module || !parameter) continue;
-
-      // The knob remains the center/base value. Depth determines how far the cable
-      // can pull the destination around that base setting.
-      const bipolar = shaped * 2 - 1;
-      const targetValue = clamp(
-        parameter.value + bipolar * 0.5 * assignment.depth,
-        assignment.min ?? 0,
-        assignment.max ?? 1
-      );
-      const previousValue = motionValueRef.current.get(assignment.target) ?? targetValue;
-      const smoothing = assignment.smoothing ?? 'medium';
-      const response = smoothing === 'fast' ? 0.72 : smoothing === 'slow' ? 0.16 : 0.36;
-      const modulatedValue = previousValue + (targetValue - previousValue) * response;
-      motionValueRef.current.set(assignment.target, modulatedValue);
-
-      if (engineState === 'running') {
-        const dspValue = toDspParameterValue(moduleId, parameterId, modulatedValue);
-        if (backendRef.current === 'native') {
-          void nativeBridgeRef.current.commandLine(`param ${moduleId} ${parameterId} ${dspValue}`);
-        } else {
-          setEffectParameterIfLoaded(engineRef.current, moduleId, parameterId, dspValue);
-        }
-      }
-    }
-  }
-
   useEffect(() => {
     const revealModule = (event: Event): void => {
       const detail = (event as CustomEvent<RandomUiModuleDetail>).detail;
@@ -1622,13 +1538,6 @@ export default function App() {
       }
 
       setMessage(plan.finalMessage);
-      if (revealedEverything) {
-        applyXYAssignments(
-          xyPosition.x / 100,
-          xyPosition.y / 100,
-          plan.finalModules
-        );
-      }
     };
 
     window.addEventListener(RANDOM_UI_MODULE_EVENT, revealModule);
@@ -1637,158 +1546,7 @@ export default function App() {
       window.removeEventListener(RANDOM_UI_MODULE_EVENT, revealModule);
       window.removeEventListener(RANDOM_UI_COMPLETE_EVENT, finishFlow);
     };
-  }, [engineState, xyAssignments, xyPosition.x, xyPosition.y]);
-
-  function beginPatch(
-    target: string,
-    label: string,
-    startX: number,
-    startY: number,
-    pointerX: number,
-    pointerY: number
-  ): void {
-    const draft = {
-      target,
-      label,
-      startX,
-      startY,
-      pointerX,
-      pointerY,
-      hoverAxis: detectPatchAxis(pointerX, pointerY),
-    };
-    patchDraftRef.current = draft;
-    setPatchDraft(draft);
-    setMessage(`${label}: choose X or Y on the motion pad.`);
-  }
-
-  function movePatch(pointerX: number, pointerY: number): void {
-    const current = patchDraftRef.current;
-    if (!current) return;
-    const next = {
-      ...current,
-      pointerX,
-      pointerY,
-      hoverAxis: detectPatchAxis(pointerX, pointerY),
-    };
-    patchDraftRef.current = next;
-    setPatchDraft(next);
-  }
-
-  function finishPatch(pointerX: number, pointerY: number): void {
-    const draft = patchDraftRef.current;
-    if (!draft) return;
-
-    const axis = detectPatchAxis(pointerX, pointerY);
-
-    if (axis) {
-      const id = `xy-${draft.target.replace('.', '-')}`;
-      setXyAssignments((current) => [
-        ...current.filter((assignment) => assignment.target !== draft.target),
-        {
-          id,
-          axis,
-          target: draft.target,
-          depth: 0.5,
-          inverted: false,
-          min: 0,
-          max: 1,
-          curve: 'soft',
-          smoothing: 'medium',
-        },
-      ]);
-
-      const [moduleId] = draft.target.split('.');
-      setModules((current) =>
-        current.map((module) =>
-          module.id === moduleId ? { ...module, enabled: true } : module
-        )
-      );
-      engineRef.current?.setEffectBypassed(moduleId, false);
-      setMessage(`${draft.label} → ${axis.toUpperCase()}.`);
-    } else {
-      setMessage(`Patch from ${draft.label} cancelled.`);
-    }
-
-    patchDraftRef.current = null;
-    setPatchDraft(null);
-  }
-
-  function detectPatchAxis(pointerX: number, pointerY: number): XYAxis | null {
-    const pad = xyPadRef.current?.getBoundingClientRect();
-    if (!pad) return null;
-
-    // Give cable drops a forgiving magnetic capture zone around the pad. The
-    // visible X/Y jacks are the actual destinations; the closest socket wins.
-    const captureMargin = Math.max(28, Math.min(pad.width, pad.height) * 0.12);
-    if (
-      pointerX < pad.left - captureMargin ||
-      pointerX > pad.right + captureMargin ||
-      pointerY < pad.top - captureMargin ||
-      pointerY > pad.bottom + captureMargin
-    ) return null;
-
-    const xSocket = { x: pad.left + pad.width * 0.18, y: pad.top + pad.height * 0.82 };
-    const ySocket = { x: pad.left + pad.width * 0.82, y: pad.top + pad.height * 0.18 };
-    const xDistance = Math.hypot(pointerX - xSocket.x, pointerY - xSocket.y);
-    const yDistance = Math.hypot(pointerX - ySocket.x, pointerY - ySocket.y);
-    return xDistance <= yDistance ? 'x' : 'y';
-  }
-
-  function disconnectPatch(target: string): void {
-    setXyAssignments((current) =>
-      current.filter((assignment) => assignment.target !== target)
-    );
-    motionValueRef.current.delete(target);
-
-    const [moduleId, parameterId] = target.split('.');
-    const module = modules.find((candidate) => candidate.id === moduleId);
-    const parameter = module?.parameters.find(
-      (candidate) => candidate.id === parameterId
-    );
-    if (parameter && engineState === 'running') {
-      setEffectParameterIfLoaded(
-        engineRef.current,
-        moduleId,
-        parameterId,
-        toDspParameterValue(moduleId, parameterId, parameter.value)
-      );
-    }
-    setMessage('Patch removed.');
-  }
-
-
-  function refreshPersistentPatchLines(): void {
-    const pad = xyPadRef.current?.getBoundingClientRect();
-    if (!pad) {
-      setPersistentPatchLines([]);
-      return;
-    }
-
-    const lines = xyAssignments.flatMap((assignment) => {
-      const source = document.querySelector<HTMLElement>(
-        `[data-patch-target="${assignment.target}"]`
-      );
-      if (!source) return [];
-      const sourceBounds = source.getBoundingClientRect();
-      const endX = assignment.axis === 'x'
-        ? pad.left + pad.width * 0.18
-        : pad.left + pad.width * 0.82;
-      const endY = assignment.axis === 'x'
-        ? pad.top + pad.height * 0.82
-        : pad.top + pad.height * 0.18;
-      return [
-        {
-          id: assignment.id,
-          axis: assignment.axis,
-          startX: sourceBounds.left + sourceBounds.width / 2,
-          startY: sourceBounds.top + sourceBounds.height / 2,
-          endX,
-          endY,
-        },
-      ];
-    });
-    setPersistentPatchLines(lines);
-  }
+  }, [engineState]);
 
   function changePerformanceMode(mode: PerformanceMode): void {
     setPerformanceMode(mode);
@@ -1801,12 +1559,6 @@ export default function App() {
       `${mode.charAt(0).toUpperCase() + mode.slice(1)} quality selected.${engineState === 'running' && backendRef.current === 'web' ? ' Restart audio to apply its device-buffer policy.' : ''}`
     );
   }
-
-  useEffect(() => {
-    if (engineState !== 'running') return;
-    if (randomFlowActiveRef.current) return;
-    applyXYAssignments(xyPosition.x / 100, xyPosition.y / 100);
-  }, [xyAssignments, modules, xyPosition.x, xyPosition.y, engineState]);
 
   useEffect(() => {
     return () => {
@@ -1824,20 +1576,6 @@ export default function App() {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
-
-  useLayoutEffect(() => {
-    const frame = window.requestAnimationFrame(refreshPersistentPatchLines);
-    const observer = new ResizeObserver(refreshPersistentPatchLines);
-    if (xyPadRef.current) observer.observe(xyPadRef.current);
-    window.addEventListener('resize', refreshPersistentPatchLines);
-    window.addEventListener('scroll', refreshPersistentPatchLines, true);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      observer.disconnect();
-      window.removeEventListener('resize', refreshPersistentPatchLines);
-      window.removeEventListener('scroll', refreshPersistentPatchLines, true);
-    };
-  }, [xyAssignments, railAOrder, railBOrder, railCOrder]);
 
   useLayoutEffect(() => {
     const fitCanvas = (): void => {
@@ -2229,7 +1967,6 @@ export default function App() {
                             key={moduleId}
                             moduleId={moduleId}
                             modules={modules}
-                            assignments={xyAssignments}
                             visualState={visualState}
                             running={isRunning}
                             onStompEnabledChange={setStompEnabled}
@@ -2267,12 +2004,6 @@ export default function App() {
                           onDriftModeChange={updateDriftMode}
                           onGrainModeChange={updateGrainMode}
                           visualState={visualState}
-                          assignments={xyAssignments}
-                          xyPosition={xyPosition}
-                          onPatchStart={beginPatch}
-                          onPatchMove={movePatch}
-                          onPatchEnd={finishPatch}
-                          onPatchDisconnect={disconnectPatch}
                           {...routingProps}
                         />
                       );
@@ -2323,7 +2054,6 @@ export default function App() {
           </div>
           <div className="footer-actions">
             <span><i className={isRunning ? 'active' : ''} />{isRunning ? 'LIVE' : 'STANDBY'}</span>
-            <span><i className={xyAssignments.length ? 'active' : ''} />{xyAssignments.length} PATCHES</span>
             <span><i className={recordingState === 'recording' ? 'recording' : recordedTake ? 'active' : ''} />{recordingState === 'recording' ? `REC ${formatDuration(recordingSeconds)}` : recordedTake ? 'TAKE READY' : 'REC READY'}</span>
             <button
               type="button"
@@ -2350,37 +2080,7 @@ export default function App() {
       </main>
       </div>
 
-        {persistentPatchLines.length > 0 && (
-          <svg className="persistent-patch-layer" aria-hidden="true">
-            {persistentPatchLines.map((line) => (
-              <path
-                key={line.id}
-                className={`axis-${line.axis}`}
-                d={createPatchPath(
-                  line.startX,
-                  line.startY,
-                  line.endX,
-                  line.endY
-                )}
-              />
-            ))}
-          </svg>
-        )}
 
-        {patchDraft && (
-          <svg className="live-patch-layer" aria-hidden="true">
-            <path
-              d={createPatchPath(
-                patchDraft.startX,
-                patchDraft.startY,
-                patchDraft.pointerX,
-                patchDraft.pointerY
-              )}
-            />
-            <circle cx={patchDraft.startX} cy={patchDraft.startY} r="6" />
-            <circle cx={patchDraft.pointerX} cy={patchDraft.pointerY} r="7" />
-          </svg>
-        )}
 
     </div>
   );
@@ -2583,18 +2283,6 @@ function formatRailOrder(order: readonly string[]): string {
     pressure: 'PRESSURE',
   };
   return order.map((id) => names[id] ?? id.toUpperCase()).join(' → ');
-}
-
-function createPatchPath(
-  startX: number,
-  startY: number,
-  endX: number,
-  endY: number
-): string {
-  const bend = Math.max(70, Math.abs(endX - startX) * 0.42);
-  const controlOneX = startX + (endX >= startX ? bend : -bend);
-  const controlTwoX = endX - (endX >= startX ? bend : -bend);
-  return `M ${startX} ${startY} C ${controlOneX} ${startY}, ${controlTwoX} ${endY}, ${endX} ${endY}`;
 }
 
 function sanitizeFileName(value: string): string {
