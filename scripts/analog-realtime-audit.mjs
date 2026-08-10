@@ -14,11 +14,13 @@ for (const token of [
   'this.adaaAntiderivativeLut = this.makeAntiderivativeLut(ADAA_TABLE_SIZE)',
   'this.adaaTanhLut = this.makeTanhLut(TANH_TABLE_SIZE)',
   'cutoffHz: -1',
-  'cutoffCoefficient: 0',
-  'lowpassCoefficient(cutoff, state)',
-  'if (safe !== state.cutoffHz)',
-  'state.cutoffCoefficient = g / (1 + g)',
-  'const coefficient = this.lowpassCoefficient(this.value(parameters.cutoff, i), state)',
+  'cutoffG: 0',
+  'lowpassCoefficient(cutoffValue, state)',
+  'if (cutoff !== state.cutoffHz)',
+  'const g = Math.tan(Math.PI * cutoff / sampleRate)',
+  'state.cutoffG = g',
+  'const g = this.lowpassCoefficient(this.value(parameters.cutoff, i), state)',
+  'const v = (state.previousDcOutput - state.tptState) * g / (1 + g)',
   ': this.fastTanh((x + previous) * 0.5)',
 ]) requireText(token, 'Analog realtime contract');
 
@@ -116,4 +118,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('Analog realtime audit passed · ADAA tables and cutoff coefficient caching preserve finite static/a-rate rendering');
+console.log('Analog realtime audit passed · ADAA tables and cached raw TPT g preserve finite static/a-rate rendering');
