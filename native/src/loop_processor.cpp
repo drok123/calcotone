@@ -582,14 +582,23 @@ struct LoopProcessor::Impl {
 
   void process_segment(float* data, std::size_t frames, float loop_level, float overdub_feedback) noexcept {
     std::array<float, kLoopTrackCount> levels{};
-    for (unsigned track = 0U; track < kLoopTrackCount; ++track)
-      levels[track] = track_levels[track].load(std::memory_order_relaxed);
+    std::array<unsigned, kLoopTrackCount> playback_tracks{};
+    std::array<unsigned, kLoopTrackCount> advance_tracks{};
+    std::size_t playback_count = 0U;
+    std::size_t advance_count = 0U;
 
     const bool soloing = any_solo_occupied();
     const std::uint32_t playback_mask = playing
         ? occupied_mask & active_mask & ~mute_mask & (soloing ? solo_mask : 0xffU)
         : 0U;
     const std::uint32_t advance_mask = playing ? occupied_mask & active_mask : 0U;
+    for (unsigned track = 0U; track < kLoopTrackCount; ++track) {
+      if ((playback_mask & bit(track)) != 0U) {
+        playback_tracks[playback_count++] = track;
+        levels[track] = track_levels[track].load(std::memory_order_relaxed);
+      }
+      if ((advance_mask & bit(track)) != 0U) advance_tracks[advance_count++] = track;
+    }
 
     for (std::size_t frame = 0U; frame < frames; ++frame) {
       const float live_left = std::isfinite(data[frame * 2U]) ? data[frame * 2U] : 0.F;
@@ -597,8 +606,8 @@ struct LoopProcessor::Impl {
       float loop_left = 0.F;
       float loop_right = 0.F;
 
-      for (unsigned track = 0U; track < kLoopTrackCount; ++track) {
-        if ((playback_mask & bit(track)) == 0U) continue;
+      for (std::size_t active = 0U; active < playback_count; ++active) {
+        const unsigned track = playback_tracks[active];
         float track_left = 0.F;
         float track_right = 0.F;
         read_track_stereo(track, track_left, track_right);
@@ -645,8 +654,8 @@ struct LoopProcessor::Impl {
         }
       }
 
-      for (unsigned track = 0U; track < kLoopTrackCount; ++track)
-        if ((advance_mask & bit(track)) != 0U) advance_track(track);
+      for (std::size_t active = 0U; active < advance_count; ++active)
+        advance_track(advance_tracks[active]);
     }
   }
 
