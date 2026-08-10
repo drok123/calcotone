@@ -226,6 +226,10 @@ function drawDisplay(
   const graphEnd = Math.max(graphStart + 3, rows - 3);
   const graphRows = Math.max(1, graphEnd - graphStart);
   const enabled = module.enabled && module.available;
+  // Reuse the graph rows for the entire draw. Previously every graph line built
+  // two fresh arrays, creating dozens of short-lived objects per animated frame.
+  const graphCharacters = new Array<string>(innerWidth).fill(' ');
+  const graphAccents = new Array<string>(innerWidth).fill(' ');
 
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.fillStyle = '#050706';
@@ -268,8 +272,8 @@ function drawDisplay(
       line = `║${fitText(label, innerWidth).padEnd(innerWidth)}║`;
       intensity = 0.7;
     } else if (row >= graphStart && row < graphEnd) {
-      const chars = Array.from({ length: innerWidth }, () => ' ');
-      const accents = Array.from({ length: innerWidth }, () => ' ');
+      graphCharacters.fill(' ');
+      graphAccents.fill(' ');
       const y = ((row - graphStart) / Math.max(1, graphRows - 1)) * 2 - 1;
       for (let column = 0; column < innerWidth; column += 1) {
         const x = (column / Math.max(1, innerWidth - 1)) * 2 - 1;
@@ -279,14 +283,14 @@ function drawDisplay(
         if (!enabled && normalized < 0.72) continue;
         if (normalized < 0.22) continue;
         const index = Math.min(profile.glyphs.length - 1, Math.floor(normalized * profile.glyphs.length));
-        chars[column] = profile.glyphs[index] ?? ' ';
+        graphCharacters[column] = profile.glyphs[index] ?? ' ';
         if (normalized > 0.76 && (column + row + seed) % 17 === 0) {
-          accents[column] = chars[column];
+          graphAccents[column] = graphCharacters[column];
         }
         intensity = Math.max(intensity, normalized);
       }
-      line = `║${chars.join('')}║`;
-      accentLine = ` ${accents.join('')} `;
+      line = `║${graphCharacters.join('')}║`;
+      accentLine = ` ${graphAccents.join('')} `;
     } else if (row === rows - 2) {
       const status = `${enabled ? 'ONLINE' : 'BYPASS'} // ${(seed >>> 0).toString(16).toUpperCase().padStart(8, '0')}`;
       line = `║${centerText(status, innerWidth)}║`;
