@@ -16,6 +16,9 @@ for (const token of [
   'const reelNormalization = 1 / Math.max(1e-6, grainTanh(reelDrive))',
   'let safeL = grainTanh(processedL * 1.02) * GRAIN_OUTPUT_TANH_NORM',
   'let safeR = grainTanh(processedR * 1.02) * GRAIN_OUTPUT_TANH_NORM',
+  'const MICROCOSM_VARIATION_PATTERNS = [',
+  'const pulseFrames = sampleRate * 240 / (tempo * division)',
+  'if (!memoryHeld) this.writeIndex = (this.writeIndex + 1) & this.mask',
 ]) requireText(token);
 
 const processStart = source.indexOf('  process(inputs, outputs, parameters)');
@@ -54,6 +57,9 @@ function renderMode(mode) {
     pitch: new Float32Array([.51]),
     chaos: new Float32Array([.42]),
     bloom: new Float32Array([.58]),
+    microcosmProgram: new Float32Array([0]),
+    tempo: new Float32Array([120]),
+    hold: new Float32Array([0]),
   };
   const beforeTanh = tanhCalls;
   let peak = 0;

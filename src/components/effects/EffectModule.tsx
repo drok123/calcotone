@@ -3,7 +3,12 @@ import { REVERB_ALGORITHM_ORDER, type ReverbAlgorithm } from '../../audio/effect
 import { ARTIFACT_CONSOLE_MODES, ARTIFACT_DYNAMICS_MODES, MEDIA_MODE_GROUPS, type MediaMode } from '../../audio/effects/Media';
 import { EMBER_DIGITAL_CAPTURE_MODES, EMBER_MODE_GROUPS, type EmberMode } from '../../audio/effects/Saturation';
 import { DRIFT_MODE_ORDER, type DriftMode } from '../../audio/effects/Chorus';
-import { GRAIN_MODE_GROUPS, type GrainMode } from '../../audio/effects/Bitcrusher';
+import {
+  GRAIN_MODE_GROUPS,
+  MICROCOSM_PROGRAM_GROUPS,
+  type GrainMode,
+  type MicrocosmProgram,
+} from '../../audio/effects/Bitcrusher';
 import { DELAY_ALGORITHM_ORDER, type DelayAlgorithm } from '../../audio/effects/Delay';
 import type { VisualAudioState } from '../../visual/VisualEngine';
 import type { ModuleParameter, ModuleState } from '../../ui/types';
@@ -42,6 +47,8 @@ export function EffectModule({
   onEmberModeChange,
   onDriftModeChange,
   onGrainModeChange,
+  onMicrocosmProgramChange,
+  onMicrocosmHoldChange,
   visualState,
   routingDragging,
   routingDropTarget,
@@ -62,6 +69,8 @@ export function EffectModule({
   onEmberModeChange: (mode: EmberMode) => void;
   onDriftModeChange: (mode: DriftMode) => void;
   onGrainModeChange: (mode: GrainMode) => void;
+  onMicrocosmProgramChange: (program: MicrocosmProgram) => void;
+  onMicrocosmHoldChange: (held: boolean) => void;
   visualState: VisualAudioState;
   routingDragging: boolean;
   routingDropTarget: boolean;
@@ -254,16 +263,45 @@ export function EffectModule({
           )}
 
           {module.id === 'bitcrusher' && (
-            <label className="algorithm-selector grain-mode-selector">
-              <span className="sr-only">Grain mode</span>
-              <select aria-label="Grain mode" value={module.grainMode ?? 'smear'} onChange={(event: ReactChangeEvent<HTMLSelectElement>) => onGrainModeChange(event.target.value as GrainMode)}>
-                {GRAIN_MODE_GROUPS.map((group) => (
-                  <optgroup key={group.label} label={group.label}>
-                    {group.modes.map((mode) => <option key={mode} value={mode}>{formatGrainMode(mode)}</option>)}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
+            <div className={`grain-header-controls ${module.grainMode === 'microcosm' ? 'is-microcosm' : ''}`}>
+              <label className="algorithm-selector grain-mode-selector">
+                <span className="sr-only">Grain mode</span>
+                <select aria-label="Grain mode" value={module.grainMode ?? 'smear'} onChange={(event: ReactChangeEvent<HTMLSelectElement>) => onGrainModeChange(event.target.value as GrainMode)}>
+                  {GRAIN_MODE_GROUPS.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.modes.map((mode) => <option key={mode} value={mode}>{formatGrainMode(mode)}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
+              {module.grainMode === 'microcosm' && (
+                <>
+                  <label className="algorithm-selector microcosm-program-selector">
+                    <span className="sr-only">Microcosm program</span>
+                    <select
+                      aria-label="Microcosm program"
+                      value={module.microcosmProgram ?? 'mosaic'}
+                      onChange={(event: ReactChangeEvent<HTMLSelectElement>) => onMicrocosmProgramChange(event.target.value as MicrocosmProgram)}
+                    >
+                      {MICROCOSM_PROGRAM_GROUPS.map((group) => (
+                        <optgroup key={group.label} label={group.label}>
+                          {group.programs.map((program) => <option key={program} value={program}>{formatMicrocosmProgram(program)}</option>)}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className={`microcosm-hold ${module.microcosmHold ? 'active' : ''}`}
+                    aria-label={`${module.microcosmHold ? 'Release' : 'Hold'} Microcosm memory`}
+                    aria-pressed={module.microcosmHold === true}
+                    onClick={() => onMicrocosmHoldChange(!module.microcosmHold)}
+                  >
+                    HOLD
+                  </button>
+                </>
+              )}
+            </div>
           )}
 
           {module.id === 'reverb' && (
@@ -392,6 +430,10 @@ function formatGrainMode(mode: GrainMode): string {
   return mode.charAt(0).toUpperCase() + mode.slice(1);
 }
 
+function formatMicrocosmProgram(program: MicrocosmProgram): string {
+  return program === 'seq' ? 'SEQ' : program.toUpperCase();
+}
+
 function formatReverbMode(mode: ReverbAlgorithm): string {
   if (mode === 'emt140') return 'EMT 140';
   if (mode === 'lexicon224') return 'Lexicon 224';
@@ -517,6 +559,9 @@ function parameterPresentation(module: ModuleState, parameterId: string, label: 
         smear:'Motion', scatter:'Spread', slice:'Offset', prism:'Detune', freeze:'Refresh', mosaic:'Order',
         clouds:'Position', beads:'Random', morphagene:'Slide', arbhar:'Spray', particle2:'Random', microcosm:'Variation',
       };
+      if (mode === 'microcosm') {
+        return { label: labelByMode[mode], display: `VAR ${String.fromCharCode(65 + Math.min(3, Math.floor(value * 4)))}` };
+      }
       return { label: labelByMode[mode], display };
     }
     if (parameterId === 'bloom') {

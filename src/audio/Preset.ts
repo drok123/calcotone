@@ -60,6 +60,9 @@ export const DEFAULT_PRESET: Preset = {
       id: 'bitcrusher',
       enabled: false,
       parameters: {
+        microcosmProgram: 0,
+        tempo: 120,
+        hold: 0,
         bits: 13,
         density: 0.42,
         pitch: 0.38,

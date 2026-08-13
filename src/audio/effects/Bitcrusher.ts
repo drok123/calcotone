@@ -1,6 +1,7 @@
 import { clampParameter, type ParameterDefinition } from '../Parameter';
 import type { PerformanceMode } from '../AudioEngine';
 import { BaseEffect } from './Effect';
+import { getLoopState, LOOP_CHANGE_EVENT, type LoopSettings } from '../../components/signal/loopStore';
 
 export type GrainMode =
   | 'mosaic'
@@ -29,6 +30,31 @@ export const GRAIN_MODE_GROUPS = [
   { label: 'GRANULAR HARDWARE', modes: ['clouds','beads','morphagene','arbhar','particle2','microcosm'] },
 ] as const satisfies ReadonlyArray<{ label: string; modes: readonly GrainMode[] }>;
 
+export type MicrocosmProgram =
+  | 'mosaic'
+  | 'seq'
+  | 'glide'
+  | 'haze'
+  | 'tunnel'
+  | 'strum'
+  | 'blocks'
+  | 'interrupt'
+  | 'arp'
+  | 'pattern'
+  | 'warp';
+
+// Program order is serialized into the Grain parameter stream. Append only.
+export const MICROCOSM_PROGRAM_ORDER: readonly MicrocosmProgram[] = [
+  'mosaic','seq','glide','haze','tunnel','strum','blocks','interrupt','arp','pattern','warp',
+];
+
+export const MICROCOSM_PROGRAM_GROUPS = [
+  { label: 'MICRO LOOP', programs: ['mosaic','seq','glide'] },
+  { label: 'GRANULES', programs: ['haze','tunnel','strum'] },
+  { label: 'GLITCH', programs: ['blocks','interrupt','arp'] },
+  { label: 'MULTI DELAY', programs: ['pattern','warp'] },
+] as const satisfies ReadonlyArray<{ label: string; programs: readonly MicrocosmProgram[] }>;
+
 export interface GrainProfilerStats {
   averageCallbackMs: number;
   worstCallbackMs: number;
@@ -43,6 +69,9 @@ export interface GrainProfilerStats {
 }
 
 const MODE: ParameterDefinition = { id: 'mode', label: 'Mode', min: 0, max: GRAIN_MODE_ORDER.length - 1, defaultValue: 2, step: 1 };
+const MICROCOSM_PROGRAM: ParameterDefinition = { id: 'microcosmProgram', label: 'Microcosm Program', min: 0, max: MICROCOSM_PROGRAM_ORDER.length - 1, defaultValue: 0, step: 1 };
+const TEMPO: ParameterDefinition = { id: 'tempo', label: 'Tempo', min: 30, max: 300, defaultValue: 120, step: 1 };
+const HOLD: ParameterDefinition = { id: 'hold', label: 'Hold', min: 0, max: 1, defaultValue: 0, step: 1 };
 // Keep the historical parameter id so patch cables and serialized presets remain valid.
 // Grain now interprets it as a continuous analysis/window control, never as bit depth.
 const WINDOW: ParameterDefinition = { id: 'bits', label: 'Window', min: 4, max: 16, defaultValue: 13, step: 1 };
@@ -58,6 +87,10 @@ export class BitcrusherEffect extends BaseEffect {
 
   private readonly processor: AudioWorkletNode;
   private readonly workletValues = new Map<string, number>();
+  private readonly loopClockListener = (event: Event): void => {
+    const settings = (event as CustomEvent<LoopSettings>).detail;
+    this.setParameter('tempo', settings?.bpm ?? getLoopState().bpm);
+  };
   private profilerStats: GrainProfilerStats = { averageCallbackMs: 0, worstCallbackMs: 0, callbackBudgetMs: 0, cpuLoad: 0, callbackJitterMs: 0, activeVoices: 0, maxVoices: 0, effectiveVoiceLimit: 0, overruns: 0, droppedSpawns: 0 };
 
   public constructor(context: AudioContext) {
@@ -82,15 +115,20 @@ export class BitcrusherEffect extends BaseEffect {
     };
     this.processor.onprocessorerror = () => console.error('CALCOTONE Grain AudioWorklet stopped unexpectedly.');
 
-    this.initializeParameters([MODE, WINDOW, DENSITY, PITCH, CHAOS, BLOOM, MIX]);
+    this.initializeParameters([MODE, MICROCOSM_PROGRAM, TEMPO, HOLD, WINDOW, DENSITY, PITCH, CHAOS, BLOOM, MIX]);
     const now = this.context.currentTime;
     this.setWorkletParameter('mode', MODE.defaultValue, now, true);
+    this.setWorkletParameter('microcosmProgram', MICROCOSM_PROGRAM.defaultValue, now, true);
+    this.setWorkletParameter('tempo', getLoopState().bpm, now);
+    this.parameterValues.set('tempo', getLoopState().bpm);
+    this.setWorkletParameter('hold', HOLD.defaultValue, now, true);
     this.setWorkletParameter('bits', WINDOW.defaultValue, now);
     this.setWorkletParameter('density', DENSITY.defaultValue, now);
     this.setWorkletParameter('pitch', PITCH.defaultValue, now);
     this.setWorkletParameter('chaos', CHAOS.defaultValue, now);
     this.setWorkletParameter('bloom', BLOOM.defaultValue, now);
     this.setWetDryMix(MIX.defaultValue);
+    window.addEventListener(LOOP_CHANGE_EVENT, this.loopClockListener);
   }
 
   public getProfilerStats(): GrainProfilerStats {
@@ -115,6 +153,27 @@ export class BitcrusherEffect extends BaseEffect {
         if (this.parameterValues.get(parameterId) === next) return;
         this.parameterValues.set(parameterId, next);
         this.setWorkletParameter('mode', next, now, true);
+        return;
+      }
+      case 'microcosmProgram': {
+        const next = Math.round(clampParameter(value, MICROCOSM_PROGRAM));
+        if (this.parameterValues.get(parameterId) === next) return;
+        this.parameterValues.set(parameterId, next);
+        this.setWorkletParameter('microcosmProgram', next, now, true);
+        return;
+      }
+      case 'tempo': {
+        const next = Math.round(clampParameter(value, TEMPO));
+        if (this.parameterValues.get(parameterId) === next) return;
+        this.parameterValues.set(parameterId, next);
+        this.setWorkletParameter('tempo', next, now);
+        return;
+      }
+      case 'hold': {
+        const next = clampParameter(value, HOLD) >= 0.5 ? 1 : 0;
+        if (this.parameterValues.get(parameterId) === next) return;
+        this.parameterValues.set(parameterId, next);
+        this.setWorkletParameter('hold', next, now, true);
         return;
       }
       case 'bits': {
@@ -174,6 +233,7 @@ export class BitcrusherEffect extends BaseEffect {
   }
 
   public override dispose(): void {
+    window.removeEventListener(LOOP_CHANGE_EVENT, this.loopClockListener);
     this.processor.onprocessorerror = null;
     this.processor.port.close();
     this.processor.disconnect();

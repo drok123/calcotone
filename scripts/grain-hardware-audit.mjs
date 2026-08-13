@@ -5,12 +5,13 @@ import { runInNewContext } from 'node:vm';
 const SAMPLE_RATE = 48_000;
 const BLOCK_SIZE = 128;
 const HARDWARE_MODES = [
-  ['Clouds', 6],
-  ['Beads', 7],
-  ['Morphagene', 8],
-  ['Arbhar', 9],
-  ['Particle 2', 10],
-  ['Microcosm', 11],
+  ['Clouds', 6, 0],
+  ['Beads', 7, 0],
+  ['Morphagene', 8, 0],
+  ['Arbhar', 9, 0],
+  ['Particle 2', 10, 0],
+  ...['Mosaic','Seq','Glide','Haze','Tunnel','Strum','Blocks','Interrupt','Arp','Pattern','Warp']
+    .map((program, index) => [`Microcosm ${program}`, 11, index]),
 ];
 const source = readFileSync(resolve(process.cwd(), 'public/grain-processor.js'), 'utf8');
 let GrainProcessor = null;
@@ -42,7 +43,7 @@ const failures = [];
 const signatures = new Map();
 const reports = [];
 
-for (const [name, mode] of HARDWARE_MODES) {
+for (const [name, mode, microcosmProgram] of HARDWARE_MODES) {
   const processor = new GrainProcessor();
   const inputL = new Float32Array(BLOCK_SIZE);
   const inputR = new Float32Array(BLOCK_SIZE);
@@ -55,6 +56,9 @@ for (const [name, mode] of HARDWARE_MODES) {
     pitch: new Float32Array([0.34]),
     chaos: new Float32Array([0.42]),
     bloom: new Float32Array([0.52]),
+    microcosmProgram: new Float32Array([microcosmProgram]),
+    tempo: new Float32Array([120]),
+    hold: new Float32Array([0]),
   };
   let sumSquares = 0;
   let roughness = 0;

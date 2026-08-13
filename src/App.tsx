@@ -37,7 +37,12 @@ import { REVERB_ALGORITHM_ORDER, type ReverbAlgorithm } from './audio/effects/Re
 import { MEDIA_MODE_ORDER, type MediaMode } from './audio/effects/Media';
 import { EMBER_MODE_ORDER, type EmberMode } from './audio/effects/Saturation';
 import { DRIFT_MODE_ORDER, type DriftMode } from './audio/effects/Chorus';
-import { GRAIN_MODE_ORDER, type GrainMode } from './audio/effects/Bitcrusher';
+import {
+  GRAIN_MODE_ORDER,
+  MICROCOSM_PROGRAM_ORDER,
+  type GrainMode,
+  type MicrocosmProgram,
+} from './audio/effects/Bitcrusher';
 import {
   STACK_AMP_MODELS,
   STACK_CABINETS,
@@ -191,6 +196,8 @@ const INITIAL_MODULES: ModuleState[] = [
     id: 'bitcrusher',
     name: 'Grain',
     grainMode: 'smear',
+    microcosmProgram: 'mosaic',
+    microcosmHold: false,
     enabled: false,
     available: true,
     parameters: [
@@ -359,7 +366,12 @@ function applyProfileMode(module: ModuleState, mode: string | undefined): Module
   if (module.id === 'chorus') return { ...module, driftMode: mode as DriftMode };
   if (module.id === 'delay') return { ...module, delayAlgorithm: mode as DelayAlgorithm };
   if (module.id === 'reverb') return { ...module, algorithm: mode as ReverbAlgorithm };
-  if (module.id === 'bitcrusher') return { ...module, grainMode: mode as GrainMode };
+  if (module.id === 'bitcrusher') return {
+    ...module,
+    grainMode: mode as GrainMode,
+    microcosmProgram: mode === 'microcosm' ? module.microcosmProgram ?? 'mosaic' : module.microcosmProgram,
+    microcosmHold: false,
+  };
   if (module.id === 'media') return { ...module, mediaMode: mode as MediaMode };
   return module;
 }
@@ -527,7 +539,17 @@ function withMusicalRandomMode(module: ModuleState): ModuleState {
   if (module.id === 'chorus') return { ...module, driftMode: chooseMusicalDifferent(MUSICAL_DRIFT_MODES, module.driftMode) };
   if (module.id === 'delay') return { ...module, delayAlgorithm: chooseMusicalDifferent(MUSICAL_HALO_MODES, module.delayAlgorithm) };
   if (module.id === 'reverb') return { ...module, algorithm: chooseMusicalDifferent(MUSICAL_ATMOS_MODES, module.algorithm) };
-  if (module.id === 'bitcrusher') return { ...module, grainMode: chooseMusicalDifferent(MUSICAL_GRAIN_MODES, module.grainMode) };
+  if (module.id === 'bitcrusher') {
+    const grainMode = chooseMusicalDifferent(MUSICAL_GRAIN_MODES, module.grainMode);
+    return {
+      ...module,
+      grainMode,
+      microcosmProgram: grainMode === 'microcosm'
+        ? chooseMusical(MICROCOSM_PROGRAM_ORDER)
+        : module.microcosmProgram,
+      microcosmHold: false,
+    };
+  }
   if (module.id === 'media') return { ...module, mediaMode: chooseMusicalDifferent(MUSICAL_MEDIA_MODES, module.mediaMode) };
   return module;
 }
@@ -660,6 +682,7 @@ export default function App() {
       void bridge.commandLine(`loopParam masterLevel ${settings.masterLevel}`);
       void bridge.commandLine(`loopParam overdub ${settings.overdub}`);
       void bridge.commandLine(`loopParam fade ${settings.fade}`);
+      void bridge.commandLine(`param bitcrusher tempo ${settings.bpm}`);
       settings.trackLevels.forEach((level, index) => void bridge.commandLine(`loopTrackLevel ${index} ${level}`));
     };
     const syncNativeLoop = (event: Event): void => sendSettings((event as CustomEvent<LoopSettings>).detail ?? getLoopState());
@@ -899,6 +922,10 @@ export default function App() {
           if (module.id === 'delay' && module.delayAlgorithm) nativeSync.push(nativeBridgeRef.current.commandLine(`param delay algorithm ${DELAY_ALGORITHMS.indexOf(module.delayAlgorithm)}`));
           if (module.id === 'reverb' && module.algorithm) nativeSync.push(nativeBridgeRef.current.commandLine(`param reverb algorithm ${REVERB_ALGORITHMS.indexOf(module.algorithm)}`));
           if (module.id === 'bitcrusher' && module.grainMode) nativeSync.push(nativeBridgeRef.current.commandLine(`param bitcrusher mode ${GRAIN_MODE_ORDER.indexOf(module.grainMode)}`));
+          if (module.id === 'bitcrusher') {
+            nativeSync.push(nativeBridgeRef.current.commandLine(`param bitcrusher microcosmProgram ${MICROCOSM_PROGRAM_ORDER.indexOf(module.microcosmProgram ?? 'mosaic')}`));
+            nativeSync.push(nativeBridgeRef.current.commandLine(`param bitcrusher hold ${module.microcosmHold ? 1 : 0}`));
+          }
           if (module.id === 'media' && module.mediaMode) nativeSync.push(nativeBridgeRef.current.commandLine(`param media mode ${MEDIA_MODE_ORDER.indexOf(module.mediaMode)}`));
         }
         const loop = getLoopState();
@@ -907,6 +934,7 @@ export default function App() {
         nativeSync.push(nativeBridgeRef.current.commandLine(`loopParam masterLevel ${loop.masterLevel}`));
         nativeSync.push(nativeBridgeRef.current.commandLine(`loopParam overdub ${loop.overdub}`));
         nativeSync.push(nativeBridgeRef.current.commandLine(`loopParam fade ${loop.fade}`));
+        nativeSync.push(nativeBridgeRef.current.commandLine(`param bitcrusher tempo ${loop.bpm}`));
         loop.trackLevels.forEach((level, index) => nativeSync.push(nativeBridgeRef.current.commandLine(`loopTrackLevel ${index} ${level}`)));
         nativeSync.push(nativeBridgeRef.current.commandLine(`order ${serialOrderFromRack({ A: railAOrder, B: railBOrder, C: railCOrder }).join(' ')}`));
         await Promise.all(nativeSync);
@@ -1344,11 +1372,30 @@ export default function App() {
   }
 
   function updateGrainMode(mode: GrainMode): void {
-    setModules((current) => current.map((module) => module.id === 'bitcrusher' ? { ...module, grainMode: mode } : module));
+    setModules((current) => current.map((module) => module.id === 'bitcrusher' ? { ...module, grainMode: mode, microcosmHold: mode === 'microcosm' ? module.microcosmHold : false } : module));
     const index = GRAIN_MODE_ORDER.indexOf(mode);
     if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine(`param bitcrusher mode ${index}`);
     else setEffectParameterIfLoaded(engineRef.current, 'bitcrusher', 'mode', index);
+    if (mode !== 'microcosm') {
+      if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine('param bitcrusher hold 0');
+      else setEffectParameterIfLoaded(engineRef.current, 'bitcrusher', 'hold', 0);
+    }
     setMessage(`Grain changed to ${mode}.`);
+  }
+
+  function updateMicrocosmProgram(program: MicrocosmProgram): void {
+    setModules((current) => current.map((module) => module.id === 'bitcrusher' ? { ...module, microcosmProgram: program } : module));
+    const index = MICROCOSM_PROGRAM_ORDER.indexOf(program);
+    if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine(`param bitcrusher microcosmProgram ${index}`);
+    else setEffectParameterIfLoaded(engineRef.current, 'bitcrusher', 'microcosmProgram', index);
+    setMessage(`Microcosm program changed to ${program.toUpperCase()} · variations A–D remain on the Variation knob.`);
+  }
+
+  function updateMicrocosmHold(held: boolean): void {
+    setModules((current) => current.map((module) => module.id === 'bitcrusher' ? { ...module, microcosmHold: held } : module));
+    if (backendRef.current === 'native') void nativeBridgeRef.current.commandLine(`param bitcrusher hold ${held ? 1 : 0}`);
+    else setEffectParameterIfLoaded(engineRef.current, 'bitcrusher', 'hold', held ? 1 : 0);
+    setMessage(held ? 'Microcosm memory held · live input is no longer replacing the captured lattice.' : 'Microcosm memory released · live capture resumed.');
   }
 
   function updateMediaMode(mode: MediaMode): void {
@@ -1422,7 +1469,11 @@ export default function App() {
         };
       });
 
-      return { ...modeModule, parameters: nextParameters };
+      return {
+        ...modeModule,
+        parameters: nextParameters,
+        ...(modeModule.id === 'bitcrusher' ? { microcosmHold: false } : {}),
+      };
     });
 
     const sweetSpotSummary = sweetSpotsUsed.length
@@ -1464,6 +1515,10 @@ export default function App() {
           if (module.id === 'reverb' && module.algorithm) void nativeBridgeRef.current.commandLine(`param reverb algorithm ${REVERB_ALGORITHMS.indexOf(module.algorithm)}`);
           if (module.id === 'media' && module.mediaMode) void nativeBridgeRef.current.commandLine(`param media mode ${MEDIA_MODE_ORDER.indexOf(module.mediaMode)}`);
           if (module.id === 'bitcrusher' && module.grainMode) void nativeBridgeRef.current.commandLine(`param bitcrusher mode ${GRAIN_MODE_ORDER.indexOf(module.grainMode)}`);
+          if (module.id === 'bitcrusher') {
+            void nativeBridgeRef.current.commandLine(`param bitcrusher microcosmProgram ${MICROCOSM_PROGRAM_ORDER.indexOf(module.microcosmProgram ?? 'mosaic')}`);
+            void nativeBridgeRef.current.commandLine('param bitcrusher hold 0');
+          }
           for (const parameter of module.parameters)
             void nativeBridgeRef.current.commandLine(`param ${module.id} ${parameter.id} ${toDspParameterValue(module.id, parameter.id, parameter.value)}`);
         }
@@ -1503,6 +1558,8 @@ export default function App() {
         }
         if (module.id === 'bitcrusher' && module.grainMode) {
           setEffectParameterIfLoaded(engine, 'bitcrusher', 'mode', GRAIN_MODE_ORDER.indexOf(module.grainMode));
+          setEffectParameterIfLoaded(engine, 'bitcrusher', 'microcosmProgram', MICROCOSM_PROGRAM_ORDER.indexOf(module.microcosmProgram ?? 'mosaic'));
+          setEffectParameterIfLoaded(engine, 'bitcrusher', 'hold', 0);
         }
 
         for (const parameter of module.parameters) {
@@ -2069,6 +2126,8 @@ export default function App() {
                           onEmberModeChange={updateEmberMode}
                           onDriftModeChange={updateDriftMode}
                           onGrainModeChange={updateGrainMode}
+                          onMicrocosmProgramChange={updateMicrocosmProgram}
+                          onMicrocosmHoldChange={updateMicrocosmHold}
                           visualState={visualState}
                           {...routingProps}
                         />
@@ -2233,6 +2292,14 @@ function syncModuleParameters(
         'mode',
         GRAIN_MODE_ORDER.indexOf(module.grainMode)
       );
+      setEffectParameterIfLoaded(
+        engine,
+        'bitcrusher',
+        'microcosmProgram',
+        MICROCOSM_PROGRAM_ORDER.indexOf(module.microcosmProgram ?? 'mosaic')
+      );
+      setEffectParameterIfLoaded(engine, 'bitcrusher', 'tempo', getLoopState().bpm);
+      setEffectParameterIfLoaded(engine, 'bitcrusher', 'hold', module.microcosmHold ? 1 : 0);
     }
     for (const parameter of module.parameters) {
       setEffectParameterIfLoaded(

@@ -30,6 +30,13 @@
 .rail-modules>.effect-module,.rail-modules>.rail-c-module{width:100%!important;max-width:none!important;min-width:0!important;height:100%!important;box-sizing:border-box;justify-self:stretch;align-self:stretch}
 .module-synth{--module-accent: #7de8ff}
 .module-synth .module-header{grid-template-columns:minmax(62px,.72fr) minmax(0,3.28fr) 34px;gap:6px}
+.module-bitcrusher .module-header{grid-template-columns:minmax(62px,.72fr) minmax(0,3.28fr) 34px;gap:6px}
+.module-bitcrusher .module-header-control{width:100%;max-width:none}
+.grain-header-controls{display:grid;grid-template-columns:minmax(0,1fr);gap:4px;width:100%;min-width:0}
+.grain-header-controls.is-microcosm{grid-template-columns:minmax(0,1.2fr) minmax(0,.72fr) 38px}
+.module-header-control .grain-header-controls .algorithm-selector,.module-header-control .grain-header-controls select{width:100%;min-width:0;height:24px;min-height:24px;padding:0 16px 0 5px;font-size:.44rem}
+.microcosm-hold{width:38px;height:24px;min-height:24px;padding:0 3px;border:1px solid #31584b;border-radius:3px;color:#76a996;background:#07130f;font:800 .42rem/1 var(--mono);letter-spacing:.04em}
+.microcosm-hold.active{border-color:var(--module-accent);color:#eafff5;background:#3ab5803d;box-shadow:0 0 7px #87f4c340}
 .module-synth .module-header-control{width:100%;max-width:none}
 .synth-header-controls{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:6px;width:100%;min-width:0}
 .synth-transport-controls{display:flex;align-items:center;gap:4px;min-width:0}

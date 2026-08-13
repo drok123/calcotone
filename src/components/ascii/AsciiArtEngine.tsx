@@ -4,6 +4,7 @@ import type { ModuleState } from '../../ui/types';
 import { getLatestVisualAudioState, type VisualAudioState } from '../../visual/VisualEngine';
 import { subscribeViewportAnimation, type ViewportRenderCallback } from '../effects/viewportScheduler';
 import { canvasPixelRatio, getDisplayProfile } from '../../ui/displayProfile';
+import { getLoopState } from '../signal/loopStore';
 import './AsciiArtEngine.css';
 
 type AsciiKind = 'module' | 'landscape';
@@ -153,6 +154,17 @@ export const MODE_ART_VARIANTS = {
   'bitcrusher:arbhar': { motif: 'shelves', scale: 6.0, amount: 0.41, bias: 0.75 },
   'bitcrusher:particle2': { motif: 'scatter', scale: 11.0, amount: 0.39, bias: 0.83 },
   'bitcrusher:microcosm': { motif: 'repeat', scale: 8.0, amount: 0.41, bias: 0.91 },
+  'bitcrusher:microcosm-mosaic': { motif: 'blocks', scale: 8.0, amount: 0.43, bias: 0.91 },
+  'bitcrusher:microcosm-seq': { motif: 'steps', scale: 9.0, amount: 0.43, bias: 0.99 },
+  'bitcrusher:microcosm-glide': { motif: 'waves', scale: 6.0, amount: 0.44, bias: 1.07 },
+  'bitcrusher:microcosm-haze': { motif: 'diffuse', scale: 5.0, amount: 0.45, bias: 1.15 },
+  'bitcrusher:microcosm-tunnel': { motif: 'orbit', scale: 7.0, amount: 0.45, bias: 1.23 },
+  'bitcrusher:microcosm-strum': { motif: 'voices', scale: 8.0, amount: 0.44, bias: 1.31 },
+  'bitcrusher:microcosm-blocks': { motif: 'blocks', scale: 11.0, amount: 0.44, bias: 1.39 },
+  'bitcrusher:microcosm-interrupt': { motif: 'fracture', scale: 9.0, amount: 0.46, bias: 1.47 },
+  'bitcrusher:microcosm-arp': { motif: 'prism', scale: 9.0, amount: 0.45, bias: 1.55 },
+  'bitcrusher:microcosm-pattern': { motif: 'repeat', scale: 10.0, amount: 0.45, bias: 1.63 },
+  'bitcrusher:microcosm-warp': { motif: 'void', scale: 6.0, amount: 0.46, bias: 1.71 },
 
   'media:cassette': { motif: 'cassette', scale: 5.0, amount: 0.41, bias: 0.02 },
   'media:reel': { motif: 'reels', scale: 5.0, amount: 0.40, bias: 0.10 },
@@ -172,6 +184,13 @@ export const MODE_ART_VARIANTS = {
 
 const TAU = Math.PI * 2;
 export const ASCII_LOOP_SECONDS = 18;
+const MICROCOSM_VISUAL_PATTERNS = [
+  [0, 1, 3, 2, 5, 3, 7, 4],
+  [0, 2, 1, 4, 3, 7, 5, 6],
+  [0, 0, 4, 1, 6, 2, 7, 3],
+  [0, 3, 6, 1, 4, 7, 2, 5],
+] as const;
+const MICROCOSM_VISUAL_DIVISIONS = [32, 24, 16, 12, 8, 6, 4, 2] as const;
 
 export function loopAngleForTime(time: number): number {
   const wrapped = ((time % ASCII_LOOP_SECONDS) + ASCII_LOOP_SECONDS) % ASCII_LOOP_SECONDS;
@@ -216,7 +235,9 @@ function moduleMode(module: ModuleState): string {
     case 'chorus': return module.driftMode ?? 'chorus';
     case 'delay': return module.delayAlgorithm ?? 'tape';
     case 'reverb': return module.algorithm ?? 'hall';
-    case 'bitcrusher': return module.grainMode ?? 'smear';
+    case 'bitcrusher': return module.grainMode === 'microcosm'
+      ? `microcosm-${module.microcosmProgram ?? 'mosaic'}`
+      : module.grainMode ?? 'smear';
     case 'media': return module.mediaMode ?? 'cassette';
     default: return 'default';
   }
@@ -797,6 +818,79 @@ function createGrainSampler(
   };
 }
 
+function createMicrocosmSampler(
+  fallbackPhase: number,
+  module: ModuleState,
+  audio: VisualAudioState,
+): LogoSampler {
+  const program = module.microcosmProgram ?? 'mosaic';
+  const motion = module.parameters.find((parameter) => parameter.id === 'chaos')?.value ?? 0;
+  const variation = Math.min(3, Math.floor(clamp01(motion) * 4));
+  const bits = module.parameters.find((parameter) => parameter.id === 'bits')?.value ?? 13;
+  const window = clamp01((bits - 4) / 12);
+  const divisionIndex = Math.min(7, Math.floor(window * 8));
+  const division = MICROCOSM_VISUAL_DIVISIONS[divisionIndex]!;
+  const bpm = getLoopState().bpm;
+  const clock = audio.time > 0
+    ? audio.time * bpm / 60 * Math.max(0.5, division / 4)
+    : fallbackPhase / TAU * 8;
+  const stepPhase = ((clock % 8) + 8) % 8;
+  const pattern = MICROCOSM_VISUAL_PATTERNS[variation];
+  const activeRouteIndex = Math.floor(stepPhase) % pattern.length;
+  const activeNode = pattern[activeRouteIndex]!;
+  const nextNode = pattern[(activeRouteIndex + 1) % pattern.length]!;
+  const travel = stepPhase - Math.floor(stepPhase);
+  const nodePoints: readonly LogoPoint[] = [
+    [-0.78, -0.36], [-0.26, -0.36], [0.26, -0.36], [0.78, -0.36],
+    [-0.78, 0.36], [-0.26, 0.36], [0.26, 0.36], [0.78, 0.36],
+  ];
+  const route = pattern.map((index) => nodePoints[index]!);
+  const segments: LogoSegment[] = [];
+  for (let index = 0; index < route.length; index += 1) {
+    const from = route[index]!;
+    const to = route[(index + 1) % route.length]!;
+    if (program !== 'interrupt' || index % 3 !== variation % 3) {
+      segments.push([from[0], from[1], to[0], to[1]]);
+    }
+  }
+  if (program === 'haze' || program === 'tunnel' || program === 'warp') {
+    segments.push([-0.78, -0.36, 0.78, 0.36], [-0.78, 0.36, 0.78, -0.36]);
+  } else if (program === 'strum') {
+    for (const point of nodePoints) segments.push([0, 0, point[0], point[1]]);
+  } else if (program === 'blocks') {
+    segments.splice(0, segments.length,
+      [-0.78, -0.36, -0.26, -0.36], [0.26, -0.36, 0.78, -0.36],
+      [-0.78, 0.36, -0.26, 0.36], [0.26, 0.36, 0.78, 0.36]);
+  } else if (program === 'pattern' || program === 'seq') {
+    segments.push([-0.78, 0, 0.78, 0]);
+  }
+  const activePoint = nodePoints[activeNode]!;
+  const targetPoint = nodePoints[nextNode]!;
+  const traveller: LogoPoint = [
+    activePoint[0] + (targetPoint[0] - activePoint[0]) * travel,
+    activePoint[1] + (targetPoint[1] - activePoint[1]) * travel,
+  ];
+  const haloRadius = program === 'tunnel' ? 0.88 : program === 'warp' ? 0.72 : 0;
+
+  return (x, y) => {
+    if (Math.abs(x) > 1.02 || Math.abs(y) > 0.94) return 0;
+    let intensity = sampleSegments(x, y, segments, program === 'haze' ? 0.036 : 0.025);
+    for (let index = 0; index < nodePoints.length; index += 1) {
+      const radius = index === activeNode ? 0.085 + audio.transient * 0.018 : 0.048;
+      const node = strokeIntensity(pointDistance(x, y, nodePoints[index]!), radius);
+      intensity = Math.max(intensity, node * (index === activeNode ? 1 : 0.62));
+    }
+    const packet = strokeIntensity(pointDistance(x, y, traveller), 0.068 + audio.level * 0.012);
+    const halo = haloRadius > 0
+      ? strokeIntensity(Math.abs(Math.hypot(x, y) - haloRadius), 0.026) * (0.44 + audio.low * 0.22)
+      : 0;
+    const held = module.microcosmHold
+      ? strokeIntensity(Math.abs(Math.max(Math.abs(x) / 0.94, Math.abs(y) / 0.64) - 1), 0.025) * 0.72
+      : 0;
+    return Math.max(intensity * 0.76, packet, halo, held);
+  };
+}
+
 function createArtifactSampler(
   phase: number,
   detail: number,
@@ -882,7 +976,9 @@ function createModuleLogoSampler(
       emblem = createAtmosSampler(phase, detail, audio);
       break;
     case 'bitcrusher':
-      emblem = createGrainSampler(phase, detail, audio);
+      emblem = module.grainMode === 'microcosm'
+        ? createMicrocosmSampler(phase, module, audio)
+        : createGrainSampler(phase, detail, audio);
       break;
     case 'media':
       emblem = createArtifactSampler(phase, detail, audio);

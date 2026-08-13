@@ -4,6 +4,7 @@ const read = (path) => fs.readFileSync(path, 'utf8').replace(/\r\n?/g, '\n');
 const app = read('src/App.tsx');
 const css = read('src/App.css');
 const effectModule = read('src/components/effects/EffectModule.tsx');
+const asciiArt = read('src/components/ascii/AsciiArtEngine.tsx');
 const railC = read('src/components/effects/RailCModules.tsx');
 const spectrum = read('src/visual/NativeVisualSpectrum.ts');
 const host = read('native/src/wasapi_host.cpp');
@@ -126,6 +127,16 @@ check(!app.includes('applyXYAssignments'), 'retired-xy', 'global XY assignment e
 check(!app.includes('xyAssignments'), 'retired-xy', 'global XY assignment state removed');
 check(!app.includes('modulatedValue'), 'retired-xy', 'global XY native modulation branch removed');
 check(app.includes('commandLine(`param ${moduleId} ${parameterId}'), 'native-parameters', 'generic native parameter command preserved');
+
+check(effectModule.includes('aria-label="Microcosm program"'), 'microcosm', 'shared Windows faceplate program selector');
+check(effectModule.includes('aria-pressed={module.microcosmHold === true}'), 'microcosm', 'shared Windows faceplate HOLD control');
+check(app.includes('param bitcrusher microcosmProgram'), 'microcosm', 'Windows program command route');
+check(app.includes('param bitcrusher tempo'), 'microcosm', 'Windows Loop-BPM command route');
+check(app.includes('param bitcrusher hold'), 'microcosm', 'Windows HOLD command route');
+check(nativeRackTemplate.includes('name == "microcosmProgram" || name == "tempo" || name == "hold"'), 'microcosm', 'live Windows rack hidden-control delegation');
+check(grainNative.includes('240.F / (tempo * kMicrocosmDivisions[division_index])'), 'microcosm', 'native tempo subdivision engine');
+check(grainNative.includes('if (!memory_held)'), 'microcosm', 'native captured-memory HOLD gate');
+check(asciiArt.includes('createMicrocosmSampler'), 'microcosm', 'tempo-reactive Microcosm viewport');
 
 for (const parameter of ['console', 'tube', 'chainOrder']) {
   check(!app.includes(`id: '${parameter}'`), 'artifact', `${parameter} UI state removed`);

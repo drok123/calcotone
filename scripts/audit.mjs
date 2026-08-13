@@ -207,10 +207,11 @@ requireText(registry, "case 'phase90': case 'instantphaser': case 'schulte': cas
 requireText(grainProcessor, 'this.voices = Array.from({ length: 8 }', 'Grain bounded live-memory voice pool');
 requireText(grainProcessor, 'this.processSlice(window, density, pitch, motion, memory)', 'Grain slice mechanism');
 requireText(grainProcessor, 'this.processFreeze(window, density, pitch, motion, memory, transient)', 'Grain freeze mechanism');
-requireText(grainProcessor, 'applyHardwareCharacter(mode, processedL, processedR, window, density, motion, memory)', 'Grain hardware model stage');
-for (const model of ['Clouds study','Beads study','Morphagene study','Arbhar study','Particle 2 study','Microcosm study']) {
+requireText(grainProcessor, 'applyHardwareCharacter(', 'Grain hardware model stage');
+for (const model of ['Clouds study','Beads study','Morphagene study','Arbhar study','Particle 2 study']) {
   requireText(grainProcessor, model, `Grain ${model}`);
 }
+requireText(grainProcessor, 'MICROCOSM_VARIATION_PATTERNS', 'Grain Microcosm 44-configuration engine');
 forbidText(grainProcessor, 'processHardware(', 'Grain sampler hardware path');
 forbidText(grainProcessor, 'quantizeNonlinear12', 'Grain converter quantization');
 requireText(emberDigitalCaptureProcessor, 'quantizeNonlinear12', 'Ember MPC60 nonlinear converter study');

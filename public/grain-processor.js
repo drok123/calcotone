@@ -42,8 +42,17 @@ const PRISM_INTERVAL_SETS = [
 const BEADS_CLOCK_STEPS = [3, 4, 6, 8, 10, 12, 14, 16];
 const MORPHAGENE_INTERVALS = [0, 0, 7, -5, 12, -12, 19, -19];
 const MICROCOSM_DIVISIONS = [32, 24, 16, 12, 8, 6, 4, 2];
-const MICROCOSM_PATTERN = [0, 1, 3, 2, 5, 3, 7, 4];
+const MICROCOSM_VARIATION_PATTERNS = [
+  [0, 1, 3, 2, 5, 3, 7, 4],
+  [0, 2, 1, 4, 3, 7, 5, 6],
+  [0, 0, 4, 1, 6, 2, 7, 3],
+  [0, 3, 6, 1, 4, 7, 2, 5],
+];
 const MICROCOSM_INTERVAL_SETS = [[0], [0, 7], [0, 7, 12], [0, 5, 7, 12], [0, 7, 12, 19]];
+const MICROCOSM_RATE_SCALES = [1, 1, 0.88, 2.05, 0.48, 2.2, 1.16, 0.82, 1.72, 1, 0.66];
+const MICROCOSM_FEEDBACK_CEILINGS = [0.34, 0.32, 0.28, 0.42, 0.48, 0.26, 0.18, 0.16, 0.28, 0.38, 0.44];
+const MICROCOSM_DRY_ANCHORS = [0.18, 0.20, 0.18, 0.10, 0.12, 0.22, 0.18, 0.08, 0.18, 0.16, 0.12];
+const MICROCOSM_WET_GAINS = [1.18, 1.14, 1.16, 1.28, 1.24, 1.12, 1.16, 1.22, 1.18, 1.20, 1.26];
 
 class CalcotoneGrainProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
@@ -56,6 +65,9 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       { name: 'pitch', defaultValue: 0.38, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
       { name: 'chaos', defaultValue: 0.16, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
       { name: 'bloom', defaultValue: 0.36, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
+      { name: 'microcosmProgram', defaultValue: 0, minValue: 0, maxValue: 10, automationRate: 'k-rate' },
+      { name: 'tempo', defaultValue: 120, minValue: 30, maxValue: 300, automationRate: 'k-rate' },
+      { name: 'hold', defaultValue: 0, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
     ];
   }
 
@@ -76,6 +88,7 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       length: 0,
       read: 0,
       step: 1,
+      stepDelta: 0,
       gain: 0,
       pan: 0,
       panDrift: 0,
@@ -107,6 +120,7 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     this.makeupGain = 1;
 
     this.previousMode = -1;
+    this.previousMicrocosmProgram = -1;
     this.sliceStart = 0;
     this.sliceLength = 2048;
     this.slicePhase = 0;
@@ -192,6 +206,13 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       this.freezeReady = false;
       this.freezeReady = this.captureFreeze(window, density, pitch);
     }
+  }
+
+  resetMicrocosmProgram(program) {
+    if (this.previousMicrocosmProgram === program) return;
+    this.previousMicrocosmProgram = program;
+    this.spawnCounter = 0;
+    this.spawnSequence = 0;
   }
 
   captureSlice(window, density, pitch, motion) {
@@ -280,7 +301,7 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     return this.specialResult;
   }
 
-  spawnGranularVoice(mode, window, density, pitch, motion, memory) {
+  spawnGranularVoice(mode, window, density, pitch, motion, memory, microcosmProgram, tempo, variation) {
     let voice = null;
     for (let index = 0; index < this.effectiveVoiceLimit; index += 1) {
       if (!this.voices[index].active) {
@@ -298,6 +319,7 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     let panDrift = (this.random() * 2 - 1) * motion * 0.14;
     let gain = 0.48 + density * 0.18;
     let tone = 0.34 + this.random() * 0.44;
+    let glideSemitones = 0;
 
     if (mode === 0) {
       // Mosaic: medium fragments are pulled from quantized memory cells so the
@@ -408,19 +430,102 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       gain = 0.46 + density * 0.18;
       tone = 0.28 + (1 - memory) * 0.48;
     } else if (mode === 11) {
-      // Microcosm study: deterministic subdivision patterns address a bank of
-      // micro-loops, creating repeatable cascades instead of random glitch.
       const division = MICROCOSM_DIVISIONS[Math.min(MICROCOSM_DIVISIONS.length - 1, Math.floor(window * MICROCOSM_DIVISIONS.length))];
-      const pulseSeconds = 2 / division;
-      historySeconds = pulseSeconds * (1 + MICROCOSM_PATTERN[this.spawnSequence % MICROCOSM_PATTERN.length]) * (1 + memory * 0.65);
-      grainMs = Math.max(28, pulseSeconds * 1000 * (0.46 + density * 0.78));
+      const pulseSeconds = 240 / (tempo * division);
+      const pattern = MICROCOSM_VARIATION_PATTERNS[variation];
+      const patternStep = pattern[this.spawnSequence % pattern.length];
       const set = MICROCOSM_INTERVAL_SETS[Math.min(MICROCOSM_INTERVAL_SETS.length - 1, Math.floor(pitch * MICROCOSM_INTERVAL_SETS.length))];
-      semitones = set[this.spawnSequence % set.length] * (this.spawnSequence % 6 === 5 ? -1 : 1);
-      reverseChance = motion * 0.26;
+      const interval = set[this.spawnSequence % set.length];
+      historySeconds = pulseSeconds * (1 + patternStep) * (1 + memory * 0.65);
+      grainMs = Math.max(28, pulseSeconds * 1000 * (0.46 + density * 0.78));
+      semitones = interval * (this.spawnSequence % 6 === 5 ? -1 : 1);
+      reverseChance = variation * 0.06;
       pan = Math.sin(this.spawnSequence * Math.PI * 0.5) * (0.38 + density * 0.42);
       panDrift = 0;
       gain = 0.39 + density * 0.14;
       tone = 0.40 + this.random() * 0.38;
+
+      if (microcosmProgram === 1) {
+        // Seq: clipped rhythmic slices traverse each variation's fixed order.
+        grainMs = Math.max(22, pulseSeconds * 1000 * (0.28 + density * 0.42));
+        historySeconds = pulseSeconds * (1 + pattern[(this.spawnSequence * 3) % pattern.length]);
+        pan = ((this.spawnSequence % 4) - 1.5) * 0.34;
+        tone = 0.62;
+      } else if (microcosmProgram === 2) {
+        // Glide: the loop continuously bends toward a variation-sized interval.
+        grainMs = Math.max(80, pulseSeconds * 1000 * (1.4 + density * 1.8));
+        glideSemitones = (this.spawnSequence % 2 === 0 ? 1 : -1) * (variation + 1) * 3.5;
+        reverseChance = 0;
+        panDrift = 0.16 + variation * 0.05;
+      } else if (microcosmProgram === 3) {
+        // Haze: long overlapping grains and dark diffusion erase hard edges.
+        grainMs = Math.max(180, pulseSeconds * 1000 * (3.2 + memory * 4.8));
+        historySeconds *= 0.72 + this.random() * 0.46;
+        semitones *= 0.5;
+        reverseChance = 0.04;
+        pan *= 0.46;
+        panDrift = 0.08 + variation * 0.025;
+        gain = 0.29 + density * 0.10;
+        tone = 0.12 + variation * 0.05;
+      } else if (microcosmProgram === 4) {
+        // Tunnel: a slow orbit circles one harmonically related memory cell.
+        grainMs = Math.max(260, pulseSeconds * 1000 * (5 + memory * 6));
+        historySeconds = pulseSeconds * (2 + (patternStep % 4)) * (1.4 + memory);
+        reverseChance = this.spawnSequence % 4 === 3 ? 1 : 0;
+        pan = Math.sin(this.spawnSequence * 1.047) * 0.82;
+        panDrift = 0.18 + variation * 0.04;
+        gain = 0.27 + density * 0.09;
+        tone = 0.18;
+      } else if (microcosmProgram === 5) {
+        // Strum: short pitched grains fan out like a plucked sample chord.
+        grainMs = 34 + pulseSeconds * 1000 * 0.36;
+        historySeconds = pulseSeconds * (1 + (this.spawnSequence % (3 + variation)));
+        semitones = interval + (this.spawnSequence % 3) * 12;
+        pan = ((this.spawnSequence % 5) - 2) * 0.38;
+        gain = 0.46 + density * 0.14;
+        tone = 0.78;
+      } else if (microcosmProgram === 6) {
+        // Blocks: hard, repeatable memory tiles with restrained feedback.
+        grainMs = Math.max(24, pulseSeconds * 1000 * (0.52 + variation * 0.12));
+        historySeconds = pulseSeconds * (1 + Math.floor(patternStep / 2));
+        semitones = variation >= 2 && this.spawnSequence % 4 === 3 ? 12 : 0;
+        reverseChance = variation * 0.12;
+        pan = this.spawnSequence % 2 === 0 ? -0.54 : 0.54;
+        tone = 0.84;
+      } else if (microcosmProgram === 7) {
+        // Interrupt: longer replacement fragments create rhythmic drop-outs.
+        grainMs = Math.max(42, pulseSeconds * 1000 * (0.9 + variation * 0.22));
+        historySeconds = pulseSeconds * (2 + patternStep);
+        semitones = variation === 3 && this.spawnSequence % 4 === 0 ? -12 : 0;
+        reverseChance = variation * 0.14;
+        pan = 0;
+        gain = 0.64;
+        tone = 0.72;
+      } else if (microcosmProgram === 8) {
+        // Arp: the Shape set becomes a deterministic sample arpeggio.
+        grainMs = Math.max(30, pulseSeconds * 1000 * (0.42 + density * 0.38));
+        semitones = interval + (variation === 3 && this.spawnSequence % 4 === 3 ? 12 : 0);
+        historySeconds = pulseSeconds * (1 + patternStep % 4);
+        pan = Math.sin(this.spawnSequence * 2.399) * 0.76;
+        gain = 0.48;
+        tone = 0.82;
+      } else if (microcosmProgram === 9) {
+        // Pattern: several tap lengths interlock into a tempo-locked delay phrase.
+        grainMs = Math.max(36, pulseSeconds * 1000 * (0.62 + density * 0.52));
+        historySeconds = pulseSeconds * (1 + patternStep) * (1 + (this.spawnSequence % 3) * 0.5);
+        reverseChance = variation === 3 ? 0.18 : 0;
+        pan = Math.sin(this.spawnSequence * 1.571) * 0.68;
+        tone = 0.56;
+      } else if (microcosmProgram === 10) {
+        // Warp: long reverse-prone loops drift in pitch through a dark halo.
+        grainMs = Math.max(160, pulseSeconds * 1000 * (2.4 + memory * 4.2));
+        historySeconds *= 1.35 + memory * 0.8;
+        reverseChance = 0.48 + variation * 0.12;
+        glideSemitones = (this.spawnSequence % 2 === 0 ? -1 : 1) * (variation + 1) * 2;
+        panDrift = 0.22;
+        gain = 0.31 + density * 0.08;
+        tone = 0.10 + (1 - memory) * 0.18;
+      }
     }
 
     historySeconds = Math.max(0.012, Math.min(3.75, historySeconds));
@@ -432,6 +537,9 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     voice.length = length;
     voice.read = (this.writeIndex - Math.floor(sampleRate * historySeconds) + this.bufferSize) & this.mask;
     voice.step = step;
+    voice.stepDelta = glideSemitones === 0
+      ? 0
+      : (Math.sign(step) * this.semitoneStep(semitones + glideSemitones) - step) / length;
     voice.gain = gain;
     voice.pan = pan;
     voice.panDrift = panDrift;
@@ -482,6 +590,7 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       wetL += (sampleL * 0.90 + sampleR * 0.10) * gain * leftGain;
       wetR += (sampleR * 0.90 + sampleL * 0.10) * gain * rightGain;
       voice.read = this.wrap(voice.read + voice.step);
+      voice.step += voice.stepDelta;
       voice.phase += 1;
       active += 1;
     }
@@ -507,7 +616,7 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     }
   }
 
-  feedbackForMode(mode, memory) {
+  feedbackForMode(mode, memory, microcosmProgram) {
     switch (mode) {
       case 2: return memory * 0.24;
       case 6: return memory * 0.30;
@@ -515,22 +624,25 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       case 8: return memory * 0.18;
       case 9: return memory * 0.20;
       case 10: return memory * 0.48;
-      case 11: return memory * 0.34;
+      case 11: return memory * MICROCOSM_FEEDBACK_CEILINGS[microcosmProgram];
       default: return 0;
     }
   }
 
-  transientAllowsSpawn(mode, transient, density, motion) {
+  transientAllowsSpawn(mode, transient, density, motion, microcosmProgram) {
     if (mode === 1) {
       return transient > 0.0018 + (1 - density) * 0.004 || this.random() < 0.05 + motion * 0.10;
     }
     if (mode === 9) {
       return transient > 0.0012 + (1 - density) * 0.003 || this.random() < 0.10 + motion * 0.18;
     }
+    if (mode === 11 && microcosmProgram === 5) {
+      return transient > 0.001 + (1 - density) * 0.0025 || this.random() < 0.12 + density * 0.12;
+    }
     return true;
   }
 
-  applyHardwareCharacter(mode, left, right, window, density, motion, memory) {
+  applyHardwareCharacter(mode, left, right, window, density, motion, memory, microcosmProgram, variation) {
     let outputL = left;
     let outputR = right;
     if (mode === 6) {
@@ -576,16 +688,20 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       outputL = left * 0.38 + this.hardwareL * 0.72;
       outputR = right * 0.38 + this.hardwareR * 0.72;
     } else if (mode === 11) {
-      // Microcosm: two gentle integration stages bind the subdivision taps
-      // into a repeating micro-loop cascade.
-      const first = 0.24 + (1 - window) * 0.20;
-      const second = 0.08 + (1 - memory) * 0.14;
+      // The diffuse programs accumulate; glitch programs retain their edges.
+      const diffuse = microcosmProgram === 3 || microcosmProgram === 4 || microcosmProgram === 10;
+      const glitch = microcosmProgram >= 5 && microcosmProgram <= 8;
+      const first = diffuse ? 0.10 + (1 - window) * 0.12 : glitch ? 0.52 : 0.24 + (1 - window) * 0.20;
+      const second = diffuse ? 0.025 + (1 - memory) * 0.055 : 0.08 + (1 - memory) * 0.14;
       this.hardwareL += (left - this.hardwareL) * first;
       this.hardwareR += (right - this.hardwareR) * first;
-      this.hardwareAuxL += (this.hardwareL - this.hardwareAuxL) * second;
-      this.hardwareAuxR += (this.hardwareR - this.hardwareAuxR) * second;
-      outputL = left * 0.28 + this.hardwareL * 0.46 + this.hardwareAuxL * (0.34 + memory * 0.12);
-      outputR = right * 0.28 + this.hardwareR * 0.46 + this.hardwareAuxR * (0.34 + memory * 0.12);
+      this.hardwareAuxL += (this.hardwareR - this.hardwareAuxL) * second;
+      this.hardwareAuxR += (this.hardwareL - this.hardwareAuxR) * second;
+      const direct = glitch ? 0.62 : diffuse ? 0.12 : 0.28;
+      const halo = diffuse ? 0.62 + memory * 0.18 : 0.34 + memory * 0.12;
+      const shimmer = variation * 0.018;
+      outputL = left * direct + this.hardwareL * (0.46 - shimmer) + this.hardwareAuxL * halo;
+      outputR = right * direct + this.hardwareR * (0.46 - shimmer) + this.hardwareAuxR * halo;
     }
     this.hardwareResult[0] = outputL;
     this.hardwareResult[1] = outputR;
@@ -622,6 +738,10 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     const targetPitch = Math.max(0, Math.min(1, parameters.pitch[0]));
     const targetMotion = Math.max(0, Math.min(1, parameters.chaos[0]));
     const targetMemory = Math.max(0, Math.min(1, parameters.bloom[0]));
+    const microcosmProgram = Math.max(0, Math.min(10, Math.round(parameters.microcosmProgram?.[0] ?? 0)));
+    const tempo = Math.max(30, Math.min(300, parameters.tempo?.[0] ?? 120));
+    const hold = (parameters.hold?.[0] ?? 0) >= 0.5;
+    const variation = Math.min(3, Math.floor(targetMotion * 4));
     this.smoothedDensity += (targetDensity - this.smoothedDensity) * 0.08;
     this.smoothedPitch += (targetPitch - this.smoothedPitch) * 0.06;
     this.smoothedMotion += (targetMotion - this.smoothedMotion) * 0.06;
@@ -631,9 +751,17 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
     const motion = this.smoothedMotion;
     const memory = this.smoothedMemory;
     this.resetModeState(mode, window, density, pitch, motion);
+    if (mode === 11) this.resetMicrocosmProgram(microcosmProgram);
+    else this.previousMicrocosmProgram = -1;
 
     const spawnRate = this.spawnRateForMode(mode, density, window);
-    const spawnInterval = Math.max(24, Math.floor(sampleRate / spawnRate));
+    let spawnInterval = Math.max(24, Math.floor(sampleRate / spawnRate));
+    if (mode === 11) {
+      const division = MICROCOSM_DIVISIONS[Math.min(MICROCOSM_DIVISIONS.length - 1, Math.floor(window * MICROCOSM_DIVISIONS.length))];
+      const pulseFrames = sampleRate * 240 / (tempo * division);
+      const activity = 0.75 + density * 2.25;
+      spawnInterval = Math.max(24, Math.floor(pulseFrames / (MICROCOSM_RATE_SCALES[microcosmProgram] * activity)));
+    }
 
     for (let sample = 0; sample < outL.length; sample += 1) {
       let dryL = inL ? inL[sample] : 0;
@@ -645,10 +773,13 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       this.previousEnvelope = this.inputEnvelope;
       this.inputEnvelope += (peak - this.inputEnvelope) * (peak > this.inputEnvelope ? 0.075 : 0.0018);
       const transient = Math.max(0, this.inputEnvelope - this.previousEnvelope);
-      const feedback = this.feedbackForMode(mode, memory);
-      this.left[this.writeIndex] = Math.max(-1.2, Math.min(1.2, dryL + this.outputL * feedback));
-      this.right[this.writeIndex] = Math.max(-1.2, Math.min(1.2, dryR + this.outputR * feedback));
-      this.writtenSamples = Math.min(this.bufferSize - 1, this.writtenSamples + 1);
+      const feedback = this.feedbackForMode(mode, memory, microcosmProgram);
+      const memoryHeld = mode === 11 && hold;
+      if (!memoryHeld) {
+        this.left[this.writeIndex] = Math.max(-1.2, Math.min(1.2, dryL + this.outputL * feedback));
+        this.right[this.writeIndex] = Math.max(-1.2, Math.min(1.2, dryR + this.outputR * feedback));
+        this.writtenSamples = Math.min(this.bufferSize - 1, this.writtenSamples + 1);
+      }
 
       let processedL = 0;
       let processedR = 0;
@@ -677,8 +808,10 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       } else {
         this.spawnCounter -= 1;
         if (this.spawnCounter <= 0) {
-          const transientReady = this.transientAllowsSpawn(mode, transient, density, motion);
-          const spawned = transientReady && this.spawnGranularVoice(mode, window, density, pitch, motion, memory);
+          const transientReady = this.transientAllowsSpawn(mode, transient, density, motion, microcosmProgram);
+          const spawned = transientReady && this.spawnGranularVoice(
+            mode, window, density, pitch, motion, memory, microcosmProgram, tempo, variation,
+          );
           const intervalVariation = mode === 11
             ? (this.spawnSequence % 4 === 0 ? -0.28 : this.spawnSequence % 4 === 3 ? 0.22 : 0)
             : (this.random() - 0.5) * motion;
@@ -692,10 +825,14 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
         const normalization = active > 1 ? 1 / Math.sqrt(0.72 + active * 0.38) : 1;
         const cohesion = mode === 0 ? memory : 0;
         const body = mode === 3 ? memory : 0;
-        processedL = dryL * Math.max(0.12, GRAIN_DRY_ANCHORS[mode] - cohesion * 0.10)
-          + rendered[0] * normalization * (GRAIN_WET_GAINS[mode] + cohesion * 0.12 + body * 0.10);
-        processedR = dryR * Math.max(0.12, GRAIN_DRY_ANCHORS[mode] - cohesion * 0.10)
-          + rendered[1] * normalization * (GRAIN_WET_GAINS[mode] + cohesion * 0.12 + body * 0.10);
+        const dryAnchor = mode === 11
+          ? (microcosmProgram === 7 && active < 1 ? 1 : MICROCOSM_DRY_ANCHORS[microcosmProgram])
+          : Math.max(0.12, GRAIN_DRY_ANCHORS[mode] - cohesion * 0.10);
+        const wetGain = mode === 11
+          ? MICROCOSM_WET_GAINS[microcosmProgram]
+          : GRAIN_WET_GAINS[mode] + cohesion * 0.12 + body * 0.10;
+        processedL = dryL * dryAnchor + rendered[0] * normalization * wetGain;
+        processedR = dryR * dryAnchor + rendered[1] * normalization * wetGain;
         if (mode === 2) {
           const coefficient = 0.035 + (1 - window) * 0.08;
           this.smearL += (processedL - this.smearL) * coefficient;
@@ -704,7 +841,9 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
           processedL = this.smearL * 0.84 + mid * 0.16;
           processedR = this.smearR * 0.84 + mid * 0.16;
         } else if (mode >= 6) {
-          const hardware = this.applyHardwareCharacter(mode, processedL, processedR, window, density, motion, memory);
+          const hardware = this.applyHardwareCharacter(
+            mode, processedL, processedR, window, density, motion, memory, microcosmProgram, variation,
+          );
           processedL = hardware[0];
           processedR = hardware[1];
         }
@@ -727,7 +866,7 @@ class CalcotoneGrainProcessor extends AudioWorkletProcessor {
       if (Math.abs(this.outputR) < 1e-20) this.outputR = 0;
       outL[sample] = this.outputL;
       outR[sample] = this.outputR;
-      this.writeIndex = (this.writeIndex + 1) & this.mask;
+      if (!memoryHeld) this.writeIndex = (this.writeIndex + 1) & this.mask;
     }
 
     const callbackBudgetMs = outL.length / sampleRate * 1000;

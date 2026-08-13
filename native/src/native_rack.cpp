@@ -1,5 +1,6 @@
 #include "calcotone/native_rack.hpp"
 #include "calcotone/atmos_parity_processor.hpp"
+#include "calcotone/grain_parity_processor.hpp"
 #include "calcotone/pressure_parity_processor.hpp"
 
 #include <algorithm>
@@ -189,6 +190,10 @@ struct Halo {
 // the shared module bypass/crossfade state so there is one native reverb engine.
 struct AtmosState {
   Params p{2.F, 2.4F, .52F, .42F, .74F, .18F, .13F};
+};
+
+struct GrainState {
+  Params p{2.F, 13.F, .42F, .38F, .16F, .36F, .12F};
 };
 
 struct Grain {
@@ -428,12 +433,13 @@ struct NativeRack::Impl {
   Halo halo;
   AtmosState atmos_state;
   AtmosParityProcessor atmos_parity;
-  Grain grain;
+  GrainState grain_state;
+  GrainParityProcessor grain_parity;
   Artifact artifact;
   Stomp stomp;
   std::array<float, kRackBlockFrames * 2> dry{};
   std::array<std::atomic<unsigned>, kModules> order{};
-  explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)), drift(sample_rate), halo(sample_rate), atmos_parity(sample_rate), grain(sample_rate), artifact(sample_rate) {
+  explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)), drift(sample_rate), halo(sample_rate), atmos_parity(sample_rate), grain_parity(sample_rate), artifact(sample_rate) {
     (void)shape_lut();
     for (unsigned i = 0; i < kModules; ++i) order[i].store(i);
   }
@@ -441,7 +447,7 @@ struct NativeRack::Impl {
     switch (module) {
       case RackModule::Ember: return ember.p; case RackModule::Drift: return drift.p;
       case RackModule::Halo: return halo.p; case RackModule::Atmos: return atmos_state.p;
-      case RackModule::Grain: return grain.p; case RackModule::Artifact: return artifact.p; default: return stomp.p;
+      case RackModule::Grain: return grain_state.p; case RackModule::Artifact: return artifact.p; default: return stomp.p;
     }
   }
   void run(RackModule module, float* data, std::size_t frames) noexcept {
@@ -450,7 +456,10 @@ struct NativeRack::Impl {
       case RackModule::Drift: drift.process(data, frames, sample_rate); break;
       case RackModule::Halo: halo.process(data, frames, sample_rate); break;
       case RackModule::Atmos: atmos_parity.process(data, frames); break;
-      case RackModule::Grain: grain.process(data, frames, sample_rate); break;
+      case RackModule::Grain:
+        grain_parity.set_parameter("mode", static_cast<float>(grain_state.p.current_mode()));
+        grain_parity.process(data, frames);
+        break;
       case RackModule::Artifact: artifact.process(data, frames, sample_rate); break;
       case RackModule::Stomp: stomp.process(data, frames, sample_rate); break;
       default: break;
@@ -536,6 +545,9 @@ void NativeRack::process_module(RackModule module, float* data, std::size_t fram
 bool NativeRack::set_parameter(RackModule module, std::string_view name, float value) noexcept {
   if (module >= RackModule::Count || !std::isfinite(value)) return false;
   if (module == RackModule::Atmos) return impl_->atmos_parity.set_parameter(name, value);
+  if (module == RackModule::Grain
+      && (name == "microcosmProgram" || name == "tempo" || name == "hold"))
+    return impl_->grain_parity.set_parameter(name, value);
   std::size_t index = 99;
   switch (module) {
     case RackModule::Ember:
@@ -553,7 +565,10 @@ bool NativeRack::set_parameter(RackModule module, std::string_view name, float v
     default: break;
   }
   if (index >= 7) return false;
-  impl_->params(module).target[index].store(value, std::memory_order_relaxed); return true;
+  impl_->params(module).target[index].store(value, std::memory_order_relaxed);
+  if (module == RackModule::Grain && name != "mode")
+    return impl_->grain_parity.set_parameter(name, value);
+  return true;
 }
 void NativeRack::set_bypassed(RackModule module, bool value) noexcept {
   if (module < RackModule::Count) impl_->params(module).bypassed.store(value, std::memory_order_relaxed);

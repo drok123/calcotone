@@ -75,6 +75,18 @@ std::vector<float> render(unsigned mode, float window = 13.F, float density = .5
   return audio;
 }
 
+std::vector<float> render_microcosm(unsigned program, float tempo = 120.F,
+                                    std::size_t frames = 120'000U) {
+  calcotone::GrainParityProcessor processor(kRate);
+  configure(processor, 11U, 13.F, .64F, .58F, .62F, .54F);
+  assert(processor.set_parameter("microcosmProgram", static_cast<float>(program)));
+  assert(processor.set_parameter("tempo", tempo));
+  auto audio = make_source(frames);
+  process_blocks(processor, audio);
+  signature(audio);
+  return audio;
+}
+
 void test_all_twelve_modes_have_distinct_live_memory_signatures() {
   std::array<double, 12> signatures{};
   for (unsigned mode = 0; mode < signatures.size(); ++mode)
@@ -127,9 +139,46 @@ void test_silence_remains_silent_in_memory_and_hardware_modes() {
   }
 }
 
+void test_microcosm_programs_and_tempo_have_distinct_signatures() {
+  std::array<double, 11> signatures{};
+  for (unsigned program = 0; program < signatures.size(); ++program)
+    signatures[program] = signature(render_microcosm(program));
+  for (std::size_t first = 0; first < signatures.size(); ++first)
+    for (std::size_t second = first + 1U; second < signatures.size(); ++second)
+      assert(std::abs(signatures[first] - signatures[second]) > 1e-3);
+
+  const double slow = signature(render_microcosm(9U, 72.F, 96'000U));
+  const double fast = signature(render_microcosm(9U, 168.F, 96'000U));
+  assert(std::abs(slow - fast) > 1e-3);
+}
+
+void test_microcosm_hold_preserves_captured_memory() {
+  calcotone::GrainParityProcessor held(kRate);
+  calcotone::GrainParityProcessor released(kRate);
+  configure(held, 11U, 13.F, .68F, .34F, .18F, 0.F);
+  configure(released, 11U, 13.F, .68F, .34F, .18F, 0.F);
+  assert(held.set_parameter("microcosmProgram", 0.F));
+  assert(released.set_parameter("microcosmProgram", 0.F));
+  auto seed_a = make_source(96'000U, 96'000U);
+  auto seed_b = seed_a;
+  process_blocks(held, seed_a);
+  process_blocks(released, seed_b);
+
+  assert(held.set_parameter("hold", 1.F));
+  std::vector<float> held_tail(288'000U * 2U, 0.F);
+  std::vector<float> released_tail(288'000U * 2U, 0.F);
+  process_blocks(held, held_tail);
+  process_blocks(released, released_tail);
+  const double held_energy = energy(held_tail, 240'000U, 288'000U);
+  const double released_energy = energy(released_tail, 240'000U, 288'000U);
+  assert(held_energy > released_energy * 2.5 + 1e-5);
+  assert(held.set_parameter("hold", 0.F));
+}
+
 void test_reset_is_deterministic() {
   calcotone::GrainParityProcessor processor(kRate);
   configure(processor, 11U, 10.F, .67F, .72F, .48F, .81F);
+  processor.reset();
   auto render_once = [&processor]() {
     auto audio = make_source(96'000U, 64'000U);
     process_blocks(processor, audio);
@@ -150,6 +199,8 @@ int main() {
   test_slice_and_freeze_capture_full_windows();
   test_particle_memory_extends_the_tail();
   test_silence_remains_silent_in_memory_and_hardware_modes();
+  test_microcosm_programs_and_tempo_have_distinct_signatures();
+  test_microcosm_hold_preserves_captured_memory();
   test_reset_is_deterministic();
 
   calcotone::GrainParityProcessor processor(kRate);

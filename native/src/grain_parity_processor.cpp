@@ -28,7 +28,12 @@ constexpr std::array<std::size_t, 5> kPrismCounts{4U,4U,4U,5U,5U};
 constexpr std::array<float, 8> kBeadsClockSteps{3.F,4.F,6.F,8.F,10.F,12.F,14.F,16.F};
 constexpr std::array<float, 8> kMorphageneIntervals{0.F,0.F,7.F,-5.F,12.F,-12.F,19.F,-19.F};
 constexpr std::array<float, 8> kMicrocosmDivisions{32.F,24.F,16.F,12.F,8.F,6.F,4.F,2.F};
-constexpr std::array<unsigned, 8> kMicrocosmPattern{0U,1U,3U,2U,5U,3U,7U,4U};
+constexpr std::array<std::array<unsigned, 8>, 4> kMicrocosmVariationPatterns{{
+    {0U,1U,3U,2U,5U,3U,7U,4U},
+    {0U,2U,1U,4U,3U,7U,5U,6U},
+    {0U,0U,4U,1U,6U,2U,7U,3U},
+    {0U,3U,6U,1U,4U,7U,2U,5U},
+}};
 constexpr std::array<std::array<float, 4>, 5> kMicrocosmIntervals{{
     {0.F,0.F,0.F,0.F},
     {0.F,7.F,0.F,0.F},
@@ -37,6 +42,10 @@ constexpr std::array<std::array<float, 4>, 5> kMicrocosmIntervals{{
     {0.F,7.F,12.F,19.F},
 }};
 constexpr std::array<std::size_t, 5> kMicrocosmCounts{1U,2U,3U,4U,4U};
+constexpr std::array<float, 11> kMicrocosmRateScales{1.F,1.F,.88F,2.05F,.48F,2.2F,1.16F,.82F,1.72F,1.F,.66F};
+constexpr std::array<float, 11> kMicrocosmFeedbackCeilings{.34F,.32F,.28F,.42F,.48F,.26F,.18F,.16F,.28F,.38F,.44F};
+constexpr std::array<float, 11> kMicrocosmDryAnchors{.18F,.20F,.18F,.10F,.12F,.22F,.18F,.08F,.18F,.16F,.12F};
+constexpr std::array<float, 11> kMicrocosmWetGains{1.18F,1.14F,1.16F,1.28F,1.24F,1.12F,1.16F,1.22F,1.18F,1.20F,1.26F};
 
 float clamp01(float value) noexcept { return std::clamp(value, 0.F, 1.F); }
 float smoothing_coefficient(float seconds, float rate) noexcept {
@@ -57,6 +66,7 @@ struct GrainParityProcessor::Impl {
     float length{};
     float read{};
     float step{1.F};
+    float step_delta{};
     float gain{};
     float pan{};
     float pan_drift{};
@@ -124,6 +134,7 @@ struct GrainParityProcessor::Impl {
     input_energy = wet_energy = 1e-5F;
     makeup_gain = 1.F;
     previous_mode = -1;
+    previous_microcosm_program = -1;
     slice_start = 0U;
     slice_length = 2048U;
     slice_phase = 0.F;
@@ -159,6 +170,13 @@ struct GrainParityProcessor::Impl {
       freeze_ready = false;
       freeze_ready = capture_freeze(window, density, pitch);
     }
+  }
+
+  void reset_microcosm_program(unsigned program) noexcept {
+    if (previous_microcosm_program == static_cast<int>(program)) return;
+    previous_microcosm_program = static_cast<int>(program);
+    spawn_counter = 0;
+    spawn_sequence = 0U;
   }
 
   bool capture_slice(float window, float density, float pitch, float motion) noexcept {
@@ -252,7 +270,8 @@ struct GrainParityProcessor::Impl {
   }
 
   bool spawn_voice(unsigned mode, float window, float density, float pitch,
-                   float motion, float memory) noexcept {
+                   float motion, float memory, unsigned microcosm_program,
+                   float tempo, unsigned variation) noexcept {
     auto found = std::find_if(voices.begin(), voices.begin() + effective_voice_limit,
                              [](const Voice& voice) { return !voice.active; });
     if (found == voices.begin() + effective_voice_limit) return false;
@@ -265,6 +284,7 @@ struct GrainParityProcessor::Impl {
     float pan_drift = (random() * 2.F - 1.F) * motion * .14F;
     float gain = .48F + density * .18F;
     float tone = .34F + random() * .44F;
+    float glide_semitones = 0.F;
 
     if (mode == 0U) {
       grain_ms = 36.F + window * 150.F + random() * 34.F;
@@ -366,19 +386,93 @@ struct GrainParityProcessor::Impl {
     } else if (mode == 11U) {
       const auto division_index = std::min<std::size_t>(kMicrocosmDivisions.size() - 1U,
           static_cast<std::size_t>(std::floor(window * static_cast<float>(kMicrocosmDivisions.size()))));
-      const float pulse_seconds = 2.F / kMicrocosmDivisions[division_index];
-      history_seconds = pulse_seconds * static_cast<float>(1U + kMicrocosmPattern[spawn_sequence % kMicrocosmPattern.size()])
-          * (1.F + memory * .65F);
+      const float pulse_seconds = 240.F / (tempo * kMicrocosmDivisions[division_index]);
+      const auto& pattern = kMicrocosmVariationPatterns[variation];
+      const auto pattern_step = pattern[spawn_sequence % pattern.size()];
+      history_seconds = pulse_seconds * static_cast<float>(1U + pattern_step) * (1.F + memory * .65F);
       grain_ms = std::max(28.F, pulse_seconds * 1000.F * (.46F + density * .78F));
       const auto set_index = std::min<std::size_t>(kMicrocosmIntervals.size() - 1U,
           static_cast<std::size_t>(std::floor(pitch * static_cast<float>(kMicrocosmIntervals.size()))));
-      semitones = kMicrocosmIntervals[set_index][spawn_sequence % kMicrocosmCounts[set_index]]
-          * (spawn_sequence % 6U == 5U ? -1.F : 1.F);
-      reverse_chance = motion * .26F;
+      const float interval = kMicrocosmIntervals[set_index][spawn_sequence % kMicrocosmCounts[set_index]];
+      semitones = interval * (spawn_sequence % 6U == 5U ? -1.F : 1.F);
+      reverse_chance = static_cast<float>(variation) * .06F;
       pan = std::sin(static_cast<float>(spawn_sequence) * kPi * .5F) * (.38F + density * .42F);
       pan_drift = 0.F;
       gain = .39F + density * .14F;
       tone = .40F + random() * .38F;
+
+      if (microcosm_program == 1U) {
+        grain_ms = std::max(22.F, pulse_seconds * 1000.F * (.28F + density * .42F));
+        history_seconds = pulse_seconds * static_cast<float>(1U + pattern[(spawn_sequence * 3U) % pattern.size()]);
+        pan = (static_cast<float>(spawn_sequence % 4U) - 1.5F) * .34F;
+        tone = .62F;
+      } else if (microcosm_program == 2U) {
+        grain_ms = std::max(80.F, pulse_seconds * 1000.F * (1.4F + density * 1.8F));
+        glide_semitones = (spawn_sequence % 2U == 0U ? 1.F : -1.F) * static_cast<float>(variation + 1U) * 3.5F;
+        reverse_chance = 0.F;
+        pan_drift = .16F + static_cast<float>(variation) * .05F;
+      } else if (microcosm_program == 3U) {
+        grain_ms = std::max(180.F, pulse_seconds * 1000.F * (3.2F + memory * 4.8F));
+        history_seconds *= .72F + random() * .46F;
+        semitones *= .5F;
+        reverse_chance = .04F;
+        pan *= .46F;
+        pan_drift = .08F + static_cast<float>(variation) * .025F;
+        gain = .29F + density * .10F;
+        tone = .12F + static_cast<float>(variation) * .05F;
+      } else if (microcosm_program == 4U) {
+        grain_ms = std::max(260.F, pulse_seconds * 1000.F * (5.F + memory * 6.F));
+        history_seconds = pulse_seconds * static_cast<float>(2U + pattern_step % 4U) * (1.4F + memory);
+        reverse_chance = spawn_sequence % 4U == 3U ? 1.F : 0.F;
+        pan = std::sin(static_cast<float>(spawn_sequence) * 1.047F) * .82F;
+        pan_drift = .18F + static_cast<float>(variation) * .04F;
+        gain = .27F + density * .09F;
+        tone = .18F;
+      } else if (microcosm_program == 5U) {
+        grain_ms = 34.F + pulse_seconds * 1000.F * .36F;
+        history_seconds = pulse_seconds * static_cast<float>(1U + spawn_sequence % (3U + variation));
+        semitones = interval + static_cast<float>(spawn_sequence % 3U) * 12.F;
+        pan = (static_cast<float>(spawn_sequence % 5U) - 2.F) * .38F;
+        gain = .46F + density * .14F;
+        tone = .78F;
+      } else if (microcosm_program == 6U) {
+        grain_ms = std::max(24.F, pulse_seconds * 1000.F * (.52F + static_cast<float>(variation) * .12F));
+        history_seconds = pulse_seconds * static_cast<float>(1U + pattern_step / 2U);
+        semitones = variation >= 2U && spawn_sequence % 4U == 3U ? 12.F : 0.F;
+        reverse_chance = static_cast<float>(variation) * .12F;
+        pan = spawn_sequence % 2U == 0U ? -.54F : .54F;
+        tone = .84F;
+      } else if (microcosm_program == 7U) {
+        grain_ms = std::max(42.F, pulse_seconds * 1000.F * (.9F + static_cast<float>(variation) * .22F));
+        history_seconds = pulse_seconds * static_cast<float>(2U + pattern_step);
+        semitones = variation == 3U && spawn_sequence % 4U == 0U ? -12.F : 0.F;
+        reverse_chance = static_cast<float>(variation) * .14F;
+        pan = 0.F;
+        gain = .64F;
+        tone = .72F;
+      } else if (microcosm_program == 8U) {
+        grain_ms = std::max(30.F, pulse_seconds * 1000.F * (.42F + density * .38F));
+        semitones = interval + (variation == 3U && spawn_sequence % 4U == 3U ? 12.F : 0.F);
+        history_seconds = pulse_seconds * static_cast<float>(1U + pattern_step % 4U);
+        pan = std::sin(static_cast<float>(spawn_sequence) * 2.399F) * .76F;
+        gain = .48F;
+        tone = .82F;
+      } else if (microcosm_program == 9U) {
+        grain_ms = std::max(36.F, pulse_seconds * 1000.F * (.62F + density * .52F));
+        history_seconds = pulse_seconds * static_cast<float>(1U + pattern_step)
+            * (1.F + static_cast<float>(spawn_sequence % 3U) * .5F);
+        reverse_chance = variation == 3U ? .18F : 0.F;
+        pan = std::sin(static_cast<float>(spawn_sequence) * 1.571F) * .68F;
+        tone = .56F;
+      } else if (microcosm_program == 10U) {
+        grain_ms = std::max(160.F, pulse_seconds * 1000.F * (2.4F + memory * 4.2F));
+        history_seconds *= 1.35F + memory * .8F;
+        reverse_chance = .48F + static_cast<float>(variation) * .12F;
+        glide_semitones = (spawn_sequence % 2U == 0U ? -1.F : 1.F) * static_cast<float>(variation + 1U) * 2.F;
+        pan_drift = .22F;
+        gain = .31F + density * .08F;
+        tone = .10F + (1.F - memory) * .18F;
+      }
     }
 
     history_seconds = std::clamp(history_seconds, .012F, 3.75F);
@@ -392,6 +486,8 @@ struct GrainParityProcessor::Impl {
     found->read = static_cast<float>((write_index + buffer_size
         - (static_cast<std::size_t>(std::floor(rate * history_seconds)) & mask)) & mask);
     found->step = step;
+    found->step_delta = glide_semitones == 0.F ? 0.F
+        : (std::copysign(semitone_step(semitones + glide_semitones), step) - step) / length;
     found->gain = gain;
     found->pan = pan;
     found->pan_drift = pan_drift;
@@ -438,6 +534,7 @@ struct GrainParityProcessor::Impl {
       wet_left += (sample_left * .90F + sample_right * .10F) * voice_gain * left_gain;
       wet_right += (sample_right * .90F + sample_left * .10F) * voice_gain * right_gain;
       voice.read = wrap(voice.read + voice.step);
+      voice.step += voice.step_delta;
       voice.phase += 1.F;
       active += 1.F;
     }
@@ -461,7 +558,7 @@ struct GrainParityProcessor::Impl {
     }
   }
 
-  float feedback_for_mode(unsigned mode, float memory) const noexcept {
+  float feedback_for_mode(unsigned mode, float memory, unsigned microcosm_program) const noexcept {
     switch (mode) {
       case 2U: return memory * .24F;
       case 6U: return memory * .30F;
@@ -469,21 +566,25 @@ struct GrainParityProcessor::Impl {
       case 8U: return memory * .18F;
       case 9U: return memory * .20F;
       case 10U: return memory * .48F;
-      case 11U: return memory * .34F;
+      case 11U: return memory * kMicrocosmFeedbackCeilings[microcosm_program];
       default: return 0.F;
     }
   }
 
-  bool transient_allows_spawn(unsigned mode, float transient, float density, float motion) noexcept {
+  bool transient_allows_spawn(unsigned mode, float transient, float density, float motion,
+                              unsigned microcosm_program) noexcept {
     if (mode == 1U)
       return transient > .0018F + (1.F - density) * .004F || random() < .05F + motion * .10F;
     if (mode == 9U)
       return transient > .0012F + (1.F - density) * .003F || random() < .10F + motion * .18F;
+    if (mode == 11U && microcosm_program == 5U)
+      return transient > .001F + (1.F - density) * .0025F || random() < .12F + density * .12F;
     return true;
   }
 
   std::array<float, 2> apply_hardware(unsigned mode, float input_left, float input_right,
-                                      float window, float density, float motion, float memory) noexcept {
+                                      float window, float density, float motion, float memory,
+                                      unsigned microcosm_program, unsigned variation) noexcept {
     float result_left = input_left;
     float result_right = input_right;
     if (mode == 6U) {
@@ -523,14 +624,21 @@ struct GrainParityProcessor::Impl {
       result_left = input_left * .38F + hardware_left * .72F;
       result_right = input_right * .38F + hardware_right * .72F;
     } else if (mode == 11U) {
-      const float first = .24F + (1.F - window) * .20F;
-      const float second = .08F + (1.F - memory) * .14F;
+      const bool diffuse = microcosm_program == 3U || microcosm_program == 4U || microcosm_program == 10U;
+      const bool glitch = microcosm_program >= 5U && microcosm_program <= 8U;
+      const float first = diffuse ? .10F + (1.F - window) * .12F
+          : glitch ? .52F : .24F + (1.F - window) * .20F;
+      const float second = diffuse ? .025F + (1.F - memory) * .055F
+          : .08F + (1.F - memory) * .14F;
       hardware_left += (input_left - hardware_left) * first;
       hardware_right += (input_right - hardware_right) * first;
-      hardware_aux_left += (hardware_left - hardware_aux_left) * second;
-      hardware_aux_right += (hardware_right - hardware_aux_right) * second;
-      result_left = input_left * .28F + hardware_left * .46F + hardware_aux_left * (.34F + memory * .12F);
-      result_right = input_right * .28F + hardware_right * .46F + hardware_aux_right * (.34F + memory * .12F);
+      hardware_aux_left += (hardware_right - hardware_aux_left) * second;
+      hardware_aux_right += (hardware_left - hardware_aux_right) * second;
+      const float direct = glitch ? .62F : diffuse ? .12F : .28F;
+      const float halo = diffuse ? .62F + memory * .18F : .34F + memory * .12F;
+      const float shimmer = static_cast<float>(variation) * .018F;
+      result_left = input_left * direct + hardware_left * (.46F - shimmer) + hardware_aux_left * halo;
+      result_right = input_right * direct + hardware_right * (.46F - shimmer) + hardware_aux_right * halo;
     }
     return {result_left, result_right};
   }
@@ -538,6 +646,11 @@ struct GrainParityProcessor::Impl {
   void process(float* data, std::size_t frames) noexcept {
     const float parameter_coefficient = smoothing_coefficient(.012F, rate);
     const float mix_coefficient = smoothing_coefficient(.025F, rate);
+    const unsigned microcosm_program = std::min(10U, microcosm_program_target.load(std::memory_order_relaxed));
+    const float tempo = std::clamp(tempo_target.load(std::memory_order_relaxed), 30.F, 300.F);
+    const bool hold = hold_target.load(std::memory_order_relaxed);
+    const unsigned variation = std::min(3U, static_cast<unsigned>(
+        std::floor(clamp01(target[4].load(std::memory_order_relaxed)) * 4.F)));
     for (std::size_t frame = 0; frame < frames; ++frame) {
       smooth[0] = target[0].load(std::memory_order_relaxed);
       for (std::size_t index = 1; index < 6U; ++index)
@@ -552,6 +665,8 @@ struct GrainParityProcessor::Impl {
       const float memory_amount = clamp01(smooth[5]);
       const float mix = clamp01(smooth[6]);
       reset_mode_state(mode, window, density, pitch, motion);
+      if (mode == 11U) reset_microcosm_program(microcosm_program);
+      else previous_microcosm_program = -1;
 
       float dry_left = data[frame * 2U];
       float dry_right = data[frame * 2U + 1U];
@@ -562,10 +677,13 @@ struct GrainParityProcessor::Impl {
       previous_envelope = input_envelope;
       input_envelope += (peak - input_envelope) * (peak > input_envelope ? .075F : .0018F);
       const float transient = std::max(0.F, input_envelope - previous_envelope);
-      const float feedback = feedback_for_mode(mode, memory_amount);
-      left[write_index] = std::clamp(dry_left + output_left * feedback, -1.2F, 1.2F);
-      right[write_index] = std::clamp(dry_right + output_right * feedback, -1.2F, 1.2F);
-      written_samples = std::min(buffer_size - 1U, written_samples + 1U);
+      const float feedback = feedback_for_mode(mode, memory_amount, microcosm_program);
+      const bool memory_held = mode == 11U && hold;
+      if (!memory_held) {
+        left[write_index] = std::clamp(dry_left + output_left * feedback, -1.2F, 1.2F);
+        right[write_index] = std::clamp(dry_right + output_right * feedback, -1.2F, 1.2F);
+        written_samples = std::min(buffer_size - 1U, written_samples + 1U);
+      }
 
       float processed_left = 0.F;
       float processed_right = 0.F;
@@ -595,9 +713,18 @@ struct GrainParityProcessor::Impl {
         --spawn_counter;
         if (spawn_counter <= 0) {
           const float rate_for_mode = spawn_rate(mode, density, window);
-          const auto spawn_interval = std::max(24, static_cast<int>(std::floor(rate / rate_for_mode)));
-          const bool transient_ready = transient_allows_spawn(mode, transient, density, motion);
-          const bool spawned = transient_ready && spawn_voice(mode, window, density, pitch, motion, memory_amount);
+          auto spawn_interval = std::max(24, static_cast<int>(std::floor(rate / rate_for_mode)));
+          if (mode == 11U) {
+            const auto division_index = std::min<std::size_t>(kMicrocosmDivisions.size() - 1U,
+                static_cast<std::size_t>(std::floor(window * static_cast<float>(kMicrocosmDivisions.size()))));
+            const float pulse_frames = rate * 240.F / (tempo * kMicrocosmDivisions[division_index]);
+            const float activity = .75F + density * 2.25F;
+            spawn_interval = std::max(24, static_cast<int>(std::floor(
+                pulse_frames / (kMicrocosmRateScales[microcosm_program] * activity))));
+          }
+          const bool transient_ready = transient_allows_spawn(mode, transient, density, motion, microcosm_program);
+          const bool spawned = transient_ready && spawn_voice(
+              mode, window, density, pitch, motion, memory_amount, microcosm_program, tempo, variation);
           const float interval_variation = mode == 11U
               ? (spawn_sequence % 4U == 0U ? -.28F : spawn_sequence % 4U == 3U ? .22F : 0.F)
               : (random() - .5F) * motion;
@@ -610,10 +737,13 @@ struct GrainParityProcessor::Impl {
         const float normalization = active > 1.F ? 1.F / std::sqrt(.72F + active * .38F) : 1.F;
         const float cohesion = mode == 0U ? memory_amount : 0.F;
         const float body = mode == 3U ? memory_amount : 0.F;
-        processed_left = dry_left * std::max(.12F, kDryAnchors[mode] - cohesion * .10F)
-            + rendered[0] * normalization * (kWetGains[mode] + cohesion * .12F + body * .10F);
-        processed_right = dry_right * std::max(.12F, kDryAnchors[mode] - cohesion * .10F)
-            + rendered[1] * normalization * (kWetGains[mode] + cohesion * .12F + body * .10F);
+        const float dry_anchor = mode == 11U
+            ? (microcosm_program == 7U && active < 1.F ? 1.F : kMicrocosmDryAnchors[microcosm_program])
+            : std::max(.12F, kDryAnchors[mode] - cohesion * .10F);
+        const float wet_gain = mode == 11U ? kMicrocosmWetGains[microcosm_program]
+            : kWetGains[mode] + cohesion * .12F + body * .10F;
+        processed_left = dry_left * dry_anchor + rendered[0] * normalization * wet_gain;
+        processed_right = dry_right * dry_anchor + rendered[1] * normalization * wet_gain;
         if (mode == 2U) {
           const float coefficient = .035F + (1.F - window) * .08F;
           smear_left += (processed_left - smear_left) * coefficient;
@@ -623,7 +753,8 @@ struct GrainParityProcessor::Impl {
           processed_right = smear_right * .84F + mid * .16F;
         } else if (mode >= 6U) {
           const auto hardware = apply_hardware(mode, processed_left, processed_right,
-                                               window, density, motion, memory_amount);
+                                               window, density, motion, memory_amount,
+                                               microcosm_program, variation);
           processed_left = hardware[0];
           processed_right = hardware[1];
         }
@@ -649,7 +780,7 @@ struct GrainParityProcessor::Impl {
       const float wet_gain = std::sin(mix * kPi * .5F);
       data[frame * 2U] = std::clamp(dry_left * dry_gain + output_left * wet_gain, -1.2F, 1.2F);
       data[frame * 2U + 1U] = std::clamp(dry_right * dry_gain + output_right * wet_gain, -1.2F, 1.2F);
-      write_index = (write_index + 1U) & mask;
+      if (!memory_held) write_index = (write_index + 1U) & mask;
     }
   }
 
@@ -679,6 +810,7 @@ struct GrainParityProcessor::Impl {
   float wet_energy{1e-5F};
   float makeup_gain{1.F};
   int previous_mode{-1};
+  int previous_microcosm_program{-1};
   std::size_t slice_start{};
   std::size_t slice_length{2048U};
   float slice_phase{};
@@ -693,6 +825,9 @@ struct GrainParityProcessor::Impl {
   bool freeze_ready{};
   std::array<std::atomic<float>, 7> target{2.F,13.F,.42F,.38F,.16F,.36F,.12F};
   std::array<float, 7> smooth{2.F,13.F,.42F,.38F,.16F,.36F,.12F};
+  std::atomic<unsigned> microcosm_program_target{0U};
+  std::atomic<float> tempo_target{120.F};
+  std::atomic<bool> hold_target{false};
 };
 
 GrainParityProcessor::GrainParityProcessor(float rate) : impl_(std::make_unique<Impl>(rate)) {}
@@ -703,6 +838,20 @@ void GrainParityProcessor::process(float* data, std::size_t frames) noexcept {
 void GrainParityProcessor::reset() noexcept { impl_->reset(); }
 bool GrainParityProcessor::set_parameter(std::string_view name, float value) noexcept {
   if (!std::isfinite(value)) return false;
+  if (name == "microcosmProgram") {
+    impl_->microcosm_program_target.store(
+        std::min(10U, static_cast<unsigned>(std::max(0.F, std::round(value)))),
+        std::memory_order_relaxed);
+    return true;
+  }
+  if (name == "tempo") {
+    impl_->tempo_target.store(std::clamp(value, 30.F, 300.F), std::memory_order_relaxed);
+    return true;
+  }
+  if (name == "hold") {
+    impl_->hold_target.store(value >= .5F, std::memory_order_relaxed);
+    return true;
+  }
   std::size_t index = 99U;
   if (name == "mode") index = 0U;
   else if (name == "bits") index = 1U;

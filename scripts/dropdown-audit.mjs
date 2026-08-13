@@ -45,6 +45,7 @@ const halo = read('src/audio/effects/Delay.ts');
 const atmos = read('src/audio/effects/Reverb.ts');
 const grain = read('src/audio/effects/Bitcrusher.ts');
 const grainProcessor = read('public/grain-processor.js');
+const effectModule = read('src/components/effects/EffectModule.tsx');
 const artifact = read('src/audio/effects/Media.ts');
 const emberDigitalCapture = read('public/ember-digital-capture-processor.js');
 const app = read('src/App.tsx');
@@ -59,6 +60,7 @@ const DRIFT = ['chorus','ensemble','dimension','vibrato','rotary','doppler','liq
 const HALO = ['clean','tape','bbd','pingpong','diffuse','scatter','constellation','re201','EP-3 Echoplex','Binson Echorec','Deluxe Memory Man','AMS DMX 15-80 S'];
 const ATMOS = ['room','plate','hall','cinema','cloud','freeze','celestial','aurora','nebula','abyss','emt140','lexicon224','rmx16','quantec','springtank','bloom','veil'];
 const GRAIN = ['mosaic','scatter','smear','prism','slice','freeze','clouds','beads','morphagene','arbhar','particle2','microcosm'];
+const MICROCOSM = ['mosaic','seq','glide','haze','tunnel','strum','blocks','interrupt','arp','pattern','warp'];
 const ARTIFACT = ['cassette','reel','vinyl','vhs','radio','wax','broken','archive','tascam424','Neve 1073','SSL 4000E','API 1608','Ampex ATR-102','Neve BCM10'];
 const ARTIFACT_DYNAMICS = ['compressor-fet','compressor-opto','compressor-varimu','compressor-vca'];
 
@@ -67,6 +69,7 @@ requireOrder(drift, 'DRIFT_MODE_ORDER', DRIFT, 'Drift dropdown');
 requireOrder(halo, 'DELAY_ALGORITHM_ORDER', HALO, 'Halo dropdown');
 requireOrder(atmos, 'REVERB_ALGORITHM_ORDER', ATMOS, 'Atmos dropdown');
 requireOrder(grain, 'GRAIN_MODE_ORDER', GRAIN, 'Grain dropdown');
+requireOrder(grain, 'MICROCOSM_PROGRAM_ORDER', MICROCOSM, 'Microcosm program dropdown');
 requireOrder(artifact, 'MEDIA_MODE_ORDER', ARTIFACT, 'Artifact dropdown');
 
 for (const tube of ['goldlion','mullard','telefunken','bugleboy','rcablack']) requireText(ember, `${tube}: '${tube}'`, `Ember ${tube} dedicated tube mapping`);
@@ -113,6 +116,11 @@ for (const [mode, mechanism] of [
 ]) requireText(grainProcessor, `mode === ${mode}`, `Grain ${mechanism}`);
 requireText(grainProcessor, 'applyHardwareCharacter(', 'Grain hardware character stage');
 requireText(grainProcessor, 'maxValue: 11', 'Grain hardware mode worklet range');
+requireText(grainProcessor, "name: 'microcosmProgram'", 'Microcosm program worklet parameter');
+requireText(grainProcessor, '240 / (tempo * division)', 'Microcosm Loop BPM subdivision clock');
+requireText(grainProcessor, 'if (!memoryHeld)', 'Microcosm HOLD memory gate');
+requireText(effectModule, 'MICROCOSM_PROGRAM_GROUPS.map', 'Microcosm grouped program dropdown');
+requireText(effectModule, 'aria-pressed={module.microcosmHold === true}', 'Microcosm HOLD accessibility state');
 requireText(grain, 'this.processor.connect(this.wetGain)', 'Grain single owned DSP path');
 forbidText(grainProcessor, 'processHardware(', 'Grain must not contain sampler hardware');
 forbidText(grainProcessor, 'quantizeNonlinear12', 'Grain must not contain converter quantization');
@@ -168,4 +176,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`CALCOTONE dropdown audit passed (${EMBER.length + DRIFT.length + HALO.length + ATMOS.length + GRAIN.length + ARTIFACT.length + ARTIFACT_DYNAMICS.length} modes checked with immediate native profile commits).`);
+console.log(`CALCOTONE dropdown audit passed (${EMBER.length + DRIFT.length + HALO.length + ATMOS.length + GRAIN.length + MICROCOSM.length + ARTIFACT.length + ARTIFACT_DYNAMICS.length} modes checked with immediate native profile commits).`);
