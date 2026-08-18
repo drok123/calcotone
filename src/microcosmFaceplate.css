@@ -1,0 +1,61 @@
+/* Microcosm extends only Grain's header. Keep these rules out of the approved
+   v4 module-screen and knob geometry layer so new programs cannot move the
+   faceplate controls shared by browser and WebView2 builds. */
+.module-bitcrusher .module-header {
+  grid-template-columns: 132px minmax(0, 1fr) 34px;
+  gap: 6px;
+}
+
+.module-bitcrusher .module-header-control {
+  width: 100%;
+  max-width: none;
+}
+
+.grain-header-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.grain-header-controls.is-microcosm {
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr) 48px;
+}
+
+.module-header-control .grain-header-controls .algorithm-selector,
+.module-header-control .grain-header-controls select {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  min-height: 34px;
+  padding: 0 24px 0 9px;
+  border-color: rgba(232, 225, 207, .34);
+  border-radius: 4px;
+  color: #f3efe4;
+  background: linear-gradient(180deg, rgba(255,255,255,.035), transparent 38%), #101315;
+  box-shadow: inset 0 2px 7px rgba(0,0,0,.82), 0 1px 0 rgba(255,255,255,.04);
+  font-size: .72rem;
+  letter-spacing: .025em;
+}
+
+.microcosm-hold {
+  width: 48px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0 5px;
+  border: 1px solid rgba(232, 225, 207, .34);
+  border-radius: 4px;
+  color: #f3efe4;
+  background: linear-gradient(180deg, rgba(255,255,255,.06), transparent 38%), #202426;
+  box-shadow: inset 0 1px rgba(255,255,255,.08), inset 0 -2px 5px rgba(0,0,0,.55);
+  font: 800 .72rem/1 var(--mono);
+  letter-spacing: .04em;
+}
+
+.microcosm-hold.active {
+  border-color: rgba(255, 249, 226, .72);
+  color: #fffdf6;
+  background: linear-gradient(180deg, #69665d, #34342f);
+  box-shadow: inset 0 2px 5px rgba(35,32,27,.42), 0 2px 5px rgba(0,0,0,.22);
+}

@@ -1,6 +1,9 @@
 #pragma once
 
+#include "calcotone/circuit_dna_profiler.hpp"
+
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -23,6 +26,16 @@ class NativeRack final {
 
   void process(const float* input, float* output, std::size_t frames) noexcept;
   void process_module(RackModule module, float* data, std::size_t frames) noexcept;
+  // Audio-thread-only shared-signal reactions. These values never mutate the
+  // user's saved knobs and are bounded again by their destination processors.
+  void set_signal_reactions(float grain_activity, float dream_ghost,
+                            float cross_pitch_semitones, float cross_brightness,
+                            float loop_resynthesis_activity, float loop_brightness,
+                            std::uint64_t reference_position,
+                            std::uint64_t reference_frames,
+                            bool reference_running) noexcept;
+  void set_adaptive_fidelity(unsigned level) noexcept;
+  [[nodiscard]] CircuitDnaSnapshot circuit_dna(RackModule module) const noexcept;
   bool set_parameter(RackModule module, std::string_view parameter, float value) noexcept;
   void set_bypassed(RackModule module, bool bypassed) noexcept;
   void set_order(std::span<const RackModule> order) noexcept;

@@ -118,7 +118,7 @@ function onLoopPerformanceCommand(event: Event): void {
   if (!activeEngine) return;
   const detail = (event as CustomEvent<LoopPerformanceCommand>).detail;
   if (!detail) return;
-  decks.get(activeEngine)?.command(detail.command);
+  decks.get(activeEngine)?.command(detail.command, detail.track);
 }
 
 window.addEventListener(LOOP_CHANGE_EVENT, onLoopChange);

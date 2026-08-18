@@ -5,6 +5,8 @@
 #include <atomic>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace calcotone {
@@ -186,6 +188,9 @@ struct HaloSpaceEchoProcessor::Impl {
   BiquadState feedback_lowpass{};
   std::array<BiquadState, 3> head_highpass{};
   std::array<BiquadState, 3> head_lowpass{};
+  std::atomic<std::uint64_t> reference_position_target{0U};
+  std::atomic<std::uint64_t> reference_frames_target{0U};
+  std::atomic<bool> reference_running_target{false};
 
   explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)) {
     constexpr std::array<float, 6> seconds{.065F, .05F, .06F, .06F, .06F, .025F};
@@ -289,8 +294,35 @@ struct HaloSpaceEchoProcessor::Impl {
     if (flutter_phase >= kTau) flutter_phase -= kTau;
   }
 
+  void nudge_reference_phase() noexcept {
+    constexpr float pull = .08F;
+    wow_sine += (0.F - wow_sine) * pull;
+    wow_cosine += (1.F - wow_cosine) * pull;
+    const float inverse_length = 1.F / std::max(
+        1e-9F, std::sqrt(wow_sine * wow_sine + wow_cosine * wow_cosine));
+    wow_sine *= inverse_length;
+    wow_cosine *= inverse_length;
+    const float target = .043F * kTau * 5.1F;
+    flutter_phase += std::remainder(target - flutter_phase, kTau) * pull;
+    if (flutter_phase < 0.F) flutter_phase += kTau;
+    else if (flutter_phase >= kTau) flutter_phase -= kTau;
+  }
+
   void process(float* data, std::size_t frames) noexcept {
+    const bool reference_running = reference_running_target.load(std::memory_order_relaxed);
+    const std::uint64_t reference_frames = reference_frames_target.load(std::memory_order_relaxed);
+    const std::uint64_t reference_position = reference_frames > 0U
+        ? reference_position_target.load(std::memory_order_relaxed) % reference_frames : 0U;
+    std::uint64_t reference_countdown = reference_running && reference_frames > 0U
+        ? (reference_position == 0U ? 0U : reference_frames - reference_position)
+        : std::numeric_limits<std::uint64_t>::max();
     for (std::size_t frame = 0; frame < frames; ++frame) {
+      if (reference_countdown == 0U) {
+        nudge_reference_phase();
+        reference_countdown = reference_frames;
+      }
+      if (reference_countdown != std::numeric_limits<std::uint64_t>::max())
+        --reference_countdown;
       glide();
       if (control_countdown == 0U) {
         update_control();
@@ -346,6 +378,13 @@ HaloSpaceEchoProcessor::~HaloSpaceEchoProcessor() = default;
 
 void HaloSpaceEchoProcessor::process(float* data, std::size_t frames) noexcept {
   if (data && frames) impl_->process(data, frames);
+}
+
+void HaloSpaceEchoProcessor::set_reference_clock(
+    std::uint64_t position, std::uint64_t frames, bool running) noexcept {
+  impl_->reference_position_target.store(position, std::memory_order_relaxed);
+  impl_->reference_frames_target.store(frames, std::memory_order_relaxed);
+  impl_->reference_running_target.store(running && frames > 0U, std::memory_order_relaxed);
 }
 
 bool HaloSpaceEchoProcessor::set_parameter(std::string_view name, float value) noexcept {

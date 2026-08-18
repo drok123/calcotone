@@ -18,6 +18,7 @@ class DriftClassicProcessor final {
 
   void reset() noexcept;
   void set_model(unsigned model) noexcept;
+  void nudge_reference_phase(float normalized_phase, float amount) noexcept;
   [[nodiscard]] std::array<float, 2> process_sample(
       float left,
       float right,

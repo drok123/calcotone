@@ -133,10 +133,66 @@ void test_silence_remains_silent_in_memory_and_hardware_modes() {
   for (const unsigned mode : {2U, 5U, 6U, 8U, 10U, 11U}) {
     calcotone::GrainParityProcessor processor(kRate);
     configure(processor, mode, 16.F, 1.F, 1.F, 1.F, 1.F);
+    processor.set_external_activity(1.F);
     std::vector<float> silence(16'384U * 2U, 0.F);
     process_blocks(processor, silence);
     for (float sample : silence) assert(sample == 0.F);
   }
+}
+
+void test_input_two_activity_excites_but_does_not_rewrite_density() {
+  calcotone::GrainParityProcessor baseline(kRate);
+  calcotone::GrainParityProcessor excited(kRate);
+  configure(baseline, 11U, 11.F, .08F, .46F, .24F, .56F);
+  configure(excited, 11U, 11.F, .08F, .46F, .24F, .56F);
+  excited.set_external_activity(.35F);
+  auto baseline_audio = make_source(96'000U);
+  auto excited_audio = baseline_audio;
+  process_blocks(baseline, baseline_audio);
+  process_blocks(excited, excited_audio);
+  assert(std::abs(signature(baseline_audio) - signature(excited_audio)) > 1e-3);
+  // The public Density target is still valid and independently controllable.
+  assert(excited.set_parameter("density", .08F));
+}
+
+void test_cross_and_loop_profiles_reshape_grains_without_creating_audio() {
+  calcotone::GrainParityProcessor baseline(kRate);
+  calcotone::GrainParityProcessor resynthesized(kRate);
+  configure(baseline, 11U, 12.F, .55F, .48F, .38F, .64F);
+  configure(resynthesized, 11U, 12.F, .55F, .48F, .38F, .64F);
+  resynthesized.set_external_activity(.24F);
+  resynthesized.set_cross_resynthesis(5.F, .9F, .24F, .15F);
+  resynthesized.set_voice_limit(4U);
+  auto baseline_audio = make_source(96'000U);
+  auto resynthesized_audio = baseline_audio;
+  process_blocks(baseline, baseline_audio);
+  process_blocks(resynthesized, resynthesized_audio);
+  assert(std::abs(signature(baseline_audio) - signature(resynthesized_audio)) > 1e-3);
+
+  calcotone::GrainParityProcessor silent(kRate);
+  configure(silent, 11U, 16.F, 1.F, 1.F, 1.F, 1.F);
+  silent.set_external_activity(1.F);
+  silent.set_cross_resynthesis(6.F, 1.F, 1.F, 1.F);
+  std::vector<float> silence(16'384U * 2U, 0.F);
+  process_blocks(silent, silence);
+  for (float sample : silence) assert(sample == 0.F);
+}
+
+void test_reference_clock_reanchors_events_without_clearing_memory() {
+  calcotone::GrainParityProcessor free_running(kRate);
+  calcotone::GrainParityProcessor synchronized(kRate);
+  configure(free_running, 11U, 12.F, .58F, .62F, .54F, .72F);
+  configure(synchronized, 11U, 12.F, .58F, .62F, .54F, .72F);
+  auto free_audio = make_source(96'000U);
+  auto sync_audio = free_audio;
+  process_blocks(free_running, free_audio);
+  for (std::size_t offset = 0; offset < sync_audio.size() / 2U; offset += kBlock) {
+    synchronized.set_reference_clock((173U + offset) % 997U, 997U, true);
+    synchronized.process(sync_audio.data() + offset * 2U,
+                         std::min(kBlock, sync_audio.size() / 2U - offset));
+  }
+  assert(std::abs(signature(free_audio) - signature(sync_audio)) > 1e-3);
+  assert(energy(sync_audio, 72'000U, 96'000U) > 1e-4);
 }
 
 void test_microcosm_programs_and_tempo_have_distinct_signatures() {
@@ -199,6 +255,9 @@ int main() {
   test_slice_and_freeze_capture_full_windows();
   test_particle_memory_extends_the_tail();
   test_silence_remains_silent_in_memory_and_hardware_modes();
+  test_input_two_activity_excites_but_does_not_rewrite_density();
+  test_cross_and_loop_profiles_reshape_grains_without_creating_audio();
+  test_reference_clock_reanchors_events_without_clearing_memory();
   test_microcosm_programs_and_tempo_have_distinct_signatures();
   test_microcosm_hold_preserves_captured_memory();
   test_reset_is_deterministic();

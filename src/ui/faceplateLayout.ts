@@ -57,7 +57,12 @@ export interface FaceplateEditorSnapshot {
 const STORAGE_KEY = 'calcotone.faceplate-layout.v2';
 const LEGACY_STORAGE_KEY = 'calcotone.faceplate-layout.v1';
 const FACTORY_LAYOUT_REVISION_KEY = 'calcotone.faceplate-layout.factory-revision';
-const FACTORY_LAYOUT_REVISION = '2026-08-09-railc-latest-loop-centered-v4';
+export const APPROVED_FACEPLATE_LAYOUT_REVISION = '2026-08-09-railc-latest-loop-centered-v4';
+// This storage epoch is deliberately separate from the geometry revision. The
+// approved v4 coordinates did not change, but builds distributed before this
+// recovery could leave damaged v4 geometry in WebView2 localStorage. Advancing
+// the epoch applies the known-good factory layout once without renaming v4.
+const FACTORY_LAYOUT_STORAGE_REVISION = '2026-08-17-known-good-faceplate-recovery-v1';
 const KNOB_COUNT = 6;
 const listeners = new Set<() => void>();
 const CORE_FACEPLATE_IDS: readonly CoreFaceplateId[] = ['saturation', 'chorus', 'delay', 'reverb', 'bitcrusher', 'media'];
@@ -194,7 +199,7 @@ export function saveFaceplateLayout(): void {
   };
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
-    window.localStorage.setItem(FACTORY_LAYOUT_REVISION_KEY, FACTORY_LAYOUT_REVISION);
+    window.localStorage.setItem(FACTORY_LAYOUT_REVISION_KEY, FACTORY_LAYOUT_STORAGE_REVISION);
   } catch {
     // The live layout still works when storage is blocked by the browser.
   }
@@ -597,11 +602,11 @@ function pushUndo(): void {
 function loadSavedLayout(): FaceplateLayout {
   if (typeof window === 'undefined') return cloneLayout(FACTORY_FACEPLATE_LAYOUT);
   try {
-    if (window.localStorage.getItem(FACTORY_LAYOUT_REVISION_KEY) !== FACTORY_LAYOUT_REVISION) {
+    if (window.localStorage.getItem(FACTORY_LAYOUT_REVISION_KEY) !== FACTORY_LAYOUT_STORAGE_REVISION) {
       const approved = cloneLayout(FACTORY_FACEPLATE_LAYOUT);
       try {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(approved));
-        window.localStorage.setItem(FACTORY_LAYOUT_REVISION_KEY, FACTORY_LAYOUT_REVISION);
+        window.localStorage.setItem(FACTORY_LAYOUT_REVISION_KEY, FACTORY_LAYOUT_STORAGE_REVISION);
       } catch {
         // The approved layout still applies when storage is blocked by the browser.
       }
@@ -649,7 +654,7 @@ function loadSavedLayout(): FaceplateLayout {
       }])) as unknown as Record<CoreFaceplateId, RailCFaceplateModuleLayout>;
       try {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
-        window.localStorage.setItem(FACTORY_LAYOUT_REVISION_KEY, FACTORY_LAYOUT_REVISION);
+        window.localStorage.setItem(FACTORY_LAYOUT_REVISION_KEY, FACTORY_LAYOUT_STORAGE_REVISION);
       } catch {
         // The live migration still works when storage is blocked by the browser.
       }

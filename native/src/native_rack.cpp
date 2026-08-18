@@ -439,9 +439,16 @@ struct NativeRack::Impl {
   Stomp stomp;
   std::array<float, kRackBlockFrames * 2> dry{};
   std::array<std::atomic<unsigned>, kModules> order{};
+  std::array<CircuitDnaProfiler, kModules> circuit_dna{};
+  std::uint64_t reference_position{};
+  std::uint64_t reference_frames{};
+  bool reference_running{};
   explicit Impl(float rate) : sample_rate(std::clamp(rate, 8000.F, 384000.F)), drift(sample_rate), halo(sample_rate), atmos_parity(sample_rate), grain_parity(sample_rate), artifact(sample_rate) {
     (void)shape_lut();
-    for (unsigned i = 0; i < kModules; ++i) order[i].store(i);
+    for (unsigned i = 0; i < kModules; ++i) {
+      order[i].store(i);
+      circuit_dna[i].configure(sample_rate);
+    }
   }
   Params& params(RackModule module) noexcept {
     switch (module) {
@@ -462,6 +469,22 @@ struct NativeRack::Impl {
         break;
       case RackModule::Artifact: artifact.process(data, frames, sample_rate); break;
       case RackModule::Stomp: stomp.process(data, frames, sample_rate); break;
+      default: break;
+    }
+  }
+  void apply_reference_clock(RackModule module, std::size_t offset) noexcept {
+    const std::uint64_t position = reference_running && reference_frames > 0U
+        ? (reference_position + offset) % reference_frames : 0U;
+    switch (module) {
+      case RackModule::Drift:
+        drift.processor.set_reference_clock(position, reference_frames, reference_running);
+        break;
+      case RackModule::Halo:
+        halo.processor.set_reference_clock(position, reference_frames, reference_running);
+        break;
+      case RackModule::Grain:
+        grain_parity.set_reference_clock(position, reference_frames, reference_running);
+        break;
       default: break;
     }
   }
@@ -488,6 +511,32 @@ void NativeRack::process(const float* input, float* output, std::size_t frames) 
   if (input != output) std::copy_n(input, frames * 2, output);
   for (unsigned slot = 0; slot < kModules; ++slot)
     process_module(static_cast<RackModule>(impl_->order[slot].load(std::memory_order_relaxed)), output, frames);
+}
+void NativeRack::set_signal_reactions(
+    float grain_activity, float dream_ghost, float cross_pitch_semitones,
+    float cross_brightness, float loop_resynthesis_activity, float loop_brightness,
+    std::uint64_t reference_position,
+    std::uint64_t reference_frames, bool reference_running) noexcept {
+  const float activity = clamp01(std::isfinite(grain_activity) ? grain_activity : 0.F);
+  const float ghost = clamp01(std::isfinite(dream_ghost) ? dream_ghost : 0.F);
+  impl_->grain_parity.set_external_activity(activity);
+  impl_->grain_parity.set_cross_resynthesis(
+      cross_pitch_semitones, cross_brightness,
+      loop_resynthesis_activity, loop_brightness);
+  impl_->reference_position = reference_position;
+  impl_->reference_frames = reference_frames;
+  impl_->reference_running = reference_running && reference_frames > 0U;
+  // Artifact is a live parity wrapper in the generated rack. Its processor
+  // member is inserted by apply_atmos_parity.py before compilation.
+  impl_->artifact.processor.set_external_ghost(ghost);
+}
+void NativeRack::set_adaptive_fidelity(unsigned level) noexcept {
+  impl_->grain_parity.set_voice_limit(level >= 2U ? 8U : level == 1U ? 6U : 4U);
+}
+CircuitDnaSnapshot NativeRack::circuit_dna(RackModule module) const noexcept {
+  const auto index = static_cast<std::size_t>(module);
+  return index < impl_->circuit_dna.size()
+      ? impl_->circuit_dna[index].snapshot() : CircuitDnaSnapshot{};
 }
 void NativeRack::process_module(RackModule module, float* data, std::size_t frames) noexcept {
   if (module >= RackModule::Count) return;
@@ -518,7 +567,12 @@ void NativeRack::process_module(RackModule module, float* data, std::size_t fram
     const std::size_t block = std::min(block_limit, frames - offset);
     float* block_output = data + offset * 2U;
     std::copy_n(block_output, block * 2U, impl_->dry.data());
+    impl_->apply_reference_clock(module, offset);
     impl_->run(module, block_output, block);
+    const float dna_gain = impl_->circuit_dna[static_cast<std::size_t>(module)].observe(
+        impl_->dry.data(), block_output, block, target > 0.F);
+    for (std::size_t sample = 0U; sample < block * 2U; ++sample)
+      block_output[sample] = std::clamp(block_output[sample] * dna_gain, -1.2F, 1.2F);
     for (std::size_t frame = 0; frame < block; ++frame) {
       params.active += (target - params.active) * fade;
       if (params.mode_transition == 1U)

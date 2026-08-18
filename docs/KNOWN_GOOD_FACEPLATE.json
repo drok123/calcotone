@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "approvedOn": "2026-08-10",
+  "artifact": {
+    "name": "calcotone-native-windows-optimized(2).zip",
+    "sha256": "0794b30299464728ff0eae1e547abd2a1c998700c27451b13e7f74f9e35daa7b"
+  },
+  "faceplate": {
+    "layoutRevision": "2026-08-09-railc-latest-loop-centered-v4",
+    "sourceCommit": "9cfc06a2257f8616a1315818f8e9b00d19029910",
+    "assets": {
+      "javascript": {
+        "path": "web/assets/index-C0nz9bUo.js",
+        "sha256": "6ea5b9c35122aee0678a1e1a77de2b63cec6929496d0ccb0b11915698b7fffe4"
+      },
+      "stylesheet": {
+        "path": "web/assets/index-RnBl5-PK.css",
+        "sha256": "2cb7aef4edfe10696df8b88fc855bbedbb1f58ea7223802722f1e2e7962e7564"
+      }
+    }
+  },
+  "preservation": {
+    "geometry": "Keep the approved v4 module-screen and control coordinates.",
+    "styleOrder": [
+      "approvedFaceplate.css",
+      "ModulePowerState.css"
+    ],
+    "controlVisibility": "data-control-target identifies live core knobs and must never be hidden",
+    "xy": "retired"
+  }
+}

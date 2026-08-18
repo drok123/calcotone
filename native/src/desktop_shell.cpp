@@ -1,7 +1,6 @@
 #ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
-#include <shellapi.h>
 #include <wrl.h>
 #include <wrl/event.h>
 
@@ -10,7 +9,9 @@
 #include "calcotone/desktop_shell.hpp"
 
 #include <atomic>
+#include <filesystem>
 #include <string>
+#include <system_error>
 #include <utility>
 
 using Microsoft::WRL::Callback;
@@ -20,8 +21,22 @@ namespace calcotone {
 namespace {
 
 constexpr wchar_t kWindowClass[] = L"CalcotoneDesktopShell";
+constexpr wchar_t kFaceplateHost[] = L"app.calcotone";
+constexpr wchar_t kFaceplateOrigin[] = L"https://app.calcotone/";
+constexpr wchar_t kFaceplateUrl[] = L"https://app.calcotone/index.html?native-shell=1";
 constexpr int kInitialClientWidth = 1500;
 constexpr int kInitialClientHeight = 940;
+
+std::filesystem::path webview_user_data_folder() {
+  std::wstring local_app_data(32'768, L'\0');
+  const DWORD size = GetEnvironmentVariableW(
+      L"LOCALAPPDATA", local_app_data.data(), static_cast<DWORD>(local_app_data.size()));
+  if (size > 0 && size < local_app_data.size()) {
+    local_app_data.resize(size);
+    return std::filesystem::path(local_app_data) / L"CALCOTONE" / L"WebView2Data";
+  }
+  return std::filesystem::temp_directory_path() / L"CALCOTONE-WebView2Data";
+}
 
 void enable_per_monitor_dpi_awareness() {
   using SetProcessDpiAwarenessContextFn = BOOL(WINAPI*)(DPI_AWARENESS_CONTEXT);
@@ -55,11 +70,30 @@ RECT window_rect_for_client(HWND hwnd, int client_width, int client_height) {
 
 class DesktopShell {
  public:
-  explicit DesktopShell(std::wstring faceplate_url)
-      : faceplate_url_(std::move(faceplate_url)) {}
+  DesktopShell(
+      std::filesystem::path faceplate_root,
+      std::filesystem::path webview_runtime_root)
+      : faceplate_root_(std::move(faceplate_root)),
+        webview_runtime_root_(std::move(webview_runtime_root)),
+        user_data_root_(webview_user_data_folder()) {}
 
   int run(std::string& error) {
     enable_per_monitor_dpi_awareness();
+
+    if (!std::filesystem::is_regular_file(faceplate_root_ / L"index.html")) {
+      error = "The packaged faceplate is missing web/index.html.";
+      return -1;
+    }
+    if (!std::filesystem::is_regular_file(webview_runtime_root_ / L"msedgewebview2.exe")) {
+      error = "The bundled fixed WebView2 runtime is missing runtime/msedgewebview2.exe.";
+      return -1;
+    }
+    std::error_code directory_error;
+    std::filesystem::create_directories(user_data_root_, directory_error);
+    if (directory_error) {
+      error = "Could not create CALCOTONE's local desktop UI data folder.";
+      return -1;
+    }
 
     const HRESULT apartment = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     if (FAILED(apartment)) {
@@ -152,14 +186,16 @@ class DesktopShell {
     failed_.store(true, std::memory_order_release);
     MessageBoxA(
         hwnd_,
-        (error_ + "\n\nInstall or repair the Microsoft Edge WebView2 Runtime, then restart CALCOTONE.").c_str(),
+        (error_ + "\n\nRe-extract the complete CALCOTONE package; the faceplate and runtime folders must remain beside the EXE.").c_str(),
         "CALCOTONE desktop shell", MB_OK | MB_ICONERROR);
     DestroyWindow(hwnd_);
   }
 
   void begin_webview() {
+    const std::wstring runtime_path = webview_runtime_root_.wstring();
+    const std::wstring user_data_path = user_data_root_.wstring();
     const HRESULT started = CreateCoreWebView2EnvironmentWithOptions(
-        nullptr, nullptr, nullptr,
+        runtime_path.c_str(), user_data_path.c_str(), nullptr,
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
             [this](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
               if (FAILED(result) || !environment) {
@@ -178,6 +214,16 @@ class DesktopShell {
                         controller_->put_ZoomFactor(1.0);
                         if (FAILED(controller_->get_CoreWebView2(&webview_)) || !webview_) {
                           fail("The embedded faceplate did not expose a WebView2 instance.");
+                          return S_OK;
+                        }
+                        ComPtr<ICoreWebView2_3> webview3;
+                        const std::wstring faceplate_path = faceplate_root_.wstring();
+                        if (FAILED(webview_.As(&webview3)) || !webview3 ||
+                            FAILED(webview3->SetVirtualHostNameToFolderMapping(
+                                kFaceplateHost,
+                                faceplate_path.c_str(),
+                                COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS))) {
+                          fail("The packaged faceplate could not be mounted into the desktop shell.");
                           return S_OK;
                         }
                         ComPtr<ICoreWebView2Settings> settings;
@@ -209,14 +255,14 @@ class DesktopShell {
                                   if (SUCCEEDED(args->get_Uri(&uri)) && uri) {
                                     const std::wstring target(uri);
                                     CoTaskMemFree(uri);
-                                    if (!target.starts_with(faceplate_url_)) args->put_Cancel(TRUE);
+                                    if (!target.starts_with(kFaceplateOrigin)) args->put_Cancel(TRUE);
                                   }
                                   return S_OK;
                                 }).Get(),
                             &navigation_token);
                         resize();
                         controller_->put_IsVisible(TRUE);
-                        const HRESULT navigation = webview_->Navigate(faceplate_url_.c_str());
+                        const HRESULT navigation = webview_->Navigate(kFaceplateUrl);
                         if (FAILED(navigation)) fail("The local CALCOTONE faceplate could not be loaded.");
                         return S_OK;
                       }).Get());
@@ -272,7 +318,9 @@ class DesktopShell {
     controller_->put_Bounds(bounds);
   }
 
-  std::wstring faceplate_url_;
+  std::filesystem::path faceplate_root_;
+  std::filesystem::path webview_runtime_root_;
+  std::filesystem::path user_data_root_;
   HWND hwnd_{};
   ComPtr<ICoreWebView2Controller> controller_;
   ComPtr<ICoreWebView2> webview_;
@@ -286,8 +334,11 @@ class DesktopShell {
 
 }  // namespace
 
-int run_desktop_shell(const std::wstring& faceplate_url, std::string& error) {
-  return DesktopShell(faceplate_url).run(error);
+int run_desktop_shell(
+    const std::filesystem::path& faceplate_root,
+    const std::filesystem::path& webview_runtime_root,
+    std::string& error) {
+  return DesktopShell(faceplate_root, webview_runtime_root).run(error);
 }
 
 }  // namespace calcotone

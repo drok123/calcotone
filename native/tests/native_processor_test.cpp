@@ -130,11 +130,39 @@ int main() {
   processor.set_output_gain(1.5F);
   processor.process(input.data(), output.data(), frames);
   assert(processor.output_limited_samples() > 0U);
-  assert(processor.pre_limiter_peak() > .9F);
+  const float overrange_peak = processor.pre_limiter_peak();
+  assert(overrange_peak > 1.F);
   assert(std::all_of(output.begin(), output.end(), [](float value) { return std::isfinite(value) && std::abs(value) < 1.F; }));
+
+  // The output meter consumes this pre-limiter peak as a short hardware-style
+  // overrange hold. Silence must release it instead of pinning the red lamps for
+  // the lifetime of the host process.
+  std::fill(input.begin(), input.end(), 0.F);
+  for (unsigned block = 0; block < 24U; ++block)
+    processor.process(input.data(), output.data(), frames);
+  assert(processor.pre_limiter_peak() <= 1.001F);
+
   processor.set_active(false);
   processor.process(input.data(), output.data(), frames);
   assert(std::all_of(output.begin(), output.end(), [](float value) { return value == 0.F; }));
   assert(processor.sample_rate() == rate);
+
+  // The science layer is native engine state: active modules publish bounded
+  // Circuit DNA, and a missed render deadline immediately lowers fidelity.
+  calcotone::NativeProcessor science_processor(rate);
+  science_processor.set_active(true);
+  science_processor.set_module_bypassed(calcotone::RackModule::Grain, false);
+  assert(science_processor.set_module_parameter(
+      calcotone::RackModule::Grain, "mix", .75F));
+  for (unsigned block = 0U; block < 24U; ++block)
+    science_processor.process(input.data(), output.data(), 128U);
+  const auto dna = science_processor.circuit_dna(
+      0U, calcotone::RackModule::Grain);
+  assert(dna.observations > 0U);
+  assert(dna.calibration_gain >= .97F && dna.calibration_gain <= 1.03F);
+  science_processor.observe_render_timing(1'100U, 1'000U);
+  const auto fidelity = science_processor.adaptive_fidelity_state();
+  assert(fidelity.level == calcotone::FidelityLevel::Safe);
+  assert(fidelity.transitions == 1U);
   std::cout << "native processor transport/input-routing boundary passed\n";
 }

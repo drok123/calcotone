@@ -28,6 +28,16 @@ enum class LoopCommand : unsigned {
 };
 enum class LoopTransport : unsigned { Empty = 0U, Stopped = 1U, Playing = 2U, Recording = 3U, Overdubbing = 4U };
 
+// Read-only analysis of the stored-loop return. This sideband never replaces,
+// filters, or reroutes Loop playback; it only lets the native science engine
+// derive control signals from the reference material on the following block.
+struct LoopAnalysisProfile {
+  float energy{};
+  float transient{};
+  float brightness{};
+  float stereo_width{};
+};
+
 class LoopProcessor final {
  public:
   explicit LoopProcessor(float sample_rate = 48'000.F);
@@ -43,6 +53,7 @@ class LoopProcessor final {
   void set_overdub(float value) noexcept;
   void set_fade(float value) noexcept;
   void command(LoopCommand command) noexcept;
+  void command(LoopCommand command, unsigned track) noexcept;
   void set_trim(float start, float end) noexcept;
   void auto_trim() noexcept;
   void reset_trim() noexcept;
@@ -56,6 +67,10 @@ class LoopProcessor final {
   std::uint64_t loop_frames() const noexcept;
   std::uint64_t raw_frames() const noexcept;
   std::uint64_t position() const noexcept;
+  int reference_track() const noexcept;
+  std::uint64_t reference_frames() const noexcept;
+  std::uint64_t reference_position() const noexcept;
+  LoopAnalysisProfile analysis() const noexcept;
   float trim_start() const noexcept;
   float trim_end() const noexcept;
   std::array<float, kLoopWaveformBins> waveform() const noexcept;

@@ -149,7 +149,11 @@ for (const module of manifest.modules) {
   } else if (module.id === 'pressure') {
     check(railC.includes('name="Loop"'), 'Loop product label');
     check(loopSource.includes('export const LOOP_TRACK_COUNT = 8'), 'Loop exposes eight fixed tracks');
-    check(compact(loopSource).includes('enabled:false,selectedTrack:0,masterLevel:0.78,') && compact(loopSource).includes('overdub:0,') && compact(loopSource).includes('fade:0.18,'), 'Loop UI defaults');
+    check(compact(loopSource).includes('enabled:false,selectedTrack:0,')
+      && compact(loopSource).includes('masterLevel:1,')
+      && compact(loopSource).includes('overdub:1,')
+      && compact(loopSource).includes('fade:0,')
+      && compact(loopSource).includes('trackLevels:Array.from({length:LOOP_TRACK_COUNT},()=>1)'), 'Loop unity-fidelity UI defaults');
     check(loopHeader.includes('kLoopTrackCount = 8U') && loopHeader.includes('kLoopMaxSeconds = 60.F'), 'Loop native capacity contract');
     check(loopNative.includes('LoopProcessor::process') && loopNative.includes('LoopCommand::Overdub'), 'Loop dedicated native processor exists');
     check(app.includes("LOOP_CHANGE_EVENT") && app.includes("LOOP_COMMAND_EVENT"), 'Loop native control bridge is synchronized from App');

@@ -592,7 +592,8 @@ function nativeInputPolarityBits(invertLeft: boolean, invertRight: boolean): num
 }
 
 export default function App() {
-  const nativeShell = new URLSearchParams(window.location.search).has('native-shell');
+  const nativeShell = import.meta.env.VITE_CALCOTONE_TARGET === 'desktop'
+    || new URLSearchParams(window.location.search).has('native-shell');
   const diagnosticAudio = import.meta.env.DEV
     && new URLSearchParams(window.location.search).has('diagnostic-audio');
   const engineRef = useRef<AudioEngine | null>(null);
@@ -658,9 +659,15 @@ export default function App() {
         setLoopRuntime({
           transport: loopTransports[health.loopTransport ?? 0] ?? 'empty',
           trackMask: health.loopTrackMask ?? 0,
+          trackActiveMask: health.loopTrackActiveMask ?? 0,
+          trackMuteMask: health.loopTrackMuteMask ?? 0,
+          trackSoloMask: health.loopTrackSoloMask ?? 0,
           loopFrames: health.loopFrames ?? 0,
           rawFrames: health.loopRawFrames ?? health.loopFrames ?? 0,
           position: health.loopPosition ?? 0,
+          referenceTrack: health.loopReferenceTrack ?? -1,
+          referenceFrames: health.loopReferenceFrames ?? 0,
+          referencePosition: health.loopReferencePosition ?? 0,
           sampleRate: health.sampleRate,
           trimStart: health.loopTrimStart ?? 0,
           trimEnd: health.loopTrimEnd ?? 1,
@@ -692,6 +699,8 @@ export default function App() {
       if (!command) return;
       if (typeof command === 'string') {
         void nativeBridgeRef.current.commandLine(`loop ${command}`);
+      } else if (command.type === 'trackCommand') {
+        void nativeBridgeRef.current.commandLine(`loop ${command.command} ${command.track}`);
       } else if (command.type === 'trim') {
         void nativeBridgeRef.current.commandLine(`loop trim ${command.start} ${command.end}`);
       } else if (command.type === 'autoTrim') {
@@ -1286,7 +1295,7 @@ export default function App() {
   function toggleAdaptiveMode(): void {
     if (backendRef.current === 'native') {
       // Native FIFO/recovery safety is transport-critical and remains active.
-      // Keep the UI truthful instead of pretending this browser-only switch can disable it.
+      // Keep the UI truthful instead of pretending the diagnostic fallback switch can disable it.
       setMessage('Native I/O safety remains enabled to protect realtime audio.');
       return;
     }
@@ -1852,7 +1861,7 @@ export default function App() {
             </div>
             <span className={`audio-backend-badge ${audioBackend ?? 'detecting'}`} title="Active audio processing backend">
               <i aria-hidden="true" />
-              {audioBackend === 'native' ? 'NATIVE WASAPI' : audioBackend === 'web' ? 'WEB AUDIO' : 'AUDIO AUTO'}
+              {audioBackend === 'native' ? 'NATIVE WASAPI' : audioBackend === 'web' ? 'WEB AUDIO' : nativeShell ? 'NATIVE ENGINE' : 'AUDIO AUTO'}
             </span>
             <button type="button" className={`profiler-toggle ${explainMode ? 'active' : ''}`} aria-pressed={explainMode} onClick={() => setExplainMode((value) => !value)}>EXPLAIN</button>
             <FaceplateLayoutEditor />
@@ -2151,7 +2160,7 @@ export default function App() {
             <div>
               <span>BACKEND</span>
               <strong className={audioBackend === 'native' ? 'native-backend' : audioBackend === 'web' ? 'web-backend' : ''}>
-                {audioBackend === 'native' ? `NATIVE ${(nativeTransport ?? 'wasapi').toUpperCase()}` : audioBackend === 'web' ? 'WEB AUDIO' : 'AUTO'}
+                {audioBackend === 'native' ? `NATIVE ${(nativeTransport ?? 'wasapi').toUpperCase()}` : audioBackend === 'web' ? 'WEB AUDIO' : nativeShell ? 'NATIVE OFFLINE' : 'AUTO'}
               </strong>
             </div>
             <div>

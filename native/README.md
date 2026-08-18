@@ -16,6 +16,10 @@ audio capture, processing, and playback never enter the browser/webview.
   Artifact media/console/tape paths including the level-trimmed BCM10 hybrid;
 - post-STACK native Pressure dynamics with FET, optical, vari-mu, and VCA
   topologies plus an eight-second native Dream memory return;
+- allocation-free `SignalStateBus` reactions: physical Input 2 transients excite
+  Grain on the Input 1 lane, Dream GHOST intent adds bounded patina to media/tape
+  Artifact models, and Loop's exact reference position anchors Grain, Halo, and
+  Drift without clearing their audio memory;
 - event-driven `IAudioClient3` capture/render host;
 - minimum shared-mode engine periods with raw-mode attempt;
 - 64-frame exclusive-WASAPI request with automatic minimum-period clamping and
@@ -30,8 +34,11 @@ audio capture, processing, and playback never enter the browser/webview.
   of periodic sample deletion;
 - underrun/overrun and negotiated-buffer telemetry;
 - console control protocol for STACK parameters.
-- embedded WebView2 desktop faceplate with a loopback-only internal control bus
-  (port 48157); Chrome and StackBlitz are not part of the normal runtime.
+- packaged desktop faceplate mounted directly from `web/` into a bundled,
+  fixed-version WebView2 runtime under `runtime/`; no system browser, installed
+  WebView2 runtime, hosted page, or internet connection is part of the product;
+- loopback-only internal control bus (port 48157) for commands and telemetry;
+  this socket never serves the faceplate and never carries audio;
 - independent Input 1 / Input 2 mono-to-stereo lanes with per-STACK assignment;
 - equal-power guarded summing after the two lanes are processed.
 - allocation-free native guitar tuner on Input 2 with atomic note telemetry.
@@ -63,15 +70,24 @@ cmake --build native/build --config Release
 
 Release artifacts include `START-CALCOTONE-NATIVE.bat`. Double-click that launcher.
 The host writes `calcotone-native.log` beside itself and shows a Windows popup for
-fatal startup errors. CALCOTONE now opens its production faceplate in its own native
-desktop window using the Microsoft Edge WebView2 Runtime included with supported
-Windows installations.
+fatal startup errors. CALCOTONE opens its production faceplate in its own desktop
+window using the fixed WebView2 runtime shipped inside the package. It does not use
+or install a shared system runtime.
 
-The release also contains the production faceplate under `web/`. Once WASAPI and
-the internal bridge are active, the host embeds that local faceplate automatically.
-It does not depend on Chrome, StackBlitz, browser device permissions, hosted-page
-local-network access, or Web Audio. The bridge carries controls and telemetry only;
-all audio remains in the C++ engine.
+The release contains the production faceplate under `web/` and the matching x64
+runtime under `runtime/`. Keep both folders beside `calcotone_host.exe`. The desktop
+build is compiled in native-only mode: failure to reach the C++ host is a visible
+startup error, never a Web Audio fallback. The bridge carries controls and telemetry
+only; capture, DSP, Loop memory, recording, and playback remain in the C++ engine.
+
+## Portable product boundary
+
+The faceplate is a packaged HTML/CSS/React control surface, not the audio engine.
+Windows mounts it with WebView2; a future iOS build can mount the same production
+assets with `WKWebView`, and Android can use the platform WebView. Each platform gets
+a small control/telemetry adapter while the allocation-free C++ processors remain the
+authoritative audio core behind that adapter. This preserves the approved faceplate
+without tying DSP, session timing, Loop memory, or recording to any web runtime.
 
 ## Audio device configuration
 
@@ -114,16 +130,12 @@ lowest exclusive period.
 Both endpoint log sections list every rejected exclusive format and its HRESULT,
 which distinguishes disabled/busy exclusive access from a driver format mismatch.
 
-The bridge never carries audio. `GET http://127.0.0.1:48157/health` returns the
-negotiated device periods, FIFO depth, and dropout counters. Send a plain-text command
-such as `drive 0.5` to `POST /command`. Browser commands are serialized so the full
-rack state arrives intact during startup, while the native listener accepts the
-burst and reads each complete HTTP body. Browser origins are restricted to loopback
-hosts; the server itself binds only to `127.0.0.1`.
-
-The old browser faceplate remains available strictly for diagnostics. Launch
-`calcotone_host.exe --browser` or set `CALCOTONE_UI_MODE=browser` to use it. This
-fallback may require browser loopback permission; the standard desktop path does not.
+The bridge never carries audio or UI assets. `GET http://127.0.0.1:48157/health`
+returns negotiated device periods, FIFO depth, and dropout counters. The packaged
+faceplate serializes plain-text commands such as `drive 0.5` to `POST /command` so
+the full rack state arrives intact during startup. The listener binds only to
+`127.0.0.1` and accepts the packaged `https://app.calcotone` origin. There is no
+external-browser launch mode or browser fallback in the production host.
 
 The faceplate sends rack controls through three text commands: `param <module>
 <parameter> <value>`, `moduleBypass <module> <0|1>`, and `order <modules...>`.
@@ -135,6 +147,36 @@ STOMP splices pedal-specific filter/gain profiles with stateful device memory,
 supply sag, Hermite-LUT nonlinear stages, and 2× midpoint antialiasing. Grain,
 Artifact, Pressure, and Dream Buffer use startup-allocated native memory and never
 allocate from the realtime render thread.
+
+The signal-state reactions are deliberately not hidden knob automation. Guitar
+activity is capped at 0.35 before Grain applies its own smaller density/transient
+range; Dream can add at most 0.12 effective Wear and cannot alter console, capture,
+or dynamics models. Loop synchronization carries sample position plus cycle length
+into each rack sub-block. Grain resets only its event schedule, while Halo and Drift
+use an 8% phase pull at each boundary, preserving delay, feedback, rotor, and memory
+buffers so synchronization cannot create a hard reset click.
+
+The native science engine builds on that bus without changing the faceplate or
+turning the desktop control bridge into an audio path:
+
+- **Circuit DNA** continuously characterizes each active rack module's drive,
+  spectral color, dynamics, and short memory from its existing dry/wet blocks.
+  Its slow unity calibration is limited to ±3% and requires no retained audio.
+- **Dual-input cross-resynthesis** transfers Input 2 pitch and brightness into
+  Grain events on the Input 1 lane. It cannot synthesize sound from silence.
+- **Loop resynthesis** reads only a next-block energy/transient/brightness/width
+  sideband from stored playback. Loop still adds the original stored float samples
+  directly after Dream/rack processing at their exact saved level and polarity.
+- **Topology morphing** uses a maximum 0.10-radian orthonormal lane rotation before
+  Grain, producing a continuous independent-to-cross-coupled transition while
+  preserving the two-lane signal energy.
+- **Adaptive fidelity** receives render timing from the WASAPI host, reacts quickly
+  to deadline pressure, and recovers only after sustained headroom. It caps STACK
+  quality at 4×/2×/1× and Grain at 8/6/4 voices without allocating or reading a
+  wall clock inside DSP code.
+
+The `health` response exposes the controller tier/load, lane-one Grain DNA, and
+Loop analysis values as control telemetry only; the bridge never carries samples.
 
 `stackInput 0` assigns STACK to Input 1, `stackInput 1` assigns it to Input 2,
 and `stackInput 2` processes both lanes through independent STACK instances. A lane

@@ -50,15 +50,23 @@ double energy(const std::vector<float>& audio, std::size_t first, std::size_t la
   return result;
 }
 
+double signature(const std::vector<float>& audio) {
+  double result = 0.0;
+  for (std::size_t index = 0; index < audio.size(); ++index) {
+    assert(std::isfinite(audio[index]) && std::abs(audio[index]) <= 1.2F);
+    result += std::abs(static_cast<double>(audio[index]))
+        * static_cast<double>((index % 251U) + 1U);
+  }
+  return result;
+}
+
 void test_model_identities() {
   std::array<double, calcotone::kAtmosParityProfiles.size()> signatures{};
   for (unsigned mode = 0; mode < signatures.size(); ++mode) {
     const auto audio = render(mode, mode == 5U ? 12.F : 2.4F, 48'000U);
-    double signature = 0.0;
-    for (std::size_t index = 0; index < audio.size(); ++index)
-      signature += std::abs(static_cast<double>(audio[index])) * static_cast<double>((index % 251U) + 1U);
-    assert(signature > 1e-6);
-    signatures[mode] = signature;
+    const double model_signature = signature(audio);
+    assert(model_signature > 1e-6);
+    signatures[mode] = model_signature;
   }
   for (std::size_t first = 0; first < signatures.size(); ++first)
     for (std::size_t second = first + 1U; second < signatures.size(); ++second)
@@ -104,6 +112,38 @@ void test_live_algorithm_switch_preserves_outgoing_tail() {
   assert(energy(transition, 0U, 8'000U) > 1e-5);
 }
 
+std::vector<float> render_after_live_selection(unsigned selected_mode) {
+  calcotone::AtmosParityProcessor processor(kRate);
+  configure(processor, 0U, 2.4F);
+
+  // Force a true live model transition rather than the startup shortcut, then
+  // leave more than the 80 ms network crossfade to retire the old room model.
+  std::vector<float> pre_roll(256U * 2U, 0.F);
+  process_blocks(processor, pre_roll);
+  assert(processor.set_parameter("algorithm", static_cast<float>(selected_mode)));
+  std::vector<float> settle(5'000U * 2U, 0.F);
+  process_blocks(processor, settle);
+
+  std::vector<float> probe(48'000U * 2U, 0.F);
+  probe[0] = .5F;
+  probe[1] = -.37F;
+  process_blocks(processor, probe);
+  return probe;
+}
+
+void test_live_algorithm_switch_commits_incoming_model() {
+  const auto room = render_after_live_selection(0U);
+  const auto spring = render_after_live_selection(14U);
+  const auto veil = render_after_live_selection(16U);
+  const double room_signature = signature(room);
+  const double spring_signature = signature(spring);
+  const double veil_signature = signature(veil);
+
+  assert(std::abs(spring_signature - room_signature) > 1e-3);
+  assert(std::abs(veil_signature - room_signature) > 1e-3);
+  assert(std::abs(veil_signature - spring_signature) > 1e-3);
+}
+
 void test_reset_is_deterministic() {
   calcotone::AtmosParityProcessor processor(kRate);
   configure(processor, 8U, 6.F);
@@ -129,6 +169,7 @@ int main() {
   test_emt_mono_excitation_reaches_both_pickups();
   test_new_modes_are_reachable();
   test_live_algorithm_switch_preserves_outgoing_tail();
+  test_live_algorithm_switch_commits_incoming_model();
   test_reset_is_deterministic();
 
   calcotone::AtmosParityProcessor processor(kRate);

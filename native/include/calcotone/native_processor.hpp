@@ -1,5 +1,6 @@
 #pragma once
 
+#include "calcotone/adaptive_fidelity.hpp"
 #include "calcotone/input_router.hpp"
 #include "calcotone/native_rack.hpp"
 #include "calcotone/loop_processor.hpp"
@@ -36,6 +37,7 @@ class NativeProcessor final {
   void set_loop_overdub(float value) noexcept;
   void set_loop_fade(float value) noexcept;
   void loop_command(LoopCommand command) noexcept;
+  void loop_command(LoopCommand command, unsigned track) noexcept;
   void set_loop_trim(float start, float end) noexcept;
   void auto_trim_loop() noexcept;
   void reset_loop_trim() noexcept;
@@ -48,6 +50,9 @@ class NativeProcessor final {
   std::uint64_t loop_frames() const noexcept;
   std::uint64_t loop_raw_frames() const noexcept;
   std::uint64_t loop_position() const noexcept;
+  int loop_reference_track() const noexcept;
+  std::uint64_t loop_reference_frames() const noexcept;
+  std::uint64_t loop_reference_position() const noexcept;
   float loop_trim_start() const noexcept;
   float loop_trim_end() const noexcept;
   std::array<float, kLoopWaveformBins> loop_waveform() const noexcept;
@@ -68,6 +73,12 @@ class NativeProcessor final {
   void set_stack_model(AmpModel model) noexcept;
   void set_stack_cabinet(Cabinet cabinet) noexcept;
   void set_stack_quality(unsigned quality) noexcept;
+  void observe_render_timing(std::uint64_t render_micros,
+                             std::uint64_t deadline_micros) noexcept;
+  [[nodiscard]] AdaptiveFidelityState adaptive_fidelity_state() const noexcept;
+  [[nodiscard]] CircuitDnaSnapshot circuit_dna(unsigned lane,
+                                                RackModule module) const noexcept;
+  [[nodiscard]] LoopAnalysisProfile loop_analysis() const noexcept;
   float tuner_frequency() const noexcept;
   float tuner_level() const noexcept;
   std::uint64_t output_limited_samples() const noexcept;

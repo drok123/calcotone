@@ -27,7 +27,6 @@ import {
 } from '../../features/random/randomProfiles';
 import {
   LOOP_VISIBLE_TRACK_COUNT,
-  clearLoopTrack,
   pressLoopTrack,
   sendLoopCommand,
   setLoopState,
@@ -702,7 +701,7 @@ function LoopTrackFader({ track, value, selected, occupied, locked, onSelect, on
         aria-label={`Loop track ${track + 1} level`}
         onPointerDown={onSelect}
         onFocus={onSelect}
-        onDoubleClick={() => onChange(0.72)}
+        onDoubleClick={() => onChange(1)}
         onChange={(event) => onChange(Number(event.target.value))}
       />
       <output>{Math.round(value * 100)}</output>
@@ -765,7 +764,10 @@ function LoopModule({
     const selected = track === state.selectedTrack;
     const recording = selected && state.transport === 'recording';
     const overdubbing = selected && state.transport === 'overdubbing';
-    const playing = occupied && state.transport !== 'stopped' && state.transport !== 'empty';
+    const playing = occupied
+      && (state.trackActiveMask & (1 << track)) !== 0
+      && state.transport !== 'stopped'
+      && state.transport !== 'empty';
     const label = recording ? 'REC' : overdubbing ? 'DUB' : occupied ? (playing ? 'PLAY' : 'STOP') : 'REC';
     const locked = writing && !selected;
     return {
@@ -774,11 +776,10 @@ function LoopModule({
       active: recording || overdubbing || playing,
       className: recording ? 'is-recording' : overdubbing ? 'is-overdubbing' : playing ? 'is-playing' : occupied ? 'is-stopped' : 'is-empty',
       locked,
-      action: (shiftKey: boolean) => {
+      action: () => {
         if (locked) return;
         setTrimEditing(false);
-        if (shiftKey) clearLoopTrack(track);
-        else pressLoopTrack(track);
+        pressLoopTrack(track);
       },
     };
   });
@@ -807,7 +808,7 @@ function LoopModule({
             ) : (
               <>
                 <LoopUtilitySlider label="MSTR" value={state.masterLevel} display={`${Math.round(state.masterLevel * 100)}`} onChange={(value) => setLoopState({ masterLevel: value })} />
-                <LoopUtilitySlider label="RET" value={state.overdub} display={`${Math.round(state.overdub * 100)}`} onChange={(value) => setLoopState({ overdub: value })} />
+                <LoopUtilitySlider label="DUB" value={state.overdub} display={`${Math.round(state.overdub * 100)}`} onChange={(value) => setLoopState({ overdub: value })} />
                 <LoopUtilitySlider label="FADE" value={state.fade} display={`${Math.round(state.fade * 20)}ms`} onChange={(value) => setLoopState({ fade: value })} />
                 <button
                   type="button"
@@ -854,7 +855,7 @@ function LoopModule({
             <LoopTrackFader
               key={`fader-${track}`}
               track={track}
-              value={state.trackLevels[track] ?? 0.72}
+              value={state.trackLevels[track] ?? 1}
               selected={selected}
               occupied={occupied}
               locked={locked}
@@ -869,10 +870,10 @@ function LoopModule({
             key={button.key}
             className={`loop-track-pad ${button.className} ${button.active ? 'active' : ''}`}
             aria-pressed={button.active}
-            aria-label={`${button.label}. Click for record/play/overdub. Shift click to clear this track.`}
+            aria-label={`${button.label}. Click for record, finish, play, or stop. Dub and guarded clear are separate header actions.`}
             disabled={button.locked}
-            title={button.locked ? 'Finish the active REC/DUB pass before changing tracks' : 'Click: REC / PLAY / DUB · Shift-click: clear track'}
-            onClick={(event) => button.action(event.shiftKey)}
+            title={button.locked ? 'Finish the active REC/DUB pass before changing tracks' : 'Click: REC / FINISH / PLAY / STOP'}
+            onClick={button.action}
           >
             {button.label}
           </button>

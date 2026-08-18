@@ -1,0 +1,52 @@
+/* Final legibility contract. Keep text out of filtered compositor layers and
+   remove faux-printed shadows that rasterize into a dithered halo in WebView2. */
+:root,
+body,
+button,
+select,
+input,
+textarea {
+  text-rendering: optimizeLegibility !important;
+  -webkit-font-smoothing: subpixel-antialiased !important;
+  -moz-osx-font-smoothing: auto !important;
+  font-kerning: normal;
+}
+
+.effect-module:not(.enabled),
+.rail-c-module:not(.enabled) {
+  filter: none !important;
+}
+
+.workstation,
+.module-card,
+.module-faceplate,
+.effect-module,
+.rail-c-module,
+.io-panel,
+.performance-panel,
+.modules-section {
+  backface-visibility: visible !important;
+}
+
+#root :where(
+  h1, h2, h3, p, small, strong, label, output,
+  button, select, option, input, textarea,
+  .module-number, .module-route-cue, .viewport-caption,
+  .knob-label, .knob-value, .rail-id, .status-item
+) {
+  text-shadow: none !important;
+  -webkit-text-stroke: 0 transparent !important;
+}
+
+.effect-module :where(.module-header h3, .module-number, .module-route-cue, .knob-label, .knob-value),
+.rail-c-module :where(.module-header h3, .module-number, .module-route-cue, .knob-label, .knob-value) {
+  -webkit-text-fill-color: currentColor;
+}
+
+.module-header-control :where(select, button),
+.loop-header-action,
+.loop-header-param,
+.loop-track-pad {
+  font-weight: 800 !important;
+  text-rendering: optimizeLegibility !important;
+}

@@ -1,4 +1,4 @@
-import type { CSSProperties, ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useRef, type CSSProperties, type ChangeEvent as ReactChangeEvent, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { REVERB_ALGORITHM_ORDER, type ReverbAlgorithm } from '../../audio/effects/Reverb';
 import { ARTIFACT_CONSOLE_MODES, ARTIFACT_DYNAMICS_MODES, MEDIA_MODE_GROUPS, type MediaMode } from '../../audio/effects/Media';
 import { EMBER_DIGITAL_CAPTURE_MODES, EMBER_MODE_GROUPS, type EmberMode } from '../../audio/effects/Saturation';
@@ -13,6 +13,12 @@ import { DELAY_ALGORITHM_ORDER, type DelayAlgorithm } from '../../audio/effects/
 import type { VisualAudioState } from '../../visual/VisualEngine';
 import type { ModuleParameter, ModuleState } from '../../ui/types';
 import { formatAlgorithmName } from '../../ui/formatting';
+import {
+  buildTargetedCoreRandom,
+  registerCoreRandomController,
+  type CoreRandomModuleId,
+} from '../../features/random/coreRandomRegistry';
+import type { RandomizationProfile } from '../../features/random/randomProfiles';
 import {
   beginFaceplateGesture,
   endFaceplateGesture,
@@ -92,6 +98,36 @@ export function EffectModule({
     '--module-high': visualState.high,
     '--module-delay': `${(Number(slotLabel.slice(1)) - 1) * 65}ms`,
   } as CSSProperties;
+  const randomModuleRef = useRef(module);
+  const randomApplyRef = useRef<(profile: RandomizationProfile) => string | null>(() => null);
+  randomModuleRef.current = module;
+  randomApplyRef.current = (profile) => {
+    const current = randomModuleRef.current;
+    const next = buildTargetedCoreRandom(current, profile);
+    if (next === current) return null;
+
+    if (next.emberMode && next.emberMode !== current.emberMode) onEmberModeChange(next.emberMode);
+    if (next.driftMode && next.driftMode !== current.driftMode) onDriftModeChange(next.driftMode);
+    if (next.delayAlgorithm && next.delayAlgorithm !== current.delayAlgorithm) onDelayAlgorithmChange(next.delayAlgorithm);
+    if (next.algorithm && next.algorithm !== current.algorithm) onAlgorithmChange(next.algorithm);
+    if (next.mediaMode && next.mediaMode !== current.mediaMode) onMediaModeChange(next.mediaMode);
+    if (next.grainMode && next.grainMode !== current.grainMode) onGrainModeChange(next.grainMode);
+    if (next.microcosmProgram && next.microcosmProgram !== current.microcosmProgram) onMicrocosmProgramChange(next.microcosmProgram);
+    if (current.id === 'bitcrusher' && current.microcosmHold) onMicrocosmHoldChange(false);
+
+    for (const parameter of next.parameters) {
+      const previous = current.parameters.find((candidate) => candidate.id === parameter.id);
+      if (!previous || Math.abs(previous.value - parameter.value) > 1e-7) {
+        onParameterChange(parameter.id, parameter.value);
+      }
+    }
+    return `${current.name} · ${profile === 'mutate' ? 'MUTATE 10%' : profile.toUpperCase()}`;
+  };
+
+  useEffect(() => registerCoreRandomController(module.id as CoreRandomModuleId, {
+    isAvailable: () => randomModuleRef.current.available,
+    randomize: (profile) => randomApplyRef.current(profile),
+  }), [module.id]);
 
   function beginKnobLayoutDrag(index: number, event: ReactPointerEvent<HTMLDivElement>): void {
     if (!faceplateEditor.editing || event.button !== 0) return;

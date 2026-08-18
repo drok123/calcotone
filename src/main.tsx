@@ -14,6 +14,7 @@ import './components/layout/HardwarePolishPass.css'
 import './components/layout/RailMicroAdjust.css'
 import './components/layout/CharcoalHardwarePass.css'
 import './components/controls/RandomPerformance.css'
+import './outputOverrange.css'
 import './readability.css'
 import './chordChainPatch.css'
 import './highDefinition1440.css'
@@ -27,8 +28,10 @@ import { installDisplayProfile } from './ui/displayProfile'
 import App from './App.tsx'
 import './approvedFaceplate.css'
 import './components/effects/ModulePowerState.css'
+import './microcosmFaceplate.css'
 import './loopRefinement.css'
 import './loopSurfaceV3'
+import './legibilityFinal.css'
 
 installDisplayProfile()
 

@@ -33,6 +33,9 @@ struct DriftParityProcessor::Impl {
   float mode_mix{1.F};
   float mode_fade_step{};
   unsigned mode_transition{};
+  std::atomic<std::uint64_t> reference_position_target{0U};
+  std::atomic<std::uint64_t> reference_frames_target{0U};
+  std::atomic<bool> reference_running_target{false};
 
   explicit Impl(float rate)
       : sample_rate(std::clamp(rate, 8000.F, 384000.F)),
@@ -118,7 +121,23 @@ struct DriftParityProcessor::Impl {
   }
 
   void process(float* data, std::size_t frames) noexcept {
+    const bool reference_running = reference_running_target.load(std::memory_order_relaxed);
+    const std::uint64_t reference_frames = reference_frames_target.load(std::memory_order_relaxed);
+    const std::uint64_t reference_position = reference_frames > 0U
+        ? reference_position_target.load(std::memory_order_relaxed) % reference_frames : 0U;
+    std::uint64_t reference_countdown = reference_running && reference_frames > 0U
+        ? (reference_position == 0U ? 0U : reference_frames - reference_position)
+        : std::numeric_limits<std::uint64_t>::max();
     for (std::size_t frame = 0; frame < frames; ++frame) {
+      if (reference_countdown == 0U) {
+        // Pull modulation toward the shared boundary without resetting delay,
+        // feedback, lamp, or rotor memory. Repeated cycles converge gently.
+        classic.nudge_reference_phase(0.F, .08F);
+        standard.nudge_reference_phase(0.F, .08F);
+        reference_countdown = reference_frames;
+      }
+      if (reference_countdown != std::numeric_limits<std::uint64_t>::max())
+        --reference_countdown;
       const bool refresh_control = control_countdown == 0U;
       if (refresh_control) {
         snapshot_targets();
@@ -160,6 +179,12 @@ DriftParityProcessor::DriftParityProcessor(float sample_rate) : impl_(std::make_
 DriftParityProcessor::~DriftParityProcessor() = default;
 void DriftParityProcessor::process(float* data, std::size_t frames) noexcept { impl_->process(data, frames); }
 void DriftParityProcessor::reset() noexcept { impl_->reset(); }
+void DriftParityProcessor::set_reference_clock(
+    std::uint64_t position, std::uint64_t frames, bool running) noexcept {
+  impl_->reference_position_target.store(position, std::memory_order_relaxed);
+  impl_->reference_frames_target.store(frames, std::memory_order_relaxed);
+  impl_->reference_running_target.store(running && frames > 0U, std::memory_order_relaxed);
+}
 bool DriftParityProcessor::set_parameter(std::string_view name, float value) noexcept {
   if (!std::isfinite(value)) return false;
   std::size_t index = 99;

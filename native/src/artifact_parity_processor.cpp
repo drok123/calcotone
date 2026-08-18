@@ -257,6 +257,7 @@ struct ArtifactParityProcessor::Impl {
     random_state = 0xA471FAC7U;
     coefficient_countdown = 0U;
     active_mode = -1;
+    external_ghost = clamp01(external_ghost_target.load(std::memory_order_relaxed));
     dynamics.reset();
     update_point();
     update_filters();
@@ -266,13 +267,18 @@ struct ArtifactParityProcessor::Impl {
     ModelPoint result{};
     if (mode == 8U) {
       result.insert = true; result.transport = false; result.tascam = true;
-      result.model_input = .82F + wear * 2.9F;
-      result.pre_drive = 1.05F + wear * 4.4F;
-      result.pre_asymmetry = .045F;
-      result.post_drive = 1.F + std::pow(tone, 1.55F) * 7.6F;
-      result.post_asymmetry = .032F + wear * .025F;
-      result.model_output = std::clamp(std::pow(result.model_input, -.38F)
-          * std::pow(result.pre_drive, -.10F) * std::pow(result.post_drive, -.08F), .18F, 1.1F);
+      // Keep normal 424 operation in console territory instead of presenting the
+      // second ADAA stage with an already-hot signal. Wear still has enough range
+      // to overdrive the input/channel pair deliberately, but the stock operating
+      // point now preserves low-level headroom instead of behaving like a fuzz box.
+      result.model_input = .58F + wear * 1.8F;
+      result.pre_drive = 1.02F + wear * 2.2F;
+      result.pre_asymmetry = .032F;
+      result.post_drive = 1.F + std::pow(tone, 1.55F) * 3.4F;
+      result.post_asymmetry = .022F + wear * .018F;
+      const float nominal_gain = std::max(1.F,
+          result.model_input * result.pre_drive * result.post_drive);
+      result.model_output = std::clamp(std::pow(nominal_gain, -.72F), .08F, 1.1F);
       result.low_shelf_hz = 100.F;
       result.low_shelf_db = bipolar_around_default(wow, .16F) * 10.F;
       result.high_shelf_hz = 10'000.F;
@@ -382,7 +388,10 @@ struct ArtifactParityProcessor::Impl {
 
   void update_point() noexcept {
     const unsigned mode = std::min(13U, static_cast<unsigned>(std::max(0.F, std::round(smooth[0]))));
-    point = make_point(mode, clamp01(smooth[1]), clamp01(smooth[2]), clamp01(smooth[3]), clamp01(smooth[4]));
+    const bool ghost_reactive_model = mode <= 7U || mode == 12U;
+    const float wear = clamp01(smooth[1]
+        + (ghost_reactive_model ? external_ghost * .12F : 0.F));
+    point = make_point(mode, wear, clamp01(smooth[2]), clamp01(smooth[3]), clamp01(smooth[4]));
     if (static_cast<int>(mode) != active_mode) {
       active_mode = static_cast<int>(mode);
       coefficient_countdown = 0U;
@@ -457,7 +466,11 @@ struct ArtifactParityProcessor::Impl {
     }
     const float character_smoothing = smoothing_coefficient(.04F, rate);
     const float mix_smoothing = smoothing_coefficient(.025F, rate);
+    const float ghost_smoothing = smoothing_coefficient(.28F, rate);
+    const float ghost_target = clamp01(
+        external_ghost_target.load(std::memory_order_relaxed));
     for (std::size_t frame = 0; frame < frames; ++frame) {
+      external_ghost += (ghost_target - external_ghost) * ghost_smoothing;
       smooth[0] = target[0].load(std::memory_order_relaxed);
       for (std::size_t index = 1; index < 5U; ++index)
         smooth[index] += (target[index].load(std::memory_order_relaxed) - smooth[index]) * character_smoothing;
@@ -522,6 +535,8 @@ struct ArtifactParityProcessor::Impl {
   ModelPoint point{};
   std::array<std::atomic<float>, 6> target{0.F,.162F,.16F,.10F,.62F,.26F};
   std::array<float, 6> smooth{0.F,.162F,.16F,.10F,.62F,.26F};
+  std::atomic<float> external_ghost_target{0.F};
+  float external_ghost{};
 };
 
 ArtifactParityProcessor::ArtifactParityProcessor(float rate) : impl_(std::make_unique<Impl>(rate)) {}
@@ -530,6 +545,9 @@ void ArtifactParityProcessor::process(float* data, std::size_t frames) noexcept 
   if (data && frames) impl_->process(data, frames);
 }
 void ArtifactParityProcessor::reset() noexcept { impl_->reset(); }
+void ArtifactParityProcessor::set_external_ghost(float ghost) noexcept {
+  impl_->external_ghost_target.store(clamp01(ghost), std::memory_order_relaxed);
+}
 bool ArtifactParityProcessor::set_parameter(std::string_view name, float value) noexcept {
   if (!std::isfinite(value)) return false;
   std::size_t index = 99U;

@@ -40,7 +40,7 @@
 }
 
 /* LOOP no longer has a second micro-control row. The transient screen owns
-   BPM/quantize/trim/fade and MSTR/RETAIN now live beside the transport. */
+   BPM/quantize/trim/fade and MSTR/DUB level now live beside the transport. */
 .module-pressure .module-header-control,
 .module-pressure .loop-track-bank,
 .module-pressure .loop-clock-bank,
@@ -89,6 +89,21 @@
 .module-pressure .loop-header-track-action {
   color: #fffdf6;
   border-color: rgba(242, 234, 216, .46);
+}
+
+.module-pressure .loop-header-dub-action {
+  color: rgba(225, 216, 255, .96);
+  border-color: rgba(215, 200, 255, .46);
+}
+
+.module-pressure .loop-header-clear-action {
+  color: rgba(242, 234, 216, .72);
+}
+
+.module-pressure .loop-header-clear-action.is-armed {
+  color: #fffdf6;
+  border-color: rgba(255, 190, 114, .82);
+  background: rgba(112, 63, 28, .46);
 }
 
 .module-pressure .loop-header-action.loop-505-undo,

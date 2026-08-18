@@ -37,8 +37,8 @@ for (const [token, label] of [
   ['undo: changed ? [...state.undo, before] : state.undo', 'gesture-level undo capture'],
   ['redo: changed ? [] : state.redo', 'redo invalidation after edit'],
   ['window.localStorage.setItem(STORAGE_KEY, JSON.stringify(saved))', 'saved-layout persistence'],
-  ['window.localStorage.setItem(FACTORY_LAYOUT_REVISION_KEY, FACTORY_LAYOUT_REVISION)', 'layout revision persistence'],
-  ['window.localStorage.getItem(FACTORY_LAYOUT_REVISION_KEY) !== FACTORY_LAYOUT_REVISION', 'stale-layout migration'],
+  ['window.localStorage.setItem(FACTORY_LAYOUT_REVISION_KEY, FACTORY_LAYOUT_STORAGE_REVISION)', 'layout revision persistence'],
+  ['window.localStorage.getItem(FACTORY_LAYOUT_REVISION_KEY) !== FACTORY_LAYOUT_STORAGE_REVISION', 'stale-layout migration'],
   ['linkedModules: !state.linkedModules', 'independent module state'],
 ]) requireText(state, token, `Architect ${label}`);
 

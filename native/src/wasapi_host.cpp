@@ -1,7 +1,6 @@
 #ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
-#include <shellapi.h>
 #include <audioclient.h>
 #include <avrt.h>
 #include <ksmedia.h>
@@ -628,6 +627,9 @@ int main(int argc, char** argv) {
     const auto apply_command = [&](std::string_view line) -> std::string {
       if (line == "health" || line == "stats") {
         const auto loop_waveform = processor.loop_waveform();
+        const auto loop_analysis = processor.loop_analysis();
+        const auto fidelity = processor.adaptive_fidelity_state();
+        const auto grain_dna = processor.circuit_dna(0U, calcotone::RackModule::Grain);
         std::ostringstream status;
         status << "{\"engine\":\"calcotone-native\",\"protocol\":1,\"sampleRate\":" << sample_rate
                << ",\"transport\":\"wasapi\",\"requestedBackend\":\"" << calcotone::audio_backend_name(audio_config.backend) << '"'
@@ -674,15 +676,33 @@ int main(int argc, char** argv) {
                << ",\"preLimiterPeak\":" << processor.pre_limiter_peak()
                << ",\"renderDeadlineMisses\":" << render_deadline_misses.load()
                << ",\"maxRenderMicros\":" << max_render_micros.load()
+               << ",\"scienceFidelity\":" << static_cast<unsigned>(fidelity.level)
+               << ",\"scienceRenderLoad\":" << fidelity.render_load
+               << ",\"scienceFidelityTransitions\":" << fidelity.transitions
+               << ",\"grainDnaDrive\":" << grain_dna.drive
+               << ",\"grainDnaColor\":" << grain_dna.color
+               << ",\"grainDnaDynamics\":" << grain_dna.dynamics
+               << ",\"grainDnaMemory\":" << grain_dna.memory
+               << ",\"grainDnaCalibration\":" << grain_dna.calibration_gain
+               << ",\"loopAnalysisEnergy\":" << loop_analysis.energy
+               << ",\"loopAnalysisTransient\":" << loop_analysis.transient
+               << ",\"loopAnalysisBrightness\":" << loop_analysis.brightness
+               << ",\"loopAnalysisWidth\":" << loop_analysis.stereo_width
                << ",\"recording\":" << (recorder.active() ? "true" : "false")
                << ",\"recordingFrames\":" << recorder.frames()
                << ",\"recordingPeak\":" << recorder.peak()
                << ",\"loopTransport\":" << static_cast<unsigned>(processor.loop_transport())
                << ",\"loopTrack\":" << processor.loop_selected_track()
                << ",\"loopTrackMask\":" << processor.loop_track_mask()
+               << ",\"loopTrackActiveMask\":" << processor.loop_track_active_mask()
+               << ",\"loopTrackMuteMask\":" << processor.loop_track_mute_mask()
+               << ",\"loopTrackSoloMask\":" << processor.loop_track_solo_mask()
                << ",\"loopFrames\":" << processor.loop_frames()
                << ",\"loopRawFrames\":" << processor.loop_raw_frames()
                << ",\"loopPosition\":" << processor.loop_position()
+               << ",\"loopReferenceTrack\":" << processor.loop_reference_track()
+               << ",\"loopReferenceFrames\":" << processor.loop_reference_frames()
+               << ",\"loopReferencePosition\":" << processor.loop_reference_position()
                << ",\"loopTrimStart\":" << processor.loop_trim_start()
                << ",\"loopTrimEnd\":" << processor.loop_trim_end()
                << ",\"loopWaveform\":[";
@@ -698,17 +718,35 @@ int main(int argc, char** argv) {
       std::istringstream command{std::string(line)}; std::string name; command >> name;
       if (name == "recordStart") return recorder.start() ? R"({"ok":true,"command":"recordStart"})" : R"({"error":"recording already active"})";
       if (name == "recordStop") {
-        const bool saved = recorder.stop(executable_directory() / "web" / "calcotone-recording.wav");
+        const bool saved = recorder.stop(executable_directory() / "calcotone-recording.wav");
         return saved ? R"({"ok":true,"command":"recordStop"})" : R"({"error":"native recording was empty or could not be saved"})";
       }
       if (name == "recordCancel") { recorder.cancel(); return R"({"ok":true,"command":"recordCancel"})"; }
       if (name == "loop") {
         std::string action; command >> action;
-        if (!command) return R"({\"error\":\"expected loop record|overdub|play|clear|trim|autoTrim|resetTrim\"})";
-        if (action == "record") processor.loop_command(calcotone::LoopCommand::Record);
-        else if (action == "overdub") processor.loop_command(calcotone::LoopCommand::Overdub);
-        else if (action == "play") processor.loop_command(calcotone::LoopCommand::Play);
-        else if (action == "clear") processor.loop_command(calcotone::LoopCommand::Clear);
+        if (!command) return R"({\"error\":\"expected a Loop transport, track, edit, or trim action\"})";
+        const auto run_loop_action = [&](calcotone::LoopCommand loop_action) {
+          unsigned track = processor.loop_selected_track();
+          if (command >> track) {
+            if (track >= calcotone::kLoopTrackCount) return false;
+            processor.loop_command(loop_action, track);
+          } else {
+            command.clear();
+            processor.loop_command(loop_action);
+          }
+          return true;
+        };
+        if (action == "record") { if (!run_loop_action(calcotone::LoopCommand::Record)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "overdub") { if (!run_loop_action(calcotone::LoopCommand::Overdub)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "play") { if (!run_loop_action(calcotone::LoopCommand::Play)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "clear") { if (!run_loop_action(calcotone::LoopCommand::Clear)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "trackPlay") { if (!run_loop_action(calcotone::LoopCommand::TrackPlay)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "trackStop") { if (!run_loop_action(calcotone::LoopCommand::TrackStop)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "mute") { if (!run_loop_action(calcotone::LoopCommand::Mute)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "solo") { if (!run_loop_action(calcotone::LoopCommand::Solo)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "undo") { if (!run_loop_action(calcotone::LoopCommand::Undo)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "redo") { if (!run_loop_action(calcotone::LoopCommand::Redo)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "bounce") { if (!run_loop_action(calcotone::LoopCommand::Bounce)) return R"({\"error\":\"invalid loop track\"})"; }
         else if (action == "trim") {
           float start = 0.F, end = 1.F; command >> start >> end;
           if (!command || !std::isfinite(start) || !std::isfinite(end)) return R"({\"error\":\"expected loop trim start end\"})";
@@ -793,7 +831,7 @@ int main(int argc, char** argv) {
     };
 
     calcotone::ControlServer control_server(
-        apply_command, 48157, executable_directory() / "web");
+        apply_command, 48157, executable_directory() / "calcotone-recording.wav");
     log_line("Binding native control bridge to 127.0.0.1:48157...");
     control_server.start();
     log_line("Native control bridge is listening on 127.0.0.1:48157.");
@@ -949,6 +987,7 @@ int main(int argc, char** argv) {
         auto previous_max = max_render_micros.load(std::memory_order_relaxed);
         while (render_micros > previous_max && !max_render_micros.compare_exchange_weak(
             previous_max, render_micros, std::memory_order_relaxed, std::memory_order_relaxed)) {}
+        processor.observe_render_timing(render_micros, render_deadline_micros);
         if (render_micros >= render_deadline_micros) {
           render_deadline_misses.fetch_add(1, std::memory_order_relaxed);
           if (fifo_safety.observe_deadline_miss())
@@ -968,8 +1007,6 @@ int main(int argc, char** argv) {
            << primed_frames / sample_rate * 1000. << " ms safety; target " << fifo_target_frames << "f)";
     log_line(primed.str());
     check(render.client->Start(), "Start render");
-    const std::wstring faceplate_url = L"http://127.0.0.1:" + std::to_wstring(control_server.port()) + L"/";
-    const std::wstring desktop_faceplate_url = faceplate_url + L"?native-shell=1";
     const double input_ms = capture.period_frames / sample_rate * 1000.;
     const double output_ms = render.buffer_frames / sample_rate * 1000.;
     std::ostringstream startup;
@@ -979,45 +1016,25 @@ int main(int argc, char** argv) {
     log_line(startup.str());
     log_line("Control bridge: http://127.0.0.1:" + std::to_string(control_server.port()) + " | GET /health | POST /command");
     log_line("Commands: param/moduleBypass/order, active/bypass, stackInput, inputGain/outputGain, STACK controls, stats, quit");
-    bool browser_mode = false;
-    for (int argument = 1; argument < argc; ++argument)
-      browser_mode = browser_mode || std::string_view(argv[argument]) == "--browser";
-    std::array<char, 32> ui_mode{};
-    GetEnvironmentVariableA("CALCOTONE_UI_MODE", ui_mode.data(), static_cast<DWORD>(ui_mode.size()));
-    browser_mode = browser_mode || std::string_view(ui_mode.data()) == "browser";
+    const auto application_root = executable_directory();
+    log_line("Opening the packaged offline CALCOTONE faceplate...");
+    std::string shell_error;
+    int shell_result = -1;
+    // WASAPI lives in this thread's multithreaded COM apartment. The packaged
+    // fixed WebView2 runtime owns a dedicated STA and Windows message pump.
+    std::thread shell_thread([&] {
+      shell_result = calcotone::run_desktop_shell(
+          application_root / "web", application_root / "runtime", shell_error);
+    });
+    shell_thread.join();
+    if (shell_result < 0) log_line("Standalone faceplate failed: " + shell_error);
 
-    if (!browser_mode) {
-      log_line("Opening embedded CALCOTONE desktop faceplate...");
-      std::string shell_error;
-      int shell_result = -1;
-      // WASAPI lives in this thread's multithreaded COM apartment. WebView2
-      // requires a dedicated single-threaded apartment and Windows message pump.
-      std::thread shell_thread([&] {
-        shell_result = calcotone::run_desktop_shell(desktop_faceplate_url, shell_error);
-      });
-      shell_thread.join();
-      if (shell_result < 0) {
-        log_line("Embedded faceplate failed: " + shell_error);
-        log_line("Falling back to the local diagnostic browser faceplate.");
-        browser_mode = true;
-      }
-    }
-    if (browser_mode) {
-      log_line("Opening diagnostic browser faceplate: http://127.0.0.1:" + std::to_string(control_server.port()) + "/");
-      ShellExecuteW(nullptr, L"open", faceplate_url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-      std::string line;
-      while (std::getline(std::cin, line)) {
-        std::istringstream command(line); std::string name; float value = 0.F; command >> name;
-        if (name == "quit") break;
-        std::cout << apply_command(line) << '\n';
-      }
-    }
     control_server.stop();
     recorder.cancel();
     running.store(false); SetEvent(capture.event); SetEvent(render.event);
     capture_thread.join(); render_thread.join();
     capture.client->Stop(); render.client->Stop(); CoUninitialize();
-    return 0;
+    return shell_result < 0 ? 1 : 0;
   } catch (const HResultError& error) {
     calcotone::AudioRestartPolicy restart_policy;
     if (restart_policy.observe(classify_audio_runtime_fault(error.result())).restart) {

@@ -121,6 +121,42 @@ void test_media_mix_uses_equal_power_routing() {
   }
 }
 
+void test_tascam_default_preserves_low_level_headroom() {
+  calcotone::ArtifactParityProcessor processor(kRate);
+  configure(processor, 8U, .162F, .16F, .10F, .62F, 1.F);
+
+  constexpr std::size_t frames = 48'000U;
+  constexpr std::size_t settle_frames = 4096U;
+  constexpr float amplitude = .02F;
+  constexpr float frequency = 997.F;
+  std::vector<float> audio(frames * 2U, 0.F);
+  double input_energy = 0.0;
+  for (std::size_t frame = 0; frame < frames; ++frame) {
+    const float value = amplitude * std::sin(2.F * 3.14159265358979323846F
+        * frequency * static_cast<float>(frame) / kRate);
+    audio[frame * 2U] = value;
+    audio[frame * 2U + 1U] = value * .93F;
+    if (frame >= settle_frames) {
+      input_energy += static_cast<double>(value) * value;
+      input_energy += static_cast<double>(value * .93F) * (value * .93F);
+    }
+  }
+
+  process_blocks(processor, audio);
+  double output_energy = 0.0;
+  for (std::size_t frame = settle_frames; frame < frames; ++frame) {
+    const float left = audio[frame * 2U];
+    const float right = audio[frame * 2U + 1U];
+    assert(std::isfinite(left) && std::isfinite(right));
+    output_energy += static_cast<double>(left) * left;
+    output_energy += static_cast<double>(right) * right;
+  }
+
+  const double small_signal_gain = std::sqrt(output_energy / std::max(1e-12, input_energy));
+  assert(small_signal_gain > .65);
+  assert(small_signal_gain < 2.0);
+}
+
 void test_atr_speed_selects_distinct_transport_operating_points() {
   const auto slow = render(12U, .72F, .04F, .22F, .57F, 1.F, 96'000U);
   const auto fast = render(12U, .72F, .86F, .22F, .57F, 1.F, 96'000U);
@@ -149,6 +185,28 @@ void test_bcm10_capture_and_1073_summing_remain_distinct() {
   assert(std::abs(signature(neve) - signature(bcm)) > 1e-3);
 }
 
+std::vector<float> render_with_ghost(unsigned mode, float ghost) {
+  calcotone::ArtifactParityProcessor processor(kRate);
+  configure(processor, mode, .08F, .32F, 0.F, .62F, 1.F);
+  processor.set_external_ghost(ghost);
+  processor.reset();
+  auto audio = source(72'000U);
+  process_blocks(processor, audio);
+  return audio;
+}
+
+void test_dream_ghost_adds_bounded_media_patina_only() {
+  const auto clean_media = render_with_ghost(0U, 0.F);
+  const auto ghost_media = render_with_ghost(0U, 1.F);
+  assert(std::abs(signature(clean_media) - signature(ghost_media)) > 1e-3);
+
+  const auto clean_console = render_with_ghost(9U, 0.F);
+  const auto ghost_console = render_with_ghost(9U, 1.F);
+  assert(clean_console.size() == ghost_console.size());
+  for (std::size_t index = 0; index < clean_console.size(); ++index)
+    assert(std::abs(clean_console[index] - ghost_console[index]) < 1e-7F);
+}
+
 void test_reset_is_deterministic() {
   calcotone::ArtifactParityProcessor processor(kRate);
   configure(processor, 6U, .82F, .74F, .53F, .31F, .84F);
@@ -171,9 +229,11 @@ int main() {
   test_console_paths_disable_transport_while_media_paths_keep_it();
   test_insert_mix_is_linear_not_equal_power();
   test_media_mix_uses_equal_power_routing();
+  test_tascam_default_preserves_low_level_headroom();
   test_atr_speed_selects_distinct_transport_operating_points();
   test_noise_controls_actual_media_noise_without_polluting_console_paths();
   test_bcm10_capture_and_1073_summing_remain_distinct();
+  test_dream_ghost_adds_bounded_media_patina_only();
   test_reset_is_deterministic();
 
   calcotone::ArtifactParityProcessor processor(kRate);

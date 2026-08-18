@@ -1,4 +1,4 @@
-export const HARDWARE_CALIBRATION_REVISION = '2026-08-tascam-partial-comp-b';
+export const HARDWARE_CALIBRATION_REVISION = '2026-08-tascam-headroom-c';
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
@@ -314,24 +314,17 @@ export function tascam424OperatingPoint(
 ): Tascam424OperatingPoint {
   const trimDrive = clamp01(wear);
   const channelDrive = clamp01(tone);
-  const inputGain = 0.82 + trimDrive * 2.9;
-  const preDrive = 1.05 + trimDrive * 4.4;
-  const postDrive = 1 + Math.pow(channelDrive, 1.55) * 7.6;
-  const outputGain = Math.max(
-    0.18,
-    Math.min(
-      1.1,
-      Math.pow(inputGain, -0.38)
-        * Math.pow(preDrive, -0.10)
-        * Math.pow(postDrive, -0.08),
-    ),
-  );
+  const inputGain = 0.58 + trimDrive * 1.8;
+  const preDrive = 1.02 + trimDrive * 2.2;
+  const postDrive = 1 + Math.pow(channelDrive, 1.55) * 3.4;
+  const nominalGain = Math.max(1, inputGain * preDrive * postDrive);
+  const outputGain = Math.max(0.08, Math.min(1.1, Math.pow(nominalGain, -0.72)));
   return {
     inputGain,
     preDrive,
-    preAsymmetry: 0.045,
+    preAsymmetry: 0.032,
     postDrive,
-    postAsymmetry: 0.032 + trimDrive * 0.025,
+    postAsymmetry: 0.022 + trimDrive * 0.018,
     outputGain,
     lowShelfHz: 100,
     lowShelfDb: bipolarAroundDefault(clamp01(wow), 0.16) * 10,

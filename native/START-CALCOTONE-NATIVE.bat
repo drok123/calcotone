@@ -3,13 +3,31 @@ setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 title CALCOTONE Desktop
 echo Starting CALCOTONE desktop...
+if not exist "runtime\msedgewebview2.exe" (
+  echo ERROR: The bundled desktop runtime is missing.
+  echo Re-extract the complete CALCOTONE ZIP and keep the runtime folder beside calcotone_host.exe.
+  echo.
+  pause
+  exit /b 2
+)
+if not exist "web\index.html" (
+  echo ERROR: The packaged CALCOTONE faceplate is missing.
+  echo Re-extract the complete CALCOTONE ZIP and keep the web folder beside calcotone_host.exe.
+  echo.
+  pause
+  exit /b 2
+)
+rem Fixed WebView2 120+ renderer processes use AppContainer on Windows 10.
+rem Granting the documented read/execute ACL is harmless on Windows 11.
+icacls "runtime" /grant "*S-1-15-2-2:(OI)(CI)(RX)" /T /C /Q >nul 2>&1
+icacls "runtime" /grant "*S-1-15-2-1:(OI)(CI)(RX)" /T /C /Q >nul 2>&1
 if exist "CALCOTONE-AUDIO-CONFIG.bat" call "CALCOTONE-AUDIO-CONFIG.bat"
 if not defined CALCOTONE_AUDIO_MODE set "CALCOTONE_AUDIO_MODE=exclusive"
 echo Starting the low-latency WASAPI path using the physical interface endpoints.
 echo Exclusive mode is requested by default; CALCOTONE-AUDIO-CONFIG.bat may override it when required.
 echo The native host automatically falls back safely when an endpoint rejects exclusive mode.
 echo Recoverable endpoint or Windows Audio service resets restart the host automatically.
-echo The faceplate will open inside CALCOTONE; no browser or StackBlitz is required.
+echo The packaged faceplate and fixed desktop runtime are local; internet and browser installs are not required.
 echo.
 set /a CALCOTONE_RESTARTS=0
 :launch

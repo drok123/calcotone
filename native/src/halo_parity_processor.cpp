@@ -8,6 +8,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace calcotone {
@@ -140,6 +141,9 @@ struct HaloParityProcessor::Impl {
   std::uint64_t sample_clock{};
   int active_mode{-1};
   bool pitch_scattered{};
+  std::atomic<std::uint64_t> reference_position_target{0U};
+  std::atomic<std::uint64_t> reference_frames_target{0U};
+  std::atomic<bool> reference_running_target{false};
 
   explicit Impl(float rate)
       : sample_rate(std::clamp(rate, 8000.F, 384000.F)),
@@ -267,7 +271,26 @@ struct HaloParityProcessor::Impl {
       return;
     }
 
+    const bool reference_running = reference_running_target.load(std::memory_order_relaxed);
+    const std::uint64_t reference_frames = reference_frames_target.load(std::memory_order_relaxed);
+    const std::uint64_t reference_position = reference_frames > 0U
+        ? reference_position_target.load(std::memory_order_relaxed) % reference_frames : 0U;
+    std::uint64_t reference_countdown = reference_running && reference_frames > 0U
+        ? (reference_position == 0U ? 0U : reference_frames - reference_position)
+        : std::numeric_limits<std::uint64_t>::max();
     for (std::size_t frame = 0; frame < frames; ++frame) {
+      if (reference_countdown == 0U) {
+        constexpr float pull = .08F;
+        for (auto& modulation_phase : phase) {
+          modulation_phase += std::remainder(-modulation_phase, 2.F * kPi) * pull;
+          if (modulation_phase < 0.F) modulation_phase += 2.F * kPi;
+        }
+        sample_clock = 0U;
+        scatter_countdown = 0U;
+        reference_countdown = reference_frames;
+      }
+      if (reference_countdown != std::numeric_limits<std::uint64_t>::max())
+        --reference_countdown;
       glide();
       const unsigned mode = std::min(11U, static_cast<unsigned>(std::lround(value[0])));
       const auto& profile = halo_parity_profile(mode);
@@ -399,6 +422,14 @@ bool HaloParityProcessor::set_parameter(std::string_view name, float value) noex
   if (index >= impl_->target.size()) return false;
   impl_->target[index].store(value, std::memory_order_relaxed);
   return true;
+}
+
+void HaloParityProcessor::set_reference_clock(
+    std::uint64_t position, std::uint64_t frames, bool running) noexcept {
+  impl_->reference_position_target.store(position, std::memory_order_relaxed);
+  impl_->reference_frames_target.store(frames, std::memory_order_relaxed);
+  impl_->reference_running_target.store(running && frames > 0U, std::memory_order_relaxed);
+  impl_->space_echo.set_reference_clock(position, frames, running);
 }
 
 void HaloParityProcessor::reset() noexcept {
