@@ -130,8 +130,18 @@ int main() {
   processor.set_output_gain(1.5F);
   processor.process(input.data(), output.data(), frames);
   assert(processor.output_limited_samples() > 0U);
-  assert(processor.pre_limiter_peak() > .9F);
+  const float overrange_peak = processor.pre_limiter_peak();
+  assert(overrange_peak > 1.F);
   assert(std::all_of(output.begin(), output.end(), [](float value) { return std::isfinite(value) && std::abs(value) < 1.F; }));
+
+  // The output meter consumes this pre-limiter peak as a short hardware-style
+  // overrange hold. Silence must release it instead of pinning the red lamps for
+  // the lifetime of the host process.
+  std::fill(input.begin(), input.end(), 0.F);
+  for (unsigned block = 0; block < 24U; ++block)
+    processor.process(input.data(), output.data(), frames);
+  assert(processor.pre_limiter_peak() <= 1.001F);
+
   processor.set_active(false);
   processor.process(input.data(), output.data(), frames);
   assert(std::all_of(output.begin(), output.end(), [](float value) { return value == 0.F; }));
