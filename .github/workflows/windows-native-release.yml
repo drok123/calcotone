@@ -1,6 +1,12 @@
 name: Windows Native Release
 
 on:
+  workflow_call:
+    inputs:
+      fixed_webview2_url:
+        description: Official Microsoft x64 Fixed Version WebView2 CAB URL
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       fixed_webview2_url:
@@ -8,7 +14,7 @@ on:
         required: false
         type: string
   push:
-    branches: [main, agent/loop-505-sync-native]
+    branches: [main]
     paths:
       - "contracts/**"
       - "native/**"
@@ -26,7 +32,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: windows-native-release-main
+  group: windows-native-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:

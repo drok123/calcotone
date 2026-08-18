@@ -62,3 +62,7 @@ jobs:
             native/build/Release/LIST-CALCOTONE-DEVICES.bat
             native/build/Release/web/**
           if-no-files-found: error
+
+  package-complete-offline-app:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/windows-native-release.yml
