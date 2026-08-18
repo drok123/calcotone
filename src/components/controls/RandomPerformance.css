@@ -11,6 +11,14 @@ html.random-morphing .knob-face {
   overflow: hidden;
 }
 
+.randomizer-toggle[data-random-drag-source="true"] {
+  cursor: grab;
+}
+
+.randomizer-toggle[data-random-drag-source="true"]:active {
+  cursor: grabbing;
+}
+
 .randomizer-toggle.transfer-busy {
   cursor: progress;
 }
@@ -35,9 +43,33 @@ html.random-morphing .knob-face {
   letter-spacing: .05em;
 }
 
+html.random-dragging .effect-module.random-drop-target {
+  outline: 2px solid rgba(255, 241, 190, .9);
+  outline-offset: -3px;
+  box-shadow: inset 0 0 0 1px rgba(255, 241, 190, .38), 0 0 18px rgba(241, 221, 160, .16);
+}
+
+.effect-module.random-drop-hit {
+  animation: random-drop-hit 320ms ease-out;
+}
+
+.effect-module.random-drop-rejected {
+  animation: random-drop-rejected 320ms ease-out;
+}
+
 @keyframes random-serial-flow {
   from { transform: translateX(0); }
   to { transform: translateX(450%); }
+}
+
+@keyframes random-drop-hit {
+  0% { box-shadow: inset 0 0 0 2px rgba(255, 241, 190, .95), 0 0 20px rgba(241, 221, 160, .35); }
+  100% { box-shadow: none; }
+}
+
+@keyframes random-drop-rejected {
+  0% { box-shadow: inset 0 0 0 2px rgba(255, 112, 96, .88); }
+  100% { box-shadow: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -45,5 +77,10 @@ html.random-morphing .knob-face {
     animation: none;
     left: 8%;
     width: 84%;
+  }
+
+  .effect-module.random-drop-hit,
+  .effect-module.random-drop-rejected {
+    animation: none;
   }
 }
