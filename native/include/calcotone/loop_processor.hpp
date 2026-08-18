@@ -43,6 +43,7 @@ class LoopProcessor final {
   void set_overdub(float value) noexcept;
   void set_fade(float value) noexcept;
   void command(LoopCommand command) noexcept;
+  void command(LoopCommand command, unsigned track) noexcept;
   void set_trim(float start, float end) noexcept;
   void auto_trim() noexcept;
   void reset_trim() noexcept;
@@ -56,6 +57,9 @@ class LoopProcessor final {
   std::uint64_t loop_frames() const noexcept;
   std::uint64_t raw_frames() const noexcept;
   std::uint64_t position() const noexcept;
+  int reference_track() const noexcept;
+  std::uint64_t reference_frames() const noexcept;
+  std::uint64_t reference_position() const noexcept;
   float trim_start() const noexcept;
   float trim_end() const noexcept;
   std::array<float, kLoopWaveformBins> waveform() const noexcept;

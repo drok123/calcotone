@@ -19,6 +19,50 @@ void consume(calcotone::LoopProcessor& loop) {
   loop.process(sample.data(), 1U);
 }
 
+void process_sample(calcotone::LoopProcessor& loop, float left, float right) {
+  std::array<float, 2> sample{left, right};
+  loop.process(sample.data(), 1U);
+}
+
+void record_synced(
+    calcotone::LoopProcessor& loop,
+    unsigned track,
+    std::size_t frames,
+    float left,
+    float right) {
+  loop.set_selected_track(track);
+  consume(loop);
+  loop.command(calcotone::LoopCommand::Record, track);
+  std::size_t guard = 0U;
+  while (loop.transport() != calcotone::LoopTransport::Recording && guard++ < 1'000'000U)
+    process_sample(loop, left, right);
+  assert(loop.transport() == calcotone::LoopTransport::Recording);
+  assert(frames > 0U);
+  if (frames > 1U) {
+    std::vector<float> remainder((frames - 1U) * 2U);
+    fill(remainder, left, right);
+    loop.process(remainder.data(), frames - 1U);
+  }
+  loop.command(calcotone::LoopCommand::Record, track);
+  consume(loop);
+  assert(loop.transport() != calcotone::LoopTransport::Recording);
+  assert(loop.raw_frames() == frames);
+}
+
+void overdub_one_pass(calcotone::LoopProcessor& loop, std::size_t frames, float left, float right) {
+  loop.command(calcotone::LoopCommand::Overdub);
+  std::size_t guard = 0U;
+  while (loop.transport() != calcotone::LoopTransport::Overdubbing && guard++ < 1'000'000U)
+    process_sample(loop, left, right);
+  assert(loop.transport() == calcotone::LoopTransport::Overdubbing);
+  if (frames > 1U) {
+    std::vector<float> remainder((frames - 1U) * 2U);
+    fill(remainder, left, right);
+    loop.process(remainder.data(), frames - 1U);
+  }
+  assert(loop.transport() == calcotone::LoopTransport::Playing);
+}
+
 float render_peak(calcotone::LoopProcessor& processor, std::size_t frames = 64U) {
   std::vector<float> block(frames * 2U, 0.F);
   processor.process(block.data(), frames);
@@ -50,14 +94,7 @@ int main() {
 
   // Track 2 must be allowed to run longer than Track 1. This is the regression
   // that the original shared master_frames design could not support.
-  loop.set_selected_track(1);
-  consume(loop);
-  std::vector<float> long_phrase(768U * 2U);
-  fill(long_phrase, .12F, .08F);
-  loop.command(calcotone::LoopCommand::Record);
-  loop.process(long_phrase.data(), 768U);
-  loop.command(calcotone::LoopCommand::Record);
-  consume(loop);
+  record_synced(loop, 1U, 768U, .12F, .08F);
   assert(loop.loop_frames() == 768U);
   assert(loop.raw_frames() == 768U);
   assert((loop.track_mask() & 2U) != 0U);
@@ -69,27 +106,14 @@ int main() {
   consume(loop);
   assert(loop.loop_frames() == 768U);
 
-  // DUB is a latched live-replace pass. With RETAIN=0, exactly one full pass
-  // must erase the previous Track 1 performance without changing its loop length.
+  // DUB is an explicit, one-cycle additive pass. Stored audio is never attenuated
+  // or replaced, and the engine exits DUB automatically at the same boundary.
   loop.set_selected_track(0);
   consume(loop);
-  loop.set_overdub(0.F);
-  loop.command(calcotone::LoopCommand::Overdub);
-  consume(loop);
-  assert(loop.transport() == calcotone::LoopTransport::Overdubbing);
-  std::vector<float> replacement(256U * 2U);
-  fill(replacement, .05F, -.04F);
-  loop.process(replacement.data(), 256U);
-  loop.command(calcotone::LoopCommand::Overdub);
-  consume(loop);
+  loop.set_overdub(1.F);
+  overdub_one_pass(loop, 256U, .05F, -.04F);
   assert(loop.transport() == calcotone::LoopTransport::Playing);
   assert(loop.loop_frames() == 256U);
-  std::vector<float> replaced_playback(256U * 2U, 0.F);
-  loop.process(replaced_playback.data(), 256U);
-  float replaced_peak = 0.F;
-  for (const auto sample : replaced_playback) replaced_peak = std::max(replaced_peak, std::abs(sample));
-  assert(replaced_peak > .02F);
-  assert(replaced_peak < .05F);
 
   loop.set_selected_track(1);
   consume(loop);
@@ -112,11 +136,13 @@ int main() {
   consume(loop);
   std::vector<float> track_four_phrase(512U * 2U);
   fill(track_four_phrase, .09F, -.07F);
-  loop.command(calcotone::LoopCommand::Record);
-  loop.process(track_four_phrase.data(), 192U);
+  loop.command(calcotone::LoopCommand::Record, 3U);
+  while (loop.transport() != calcotone::LoopTransport::Recording)
+    process_sample(loop, .09F, -.07F);
+  loop.process(track_four_phrase.data(), 191U);
   loop.set_selected_track(4);
   loop.process(track_four_phrase.data() + 192U * 2U, 320U);
-  loop.command(calcotone::LoopCommand::Record);
+  loop.command(calcotone::LoopCommand::Record, 3U);
   consume(loop);
   loop.set_selected_track(3);
   consume(loop);
@@ -126,25 +152,26 @@ int main() {
 
   // Auto trim uses the stored transient envelope instead of scanning a full
   // 60-second audio buffer on the realtime thread.
-  loop.set_selected_track(2);
-  consume(loop);
+  calcotone::LoopProcessor trim_loop(48'000.F);
+  trim_loop.set_enabled(true);
+  trim_loop.set_selected_track(0U);
   std::vector<float> transient_phrase(8192U * 2U, 0.F);
   for (std::size_t frame = 2048U; frame < 6144U; ++frame) {
     transient_phrase[frame * 2U] = .3F;
     transient_phrase[frame * 2U + 1U] = -.22F;
   }
-  loop.command(calcotone::LoopCommand::Record);
-  loop.process(transient_phrase.data(), 8192U);
-  loop.command(calcotone::LoopCommand::Record);
-  consume(loop);
-  const auto raw_before_auto = loop.raw_frames();
-  loop.auto_trim();
-  consume(loop);
-  assert(loop.raw_frames() == raw_before_auto);
-  assert(loop.loop_frames() < raw_before_auto);
-  assert(loop.trim_start() > 0.F);
-  assert(loop.trim_end() < 1.F);
-  const auto waveform = loop.waveform();
+  trim_loop.command(calcotone::LoopCommand::Record);
+  trim_loop.process(transient_phrase.data(), 8192U);
+  trim_loop.command(calcotone::LoopCommand::Record);
+  consume(trim_loop);
+  const auto raw_before_auto = trim_loop.raw_frames();
+  trim_loop.auto_trim();
+  consume(trim_loop);
+  assert(trim_loop.raw_frames() == raw_before_auto);
+  assert(trim_loop.loop_frames() < raw_before_auto);
+  assert(trim_loop.trim_start() > 0.F);
+  assert(trim_loop.trim_end() < 1.F);
+  const auto waveform = trim_loop.waveform();
   assert(*std::max_element(waveform.begin(), waveform.end()) > .9F);
 
   // Playback still returns stored audio, and clear is selected-track only.
@@ -153,9 +180,11 @@ int main() {
   float peak = 0.F;
   for (const auto sample : silence) peak = std::max(peak, std::abs(sample));
   assert(peak > .01F);
+  loop.set_selected_track(3U);
+  consume(loop);
   loop.command(calcotone::LoopCommand::Clear);
   consume(loop);
-  assert((loop.track_mask() & 4U) == 0U);
+  assert((loop.track_mask() & (1U << 3U)) == 0U);
   assert((loop.track_mask() & 3U) == 3U);
 
   // RC-style performance commands are true engine state, not fader tricks.
@@ -178,33 +207,35 @@ int main() {
 
   std::vector<float> track_two(128U * 2U);
   fill(track_two, .1F, .1F);
-  performance_loop.set_selected_track(1U);
-  performance_loop.command(calcotone::LoopCommand::Record);
-  performance_loop.process(track_two.data(), 128U);
-  performance_loop.command(calcotone::LoopCommand::Record);
-  consume(performance_loop);
+  record_synced(performance_loop, 1U, 128U, .1F, .1F);
   performance_loop.set_selected_track(0U);
 
   const float both_tracks = render_peak(performance_loop);
   assert(both_tracks > .29F && both_tracks < .31F);
 
   performance_loop.set_track_level(0U, 3.F);  // private TrackStop sentinel
+  (void)render_peak(performance_loop, 128U);
   const float track_one_stopped = render_peak(performance_loop);
   assert(track_one_stopped > .09F && track_one_stopped < .11F);
 
   performance_loop.set_track_level(0U, 2.F);  // private TrackPlay sentinel
+  (void)render_peak(performance_loop, 128U);
   const float track_one_restarted = render_peak(performance_loop);
   assert(track_one_restarted > .29F && track_one_restarted < .31F);
 
   performance_loop.set_track_level(0U, 4.F);  // private Mute sentinel
+  (void)render_peak(performance_loop, 128U);
   const float track_one_muted = render_peak(performance_loop);
   assert(track_one_muted > .09F && track_one_muted < .11F);
   performance_loop.set_track_level(0U, 4.F);
+  (void)render_peak(performance_loop, 128U);
 
   performance_loop.set_track_level(0U, 5.F);  // private Solo sentinel
+  (void)render_peak(performance_loop, 128U);
   const float track_one_solo = render_peak(performance_loop);
   assert(track_one_solo > .19F && track_one_solo < .21F);
   performance_loop.set_track_level(0U, 5.F);
+  (void)render_peak(performance_loop, 128U);
 
   performance_loop.set_track_level(0U, .5F);  // ordinary fader remains ordinary
   const float half_track_one = render_peak(performance_loop);
@@ -226,15 +257,10 @@ int main() {
   journal_loop.command(calcotone::LoopCommand::Record);
   consume(journal_loop);
 
-  journal_loop.set_overdub(0.F);
-  std::vector<float> dub_take(128U * 2U);
-  fill(dub_take, .05F, .05F);
-  journal_loop.command(calcotone::LoopCommand::Overdub);
-  journal_loop.process(dub_take.data(), 128U);
-  journal_loop.command(calcotone::LoopCommand::Overdub);
-  consume(journal_loop);
+  journal_loop.set_overdub(1.F);
+  overdub_one_pass(journal_loop, 128U, .05F, .05F);
   const float dubbed_peak = render_peak(journal_loop, 128U);
-  assert(dubbed_peak > .049F && dubbed_peak < .051F);
+  assert(dubbed_peak > .249F && dubbed_peak < .251F);
 
   journal_loop.set_track_level(0U, 6.F);  // private UNDO sentinel
   consume(journal_loop);
@@ -248,14 +274,14 @@ int main() {
   std::vector<float> redo_swap(128U * 2U, 0.F);
   journal_loop.process(redo_swap.data(), 128U);
   const float redone_peak = render_peak(journal_loop, 128U);
-  assert(redone_peak > .049F && redone_peak < .051F);
+  assert(redone_peak > .249F && redone_peak < .251F);
 
   // BOUNCE renders the audible pre-master loop bus into an empty track, then
   // leaves that destination stopped so the mix is not automatically doubled.
   performance_loop.set_selected_track(2U);
   performance_loop.set_track_level(2U, 8.F);  // private BOUNCE sentinel
-  std::vector<float> bounce_window(128U * 2U, 0.F);
-  performance_loop.process(bounce_window.data(), 128U);
+  std::vector<float> bounce_window(256U * 2U, 0.F);
+  performance_loop.process(bounce_window.data(), 256U);
   consume(performance_loop);
   assert((performance_loop.track_mask() & (1U << 2U)) != 0U);
   performance_loop.set_track_level(0U, 3.F);
@@ -284,5 +310,44 @@ int main() {
   consume(quantized_loop);
   assert(quantized_loop.transport() == calcotone::LoopTransport::Playing);
   assert(quantized_loop.raw_frames() == 24'000U);
+
+  // Unity defaults are a fidelity guarantee: the stored float samples return at
+  // the same level and polarity as the reference material when no fader is moved.
+  calcotone::LoopProcessor unity_loop(48'000.F);
+  unity_loop.set_enabled(true);
+  std::vector<float> unity_take(128U * 2U);
+  fill(unity_take, .137F, -.211F);
+  unity_loop.command(calcotone::LoopCommand::Record);
+  unity_loop.process(unity_take.data(), 128U);
+  for (std::size_t frame = 0U; frame < 128U; ++frame) {
+    assert(std::abs(unity_take[frame * 2U] - .137F) < 1e-7F);
+    assert(std::abs(unity_take[frame * 2U + 1U] + .211F) < 1e-7F);
+  }
+  unity_loop.command(calcotone::LoopCommand::Record);
+  consume(unity_loop);
+  std::vector<float> unity_playback(128U * 2U, 0.F);
+  unity_loop.process(unity_playback.data(), 128U);
+  for (std::size_t frame = 0U; frame < 128U; ++frame) {
+    assert(std::abs(unity_playback[frame * 2U] - .137F) < 1e-7F);
+    assert(std::abs(unity_playback[frame * 2U + 1U] + .211F) < 1e-7F);
+  }
+
+  // 505-style Loop Sync: the first take owns the 128-frame master cycle, the
+  // next take lands on an exact three-cycle multiple, and sixteen more cycles
+  // return to the identical reference phase without accumulated drift.
+  calcotone::LoopProcessor sync_loop(48'000.F);
+  sync_loop.set_enabled(true);
+  std::vector<float> sync_master(128U * 2U);
+  fill(sync_master, .2F, .2F);
+  sync_loop.command(calcotone::LoopCommand::Record);
+  sync_loop.process(sync_master.data(), 128U);
+  sync_loop.command(calcotone::LoopCommand::Record);
+  consume(sync_loop);
+  record_synced(sync_loop, 1U, 384U, .1F, .1F);
+  assert(sync_loop.reference_frames() == 128U);
+  const auto phase_before = sync_loop.reference_position();
+  std::vector<float> sixteen_cycles(128U * 16U * 2U, 0.F);
+  sync_loop.process(sixteen_cycles.data(), 128U * 16U);
+  assert(sync_loop.reference_position() == phase_before);
   return 0;
 }

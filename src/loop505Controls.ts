@@ -7,7 +7,6 @@ import {
   cycleLoopQuantize,
   sendLoopCommand,
   setLoopBpm,
-  setLoopRuntime,
   setLoopState,
   toggleLoopTrackMute,
   toggleLoopTrackPlayback,
@@ -189,11 +188,11 @@ function refreshPads(): void {
     pad.setAttribute('aria-pressed', String(recording || overdubbing || active));
     pad.setAttribute(
       'aria-label',
-      `${text}. Click record, play, or overdub. Right-click stop or restart. Control-click mute. Alt-click solo. Shift-click clear.`,
+      `${text}. Click record, finish, play, or stop. Use the dedicated header Dub and guarded Clear actions. Control-click mutes and Alt-click solos.`,
     );
     pad.title = writing && !selected
       ? 'Finish the active REC/DUB pass before changing tracks'
-      : 'Click: REC / PLAY / DUB · Right-click: STOP / START · Ctrl-click: MUTE · Alt-click: SOLO · Shift-click: CLEAR';
+      : 'Click: REC / FINISH / PLAY / STOP · Ctrl-click: MUTE · Alt-click: SOLO';
   }
 }
 
@@ -256,19 +255,9 @@ function handleClick(event: MouseEvent): void {
       const before = getLoopState();
       const writing = before.transport === 'recording' || before.transport === 'overdubbing';
       if (writing || before.trackMask === 0) return;
-      const stopAll = (before.trackActiveMask & before.trackMask) !== 0;
       event.preventDefault();
       event.stopImmediatePropagation();
       sendLoopCommand('play');
-      // Quantized engines will commit at the next boundary. Keep optimistic state
-      // conservative in quantized modes so the display does not claim an early stop.
-      if (before.quantize === 'off') {
-        setLoopRuntime({
-          trackActiveMask: stopAll ? 0 : before.trackMask,
-          transport: stopAll ? 'stopped' : 'playing',
-          position: 0,
-        });
-      }
       scheduleRefresh();
       return;
     }

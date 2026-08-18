@@ -36,6 +36,7 @@ class NativeProcessor final {
   void set_loop_overdub(float value) noexcept;
   void set_loop_fade(float value) noexcept;
   void loop_command(LoopCommand command) noexcept;
+  void loop_command(LoopCommand command, unsigned track) noexcept;
   void set_loop_trim(float start, float end) noexcept;
   void auto_trim_loop() noexcept;
   void reset_loop_trim() noexcept;
@@ -48,6 +49,9 @@ class NativeProcessor final {
   std::uint64_t loop_frames() const noexcept;
   std::uint64_t loop_raw_frames() const noexcept;
   std::uint64_t loop_position() const noexcept;
+  int loop_reference_track() const noexcept;
+  std::uint64_t loop_reference_frames() const noexcept;
+  std::uint64_t loop_reference_position() const noexcept;
   float loop_trim_start() const noexcept;
   float loop_trim_end() const noexcept;
   std::array<float, kLoopWaveformBins> loop_waveform() const noexcept;

@@ -680,9 +680,15 @@ int main(int argc, char** argv) {
                << ",\"loopTransport\":" << static_cast<unsigned>(processor.loop_transport())
                << ",\"loopTrack\":" << processor.loop_selected_track()
                << ",\"loopTrackMask\":" << processor.loop_track_mask()
+               << ",\"loopTrackActiveMask\":" << processor.loop_track_active_mask()
+               << ",\"loopTrackMuteMask\":" << processor.loop_track_mute_mask()
+               << ",\"loopTrackSoloMask\":" << processor.loop_track_solo_mask()
                << ",\"loopFrames\":" << processor.loop_frames()
                << ",\"loopRawFrames\":" << processor.loop_raw_frames()
                << ",\"loopPosition\":" << processor.loop_position()
+               << ",\"loopReferenceTrack\":" << processor.loop_reference_track()
+               << ",\"loopReferenceFrames\":" << processor.loop_reference_frames()
+               << ",\"loopReferencePosition\":" << processor.loop_reference_position()
                << ",\"loopTrimStart\":" << processor.loop_trim_start()
                << ",\"loopTrimEnd\":" << processor.loop_trim_end()
                << ",\"loopWaveform\":[";
@@ -704,11 +710,29 @@ int main(int argc, char** argv) {
       if (name == "recordCancel") { recorder.cancel(); return R"({"ok":true,"command":"recordCancel"})"; }
       if (name == "loop") {
         std::string action; command >> action;
-        if (!command) return R"({\"error\":\"expected loop record|overdub|play|clear|trim|autoTrim|resetTrim\"})";
-        if (action == "record") processor.loop_command(calcotone::LoopCommand::Record);
-        else if (action == "overdub") processor.loop_command(calcotone::LoopCommand::Overdub);
-        else if (action == "play") processor.loop_command(calcotone::LoopCommand::Play);
-        else if (action == "clear") processor.loop_command(calcotone::LoopCommand::Clear);
+        if (!command) return R"({\"error\":\"expected a Loop transport, track, edit, or trim action\"})";
+        const auto run_loop_action = [&](calcotone::LoopCommand loop_action) {
+          unsigned track = processor.loop_selected_track();
+          if (command >> track) {
+            if (track >= calcotone::kLoopTrackCount) return false;
+            processor.loop_command(loop_action, track);
+          } else {
+            command.clear();
+            processor.loop_command(loop_action);
+          }
+          return true;
+        };
+        if (action == "record") { if (!run_loop_action(calcotone::LoopCommand::Record)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "overdub") { if (!run_loop_action(calcotone::LoopCommand::Overdub)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "play") { if (!run_loop_action(calcotone::LoopCommand::Play)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "clear") { if (!run_loop_action(calcotone::LoopCommand::Clear)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "trackPlay") { if (!run_loop_action(calcotone::LoopCommand::TrackPlay)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "trackStop") { if (!run_loop_action(calcotone::LoopCommand::TrackStop)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "mute") { if (!run_loop_action(calcotone::LoopCommand::Mute)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "solo") { if (!run_loop_action(calcotone::LoopCommand::Solo)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "undo") { if (!run_loop_action(calcotone::LoopCommand::Undo)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "redo") { if (!run_loop_action(calcotone::LoopCommand::Redo)) return R"({\"error\":\"invalid loop track\"})"; }
+        else if (action == "bounce") { if (!run_loop_action(calcotone::LoopCommand::Bounce)) return R"({\"error\":\"invalid loop track\"})"; }
         else if (action == "trim") {
           float start = 0.F, end = 1.F; command >> start >> end;
           if (!command || !std::isfinite(start) || !std::isfinite(end)) return R"({\"error\":\"expected loop trim start end\"})";

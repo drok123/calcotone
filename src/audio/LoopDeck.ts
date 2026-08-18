@@ -35,6 +35,9 @@ export class LoopDeck {
         sampleRate: detail.sampleRate ?? context.sampleRate,
         trimStart: detail.trimStart ?? 0,
         trimEnd: detail.trimEnd ?? 1,
+        referenceTrack: detail.referenceTrack ?? -1,
+        referenceFrames: detail.referenceFrames ?? 0,
+        referencePosition: detail.referencePosition ?? 0,
         waveform: Array.from({ length: LOOP_WAVEFORM_BINS }, (_, index) => detail.waveform?.[index] ?? 0),
       });
     };
@@ -80,8 +83,8 @@ export class LoopDeck {
     this.node.port.postMessage(message);
   }
 
-  public command(command: LoopCommand): void {
-    this.node.port.postMessage({ type: 'command', command });
+  public command(command: LoopCommand, track?: number): void {
+    this.node.port.postMessage({ type: 'command', command, track });
   }
 
   public dispose(): void {

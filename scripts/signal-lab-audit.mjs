@@ -26,6 +26,7 @@ const loopArtwork = read('src/components/ascii/LoopTrackMatrixDisplay.tsx');
 const loopRefinement = read('src/loopRefinement.css');
 const loopBridge = read('src/loopBridge.tsx');
 const loopStore = read('src/components/signal/loopStore.ts');
+const loopSurface = read('src/loopSurfaceV3.ts');
 const loopWorklet = read('public/loop-processor.js');
 const randomRegistry = read('src/features/random/railCRandomRegistry.ts');
 const routing = read('src/routing/serialRouting.ts');
@@ -71,12 +72,14 @@ requireText(nativeArtifact, 'std::clamp(std::round(value), 0.F, 17.F)', 'Native 
 // strips. The small canvas is intentionally only the selected-track trim utility.
 requireText(railC, 'name="Loop"', 'Loop rail module heading');
 requireText(railC, 'Array.from({ length: LOOP_VISIBLE_TRACK_COUNT }', 'Loop four-track knob and fader bank');
-requireText(railC, 'button.action(event.shiftKey)', 'Loop per-track clear gesture');
+requireText(railC, 'onClick={button.action}', 'Loop safe one-button track transport');
+forbidText(railC, 'button.action(event.shiftKey)', 'Loop pads never hide a destructive Shift-clear gesture');
+requireText(railC, 'Dub and guarded clear are separate header actions.', 'Loop destructive actions are separated from track transport');
 requireText(railC, 'function LoopTrackFader(', 'Loop dedicated vertical fader control');
 requireText(railC, 'aria-label={`Loop track ${track + 1} level`}', 'Loop fader accessibility contract');
 requireText(railC, 'levels[track] = clamp01(value)', 'Loop independent per-track gain write');
 requireText(railC, 'label="MSTR"', 'Loop master utility retained');
-requireText(railC, 'label="RET"', 'Loop retain utility retained');
+requireText(railC, 'label="DUB"', 'Loop additive Dub-layer level utility');
 requireText(railC, 'label="FADE"', 'Loop fade utility retained');
 requireText(railC, 'sendLoopCommand({ type: \'autoTrim\' })', 'Loop auto trim surfaced');
 requireText(railC, 'sendLoopCommand({ type: \'resetTrim\' })', 'Loop trim reset surfaced');
@@ -97,15 +100,23 @@ requireText(loopRefinement, 'rgba(248, 244, 232, .98)', 'Loop indicator illumina
 requireText(loopStore, 'export const LOOP_TRACK_COUNT = 8', 'Loop eight-buffer backend contract');
 requireText(loopStore, 'export const LOOP_VISIBLE_TRACK_COUNT = 4', 'Loop four-track faceplate contract');
 requireText(loopStore, 'export function pressLoopTrack(track: number): boolean', 'Loop one-button track transport');
+requireText(loopStore, 'export function startLoopOverdub(track = state.selectedTrack): boolean', 'Loop explicit additive Dub transport');
 requireText(loopStore, 'export function clearLoopTrack(track: number): boolean', 'Loop per-track clear command');
-requireText(loopStore, "STORAGE_KEY = 'calcotone.loop-state.v2'", 'Loop live-replace settings persistence');
+requireText(loopStore, "STORAGE_KEY = 'calcotone.loop-state.v3'", 'Loop additive-Dub settings persistence');
+requireText(loopStore, "PREVIOUS_STORAGE_KEY = 'calcotone.loop-state.v2'", 'Loop previous settings migration');
 requireText(loopStore, "LEGACY_STORAGE_KEY = 'calcotone.loop-state.v1'", 'Loop legacy settings migration');
 requireText(loopStore, "transport: 'empty'", 'Loop transport does not persist audio state');
+requireText(loopStore, 'export function loopReferenceProgress(', 'Loop shared reference-boundary clock');
+requireText(loopSurface, 'startLoopOverdub(track)', 'Loop header exposes explicit Dub action');
+requireText(loopSurface, 'clearArmUntil = now + 2_000', 'Loop clear requires a guarded confirmation');
+requireText(loopSurface, 'return loopReferenceProgress(stamp - nativePathLatencyMs)', 'Loop pad rings share the reference-boundary clock');
 requireText(loopWorklet, 'const TRACKS = 8', 'Browser Loop eight-track buffer');
 requireText(loopWorklet, 'const MAX_SECONDS = 60', 'Browser Loop bounded memory');
+requireText(loopWorklet, 'selected[write] + liveL * this.overdub', 'Browser Loop Dub adds without replacing stored audio');
 requireText(nativeLoop, 'kLoopTrackCount', 'Native Loop fixed track count');
 requireText(nativeLoop, 'LoopCommand::Record', 'Native Loop record command');
 requireText(nativeLoop, 'LoopCommand::Overdub', 'Native Loop overdub command');
+requireText(nativeLoop, 'buffer[write] + live_left * overdub_gain', 'Native Loop Dub adds without replacing stored audio');
 
 // LOOP is a post-rack sidecar: live rack output feeds its capture/playback
 // engine and only final safety/output follows. It is neither RANDOM nor serial.

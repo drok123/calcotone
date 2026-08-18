@@ -1,7 +1,9 @@
 import {
+  clearLoopTrack,
   getLoopSettings,
-  loopTrackProgress,
+  loopReferenceProgress,
   setLoopState,
+  startLoopOverdub,
 } from './components/signal/loopStore';
 import './loopSurfaceV3.css';
 
@@ -17,6 +19,8 @@ let nativeLatencyPending = false;
 let nativePathLatencyMs = 0;
 let cachedPads: HTMLButtonElement[] = [];
 let lastHeaderRefresh = Number.NEGATIVE_INFINITY;
+let clearArmTrack = -1;
+let clearArmUntil = 0;
 
 function loopModule(): HTMLElement | null {
   return document.querySelector<HTMLElement>('.module-pressure');
@@ -83,7 +87,7 @@ function ensureHeaderActions(): HTMLElement | null {
   const bank = document.createElement('div');
   bank.className = 'loop-header-action-bank';
   bank.setAttribute('role', 'group');
-  bank.setAttribute('aria-label', 'Loop transport, edit, master and retain controls');
+  bank.setAttribute('aria-label', 'Loop transport, safe dub, guarded clear, edit and level controls');
 
   const all = makeButton('loop-all-toggle loop-header-all', 'ALL', 'Play or stop all Loop tracks');
   const undo = makeButton('loop-505-action loop-505-undo', 'UNDO', 'Undo selected Loop track overdub');
@@ -91,12 +95,14 @@ function ensureHeaderActions(): HTMLElement | null {
   const redo = makeButton('loop-505-action loop-505-redo', 'REDO', 'Redo selected Loop track overdub');
   redo.dataset.loop505Action = 'redo';
   const rec = makeButton('loop-header-track-action', 'REC', 'Record selected Loop track');
+  const dub = makeButton('loop-header-dub-action', 'DUB', 'Add one safe overdub pass to the selected Loop track');
+  const clear = makeButton('loop-header-clear-action', 'CLR', 'Arm clear for the selected Loop track');
   const bounce = makeButton('loop-505-action loop-505-bounce', 'BNC', 'Bounce active Loop mix to an empty track');
   bounce.dataset.loop505Action = 'bounce';
   const master = makeParameterControl('loop-header-master', 'MSTR', 'masterLevel', 'Loop master level');
-  const retain = makeParameterControl('loop-header-retain', 'RET', 'overdub', 'Loop overdub retain amount');
+  const dubLevel = makeParameterControl('loop-header-dub-level', 'DUB', 'overdub', 'Loop incoming overdub level');
 
-  bank.append(all, undo, redo, rec, bounce, master, retain);
+  bank.append(all, undo, redo, rec, dub, clear, bounce, master, dubLevel);
   const heading = title.querySelector('h3');
   if (heading?.nextSibling) title.insertBefore(bank, heading.nextSibling);
   else title.append(bank);
@@ -143,8 +149,8 @@ function refreshHeader(): void {
   const trackAction = bank.querySelector<HTMLButtonElement>('.loop-header-track-action');
   if (trackAction && selected) {
     trackAction.disabled = selected.disabled;
-    let text = 'DUB';
-    let title = 'Overdub the selected Loop track';
+    let text = 'STOP';
+    let title = 'Stop the selected Loop track';
     if (selected.classList.contains('is-recording') || selected.classList.contains('is-overdubbing')) {
       text = 'END';
       title = 'Finish the selected Loop write pass';
@@ -158,6 +164,27 @@ function refreshHeader(): void {
     setTextIfChanged(trackAction, text);
     if (trackAction.title !== title) trackAction.title = title;
     if (trackAction.getAttribute('aria-label') !== title) trackAction.setAttribute('aria-label', title);
+  }
+
+  const selectedTrack = selected ? loopPads().indexOf(selected) : -1;
+  const writing = selected?.classList.contains('is-recording') || selected?.classList.contains('is-overdubbing');
+  const occupied = !!selected && !selected.classList.contains('is-empty');
+  const dubAction = bank.querySelector<HTMLButtonElement>('.loop-header-dub-action');
+  if (dubAction) {
+    const ending = selected?.classList.contains('is-overdubbing') ?? false;
+    dubAction.disabled = !occupied || (!!writing && !ending);
+    setTextIfChanged(dubAction, ending ? 'END' : 'DUB');
+    dubAction.title = ending ? 'Finish this overdub pass now' : 'Add one loop-length layer without replacing stored audio';
+    dubAction.setAttribute('aria-label', dubAction.title);
+  }
+  const clearAction = bank.querySelector<HTMLButtonElement>('.loop-header-clear-action');
+  if (clearAction) {
+    const armed = occupied && selectedTrack === clearArmTrack && performance.now() < clearArmUntil;
+    clearAction.disabled = !occupied || !!writing;
+    clearAction.classList.toggle('is-armed', armed);
+    setTextIfChanged(clearAction, armed ? 'CLR?' : 'CLR');
+    clearAction.title = armed ? 'Click again to clear this track' : 'Arm clear; a second click is required';
+    clearAction.setAttribute('aria-label', clearAction.title);
   }
 
   // Header refresh only needs persistent controls, never transient waveform/runtime
@@ -179,15 +206,34 @@ function scheduleRefresh(): void {
 function handleClick(event: MouseEvent): void {
   const target = event.target;
   if (!(target instanceof Element)) return;
-  const action = target.closest<HTMLButtonElement>('.module-pressure .loop-header-track-action');
+  const action = target.closest<HTMLButtonElement>(
+    '.module-pressure .loop-header-track-action, .module-pressure .loop-header-dub-action, .module-pressure .loop-header-clear-action',
+  );
   if (!action || action.disabled) return;
   const module = action.closest<HTMLElement>('.module-pressure');
   const selected = module?.querySelector<HTMLButtonElement>('.loop-track-pad.is-selected-track')
     ?? module?.querySelector<HTMLButtonElement>('.loop-track-pad');
   if (!selected || selected.disabled) return;
+  const track = loopPads().indexOf(selected);
+  if (track < 0) return;
   event.preventDefault();
   event.stopImmediatePropagation();
-  selected.click();
+  if (action.classList.contains('loop-header-dub-action')) {
+    if (selected.classList.contains('is-overdubbing')) selected.click();
+    else startLoopOverdub(track);
+  } else if (action.classList.contains('loop-header-clear-action')) {
+    const now = performance.now();
+    if (clearArmTrack === track && now < clearArmUntil) {
+      clearArmTrack = -1;
+      clearArmUntil = 0;
+      clearLoopTrack(track);
+    } else {
+      clearArmTrack = track;
+      clearArmUntil = now + 2_000;
+    }
+  } else {
+    selected.click();
+  }
   scheduleRefresh();
 }
 
@@ -202,11 +248,10 @@ function handleInput(event: Event): void {
   setTextIfChanged(readout, `${Math.round(value * 100)}`);
 }
 
-function presentationProgress(track: number, stamp: number): number {
-  // loopTrackProgress reads the store's internal runtime directly and allocates
-  // nothing. Passing listener time minus the measured output path aligns the
-  // visual restart to the sample that is reaching the speakers now.
-  return loopTrackProgress(track, stamp - nativePathLatencyMs);
+function presentationProgress(stamp: number): number {
+  // The hardware ring is a shared record-boundary reference, not a playback
+  // meter for whichever track happens to be selected.
+  return loopReferenceProgress(stamp - nativePathLatencyMs);
 }
 
 function animateRings(stamp: number): void {
@@ -216,13 +261,14 @@ function animateRings(stamp: number): void {
   }
 
   if (cachedPads.length === 0) cachedPads = loopPads();
-  for (const [track, pad] of cachedPads.entries()) {
+  const progress = presentationProgress(stamp);
+  for (const pad of cachedPads) {
     const active = pad.classList.contains('is-playing')
       || pad.classList.contains('is-recording')
       || pad.classList.contains('is-overdubbing');
-    const progress = active ? presentationProgress(track, stamp) : 0;
-    pad.style.setProperty('--loop-phase-angle', `${(progress * 360).toFixed(3)}deg`);
-    pad.classList.toggle('is-loop-boundary', active && (progress <= 0.025 || progress >= 0.995));
+    const boundaryProgress = active ? progress : 0;
+    pad.style.setProperty('--loop-phase-angle', `${(boundaryProgress * 360).toFixed(3)}deg`);
+    pad.classList.toggle('is-loop-boundary', active && (boundaryProgress <= 0.025 || boundaryProgress >= 0.995));
   }
   animationFrame = window.requestAnimationFrame(animateRings);
 }
@@ -276,6 +322,8 @@ function uninstall(): void {
   nativeLatencyPending = false;
   nativePathLatencyMs = 0;
   cachedPads = [];
+  clearArmTrack = -1;
+  clearArmUntil = 0;
 }
 
 if (import.meta.hot) import.meta.hot.dispose(uninstall);

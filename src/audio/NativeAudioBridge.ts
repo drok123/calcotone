@@ -40,9 +40,15 @@ export interface NativeAudioHealth {
   loopTransport?: number;
   loopTrack?: number;
   loopTrackMask?: number;
+  loopTrackActiveMask?: number;
+  loopTrackMuteMask?: number;
+  loopTrackSoloMask?: number;
   loopFrames?: number;
   loopRawFrames?: number;
   loopPosition?: number;
+  loopReferenceTrack?: number;
+  loopReferenceFrames?: number;
+  loopReferencePosition?: number;
   loopTrimStart?: number;
   loopTrimEnd?: number;
   loopWaveform?: number[];

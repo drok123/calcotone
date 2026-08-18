@@ -28,8 +28,10 @@ requireText(css, '.loop-utility-bank {', 'Retired micro utility row remains hidd
 requireText(css, '.loop-header-action-bank', 'Loop actions live beside module title');
 requireText(css, 'font: 900 .54rem/1 var(--mono)', 'Loop header action text is readable');
 requireText(css, 'min-height: 26px', 'Loop header actions have usable hit targets');
-requireText(css, '.loop-header-param', 'MSTR and RET header parameter controls are styled');
-requireText(css, '.loop-header-track-action', 'Selected-track REC/PLAY/DUB action lives in header');
+requireText(css, '.loop-header-param', 'MSTR and DUB header parameter controls are styled');
+requireText(css, '.loop-header-track-action', 'Selected-track REC/PLAY/STOP action lives in header');
+requireText(css, '.loop-header-dub-action', 'Safe DUB is a separate header action');
+requireText(css, '.loop-header-clear-action.is-armed', 'Clear requires an explicit armed state');
 requireText(css, '--loop-phase-angle: 0deg', '505 phase ring owns a realtime phase variable');
 requireText(css, 'from calc(-90deg + var(--loop-phase-angle))', 'Phase packet begins at twelve o clock and rotates with loop phase');
 requireText(css, '.loop-track-pad.is-loop-boundary::after', 'Loop boundary gets a stronger off-white start cue');
@@ -60,13 +62,15 @@ forbidText(display, 'L O O P  //  4 TRACK MEMORY', 'Loop utility screen must not
 requireText(controller, "makeButton('loop-all-toggle loop-header-all'", 'ALL moved beside LOOP title');
 requireText(controller, "makeButton('loop-505-action loop-505-undo'", 'UNDO moved beside LOOP title');
 requireText(controller, "makeButton('loop-505-action loop-505-redo'", 'REDO moved beside LOOP title');
-requireText(controller, "makeButton('loop-header-track-action'", 'REC/PLAY/DUB moved beside LOOP title');
+requireText(controller, "makeButton('loop-header-track-action'", 'REC/PLAY/STOP moved beside LOOP title');
+requireText(controller, "makeButton('loop-header-dub-action', 'DUB'", 'Safe DUB moved beside LOOP title');
+requireText(controller, "makeButton('loop-header-clear-action', 'CLR'", 'Guarded clear moved beside LOOP title');
 requireText(controller, "makeButton('loop-505-action loop-505-bounce'", 'Bounce remains reachable in compact header');
 requireText(controller, "makeParameterControl('loop-header-master', 'MSTR', 'masterLevel'", 'MSTR moved into Loop header');
-requireText(controller, "makeParameterControl('loop-header-retain', 'RET', 'overdub'", 'RETAIN moved into Loop header');
+requireText(controller, "makeParameterControl('loop-header-dub-level', 'DUB', 'overdub'", 'Incoming DUB level moved into Loop header');
 requireText(controller, 'function presentationProgress(', 'Knob rings use listener-facing phase calculation');
 requireText(controller, 'nativePathLatencyMs', 'Native Loop phase accounts for output path latency');
-requireText(controller, 'return loopTrackProgress(track, stamp - nativePathLatencyMs)', 'Knob ring reads internal Loop timing without cloning state');
+requireText(controller, 'return loopReferenceProgress(stamp - nativePathLatencyMs)', 'Knob ring reads the shared master-cycle timing without cloning state');
 requireText(controller, 'NATIVE_LATENCY_POLL_MS = 1_000', 'Native latency sampling stays outside fast Loop runtime telemetry');
 requireText(controller, "pad.style.setProperty('--loop-phase-angle'", 'Realtime phase is sent to the ring without React rerenders');
 requireText(controller, "pad.classList.toggle('is-loop-boundary'", 'Twelve o clock loop restart cue is explicit');
@@ -79,4 +83,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE Loop v3 audit passed · direct editor, readable header, audible-phase rings, allocation-free phase reads, and single-owner native telemetry locked');
+console.log('CALCOTONE Loop v3 audit passed · direct editor, readable header, shared reference-boundary rings, allocation-free phase reads, and single-owner native telemetry locked');

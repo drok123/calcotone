@@ -104,8 +104,9 @@ for (const field of approvedFaceplateGeometry) {
   }
   faceplateGeometryCursor = fieldPosition;
 }
-requireText(faceplate, "const FACTORY_LAYOUT_REVISION = '2026-08-09-railc-latest-loop-centered-v4'", 'Shared web layout revision');
-requireText(faceplate, 'window.localStorage.getItem(FACTORY_LAYOUT_REVISION_KEY) !== FACTORY_LAYOUT_REVISION', 'Stale saved-layout replacement');
+requireText(faceplate, "export const APPROVED_FACEPLATE_LAYOUT_REVISION = '2026-08-09-railc-latest-loop-centered-v4'", 'Shared web layout revision');
+requireText(faceplate, "const FACTORY_LAYOUT_STORAGE_REVISION = '2026-08-17-known-good-faceplate-recovery-v1'", 'Known-good saved-layout recovery epoch');
+requireText(faceplate, 'window.localStorage.getItem(FACTORY_LAYOUT_REVISION_KEY) !== FACTORY_LAYOUT_STORAGE_REVISION', 'Stale saved-layout replacement');
 requireText(faceplate, 'return cloneLayout(FACTORY_FACEPLATE_LAYOUT)', 'Factory layout fallback');
 forbidText(faceplate, 'AUTO_FACEPLATE_LAYOUT', 'Automatic layout can override approved geometry');
 requireText(faceplate, 'Math.max(...knobs.map((point) => point.y)) + 46', 'Exact saved-layout floor preservation');

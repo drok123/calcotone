@@ -187,6 +187,7 @@ void NativeProcessor::set_loop_track_level(unsigned track, float value) noexcept
 void NativeProcessor::set_loop_overdub(float value) noexcept { impl_->loop.set_overdub(value); }
 void NativeProcessor::set_loop_fade(float value) noexcept { impl_->loop.set_fade(value); }
 void NativeProcessor::loop_command(LoopCommand command) noexcept { impl_->loop.command(command); }
+void NativeProcessor::loop_command(LoopCommand command, unsigned track) noexcept { impl_->loop.command(command, track); }
 void NativeProcessor::set_loop_trim(float start, float end) noexcept { impl_->loop.set_trim(start, end); }
 void NativeProcessor::auto_trim_loop() noexcept { impl_->loop.auto_trim(); }
 void NativeProcessor::reset_loop_trim() noexcept { impl_->loop.reset_trim(); }
@@ -199,6 +200,9 @@ std::uint32_t NativeProcessor::loop_track_solo_mask() const noexcept { return im
 std::uint64_t NativeProcessor::loop_frames() const noexcept { return impl_->loop.loop_frames(); }
 std::uint64_t NativeProcessor::loop_raw_frames() const noexcept { return impl_->loop.raw_frames(); }
 std::uint64_t NativeProcessor::loop_position() const noexcept { return impl_->loop.position(); }
+int NativeProcessor::loop_reference_track() const noexcept { return impl_->loop.reference_track(); }
+std::uint64_t NativeProcessor::loop_reference_frames() const noexcept { return impl_->loop.reference_frames(); }
+std::uint64_t NativeProcessor::loop_reference_position() const noexcept { return impl_->loop.reference_position(); }
 float NativeProcessor::loop_trim_start() const noexcept { return impl_->loop.trim_start(); }
 float NativeProcessor::loop_trim_end() const noexcept { return impl_->loop.trim_end(); }
 std::array<float, kLoopWaveformBins> NativeProcessor::loop_waveform() const noexcept { return impl_->loop.waveform(); }

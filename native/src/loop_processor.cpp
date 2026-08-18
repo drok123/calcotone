@@ -50,8 +50,8 @@ struct LoopProcessor::Impl {
         max_frames(static_cast<std::size_t>(std::ceil(rate * kLoopMaxSeconds))),
         envelope_scale(static_cast<float>(kLoopEnvelopeBins) / static_cast<float>(max_frames)),
         waveform_publish_period(std::max<std::size_t>(1U, static_cast<std::size_t>(rate / 10.F))) {
-    for (auto& level : track_levels) level.store(.72F, std::memory_order_relaxed);
-    cached_fade = .18F;
+    for (auto& level : track_levels) level.store(1.F, std::memory_order_relaxed);
+    cached_fade = 0.F;
     refresh_fade_cache();
   }
 
@@ -90,6 +90,20 @@ struct LoopProcessor::Impl {
     return track < kLoopTrackCount ? lengths[track] : 0U;
   }
 
+  void update_sync_clock(bool reset = false) noexcept {
+    std::size_t frames = 0U;
+    for (unsigned track = 0U; track < kLoopTrackCount; ++track) {
+      if ((occupied_mask & bit(track)) != 0U && active_length(track) > 0U) {
+        frames = active_length(track);
+        break;
+      }
+    }
+    if (frames != sync_frames || reset) {
+      sync_frames = frames;
+      sync_position = frames > 0U && !reset ? sync_position % frames : 0U;
+    }
+  }
+
   void update_length(unsigned track) noexcept {
     if (track >= kLoopTrackCount || (occupied_mask & bit(track)) == 0U || trim_end_frames[track] <= trim_start_frames[track]) {
       lengths[track] = 0U;
@@ -119,6 +133,10 @@ struct LoopProcessor::Impl {
   }
 
   std::uint64_t next_boundary() const noexcept {
+    if (sync_frames > 0U && playing) {
+      const auto phase = sync_position % sync_frames;
+      return clock_frame + (phase == 0U ? 0U : sync_frames - phase);
+    }
     const auto quantum = quantize_frames();
     if (quantum == 0U) return clock_frame;
     return (clock_frame / quantum + 1U) * quantum;
@@ -139,7 +157,7 @@ struct LoopProcessor::Impl {
   void schedule_command(LoopCommand command, unsigned track) noexcept {
     const auto due = next_boundary();
     for (auto& slot : scheduled) {
-      if (slot.active && slot.track == track) {
+      if (slot.active && slot.track == track && slot.command == command) {
         slot = ScheduledCommand{true, due, command, track};
         recompute_next_scheduled_due();
         return;
@@ -230,6 +248,7 @@ struct LoopProcessor::Impl {
     if (!overdubbing) return;
     const unsigned track = overdub_track;
     overdubbing = false;
+    overdub_remaining = 0U;
     undo_ready[track] = undo_touched[track] > 0U;
     redo_ready[track] = false;
     waveform_refresh_pending.store(true, std::memory_order_relaxed);
@@ -300,15 +319,18 @@ struct LoopProcessor::Impl {
     positions[track] = 0U;
     invalidate_journal(track);
     clear_envelope(track);
+    update_sync_clock();
     recording = true;
     record_track = track;
     overdubbing = false;
+    overdub_remaining = 0U;
     record_count = 0U;
     playing = true;
   }
 
   void finish_recording(unsigned track) noexcept {
     const auto track_bit = bit(track);
+    const bool establishing_sync = sync_frames == 0U;
     if (record_count >= kMinimumLoopFrames) {
       const auto frames = std::min(max_frames, record_count);
       raw_frames[track] = frames;
@@ -317,6 +339,7 @@ struct LoopProcessor::Impl {
       occupied_mask |= track_bit;
       active_mask |= track_bit;
       update_length(track);
+      update_sync_clock(establishing_sync);
       positions[track] = 0U;
       playing = true;
     } else {
@@ -351,6 +374,7 @@ struct LoopProcessor::Impl {
     if (bouncing && bounce_track == track) bouncing = false;
     if (!any_active_occupied()) playing = false;
     clear_envelope(track);
+    update_sync_clock();
   }
 
   void set_trim_window(unsigned track, float requested_start, float requested_end) noexcept {
@@ -364,6 +388,7 @@ struct LoopProcessor::Impl {
     trim_start_frames[track] = start;
     trim_end_frames[track] = end;
     update_length(track);
+    update_sync_clock();
     positions[track] = std::min(positions[track], lengths[track] > 0U ? lengths[track] - 1U : 0U);
   }
 
@@ -372,6 +397,7 @@ struct LoopProcessor::Impl {
     trim_start_frames[track] = 0U;
     trim_end_frames[track] = raw_frames[track];
     update_length(track);
+    update_sync_clock();
     positions[track] = 0U;
   }
 
@@ -407,6 +433,7 @@ struct LoopProcessor::Impl {
     trim_start_frames[track] = start;
     trim_end_frames[track] = end;
     update_length(track);
+    update_sync_clock();
     positions[track] = 0U;
   }
 
@@ -465,6 +492,7 @@ struct LoopProcessor::Impl {
     occupied_mask |= bit(track);
     active_mask &= ~bit(track);
     update_length(track);
+    update_sync_clock();
     positions[track] = 0U;
     waveform_refresh_pending.store(true, std::memory_order_relaxed);
   }
@@ -480,6 +508,7 @@ struct LoopProcessor::Impl {
         finish_overdub();
       } else if ((occupied_mask & bit(track)) != 0U && active_length(track) > 0U && begin_overdub_journal(track)) {
         overdub_track = track;
+        overdub_remaining = active_length(track);
         active_mask |= bit(track);
         overdubbing = true;
         recording = false;
@@ -494,6 +523,7 @@ struct LoopProcessor::Impl {
           if ((occupied_mask & bit(index)) != 0U) positions[index] = 0U;
         if (stop_all) active_mask &= ~occupied_mask;
         else active_mask |= occupied_mask;
+        sync_position = 0U;
         playing = !stop_all;
         if (overdubbing) finish_overdub();
         recording = false;
@@ -519,7 +549,9 @@ struct LoopProcessor::Impl {
       return;
     }
     const bool stopped_undo = (command == LoopCommand::Undo || command == LoopCommand::Redo) && !playing;
-    if (should_quantize(command) && quantize_frames() > 0U && !stopped_undo) schedule_command(command, track);
+    const bool stopping_overdub = command == LoopCommand::Overdub && overdubbing;
+    if (should_quantize(command) && (sync_frames > 0U || quantize_frames() > 0U) && !stopped_undo && !stopping_overdub)
+      schedule_command(command, track);
     else execute_command(command, track);
   }
 
@@ -580,7 +612,7 @@ struct LoopProcessor::Impl {
     positions[track] = next >= length ? 0U : next;
   }
 
-  void process_segment(float* data, std::size_t frames, float loop_level, float overdub_feedback) noexcept {
+  void process_segment(float* data, std::size_t frames, float loop_level, float overdub_gain) noexcept {
     std::array<float, kLoopTrackCount> levels{};
     std::array<unsigned, kLoopTrackCount> playback_tracks{};
     std::array<unsigned, kLoopTrackCount> advance_tracks{};
@@ -635,11 +667,13 @@ struct LoopProcessor::Impl {
           const auto absolute = trim_start_frames[overdub_track] + relative;
           const auto write = absolute * 2U;
           journal_before_write(overdub_track, absolute, write, buffer);
-          const float next_left = buffer[write] * overdub_feedback + live_left;
-          const float next_right = buffer[write + 1U] * overdub_feedback + live_right;
+          const float next_left = buffer[write] + live_left * overdub_gain;
+          const float next_right = buffer[write + 1U] + live_right * overdub_gain;
           buffer[write] = next_left;
           buffer[write + 1U] = next_right;
-          update_envelope(overdub_track, absolute, next_left, next_right, overdub_feedback <= .001F);
+          update_envelope(overdub_track, absolute, next_left, next_right, false);
+          if (overdub_remaining > 0U) --overdub_remaining;
+          if (overdub_remaining == 0U) finish_overdub();
         }
       }
 
@@ -656,6 +690,10 @@ struct LoopProcessor::Impl {
 
       for (std::size_t active = 0U; active < advance_count; ++active)
         advance_track(advance_tracks[active]);
+      if (playing && sync_frames > 0U) {
+        const auto next_sync = sync_position + 1U;
+        sync_position = next_sync >= sync_frames ? 0U : next_sync;
+      }
     }
   }
 
@@ -664,6 +702,31 @@ struct LoopProcessor::Impl {
     if (overdubbing) return LoopTransport::Overdubbing;
     if (!any_occupied()) return LoopTransport::Empty;
     return playing && any_active_occupied() ? LoopTransport::Playing : LoopTransport::Stopped;
+  }
+
+  void reference_clock(int& track, std::size_t& frames, std::size_t& position) const noexcept {
+    track = -1;
+    frames = 0U;
+    position = 0U;
+    if (sync_frames > 0U) {
+      for (unsigned index = 0U; index < kLoopTrackCount; ++index) {
+        if ((occupied_mask & bit(index)) != 0U && active_length(index) == sync_frames) {
+          track = static_cast<int>(index);
+          break;
+        }
+      }
+      frames = sync_frames;
+      position = sync_position;
+      return;
+    }
+    if (recording) {
+      const auto beat = std::max<std::size_t>(
+          kMinimumLoopFrames,
+          static_cast<std::size_t>(std::llround(static_cast<double>(rate) * 60.0
+              / static_cast<double>(clamp_bpm(bpm.load(std::memory_order_relaxed))))));
+      frames = beat * 4U;
+      position = frames > 0U ? record_count % frames : 0U;
+    }
   }
 
   void refresh_published_waveform() noexcept {
@@ -688,9 +751,16 @@ struct LoopProcessor::Impl {
     const unsigned track = selected.load(std::memory_order_relaxed);
     const auto raw = raw_frames[track];
     const auto length = active_length(track);
+    int reference_track = -1;
+    std::size_t reference_frames = 0U;
+    std::size_t reference_position = 0U;
+    reference_clock(reference_track, reference_frames, reference_position);
     published_frames.store(length, std::memory_order_relaxed);
     published_raw_frames.store(raw, std::memory_order_relaxed);
     published_position.store(std::min(positions[track], length > 0U ? length - 1U : 0U), std::memory_order_relaxed);
+    published_reference_track.store(reference_track, std::memory_order_relaxed);
+    published_reference_frames.store(reference_frames, std::memory_order_relaxed);
+    published_reference_position.store(reference_position, std::memory_order_relaxed);
     published_trim_start.store(raw > 0U ? static_cast<float>(trim_start_frames[track]) / static_cast<float>(raw) : 0.F, std::memory_order_relaxed);
     published_trim_end.store(raw > 0U ? static_cast<float>(trim_end_frames[track]) / static_cast<float>(raw) : 1.F, std::memory_order_relaxed);
     published_mask.store(occupied_mask, std::memory_order_relaxed);
@@ -720,7 +790,7 @@ struct LoopProcessor::Impl {
     }
 
     const float loop_level = master_level.load(std::memory_order_relaxed);
-    const float overdub_feedback = overdub.load(std::memory_order_relaxed);
+    const float overdub_gain = overdub.load(std::memory_order_relaxed);
     std::size_t offset = 0U;
 
     while (offset < frames) {
@@ -740,7 +810,7 @@ struct LoopProcessor::Impl {
       }
       if (segment == 0U) { run_due_commands(); continue; }
 
-      process_segment(data + offset * 2U, segment, loop_level, overdub_feedback);
+      process_segment(data + offset * 2U, segment, loop_level, overdub_gain);
       offset += segment;
       clock_frame += segment;
 
@@ -784,13 +854,15 @@ struct LoopProcessor::Impl {
 
   std::atomic<bool> enabled{false};
   std::atomic<unsigned> selected{0U};
-  std::atomic<float> master_level{.78F};
-  std::atomic<float> overdub{0.F};
-  std::atomic<float> fade{.18F};
+  std::atomic<float> master_level{1.F};
+  std::atomic<float> overdub{1.F};
+  std::atomic<float> fade{0.F};
   std::atomic<bool> fade_refresh_pending{false};
   std::atomic<float> bpm{120.F};
   std::atomic<unsigned> quantize_mode{kQuantizeOff};
   std::uint64_t clock_frame{};
+  std::size_t sync_frames{};
+  std::size_t sync_position{};
   std::array<ScheduledCommand, kScheduledSlots> scheduled{};
   std::uint64_t next_scheduled_due{kNoDue};
 
@@ -807,6 +879,7 @@ struct LoopProcessor::Impl {
   unsigned record_track{0U};
   bool overdubbing{false};
   unsigned overdub_track{0U};
+  std::size_t overdub_remaining{};
   std::size_t record_count{};
   bool bouncing{false};
   unsigned bounce_track{0U};
@@ -821,6 +894,9 @@ struct LoopProcessor::Impl {
   std::atomic<std::uint64_t> published_frames{};
   std::atomic<std::uint64_t> published_raw_frames{};
   std::atomic<std::uint64_t> published_position{};
+  std::atomic<int> published_reference_track{-1};
+  std::atomic<std::uint64_t> published_reference_frames{};
+  std::atomic<std::uint64_t> published_reference_position{};
   std::atomic<float> published_trim_start{0.F};
   std::atomic<float> published_trim_end{1.F};
   std::array<std::atomic<float>, kLoopWaveformBins> published_waveform{};
@@ -868,7 +944,10 @@ void LoopProcessor::set_fade(float value) noexcept {
   impl_->fade_refresh_pending.store(true, std::memory_order_release);
 }
 void LoopProcessor::command(LoopCommand value) noexcept {
-  const unsigned track = impl_->selected.load(std::memory_order_relaxed);
+  command(value, impl_->selected.load(std::memory_order_relaxed));
+}
+void LoopProcessor::command(LoopCommand value, unsigned requested_track) noexcept {
+  const unsigned track = std::min(requested_track, kLoopTrackCount - 1U);
   if (value == LoopCommand::Record && !impl_->ensure_track_buffer(track)) return;
   if (value == LoopCommand::Overdub && !impl_->ensure_undo_journal(track)) return;
   if (value == LoopCommand::Bounce && !impl_->ensure_track_buffer(track)) return;
@@ -895,6 +974,9 @@ std::uint32_t LoopProcessor::track_solo_mask() const noexcept { return impl_->pu
 std::uint64_t LoopProcessor::loop_frames() const noexcept { return impl_->published_frames.load(std::memory_order_relaxed); }
 std::uint64_t LoopProcessor::raw_frames() const noexcept { return impl_->published_raw_frames.load(std::memory_order_relaxed); }
 std::uint64_t LoopProcessor::position() const noexcept { return impl_->published_position.load(std::memory_order_relaxed); }
+int LoopProcessor::reference_track() const noexcept { return impl_->published_reference_track.load(std::memory_order_relaxed); }
+std::uint64_t LoopProcessor::reference_frames() const noexcept { return impl_->published_reference_frames.load(std::memory_order_relaxed); }
+std::uint64_t LoopProcessor::reference_position() const noexcept { return impl_->published_reference_position.load(std::memory_order_relaxed); }
 float LoopProcessor::trim_start() const noexcept { return impl_->published_trim_start.load(std::memory_order_relaxed); }
 float LoopProcessor::trim_end() const noexcept { return impl_->published_trim_end.load(std::memory_order_relaxed); }
 std::array<float, kLoopWaveformBins> LoopProcessor::waveform() const noexcept {

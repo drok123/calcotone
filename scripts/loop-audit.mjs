@@ -135,11 +135,16 @@ for (const token of [
   'this.runtimePeriod = Math.max(1024, Math.floor(sampleRate / 10))',
   'this.applyJournalSwaps(leftOut.length)',
   'UNDO_SCAN_PER_AUDIO_FRAME = 64',
-  'this.updateEnvelope(track, absolute, nextL, nextR, this.overdub <= 0.001)',
+  'const nextL = selected[write] + liveL * this.overdub',
+  'this.updateEnvelope(track, absolute, nextL, nextR, false)',
+  'this.syncFrames = 0',
+  'this.syncPosition = 0',
+  'this.updateSyncClock(establishingSync)',
   'target[write] = loopL',
   "command === 'record' && !this.anyOccupied() && !this.recording",
   "this.quantize === 'bar' ? beat * 4 : beat",
 ]) requireText(worklet, token, 'Browser Loop realtime contract');
+forbidText(worklet, 'selected[write] * this.overdub', 'Browser DUB must never attenuate stored loop audio');
 
 for (const token of [
   'this.scheduledCommands = []',
@@ -189,12 +194,16 @@ for (const token of [
   'journal_before_write(overdub_track, absolute, write, buffer)',
   'start_bounce(unsigned track)',
   'target[write] = loop_left',
+  'const float next_left = buffer[write] + live_left * overdub_gain',
+  'update_sync_clock(establishing_sync)',
+  'sync_position = next_sync >= sync_frames ? 0U : next_sync',
   "value >= 2'000.F",
   "value >= 1'000.F",
   'sentinel == 6L',
   'sentinel == 7L',
   'sentinel == 8L',
 ]) requireText(native, token, 'Native Loop realtime contract');
+forbidText(native, 'buffer[write] * overdub_gain', 'Native DUB must never attenuate stored loop audio');
 
 for (const token of [
   'pending_command',
@@ -228,8 +237,8 @@ for (const token of [
   'loop_track_solo_mask() const noexcept',
 ]) requireText(nativeProcessorHeader, token, 'Native processor Loop telemetry contract');
 
-// Keep the audible/native regressions: independent lengths, replace DUB, trim,
-// undo/redo, bounce and sample-accurate beat quantization.
+// Keep the audible/native regressions: whole-cycle independent lengths, safe
+// additive DUB, unity fidelity, Loop Sync, trim, undo/redo and quantization.
 for (const token of [
   "quantized_loop.set_track_level(7U, 1120.F)",
   "quantized_loop.set_track_level(7U, 2001.F)",
@@ -237,7 +246,10 @@ for (const token of [
   'private UNDO sentinel',
   'private REDO sentinel',
   'private BOUNCE sentinel',
-  'loop.set_overdub(0.F)',
+  'overdub_one_pass(loop, 256U',
+  'unity_playback[frame * 2U] - .137F',
+  'sync_loop.reference_frames() == 128U',
+  'sync_loop.reference_position() == phase_before',
   'loop.set_trim(.25F, .75F)',
 ]) requireText(nativeTest, token, 'Native Loop audible regression');
 
@@ -256,8 +268,11 @@ for (const token of [
   "makeButton('loop-505-action loop-505-undo', 'UNDO'",
   "makeButton('loop-505-action loop-505-redo', 'REDO'",
   "makeButton('loop-505-action loop-505-bounce', 'BNC'",
-  'function presentationProgress(track: number, stamp: number)',
-  'const progress = active ? presentationProgress(track, stamp) : 0',
+  "makeButton('loop-header-dub-action', 'DUB'",
+  "makeButton('loop-header-clear-action', 'CLR'",
+  'function presentationProgress(stamp: number)',
+  'const progress = presentationProgress(stamp)',
+  'return loopReferenceProgress(stamp - nativePathLatencyMs)',
   'const state = getLoopSettings()',
 ]) requireText(surface, token, 'Loop V3 performance surface');
 forbidText(surface, 'const state = getLoopState()', 'Loop header deep runtime snapshot');

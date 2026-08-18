@@ -658,9 +658,15 @@ export default function App() {
         setLoopRuntime({
           transport: loopTransports[health.loopTransport ?? 0] ?? 'empty',
           trackMask: health.loopTrackMask ?? 0,
+          trackActiveMask: health.loopTrackActiveMask ?? 0,
+          trackMuteMask: health.loopTrackMuteMask ?? 0,
+          trackSoloMask: health.loopTrackSoloMask ?? 0,
           loopFrames: health.loopFrames ?? 0,
           rawFrames: health.loopRawFrames ?? health.loopFrames ?? 0,
           position: health.loopPosition ?? 0,
+          referenceTrack: health.loopReferenceTrack ?? -1,
+          referenceFrames: health.loopReferenceFrames ?? 0,
+          referencePosition: health.loopReferencePosition ?? 0,
           sampleRate: health.sampleRate,
           trimStart: health.loopTrimStart ?? 0,
           trimEnd: health.loopTrimEnd ?? 1,
@@ -692,6 +698,8 @@ export default function App() {
       if (!command) return;
       if (typeof command === 'string') {
         void nativeBridgeRef.current.commandLine(`loop ${command}`);
+      } else if (command.type === 'trackCommand') {
+        void nativeBridgeRef.current.commandLine(`loop ${command.command} ${command.track}`);
       } else if (command.type === 'trim') {
         void nativeBridgeRef.current.commandLine(`loop trim ${command.start} ${command.end}`);
       } else if (command.type === 'autoTrim') {

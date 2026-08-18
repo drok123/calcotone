@@ -18,14 +18,19 @@ export type LoopQuantize = 'off' | 'beat' | 'bar';
 export type LoopTransportCommand = 'record' | 'overdub' | 'play' | 'clear';
 export type LoopUtilityCommand = 'undo' | 'redo' | 'bounce';
 export type LoopPerformanceCommandName = 'trackPlay' | 'trackStop' | 'mute' | 'solo';
+export type LoopActionCommand = LoopTransportCommand | LoopUtilityCommand | LoopPerformanceCommandName;
 export interface LoopPerformanceCommand {
   command: LoopPerformanceCommandName;
   track: number;
 }
+export interface LoopTargetedCommand {
+  type: 'trackCommand';
+  command: LoopActionCommand;
+  track: number;
+}
 export type LoopCommand =
-  | LoopTransportCommand
-  | LoopUtilityCommand
-  | LoopPerformanceCommandName
+  | LoopActionCommand
+  | LoopTargetedCommand
   | { type: 'trim'; start: number; end: number }
   | { type: 'autoTrim' }
   | { type: 'resetTrim' };
@@ -53,6 +58,9 @@ export interface LoopRuntime {
   sampleRate: number;
   trimStart: number;
   trimEnd: number;
+  referenceTrack: number;
+  referenceFrames: number;
+  referencePosition: number;
   waveform: number[];
 }
 
@@ -68,9 +76,11 @@ export interface LoopTrackRuntime {
 
 export interface LoopState extends LoopSettings, LoopRuntime {
   trackRuntime: LoopTrackRuntime[];
+  referenceUpdatedAtMs: number;
 }
 
-const STORAGE_KEY = 'calcotone.loop-state.v2';
+const STORAGE_KEY = 'calcotone.loop-state.v3';
+const PREVIOUS_STORAGE_KEY = 'calcotone.loop-state.v2';
 const LEGACY_STORAGE_KEY = 'calcotone.loop-state.v1';
 const PERSIST_INTERVAL_MS = 180;
 const listeners = new Set<() => void>();
@@ -80,14 +90,18 @@ const TRANSPORT_COMMANDS = new Set<LoopTransportCommand>(['record', 'overdub', '
 const DEFAULT_SETTINGS: LoopSettings = {
   enabled: false,
   selectedTrack: 0,
-  masterLevel: 0.78,
-  // Internally retained as `overdub` for command/schema compatibility.
-  // Semantically this is old-loop RETAIN: 0 = live replace, 1 = classic additive dub.
-  overdub: 0,
-  fade: 0.18,
+  // Unity is the fidelity contract: a recorded track comes back at the exact
+  // level that entered Loop unless the performer deliberately moves a fader.
+  masterLevel: 1,
+  // Internally retained as `overdub` for preset/schema compatibility. It now
+  // controls only the incoming DUB layer; stored loop audio is always retained.
+  overdub: 1,
+  // Seam crossfade is opt-in because any non-zero value changes the reference
+  // material at the loop boundary.
+  fade: 0,
   bpm: 120,
   quantize: 'bar',
-  trackLevels: Array.from({ length: LOOP_TRACK_COUNT }, () => 0.72),
+  trackLevels: Array.from({ length: LOOP_TRACK_COUNT }, () => 1),
 };
 
 const DEFAULT_RUNTIME: LoopRuntime = {
@@ -102,6 +116,9 @@ const DEFAULT_RUNTIME: LoopRuntime = {
   sampleRate: 48_000,
   trimStart: 0,
   trimEnd: 1,
+  referenceTrack: -1,
+  referenceFrames: 0,
+  referencePosition: 0,
   waveform: Array.from({ length: LOOP_WAVEFORM_BINS }, () => 0),
 };
 
@@ -174,28 +191,40 @@ function loadSettings(): LoopSettings {
   if (typeof window === 'undefined') return { ...DEFAULT_SETTINGS, trackLevels: [...DEFAULT_SETTINGS.trackLevels] };
   try {
     const currentRaw = window.localStorage.getItem(STORAGE_KEY);
-    const legacyRaw = currentRaw === null ? window.localStorage.getItem(LEGACY_STORAGE_KEY) : null;
-    const saved = JSON.parse(currentRaw ?? legacyRaw ?? 'null') as Partial<LoopSettings> | null;
+    const previousRaw = currentRaw === null ? window.localStorage.getItem(PREVIOUS_STORAGE_KEY) : null;
+    const legacyRaw = currentRaw === null && previousRaw === null ? window.localStorage.getItem(LEGACY_STORAGE_KEY) : null;
+    const saved = JSON.parse(currentRaw ?? previousRaw ?? legacyRaw ?? 'null') as Partial<LoopSettings> | null;
     if (!saved) return { ...DEFAULT_SETTINGS, trackLevels: [...DEFAULT_SETTINGS.trackLevels] };
-    const migratedLegacy = currentRaw === null && legacyRaw !== null;
+    const migratedReplaceDub = currentRaw === null;
+    const savedMaster = clamp01(saved.masterLevel ?? DEFAULT_SETTINGS.masterLevel);
+    const savedDub = clamp01(saved.overdub ?? DEFAULT_SETTINGS.overdub);
+    const savedFade = clamp01(saved.fade ?? DEFAULT_SETTINGS.fade);
+    const migratedLevels = normalizeTrackLevels(saved.trackLevels).map((level) => (
+      migratedReplaceDub && Math.abs(level - 0.72) < 0.0001 ? 1 : level
+    ));
     return {
       enabled: saved.enabled === true,
       selectedTrack: clampTrack(saved.selectedTrack ?? 0),
-      masterLevel: clamp01(saved.masterLevel ?? DEFAULT_SETTINGS.masterLevel),
-      // v1 shipped with 100% feedback as its default. Migrating that value
-      // would defeat the new live-replace workflow, so legacy sessions start at 0% RETAIN.
-      overdub: migratedLegacy ? DEFAULT_SETTINGS.overdub : clamp01(saved.overdub ?? DEFAULT_SETTINGS.overdub),
-      fade: clamp01(saved.fade ?? DEFAULT_SETTINGS.fade),
+      masterLevel: migratedReplaceDub && Math.abs(savedMaster - 0.78) < 0.0001 ? 1 : savedMaster,
+      // Old 0% RETAIN erased the stored loop. In the additive model that exact
+      // legacy default migrates to a unity incoming DUB layer instead of silence.
+      overdub: migratedReplaceDub && savedDub <= 0.0001 ? 1 : savedDub,
+      fade: migratedReplaceDub && Math.abs(savedFade - 0.18) < 0.0001 ? 0 : savedFade,
       bpm: clampBpm(saved.bpm ?? DEFAULT_SETTINGS.bpm),
       quantize: normalizeQuantize(saved.quantize),
-      trackLevels: normalizeTrackLevels(saved.trackLevels),
+      trackLevels: migratedLevels,
     };
   } catch {
     return { ...DEFAULT_SETTINGS, trackLevels: [...DEFAULT_SETTINGS.trackLevels] };
   }
 }
 
-let state: LoopState = { ...loadSettings(), ...DEFAULT_RUNTIME, trackRuntime: defaultTrackRuntime() };
+let state: LoopState = {
+  ...loadSettings(),
+  ...DEFAULT_RUNTIME,
+  trackRuntime: defaultTrackRuntime(),
+  referenceUpdatedAtMs: nowMilliseconds(),
+};
 let persistTimer = 0;
 
 function emit(): void {
@@ -322,6 +351,13 @@ export function setLoopRuntime(patch: Partial<LoopRuntime>): void {
   const rawFrames = Math.max(0, Math.round(patch.rawFrames ?? state.rawFrames));
   const position = Math.max(0, Math.round(patch.position ?? state.position));
   const sampleRate = Math.max(8_000, Math.round(patch.sampleRate ?? state.sampleRate));
+  const referenceFrames = Math.max(0, Math.round(patch.referenceFrames ?? state.referenceFrames));
+  const referenceTrack = referenceFrames > 0
+    ? clampTrack(patch.referenceTrack ?? state.referenceTrack)
+    : -1;
+  const referencePosition = referenceFrames > 0
+    ? Math.max(0, Math.min(referenceFrames - 1, Math.round(patch.referencePosition ?? state.referencePosition)))
+    : 0;
   const waveform = patch.waveform ? normalizeWaveform(patch.waveform, state.waveform) : state.waveform;
   const nextTrackMask = clampMask(patch.trackMask ?? state.trackMask);
   const clearingAll = patch.transport === 'empty' && nextTrackMask === 0;
@@ -340,6 +376,9 @@ export function setLoopRuntime(patch: Partial<LoopRuntime>): void {
     && sampleRate === state.sampleRate
     && trimStart === state.trimStart
     && trimEnd === state.trimEnd
+    && referenceTrack === state.referenceTrack
+    && referenceFrames === state.referenceFrames
+    && referencePosition === state.referencePosition
     && waveform === state.waveform;
   if (unchanged) return;
 
@@ -366,6 +405,12 @@ export function setLoopRuntime(patch: Partial<LoopRuntime>): void {
     sampleRate,
     trimStart,
     trimEnd,
+    referenceTrack,
+    referenceFrames,
+    referencePosition,
+    referenceUpdatedAtMs: patch.referencePosition !== undefined || patch.referenceFrames !== undefined
+      ? nowMilliseconds()
+      : state.referenceUpdatedAtMs,
     waveform,
     trackRuntime,
   };
@@ -374,15 +419,9 @@ export function setLoopRuntime(patch: Partial<LoopRuntime>): void {
 
 function optimisticPerformanceCommand(command: LoopPerformanceCommandName, track: number): void {
   const bit = 1 << track;
-  if (command === 'trackPlay') {
-    setLoopRuntime({ trackActiveMask: state.trackActiveMask | bit, transport: state.trackMask ? 'playing' : state.transport });
-  } else if (command === 'trackStop') {
-    const nextActive = state.trackActiveMask & ~bit;
-    const nextTransport = state.transport === 'recording' || state.transport === 'overdubbing'
-      ? state.transport
-      : (nextActive & state.trackMask) !== 0 ? 'playing' : state.trackMask ? 'stopped' : 'empty';
-    setLoopRuntime({ trackActiveMask: nextActive, position: track === state.selectedTrack ? 0 : state.position, transport: nextTransport });
-  } else if (command === 'mute') {
+  // PLAY/STOP are master-boundary actions. Their visual state must change only
+  // when audio telemetry confirms the sample-accurate commit.
+  if (command === 'mute') {
     setLoopRuntime({ trackMuteMask: state.trackMuteMask ^ bit });
   } else if (command === 'solo') {
     setLoopRuntime({ trackSoloMask: state.trackSoloMask ^ bit });
@@ -396,15 +435,6 @@ function optimisticTransportCommand(command: LoopTransportCommand): void {
     setLoopRuntime({ trackActiveMask: state.trackActiveMask | bit });
   } else if (command === 'overdub') {
     setLoopRuntime({ trackActiveMask: state.trackActiveMask | bit });
-  } else if (command === 'play') {
-    if (state.transport === 'stopped') {
-      setLoopRuntime({
-        trackActiveMask: state.trackActiveMask || state.trackMask,
-        transport: state.trackMask ? 'playing' : 'empty',
-      });
-    } else if (state.transport === 'playing') {
-      setLoopRuntime({ transport: state.trackMask ? 'stopped' : 'empty' });
-    }
   } else if (command === 'clear') {
     const nextMask = state.trackMask & ~bit;
     const nextActive = state.trackActiveMask & ~bit;
@@ -453,10 +483,31 @@ export function sendLoopCommand(command: LoopCommand): void {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent<LoopCommand>(LOOP_COMMAND_EVENT, { detail: normalized }));
 }
 
+export function sendLoopTrackCommand(track: number, command: LoopActionCommand): void {
+  const target = clampTrack(track);
+  if (PERFORMANCE_COMMANDS.has(command as LoopPerformanceCommandName)) {
+    const performanceCommand = command as LoopPerformanceCommandName;
+    optimisticPerformanceCommand(performanceCommand, target);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent<LoopPerformanceCommand>(LOOP_PERFORMANCE_COMMAND_EVENT, {
+        detail: { command: performanceCommand, track: target },
+      }));
+    }
+    return;
+  }
+  if (TRANSPORT_COMMANDS.has(command as LoopTransportCommand)) optimisticTransportCommand(command as LoopTransportCommand);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent<LoopTargetedCommand>(LOOP_COMMAND_EVENT, {
+      detail: { type: 'trackCommand', command, track: target },
+    }));
+  }
+}
+
 /**
  * RC-style one-button track transport for the four-track faceplate.
- * Empty -> REC, REC -> PLAY, PLAY -> DUB, DUB -> PLAY.
- * A stopped individual track starts from its own beginning before DUB is available.
+ * Empty -> REC, REC -> PLAY, PLAY -> STOP, STOP -> PLAY.
+ * DUB is deliberately separate so an ordinary transport press can never write
+ * into an existing take.
  * Switching tracks is intentionally blocked while a write pass is active so a
  * recording target can never be stolen underneath the realtime thread.
  */
@@ -469,11 +520,20 @@ export function pressLoopTrack(track: number): boolean {
   const active = (state.trackActiveMask & (1 << target)) !== 0;
   if (target !== state.selectedTrack) setLoopState({ selectedTrack: target });
 
-  if (state.transport === 'recording') sendLoopCommand('record');
-  else if (state.transport === 'overdubbing') sendLoopCommand('overdub');
-  else if (!occupied) sendLoopCommand('record');
-  else if (!active || state.transport === 'stopped') sendLoopCommand('trackPlay');
-  else sendLoopCommand('overdub');
+  if (state.transport === 'recording') sendLoopTrackCommand(target, 'record');
+  else if (state.transport === 'overdubbing') sendLoopTrackCommand(target, 'overdub');
+  else if (!occupied) sendLoopTrackCommand(target, 'record');
+  else if (!active || state.transport === 'stopped') sendLoopTrackCommand(target, 'trackPlay');
+  else sendLoopTrackCommand(target, 'trackStop');
+  return true;
+}
+
+export function startLoopOverdub(track = state.selectedTrack): boolean {
+  const target = clampVisibleTrack(track);
+  const writing = state.transport === 'recording' || state.transport === 'overdubbing';
+  if (writing || (state.trackMask & (1 << target)) === 0) return false;
+  if (target !== state.selectedTrack) setLoopState({ selectedTrack: target });
+  sendLoopTrackCommand(target, 'overdub');
   return true;
 }
 
@@ -485,7 +545,7 @@ export function toggleLoopTrackPlayback(track: number): boolean {
   if (!occupied && !(writing && target === state.selectedTrack)) return false;
   if (target !== state.selectedTrack) setLoopState({ selectedTrack: target });
   const active = (state.trackActiveMask & (1 << target)) !== 0;
-  sendLoopCommand(active ? 'trackStop' : 'trackPlay');
+  sendLoopTrackCommand(target, active ? 'trackStop' : 'trackPlay');
   return true;
 }
 
@@ -495,7 +555,7 @@ export function toggleLoopTrackMute(track: number): boolean {
   if (writing && target !== state.selectedTrack) return false;
   if ((state.trackMask & (1 << target)) === 0) return false;
   if (target !== state.selectedTrack) setLoopState({ selectedTrack: target });
-  sendLoopCommand('mute');
+  sendLoopTrackCommand(target, 'mute');
   return true;
 }
 
@@ -505,7 +565,7 @@ export function toggleLoopTrackSolo(track: number): boolean {
   if (writing && target !== state.selectedTrack) return false;
   if ((state.trackMask & (1 << target)) === 0) return false;
   if (target !== state.selectedTrack) setLoopState({ selectedTrack: target });
-  sendLoopCommand('solo');
+  sendLoopTrackCommand(target, 'solo');
   return true;
 }
 
@@ -514,7 +574,7 @@ export function clearLoopTrack(track: number): boolean {
   const writing = state.transport === 'recording' || state.transport === 'overdubbing';
   if (writing && target !== state.selectedTrack) return false;
   if (target !== state.selectedTrack) setLoopState({ selectedTrack: target });
-  sendLoopCommand('clear');
+  sendLoopTrackCommand(target, 'clear');
   return true;
 }
 
@@ -527,7 +587,7 @@ export function bounceLoopMix(): boolean {
   }
   if (destination < 0) return false;
   setLoopState({ selectedTrack: destination });
-  sendLoopCommand('bounce');
+  sendLoopTrackCommand(destination, 'bounce');
   return true;
 }
 
@@ -541,10 +601,24 @@ export function loopTrackProgress(track: number, atMs = nowMilliseconds()): numb
   const transportRunning = state.transport === 'playing' || state.transport === 'recording' || state.transport === 'overdubbing';
   const moving = writingTarget || (transportRunning && active);
   if (moving && ((state.trackMask & (1 << target)) !== 0 || writingTarget)) {
-    const elapsedFrames = Math.max(0, atMs - runtime.updatedAtMs) * state.sampleRate / 1000;
-    position = (position + elapsedFrames) % runtime.loopFrames;
+    const elapsedFrames = (atMs - runtime.updatedAtMs) * state.sampleRate / 1000;
+    position = ((position + elapsedFrames) % runtime.loopFrames + runtime.loopFrames) % runtime.loopFrames;
   }
   return clamp01(position / runtime.loopFrames);
+}
+
+/** Shared musical boundary used by the hardware rings. During later takes it is
+ * the established reference loop; during the first take the engines publish a
+ * one-bar guide. It is intentionally not a selected-track playback meter. */
+export function loopReferenceProgress(atMs = nowMilliseconds()): number {
+  if (state.referenceFrames <= 0) return 0;
+  let position = state.referencePosition;
+  const moving = state.transport === 'playing' || state.transport === 'recording' || state.transport === 'overdubbing';
+  if (moving) {
+    const elapsedFrames = (atMs - state.referenceUpdatedAtMs) * state.sampleRate / 1000;
+    position = ((position + elapsedFrames) % state.referenceFrames + state.referenceFrames) % state.referenceFrames;
+  }
+  return clamp01(position / state.referenceFrames);
 }
 
 export function useLoopState(): LoopState {

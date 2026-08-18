@@ -27,8 +27,10 @@ import { installDisplayProfile } from './ui/displayProfile'
 import App from './App.tsx'
 import './approvedFaceplate.css'
 import './components/effects/ModulePowerState.css'
+import './microcosmFaceplate.css'
 import './loopRefinement.css'
 import './loopSurfaceV3'
+import './legibilityFinal.css'
 
 installDisplayProfile()
 
