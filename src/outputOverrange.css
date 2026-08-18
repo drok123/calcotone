@@ -1,0 +1,50 @@
+:root {
+  --calcotone-output-overrange: 0;
+}
+
+/*
+ * The existing eight lamps remain the fast activity meter. The native host also
+ * reports its highest pre-limiter excursion, so the last three lamps can act as
+ * a hardware-style overrange hold without adding another React render loop.
+ *
+ *  lamp 6: any excursion above 0 dBFS
+ *  lamp 7: roughly +1.5 dB and beyond
+ *  lamp 8: roughly +3 dB and beyond
+ *
+ * NativeAudioBridge normalizes 1.0..1.5 linear peak into 0..1. Values above
+ * that are intentionally pinned; the output safety stage still owns clipping.
+ */
+.output-meter span {
+  position: relative;
+  isolation: isolate;
+}
+
+.output-meter span::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  background: linear-gradient(180deg, #ff8a7f, var(--red, #ff5a50));
+  box-shadow: 0 0 6px rgba(255, 90, 80, .64), 0 0 12px rgba(255, 90, 80, .22);
+}
+
+html[data-output-overrange] .output-meter span:nth-child(6)::after {
+  opacity: clamp(0, calc(var(--calcotone-output-overrange) * 3), 1);
+}
+
+html[data-output-overrange] .output-meter span:nth-child(7)::after {
+  opacity: clamp(0, calc((var(--calcotone-output-overrange) - .333333) * 3), 1);
+}
+
+html[data-output-overrange] .output-meter span:nth-child(8)::after {
+  opacity: clamp(0, calc((var(--calcotone-output-overrange) - .666667) * 3), 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .output-meter span::after {
+    transition: none;
+  }
+}
