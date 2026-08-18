@@ -21,6 +21,8 @@ requireText(vite, "mode === 'desktop'", 'Desktop-only Vite resolver gate');
 requireText(vite, 'calcotone-desktop-native-only-audio-engine', 'Desktop native-only resolver');
 requireText(vite, 'audio\\/AudioEngine', 'AudioEngine runtime import interception');
 requireText(vite, 'DesktopAudioEngineStub.ts', 'Desktop AudioEngine fence target');
+requireText(vite, "publicDir: desktop ? false : 'public'", 'Legacy worklets excluded from desktop output');
+requireText(vite, 'transformIndexHtml(html)', 'Desktop favicon cleanup');
 
 requireText(stub, 'CALCOTONE desktop is native-only', 'Desktop fence error');
 requireText(stub, 'public async start(): Promise<void>', 'Desktop fence start method');
@@ -42,4 +44,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE desktop native-only audit passed · desktop runtime AudioEngine imports resolve to the native-only fence and native bridge failure cannot fall through to Web Audio.');
+console.log('CALCOTONE desktop native-only audit passed · desktop runtime AudioEngine imports resolve to the native-only fence, legacy public AudioWorklets are excluded, and native bridge failure cannot fall through to Web Audio.');
