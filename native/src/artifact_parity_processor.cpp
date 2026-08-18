@@ -267,13 +267,18 @@ struct ArtifactParityProcessor::Impl {
     ModelPoint result{};
     if (mode == 8U) {
       result.insert = true; result.transport = false; result.tascam = true;
-      result.model_input = .82F + wear * 2.9F;
-      result.pre_drive = 1.05F + wear * 4.4F;
-      result.pre_asymmetry = .045F;
-      result.post_drive = 1.F + std::pow(tone, 1.55F) * 7.6F;
-      result.post_asymmetry = .032F + wear * .025F;
-      result.model_output = std::clamp(std::pow(result.model_input, -.38F)
-          * std::pow(result.pre_drive, -.10F) * std::pow(result.post_drive, -.08F), .18F, 1.1F);
+      // Keep normal 424 operation in console territory instead of presenting the
+      // second ADAA stage with an already-hot signal. Wear still has enough range
+      // to overdrive the input/channel pair deliberately, but the stock operating
+      // point now preserves low-level headroom instead of behaving like a fuzz box.
+      result.model_input = .58F + wear * 1.8F;
+      result.pre_drive = 1.02F + wear * 2.2F;
+      result.pre_asymmetry = .032F;
+      result.post_drive = 1.F + std::pow(tone, 1.55F) * 3.4F;
+      result.post_asymmetry = .022F + wear * .018F;
+      const float nominal_gain = std::max(1.F,
+          result.model_input * result.pre_drive * result.post_drive);
+      result.model_output = std::clamp(std::pow(nominal_gain, -.72F), .08F, 1.1F);
       result.low_shelf_hz = 100.F;
       result.low_shelf_db = bipolar_around_default(wow, .16F) * 10.F;
       result.high_shelf_hz = 10'000.F;
