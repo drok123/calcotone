@@ -59,7 +59,17 @@ const PROFILE_SELECTOR_PARAMETERS = new Set(['mode', 'algorithm']);
 const STACK_PROFILE_SELECTORS = new Set(['model', 'cab']);
 const STACK_PROFILE_PARAMETERS = new Set(['drive', 'tone', 'sag', 'mix']);
 const HEALTH_CACHE_MS = 160;
+const OUTPUT_OVERRANGE_LINEAR_HEADROOM = 0.5;
 let nativeBackendEngaged = false;
+
+function publishOutputOverrange(preLimiterPeak: number): void {
+  if (typeof document === 'undefined') return;
+  const peak = Number.isFinite(preLimiterPeak) ? Math.max(0, preLimiterPeak) : 0;
+  const normalized = Math.max(0, Math.min(1, (peak - 1) / OUTPUT_OVERRANGE_LINEAR_HEADROOM));
+  const root = document.documentElement;
+  root.style.setProperty('--calcotone-output-overrange', normalized.toFixed(4));
+  root.toggleAttribute('data-output-overrange', normalized > 0.0001);
+}
 
 /** True only while the current Calcotone UI has successfully activated the native engine. */
 export function isNativeBackendEngaged(): boolean {
@@ -202,6 +212,7 @@ export class NativeAudioBridge {
       this.lastProbeFailure = '';
       this.healthCache = health;
       this.healthCacheAt = performance.now();
+      publishOutputOverrange(health.preLimiterPeak);
       this.resetDesiredState();
       return health;
     } catch (error) {
@@ -209,6 +220,7 @@ export class NativeAudioBridge {
       nativeBackendEngaged = false;
       this.healthCache = null;
       this.healthCacheAt = 0;
+      publishOutputOverrange(0);
       this.lastProbeFailure = error instanceof DOMException && error.name === 'AbortError'
         ? 'Native bridge timed out.'
         : 'Native bridge was unreachable.';
@@ -228,7 +240,10 @@ export class NativeAudioBridge {
   public async readHealth(): Promise<NativeAudioHealth | null> {
     if (!this.connected) return null;
     const now = performance.now();
-    if (this.healthCache && now - this.healthCacheAt < HEALTH_CACHE_MS) return this.healthCache;
+    if (this.healthCache && now - this.healthCacheAt < HEALTH_CACHE_MS) {
+      publishOutputOverrange(this.healthCache.preLimiterPeak);
+      return this.healthCache;
+    }
     if (this.healthRequest) return this.healthRequest;
 
     this.healthRequest = fetch(this.request(`${NATIVE_ORIGIN}/health`, { cache: 'no-store' }))
@@ -237,6 +252,7 @@ export class NativeAudioBridge {
         const health = await response.json() as NativeAudioHealth;
         this.healthCache = health;
         this.healthCacheAt = performance.now();
+        publishOutputOverrange(health.preLimiterPeak);
         return health;
       })
       .catch(() => null)
@@ -299,6 +315,7 @@ export class NativeAudioBridge {
     this.healthCache = null;
     this.healthCacheAt = 0;
     this.healthRequest = null;
+    publishOutputOverrange(0);
     this.resetDesiredState();
   }
 }
