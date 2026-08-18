@@ -18,6 +18,7 @@ namespace {
 constexpr std::size_t kBlockFrames = 2048;
 constexpr unsigned kStackToken = static_cast<unsigned>(RackModule::Count);
 constexpr unsigned kOrderSlots = kStackToken + 1U;
+constexpr float kOverrangeReleaseSeconds = .45F;
 
 std::uint64_t pack_order(const std::array<unsigned, kOrderSlots>& order) noexcept {
   std::uint64_t packed = 0;
@@ -26,10 +27,13 @@ std::uint64_t pack_order(const std::array<unsigned, kOrderSlots>& order) noexcep
   return packed;
 }
 
-void publish_peak(std::atomic<float>& destination, float value) noexcept {
-  auto previous = destination.load(std::memory_order_relaxed);
-  while (value > previous && !destination.compare_exchange_weak(
-      previous, value, std::memory_order_relaxed, std::memory_order_relaxed)) {}
+void publish_peak(std::atomic<float>& destination, float value, float release) noexcept {
+  const float previous = destination.load(std::memory_order_relaxed);
+  float held = previous > 1.F
+      ? 1.F + (previous - 1.F) * release
+      : previous * release;
+  if (held > 1.F && held < 1.0005F) held = 1.F;
+  destination.store(std::max(value, held), std::memory_order_relaxed);
 }
 }
 
@@ -153,7 +157,9 @@ struct NativeProcessor::Impl {
     float peak = 0.F;
     apply_output_safety(output, frames, gain, &limited, &peak);
     output_limited_samples.fetch_add(limited, std::memory_order_relaxed);
-    publish_peak(pre_limiter_peak, peak);
+    const float peak_release = std::exp(
+        -static_cast<float>(frames) / std::max(1.F, rate * kOverrangeReleaseSeconds));
+    publish_peak(pre_limiter_peak, peak, peak_release);
     native_visual_spectrum().publish(output, frames);
   }
 
