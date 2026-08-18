@@ -1,7 +1,6 @@
 #ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
-#include <shellapi.h>
 #include <audioclient.h>
 #include <avrt.h>
 #include <ksmedia.h>
@@ -719,7 +718,7 @@ int main(int argc, char** argv) {
       std::istringstream command{std::string(line)}; std::string name; command >> name;
       if (name == "recordStart") return recorder.start() ? R"({"ok":true,"command":"recordStart"})" : R"({"error":"recording already active"})";
       if (name == "recordStop") {
-        const bool saved = recorder.stop(executable_directory() / "web" / "calcotone-recording.wav");
+        const bool saved = recorder.stop(executable_directory() / "calcotone-recording.wav");
         return saved ? R"({"ok":true,"command":"recordStop"})" : R"({"error":"native recording was empty or could not be saved"})";
       }
       if (name == "recordCancel") { recorder.cancel(); return R"({"ok":true,"command":"recordCancel"})"; }
@@ -832,7 +831,7 @@ int main(int argc, char** argv) {
     };
 
     calcotone::ControlServer control_server(
-        apply_command, 48157, executable_directory() / "web");
+        apply_command, 48157, executable_directory() / "calcotone-recording.wav");
     log_line("Binding native control bridge to 127.0.0.1:48157...");
     control_server.start();
     log_line("Native control bridge is listening on 127.0.0.1:48157.");
@@ -1008,8 +1007,6 @@ int main(int argc, char** argv) {
            << primed_frames / sample_rate * 1000. << " ms safety; target " << fifo_target_frames << "f)";
     log_line(primed.str());
     check(render.client->Start(), "Start render");
-    const std::wstring faceplate_url = L"http://127.0.0.1:" + std::to_wstring(control_server.port()) + L"/";
-    const std::wstring desktop_faceplate_url = faceplate_url + L"?native-shell=1";
     const double input_ms = capture.period_frames / sample_rate * 1000.;
     const double output_ms = render.buffer_frames / sample_rate * 1000.;
     std::ostringstream startup;
@@ -1019,45 +1016,25 @@ int main(int argc, char** argv) {
     log_line(startup.str());
     log_line("Control bridge: http://127.0.0.1:" + std::to_string(control_server.port()) + " | GET /health | POST /command");
     log_line("Commands: param/moduleBypass/order, active/bypass, stackInput, inputGain/outputGain, STACK controls, stats, quit");
-    bool browser_mode = false;
-    for (int argument = 1; argument < argc; ++argument)
-      browser_mode = browser_mode || std::string_view(argv[argument]) == "--browser";
-    std::array<char, 32> ui_mode{};
-    GetEnvironmentVariableA("CALCOTONE_UI_MODE", ui_mode.data(), static_cast<DWORD>(ui_mode.size()));
-    browser_mode = browser_mode || std::string_view(ui_mode.data()) == "browser";
+    const auto application_root = executable_directory();
+    log_line("Opening the packaged offline CALCOTONE faceplate...");
+    std::string shell_error;
+    int shell_result = -1;
+    // WASAPI lives in this thread's multithreaded COM apartment. The packaged
+    // fixed WebView2 runtime owns a dedicated STA and Windows message pump.
+    std::thread shell_thread([&] {
+      shell_result = calcotone::run_desktop_shell(
+          application_root / "web", application_root / "runtime", shell_error);
+    });
+    shell_thread.join();
+    if (shell_result < 0) log_line("Standalone faceplate failed: " + shell_error);
 
-    if (!browser_mode) {
-      log_line("Opening embedded CALCOTONE desktop faceplate...");
-      std::string shell_error;
-      int shell_result = -1;
-      // WASAPI lives in this thread's multithreaded COM apartment. WebView2
-      // requires a dedicated single-threaded apartment and Windows message pump.
-      std::thread shell_thread([&] {
-        shell_result = calcotone::run_desktop_shell(desktop_faceplate_url, shell_error);
-      });
-      shell_thread.join();
-      if (shell_result < 0) {
-        log_line("Embedded faceplate failed: " + shell_error);
-        log_line("Falling back to the local diagnostic browser faceplate.");
-        browser_mode = true;
-      }
-    }
-    if (browser_mode) {
-      log_line("Opening diagnostic browser faceplate: http://127.0.0.1:" + std::to_string(control_server.port()) + "/");
-      ShellExecuteW(nullptr, L"open", faceplate_url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-      std::string line;
-      while (std::getline(std::cin, line)) {
-        std::istringstream command(line); std::string name; float value = 0.F; command >> name;
-        if (name == "quit") break;
-        std::cout << apply_command(line) << '\n';
-      }
-    }
     control_server.stop();
     recorder.cancel();
     running.store(false); SetEvent(capture.event); SetEvent(render.event);
     capture_thread.join(); render_thread.join();
     capture.client->Stop(); render.client->Stop(); CoUninitialize();
-    return 0;
+    return shell_result < 0 ? 1 : 0;
   } catch (const HResultError& error) {
     calcotone::AudioRestartPolicy restart_policy;
     if (restart_policy.observe(classify_audio_runtime_fault(error.result())).restart) {

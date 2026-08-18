@@ -2,6 +2,11 @@ name: Windows Native Release
 
 on:
   workflow_dispatch:
+    inputs:
+      fixed_webview2_url:
+        description: Official Microsoft x64 Fixed Version WebView2 CAB URL
+        required: false
+        type: string
   push:
     branches: [main]
     paths:
@@ -13,6 +18,7 @@ on:
       - "package.json"
       - "package-lock.json"
       - "vite.config.ts"
+      - ".env.desktop"
       - "tsconfig*.json"
       - ".github/workflows/windows-native-release.yml"
 
@@ -46,10 +52,13 @@ jobs:
           npm run audit:core-contract
           npm run audit:artifact-matrix
           npm run audit:windows-ui-parity
+          npm run audit:web-ui-1to1
+          npm run audit:loop-ui
+          npm run audit:dropdowns
           npm run audit:latency
 
-      - name: Build production faceplate
-        run: npm run build
+      - name: Build standalone desktop faceplate
+        run: npm run build:desktop
 
       - name: Generate native spectrum host sources
         shell: pwsh
@@ -70,12 +79,44 @@ jobs:
       - name: Restore WebView2 SDK
         shell: pwsh
         run: |
-          nuget install Microsoft.Web.WebView2 -OutputDirectory native/packages -NonInteractive
+          nuget install Microsoft.Web.WebView2 -Version 1.0.4129.50 -OutputDirectory native/packages -NonInteractive
           $package = Get-ChildItem native/packages -Directory -Filter 'Microsoft.Web.WebView2.*' |
             Sort-Object Name -Descending |
             Select-Object -First 1
           if (-not $package) { throw 'WebView2 NuGet package was not restored.' }
           "CALCOTONE_WEBVIEW2_ROOT=$($package.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Restore bundled fixed WebView2 runtime
+        shell: pwsh
+        env:
+          CALCOTONE_FIXED_WEBVIEW2_URL: ${{ inputs.fixed_webview2_url || vars.CALCOTONE_WEBVIEW2_FIXED_URL || 'https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/1424552f-1033-46d3-a1ea-26c879f4262b/Microsoft.WebView2.FixedVersionRuntime.151.0.4129.93.x64.cab' }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CALCOTONE_FIXED_WEBVIEW2_URL)) {
+            throw 'No fixed WebView2 runtime URL was resolved. Use the official x64 Fixed Version CAB URL from Microsoft.'
+          }
+          $runtimeUri = [Uri]$env:CALCOTONE_FIXED_WEBVIEW2_URL
+          if ($runtimeUri.Scheme -ne 'https' -or $runtimeUri.Host -ne 'msedge.sf.dl.delivery.mp.microsoft.com' -or -not $runtimeUri.AbsolutePath.EndsWith('.x64.cab')) {
+            throw 'The fixed runtime must be an official Microsoft HTTPS x64 CAB URL.'
+          }
+          $cab = Join-Path $PWD 'native/packages/webview2-fixed-x64.cab'
+          $extract = Join-Path $PWD 'native/packages/webview2-fixed-x64'
+          Invoke-WebRequest -Uri $runtimeUri -OutFile $cab
+          New-Item -ItemType Directory -Force -Path $extract | Out-Null
+          & expand.exe $cab -F:* $extract | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'The fixed WebView2 CAB could not be expanded.' }
+          $runtimeExe = Get-ChildItem $extract -Recurse -File -Filter 'msedgewebview2.exe' | Select-Object -First 1
+          if (-not $runtimeExe) { throw 'The fixed WebView2 package does not contain msedgewebview2.exe.' }
+          $runtimeSignature = Get-AuthenticodeSignature $runtimeExe.FullName
+          if ($runtimeSignature.Status -ne 'Valid' -or $runtimeSignature.SignerCertificate.Subject -notmatch 'Microsoft') {
+            throw 'The extracted WebView2 runtime does not have a valid Microsoft signature.'
+          }
+          $runtimeVersionText = $runtimeExe.VersionInfo.FileVersion
+          if ($runtimeVersionText -notmatch '^\d+\.\d+\.\d+\.\d+') { throw 'The fixed runtime version could not be read.' }
+          $runtimeVersion = [Version]$Matches[0]
+          if ($runtimeVersion.Build -lt 4129) { throw 'The fixed runtime is older than the pinned WebView2 SDK contract.' }
+          "CALCOTONE_FIXED_WEBVIEW2_ROOT=$($runtimeExe.Directory.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CALCOTONE_FIXED_WEBVIEW2_VERSION=$runtimeVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CALCOTONE_FIXED_WEBVIEW2_SHA256=$((Get-FileHash $cab -Algorithm SHA256).Hash)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Configure native host
         run: >-
@@ -94,9 +135,11 @@ jobs:
           $packageRoot = Join-Path $PWD 'artifact/CALCOTONE-Windows-Native'
           New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
           New-Item -ItemType Directory -Force -Path (Join-Path $packageRoot 'web') | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $packageRoot 'runtime') | Out-Null
 
           Copy-Item 'native/build/Release/calcotone_host.exe' $packageRoot
           Copy-Item 'dist/*' (Join-Path $packageRoot 'web') -Recurse -Force
+          Copy-Item (Join-Path $env:CALCOTONE_FIXED_WEBVIEW2_ROOT '*') (Join-Path $packageRoot 'runtime') -Recurse -Force
           Copy-Item 'native/*.bat' $packageRoot -Force
           Copy-Item 'native/README.md' (Join-Path $packageRoot 'NATIVE-README.md') -Force
           Copy-Item 'contracts/calcotone-core-manifest.json' (Join-Path $packageRoot 'CALCOTONE-CONTRACT.json') -Force
@@ -107,8 +150,9 @@ jobs:
 
           1. Extract the entire ZIP.
           2. Double-click START-CALCOTONE-NATIVE.bat.
-          3. Keep the web folder beside calcotone_host.exe.
-          4. Use LIST-CALCOTONE-DEVICES.bat and CALCOTONE-AUDIO-CONFIG.bat when changing interfaces or channels.
+          3. Keep both web and runtime folders beside calcotone_host.exe.
+          4. No internet connection, browser installation, Web Audio permission, or separate WebView2 installation is required.
+          5. Use LIST-CALCOTONE-DEVICES.bat and CALCOTONE-AUDIO-CONFIG.bat when changing interfaces or channels.
 
           Build commit: $env:GITHUB_SHA
           "@ | Set-Content (Join-Path $packageRoot 'INSTALL.txt')
@@ -119,8 +163,11 @@ jobs:
             workflowRun = $env:GITHUB_RUN_ID
             builtAtUtc = (Get-Date).ToUniversalTime().ToString('o')
             source = 'Canonical checked-in React and C++ source; no release-time UI mutation'
-            frontend = 'TypeScript + Vite production build passed'
+            frontend = 'TypeScript + Vite native-only desktop build passed'
             native = 'CMake Release build passed against generated core contract'
+            desktopRuntime = "Bundled fixed WebView2 $env:CALCOTONE_FIXED_WEBVIEW2_VERSION (x64)"
+            desktopRuntimeCabSha256 = $env:CALCOTONE_FIXED_WEBVIEW2_SHA256
+            networkContract = 'Packaged local faceplate; loopback-only controls and telemetry; native C++ audio only'
             tests = 'Core contract, CTest, UI parity, and latency audits passed'
             parityModules = @('Ember', 'Drift', 'Halo', 'Atmos', 'Grain', 'Artifact', 'Stomp', 'Stack', 'Pressure')
             uiParity = [ordered]@{

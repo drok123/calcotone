@@ -592,7 +592,8 @@ function nativeInputPolarityBits(invertLeft: boolean, invertRight: boolean): num
 }
 
 export default function App() {
-  const nativeShell = new URLSearchParams(window.location.search).has('native-shell');
+  const nativeShell = import.meta.env.VITE_CALCOTONE_TARGET === 'desktop'
+    || new URLSearchParams(window.location.search).has('native-shell');
   const diagnosticAudio = import.meta.env.DEV
     && new URLSearchParams(window.location.search).has('diagnostic-audio');
   const engineRef = useRef<AudioEngine | null>(null);
@@ -1294,7 +1295,7 @@ export default function App() {
   function toggleAdaptiveMode(): void {
     if (backendRef.current === 'native') {
       // Native FIFO/recovery safety is transport-critical and remains active.
-      // Keep the UI truthful instead of pretending this browser-only switch can disable it.
+      // Keep the UI truthful instead of pretending the diagnostic fallback switch can disable it.
       setMessage('Native I/O safety remains enabled to protect realtime audio.');
       return;
     }
@@ -1860,7 +1861,7 @@ export default function App() {
             </div>
             <span className={`audio-backend-badge ${audioBackend ?? 'detecting'}`} title="Active audio processing backend">
               <i aria-hidden="true" />
-              {audioBackend === 'native' ? 'NATIVE WASAPI' : audioBackend === 'web' ? 'WEB AUDIO' : 'AUDIO AUTO'}
+              {audioBackend === 'native' ? 'NATIVE WASAPI' : audioBackend === 'web' ? 'WEB AUDIO' : nativeShell ? 'NATIVE ENGINE' : 'AUDIO AUTO'}
             </span>
             <button type="button" className={`profiler-toggle ${explainMode ? 'active' : ''}`} aria-pressed={explainMode} onClick={() => setExplainMode((value) => !value)}>EXPLAIN</button>
             <FaceplateLayoutEditor />
@@ -2159,7 +2160,7 @@ export default function App() {
             <div>
               <span>BACKEND</span>
               <strong className={audioBackend === 'native' ? 'native-backend' : audioBackend === 'web' ? 'web-backend' : ''}>
-                {audioBackend === 'native' ? `NATIVE ${(nativeTransport ?? 'wasapi').toUpperCase()}` : audioBackend === 'web' ? 'WEB AUDIO' : 'AUTO'}
+                {audioBackend === 'native' ? `NATIVE ${(nativeTransport ?? 'wasapi').toUpperCase()}` : audioBackend === 'web' ? 'WEB AUDIO' : nativeShell ? 'NATIVE OFFLINE' : 'AUTO'}
               </strong>
             </div>
             <div>

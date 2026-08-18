@@ -8,6 +8,9 @@ const asciiArt = read('src/components/ascii/AsciiArtEngine.tsx');
 const railC = read('src/components/effects/RailCModules.tsx');
 const spectrum = read('src/visual/NativeVisualSpectrum.ts');
 const host = read('native/src/wasapi_host.cpp');
+const desktopShell = read('native/src/desktop_shell.cpp');
+const controlServer = read('native/src/control_server.cpp');
+const releaseWorkflow = read('.github/workflows/windows-native-release.yml');
 const nativeProcessor = read('native/include/calcotone/native_processor.hpp');
 const routing = read('src/routing/serialRouting.ts');
 const faceplate = read('src/ui/faceplateLayout.ts');
@@ -27,6 +30,18 @@ const pressureWeb = read('src/audio/SignalLab.ts');
 const checks = [];
 const check = (ok, category, label, severity = 'error') => checks.push({ ok, category, label, severity });
 const count = (source, token) => source.split(token).length - 1;
+
+check(app.includes("import.meta.env.VITE_CALCOTONE_TARGET === 'desktop'"), 'standalone', 'desktop build forces native-shell behavior');
+check(desktopShell.includes('CreateCoreWebView2EnvironmentWithOptions(\n        runtime_path.c_str(), user_data_path.c_str()'), 'standalone', 'bundled fixed WebView2 runtime path');
+check(desktopShell.includes('SetVirtualHostNameToFolderMapping(') && desktopShell.includes('https://app.calcotone/index.html?native-shell=1'), 'standalone', 'packaged faceplate virtual-host mount');
+check(host.includes('application_root / "web", application_root / "runtime"'), 'standalone', 'faceplate and runtime resolved beside EXE');
+check(!host.includes('ShellExecuteW') && !host.includes('--browser') && !host.includes('CALCOTONE_UI_MODE'), 'standalone', 'external-browser fallback removed');
+check(controlServer.includes('origin == "https://app.calcotone"'), 'standalone', 'packaged faceplate control origin');
+check(!controlServer.includes('static_root') && !controlServer.includes('content_type_for'), 'standalone', 'loopback bridge does not host UI assets');
+check(controlServer.includes('GET /calcotone-recording.wav') && host.includes('executable_directory() / "calcotone-recording.wav"'), 'standalone', 'native recording remains a dedicated bridge download');
+check(launcher.includes('runtime\\msedgewebview2.exe') && launcher.includes('web\\index.html'), 'standalone', 'launcher validates complete offline package');
+check(releaseWorkflow.includes('CALCOTONE_FIXED_WEBVIEW2_ROOT') && releaseWorkflow.includes("Join-Path $packageRoot 'runtime'"), 'standalone', 'release bundles fixed runtime');
+check(releaseWorkflow.includes('npm run build:desktop'), 'standalone', 'release uses desktop-only frontend target');
 
 check(app.includes("nativeBridgeRef.current.command('active', 1)"), 'engine', 'native engine activation');
 check(app.includes('moduleBypass ${module.id}'), 'engine', 'module bypass startup sync');

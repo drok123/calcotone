@@ -11,6 +11,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'vite.config.ts'
+      - '.env.desktop'
       - '.github/workflows/native-windows.yml'
   pull_request:
     branches: [main]
@@ -21,6 +22,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'vite.config.ts'
+      - '.env.desktop'
       - '.github/workflows/native-windows.yml'
 
 jobs:
@@ -34,7 +36,7 @@ jobs:
           node-version: 22
           cache: npm
       - name: Build native faceplate
-        run: npm ci && npm run build
+        run: npm ci && npm run build:desktop
       - name: Restore WebView2 SDK
         run: nuget install Microsoft.Web.WebView2 -Version 1.0.4129.50 -OutputDirectory native/packages -NonInteractive
       - name: Configure x64 Release
@@ -52,7 +54,7 @@ jobs:
       - name: Upload WASAPI host
         uses: actions/upload-artifact@v4
         with:
-          name: calcotone-native-windows
+          name: calcotone-native-host-build-no-runtime
           path: |
             native/build/Release/calcotone_host.exe
             native/build/Release/START-CALCOTONE-NATIVE.bat

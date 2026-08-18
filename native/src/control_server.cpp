@@ -10,7 +10,6 @@
 #include <array>
 #include <cctype>
 #include <chrono>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -47,12 +46,9 @@ std::string_view request_origin(std::string_view request) noexcept {
   return {};
 }
 
-bool host_matches(std::string_view host, std::string_view suffix) noexcept {
-  return host == suffix || (host.size() > suffix.size() && host.ends_with(suffix) && host[host.size() - suffix.size() - 1] == '.');
-}
-
 bool safe_origin(std::string_view origin) noexcept {
   if (origin.empty() || origin == "null") return true;
+  if (origin == "https://app.calcotone") return true;
   const auto scheme_end = origin.find("://");
   if (scheme_end == std::string_view::npos) return false;
   const auto scheme = origin.substr(0, scheme_end);
@@ -60,10 +56,7 @@ bool safe_origin(std::string_view origin) noexcept {
   const auto port = host.find(':');
   if (port != std::string_view::npos) host = host.substr(0, port);
   if ((scheme == "http" || scheme == "https") && (host == "localhost" || host == "127.0.0.1")) return true;
-  if (scheme != "https") return false;
-  return host_matches(host, "stackblitz.com") || host_matches(host, "stackblitz.io") ||
-      host_matches(host, "webcontainer.io") || host_matches(host, "webcontainer-api.io") ||
-      host_matches(host, "staticblitz.com");
+  return false;
 }
 
 void send_response(
@@ -94,27 +87,6 @@ void send_response(
   }
 }
 
-std::string_view content_type_for(const std::filesystem::path& path) {
-  const auto extension = path.extension().string();
-  if (extension == ".html") return "text/html; charset=utf-8";
-  if (extension == ".js") return "text/javascript; charset=utf-8";
-  if (extension == ".css") return "text/css; charset=utf-8";
-  if (extension == ".svg") return "image/svg+xml";
-  if (extension == ".png") return "image/png";
-  if (extension == ".json") return "application/json";
-  if (extension == ".wav") return "audio/wav";
-  if (extension == ".f32") return "application/octet-stream";
-  return "application/octet-stream";
-}
-
-std::string_view request_target(std::string_view request) noexcept {
-  const auto first_space = request.find(' ');
-  if (first_space == std::string_view::npos) return {};
-  const auto second_space = request.find(' ', first_space + 1);
-  if (second_space == std::string_view::npos) return {};
-  return request.substr(first_space + 1, second_space - first_space - 1);
-}
-
 std::size_t request_content_length(std::string_view request) noexcept {
   auto cursor = request.find("\r\n");
   while (cursor != std::string_view::npos) {
@@ -136,8 +108,11 @@ std::size_t request_content_length(std::string_view request) noexcept {
 }
 }  // namespace
 
-ControlServer::ControlServer(Handler handler, unsigned short port, std::filesystem::path static_root)
-    : handler_(std::move(handler)), port_(port), static_root_(std::move(static_root)) {}
+ControlServer::ControlServer(
+    Handler handler,
+    unsigned short port,
+    std::filesystem::path recording_path)
+    : handler_(std::move(handler)), port_(port), recording_path_(std::move(recording_path)) {}
 
 ControlServer::~ControlServer() { stop(); }
 
@@ -233,27 +208,18 @@ void ControlServer::run() noexcept {
       send_response(client, 200, handler_("health"), origin);
     } else if (request.starts_with("GET /spectrum ")) {
       send_response(client, 200, native_visual_spectrum().json(), origin);
+    } else if (request.starts_with("GET /calcotone-recording.wav ") && !recording_path_.empty()) {
+      std::ifstream file(recording_path_, std::ios::binary);
+      if (!file) {
+        send_response(client, 404, "Recording not found", origin, "text/plain; charset=utf-8");
+      } else {
+        const std::string body((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        send_response(client, 200, body, origin, "audio/wav");
+      }
     } else if (request.starts_with("POST /command ")) {
       const auto separator = request.find("\r\n\r\n");
       const auto command = separator == std::string_view::npos ? std::string_view{} : trim(request.substr(separator + 4));
       send_response(client, command.empty() ? 400 : 200, command.empty() ? R"({"error":"empty command"})" : handler_(command), origin);
-    } else if (request.starts_with("GET ") && !static_root_.empty()) {
-      auto target = request_target(request);
-      const auto query = target.find('?');
-      if (query != std::string_view::npos) target = target.substr(0, query);
-      if (target.empty() || target == "/") target = "/index.html";
-      if (target.find("..") != std::string_view::npos || !target.starts_with('/')) {
-        send_response(client, 403, "Forbidden", origin, "text/plain; charset=utf-8");
-      } else {
-        const auto path = static_root_ / std::string(target.substr(1));
-        std::ifstream file(path, std::ios::binary);
-        if (!file) {
-          send_response(client, 404, "Not found", origin, "text/plain; charset=utf-8");
-        } else {
-          const std::string body((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-          send_response(client, 200, body, origin, content_type_for(path));
-        }
-      }
     } else {
       send_response(client, 400, R"({"error":"unknown route"})", origin);
     }

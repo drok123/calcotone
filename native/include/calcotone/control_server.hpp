@@ -21,7 +21,7 @@ class ControlServer final {
   explicit ControlServer(
       Handler handler,
       unsigned short port = 48157,
-      std::filesystem::path static_root = {});
+      std::filesystem::path recording_path = {});
   ~ControlServer();
   ControlServer(const ControlServer&) = delete;
   ControlServer& operator=(const ControlServer&) = delete;
@@ -35,7 +35,7 @@ class ControlServer final {
 
   Handler handler_;
   unsigned short port_;
-  std::filesystem::path static_root_;
+  std::filesystem::path recording_path_;
   std::atomic<bool> running_{false};
   std::thread thread_;
   std::atomic<std::uintptr_t> listener_{~std::uintptr_t{}};
