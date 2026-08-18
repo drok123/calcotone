@@ -27,11 +27,11 @@ function desktopNativeOnlyBundle(): Plugin {
 
 export default defineConfig(({ mode }) => {
   const desktop = mode === 'desktop'
-  const plugins: Plugin[] = [react()]
-  if (desktop) plugins.unshift(desktopNativeOnlyBundle())
 
   return {
-    plugins,
+    plugins: desktop
+      ? [desktopNativeOnlyBundle(), react()]
+      : [react()],
     // The public directory is the legacy WebAudio worklet payload. It remains
     // available to the browser/dev build, but must never be copied into the
     // standalone Windows package.
