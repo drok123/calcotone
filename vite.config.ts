@@ -6,7 +6,7 @@ const desktopAudioEngine = fileURLToPath(
   new URL('./src/audio/DesktopAudioEngineStub.ts', import.meta.url),
 )
 
-function desktopNativeOnlyAudioEngine(): Plugin {
+function desktopNativeOnlyBundle(): Plugin {
   return {
     name: 'calcotone-desktop-native-only-audio-engine',
     enforce: 'pre',
@@ -16,12 +16,25 @@ function desktopNativeOnlyAudioEngine(): Plugin {
       }
       return null
     },
+    transformIndexHtml(html) {
+      // public/ contains the retired browser AudioWorklets plus the browser
+      // favicon. Desktop disables publicDir entirely, so remove the favicon
+      // request instead of leaving a harmless-but-noisy 404 in WebView2.
+      return html.replace(/\s*<link rel="icon"[^>]*>\s*/i, '\n')
+    },
   }
 }
 
 export default defineConfig(({ mode }) => {
+  const desktop = mode === 'desktop'
   const plugins: Plugin[] = [react()]
-  if (mode === 'desktop') plugins.unshift(desktopNativeOnlyAudioEngine())
+  if (desktop) plugins.unshift(desktopNativeOnlyBundle())
 
-  return { plugins }
+  return {
+    plugins,
+    // The public directory is the legacy WebAudio worklet payload. It remains
+    // available to the browser/dev build, but must never be copied into the
+    // standalone Windows package.
+    publicDir: desktop ? false : 'public',
+  }
 })
