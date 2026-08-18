@@ -135,6 +135,10 @@ struct GrainParityProcessor::Impl {
     makeup_gain = 1.F;
     previous_mode = -1;
     previous_microcosm_program = -1;
+    external_activity = clamp01(external_activity_target.load(std::memory_order_relaxed));
+    cross_pitch = std::clamp(cross_pitch_target.load(std::memory_order_relaxed), -6.F, 6.F);
+    cross_brightness = clamp01(cross_brightness_target.load(std::memory_order_relaxed));
+    loop_activity = clamp01(loop_activity_target.load(std::memory_order_relaxed));
     slice_start = 0U;
     slice_length = 2048U;
     slice_phase = 0.F;
@@ -475,6 +479,11 @@ struct GrainParityProcessor::Impl {
       }
     }
 
+    const float cross_strength = clamp01(external_activity * 2.F + loop_activity);
+    semitones += cross_pitch * cross_strength;
+    tone = clamp01(tone
+        + (cross_brightness - .5F) * .32F * cross_strength
+        + (loop_brightness - .5F) * .18F * loop_activity);
     history_seconds = std::clamp(history_seconds, .012F, 3.75F);
     const float length = std::max(72.F, std::min(static_cast<float>(buffer_size - 256U),
         std::floor(rate * grain_ms / 1000.F)));
@@ -502,7 +511,9 @@ struct GrainParityProcessor::Impl {
     float wet_left = 0.F;
     float wet_right = 0.F;
     float active = 0.F;
-    for (std::size_t index = 0; index < effective_voice_limit; ++index) {
+    // A fidelity downgrade limits new spawns only. Existing grains always
+    // finish their envelopes, so load shedding cannot amputate a sound.
+    for (std::size_t index = 0; index < voices.size(); ++index) {
       auto& voice = voices[index];
       if (!voice.active) continue;
       const float normalized = voice.phase / voice.length;
@@ -649,9 +660,31 @@ struct GrainParityProcessor::Impl {
     const unsigned microcosm_program = std::min(10U, microcosm_program_target.load(std::memory_order_relaxed));
     const float tempo = std::clamp(tempo_target.load(std::memory_order_relaxed), 30.F, 300.F);
     const bool hold = hold_target.load(std::memory_order_relaxed);
+    const float activity_target = clamp01(
+        external_activity_target.load(std::memory_order_relaxed));
+    const float pitch_target = std::clamp(
+        cross_pitch_target.load(std::memory_order_relaxed), -6.F, 6.F);
+    const float brightness_target = clamp01(
+        cross_brightness_target.load(std::memory_order_relaxed));
+    const float loop_target = clamp01(loop_activity_target.load(std::memory_order_relaxed));
+    loop_brightness = clamp01(loop_brightness_target.load(std::memory_order_relaxed));
+    effective_voice_limit = std::clamp<unsigned>(
+        voice_limit_target.load(std::memory_order_relaxed), 4U, 8U);
+    const bool reference_running = reference_running_target.load(std::memory_order_relaxed);
+    const std::uint64_t reference_frames = reference_frames_target.load(std::memory_order_relaxed);
+    const std::uint64_t reference_position = reference_frames > 0U
+        ? reference_position_target.load(std::memory_order_relaxed) % reference_frames : 0U;
+    std::uint64_t reference_countdown = reference_running && reference_frames > 0U
+        ? (reference_position == 0U ? 0U : reference_frames - reference_position)
+        : std::numeric_limits<std::uint64_t>::max();
     const unsigned variation = std::min(3U, static_cast<unsigned>(
         std::floor(clamp01(target[4].load(std::memory_order_relaxed)) * 4.F)));
     for (std::size_t frame = 0; frame < frames; ++frame) {
+      const float activity_amount = activity_target > external_activity ? .12F : .002F;
+      external_activity += (activity_target - external_activity) * activity_amount;
+      cross_pitch += (pitch_target - cross_pitch) * .004F;
+      cross_brightness += (brightness_target - cross_brightness) * .004F;
+      loop_activity += (loop_target - loop_activity) * .003F;
       smooth[0] = target[0].load(std::memory_order_relaxed);
       for (std::size_t index = 1; index < 6U; ++index)
         smooth[index] += (target[index].load(std::memory_order_relaxed) - smooth[index]) * parameter_coefficient;
@@ -659,7 +692,8 @@ struct GrainParityProcessor::Impl {
 
       const unsigned mode = std::min(11U, static_cast<unsigned>(std::max(0.F, std::round(smooth[0]))));
       const float window = clamp01((smooth[1] - 4.F) / 12.F);
-      const float density = clamp01(smooth[2]);
+      const float density = clamp01(
+          smooth[2] + external_activity * .18F + loop_activity * .12F);
       const float pitch = clamp01(smooth[3]);
       const float motion = clamp01(smooth[4]);
       const float memory_amount = clamp01(smooth[5]);
@@ -667,6 +701,16 @@ struct GrainParityProcessor::Impl {
       reset_mode_state(mode, window, density, pitch, motion);
       if (mode == 11U) reset_microcosm_program(microcosm_program);
       else previous_microcosm_program = -1;
+      if (reference_countdown == 0U) {
+        // Re-anchor the event schedule, not the memory. The next eligible
+        // transient can therefore land exactly on the Loop boundary without a
+        // buffer clear, discontinuity, or forced sound from silence.
+        spawn_counter = 0;
+        spawn_sequence = 0U;
+        reference_countdown = reference_frames;
+      }
+      if (reference_countdown != std::numeric_limits<std::uint64_t>::max())
+        --reference_countdown;
 
       float dry_left = data[frame * 2U];
       float dry_right = data[frame * 2U + 1U];
@@ -676,7 +720,8 @@ struct GrainParityProcessor::Impl {
       const float peak = std::max(std::abs(dry_left), std::abs(dry_right));
       previous_envelope = input_envelope;
       input_envelope += (peak - input_envelope) * (peak > input_envelope ? .075F : .0018F);
-      const float transient = std::max(0.F, input_envelope - previous_envelope);
+      const float transient = std::max(0.F, input_envelope - previous_envelope)
+          + external_activity * .018F + loop_activity * .012F;
       const float feedback = feedback_for_mode(mode, memory_amount, microcosm_program);
       const bool memory_held = mode == 11U && hold;
       if (!memory_held) {
@@ -828,6 +873,20 @@ struct GrainParityProcessor::Impl {
   std::atomic<unsigned> microcosm_program_target{0U};
   std::atomic<float> tempo_target{120.F};
   std::atomic<bool> hold_target{false};
+  std::atomic<float> external_activity_target{0.F};
+  std::atomic<float> cross_pitch_target{0.F};
+  std::atomic<float> cross_brightness_target{.5F};
+  std::atomic<float> loop_activity_target{0.F};
+  std::atomic<float> loop_brightness_target{.5F};
+  std::atomic<unsigned> voice_limit_target{6U};
+  std::atomic<std::uint64_t> reference_position_target{0U};
+  std::atomic<std::uint64_t> reference_frames_target{0U};
+  std::atomic<bool> reference_running_target{false};
+  float external_activity{};
+  float cross_pitch{};
+  float cross_brightness{.5F};
+  float loop_activity{};
+  float loop_brightness{.5F};
 };
 
 GrainParityProcessor::GrainParityProcessor(float rate) : impl_(std::make_unique<Impl>(rate)) {}
@@ -836,6 +895,30 @@ void GrainParityProcessor::process(float* data, std::size_t frames) noexcept {
   if (data && frames) impl_->process(data, frames);
 }
 void GrainParityProcessor::reset() noexcept { impl_->reset(); }
+void GrainParityProcessor::set_external_activity(float activity) noexcept {
+  impl_->external_activity_target.store(clamp01(activity), std::memory_order_relaxed);
+}
+void GrainParityProcessor::set_cross_resynthesis(
+    float pitch_semitones, float input_brightness, float loop_activity,
+    float loop_brightness) noexcept {
+  impl_->cross_pitch_target.store(
+      std::clamp(std::isfinite(pitch_semitones) ? pitch_semitones : 0.F, -6.F, 6.F),
+      std::memory_order_relaxed);
+  impl_->cross_brightness_target.store(
+      clamp01(input_brightness), std::memory_order_relaxed);
+  impl_->loop_activity_target.store(clamp01(loop_activity), std::memory_order_relaxed);
+  impl_->loop_brightness_target.store(
+      clamp01(loop_brightness), std::memory_order_relaxed);
+}
+void GrainParityProcessor::set_voice_limit(unsigned voices) noexcept {
+  impl_->voice_limit_target.store(std::clamp(voices, 4U, 8U), std::memory_order_relaxed);
+}
+void GrainParityProcessor::set_reference_clock(
+    std::uint64_t position, std::uint64_t frames, bool running) noexcept {
+  impl_->reference_position_target.store(position, std::memory_order_relaxed);
+  impl_->reference_frames_target.store(frames, std::memory_order_relaxed);
+  impl_->reference_running_target.store(running && frames > 0U, std::memory_order_relaxed);
+}
 bool GrainParityProcessor::set_parameter(std::string_view name, float value) noexcept {
   if (!std::isfinite(value)) return false;
   if (name == "microcosmProgram") {

@@ -260,6 +260,19 @@ struct DriftStandardProcessor::Impl {
     previous_input = {};
   }
 
+  void nudge_reference_phase(float normalized_phase, float amount) noexcept {
+    constexpr std::array<float, 4> offsets{0.F,.71F,1.93F,3.17F};
+    const float base = clamp01(normalized_phase) * kTwoPi;
+    const float pull = std::clamp(amount, 0.F, .25F);
+    for (unsigned voice = 0; voice < phase.size(); ++voice) {
+      phase[voice] += std::remainder(base + offsets[voice] - phase[voice], kTwoPi) * pull;
+      if (phase[voice] < 0.F) phase[voice] += kTwoPi;
+      else if (phase[voice] >= kTwoPi) phase[voice] -= kTwoPi;
+      lfo_sine[voice] = std::sin(phase[voice]);
+      lfo_cosine[voice] = std::cos(phase[voice]);
+    }
+  }
+
   void refresh_control(float rate, float depth, float shape, float spread, float motion) noexcept {
     settings = calculate_settings(mode, rate, depth, shape, spread, motion);
     preamp_active = settings.preamp_drive > .0001F;
@@ -408,6 +421,9 @@ DriftStandardProcessor::DriftStandardProcessor(float sample_rate)
 DriftStandardProcessor::~DriftStandardProcessor() = default;
 void DriftStandardProcessor::reset() noexcept { impl_->reset(); }
 void DriftStandardProcessor::set_mode(unsigned mode) noexcept { impl_->set_mode(mode); }
+void DriftStandardProcessor::nudge_reference_phase(float phase, float amount) noexcept {
+  impl_->nudge_reference_phase(phase, amount);
+}
 std::array<float, 2> DriftStandardProcessor::process_sample(
     float left, float right, float rate, float depth, float shape, float spread, float motion) noexcept {
   return impl_->process_sample(left, right, rate, depth, shape, spread, motion);

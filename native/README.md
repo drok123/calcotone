@@ -16,6 +16,10 @@ audio capture, processing, and playback never enter the browser/webview.
   Artifact media/console/tape paths including the level-trimmed BCM10 hybrid;
 - post-STACK native Pressure dynamics with FET, optical, vari-mu, and VCA
   topologies plus an eight-second native Dream memory return;
+- allocation-free `SignalStateBus` reactions: physical Input 2 transients excite
+  Grain on the Input 1 lane, Dream GHOST intent adds bounded patina to media/tape
+  Artifact models, and Loop's exact reference position anchors Grain, Halo, and
+  Drift without clearing their audio memory;
 - event-driven `IAudioClient3` capture/render host;
 - minimum shared-mode engine periods with raw-mode attempt;
 - 64-frame exclusive-WASAPI request with automatic minimum-period clamping and
@@ -135,6 +139,36 @@ STOMP splices pedal-specific filter/gain profiles with stateful device memory,
 supply sag, Hermite-LUT nonlinear stages, and 2× midpoint antialiasing. Grain,
 Artifact, Pressure, and Dream Buffer use startup-allocated native memory and never
 allocate from the realtime render thread.
+
+The signal-state reactions are deliberately not hidden knob automation. Guitar
+activity is capped at 0.35 before Grain applies its own smaller density/transient
+range; Dream can add at most 0.12 effective Wear and cannot alter console, capture,
+or dynamics models. Loop synchronization carries sample position plus cycle length
+into each rack sub-block. Grain resets only its event schedule, while Halo and Drift
+use an 8% phase pull at each boundary, preserving delay, feedback, rotor, and memory
+buffers so synchronization cannot create a hard reset click.
+
+The native science engine builds on that bus without changing the faceplate or
+turning the browser bridge into an audio path:
+
+- **Circuit DNA** continuously characterizes each active rack module's drive,
+  spectral color, dynamics, and short memory from its existing dry/wet blocks.
+  Its slow unity calibration is limited to ±3% and requires no retained audio.
+- **Dual-input cross-resynthesis** transfers Input 2 pitch and brightness into
+  Grain events on the Input 1 lane. It cannot synthesize sound from silence.
+- **Loop resynthesis** reads only a next-block energy/transient/brightness/width
+  sideband from stored playback. Loop still adds the original stored float samples
+  directly after Dream/rack processing at their exact saved level and polarity.
+- **Topology morphing** uses a maximum 0.10-radian orthonormal lane rotation before
+  Grain, producing a continuous independent-to-cross-coupled transition while
+  preserving the two-lane signal energy.
+- **Adaptive fidelity** receives render timing from the WASAPI host, reacts quickly
+  to deadline pressure, and recovers only after sustained headroom. It caps STACK
+  quality at 4×/2×/1× and Grain at 8/6/4 voices without allocating or reading a
+  wall clock inside DSP code.
+
+The `health` response exposes the controller tier/load, lane-one Grain DNA, and
+Loop analysis values as control telemetry only; the bridge never carries samples.
 
 `stackInput 0` assigns STACK to Input 1, `stackInput 1` assigns it to Input 2,
 and `stackInput 2` processes both lanes through independent STACK instances. A lane

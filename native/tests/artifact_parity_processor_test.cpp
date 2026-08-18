@@ -149,6 +149,28 @@ void test_bcm10_capture_and_1073_summing_remain_distinct() {
   assert(std::abs(signature(neve) - signature(bcm)) > 1e-3);
 }
 
+std::vector<float> render_with_ghost(unsigned mode, float ghost) {
+  calcotone::ArtifactParityProcessor processor(kRate);
+  configure(processor, mode, .08F, .32F, 0.F, .62F, 1.F);
+  processor.set_external_ghost(ghost);
+  processor.reset();
+  auto audio = source(72'000U);
+  process_blocks(processor, audio);
+  return audio;
+}
+
+void test_dream_ghost_adds_bounded_media_patina_only() {
+  const auto clean_media = render_with_ghost(0U, 0.F);
+  const auto ghost_media = render_with_ghost(0U, 1.F);
+  assert(std::abs(signature(clean_media) - signature(ghost_media)) > 1e-3);
+
+  const auto clean_console = render_with_ghost(9U, 0.F);
+  const auto ghost_console = render_with_ghost(9U, 1.F);
+  assert(clean_console.size() == ghost_console.size());
+  for (std::size_t index = 0; index < clean_console.size(); ++index)
+    assert(std::abs(clean_console[index] - ghost_console[index]) < 1e-7F);
+}
+
 void test_reset_is_deterministic() {
   calcotone::ArtifactParityProcessor processor(kRate);
   configure(processor, 6U, .82F, .74F, .53F, .31F, .84F);
@@ -174,6 +196,7 @@ int main() {
   test_atr_speed_selects_distinct_transport_operating_points();
   test_noise_controls_actual_media_noise_without_polluting_console_paths();
   test_bcm10_capture_and_1073_summing_remain_distinct();
+  test_dream_ghost_adds_bounded_media_patina_only();
   test_reset_is_deterministic();
 
   calcotone::ArtifactParityProcessor processor(kRate);

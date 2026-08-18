@@ -1,9 +1,11 @@
 #include "calcotone/native_processor.hpp"
 
+#include "calcotone/adaptive_fidelity.hpp"
 #include "calcotone/input_router.hpp"
 #include "calcotone/native_dream_engine.hpp"
 #include "calcotone/native_visual_spectrum.hpp"
 #include "calcotone/pitch_tracker.hpp"
+#include "calcotone/signal_state_bus.hpp"
 
 #include <algorithm>
 #include <array>
@@ -36,6 +38,7 @@ struct NativeProcessor::Impl {
       : rate(std::clamp(sample_rate, 8'000.F, 384'000.F)), tuner(rate),
         stack_one(rate), stack_two(rate), rack_one(rate), rack_two(rate),
         pressure_one(rate), pressure_two(rate), loop(rate), dream(rate, kBlockFrames),
+        signal_bus(rate),
         input_route_alpha(1.F - std::exp(-1.F / (.018F * rate))),
         input_route_current(input_route_target(InputRoutingMode::Stereo, 1.F, false, false)) {
     native_visual_spectrum().configure(rate);
@@ -63,8 +66,49 @@ struct NativeProcessor::Impl {
     rack_two.set_bypassed(RackModule::Stomp, bypassed || !stack_receives_lane(source, 1));
   }
 
+  void apply_adaptive_fidelity() noexcept {
+    const auto state = adaptive_fidelity.state();
+    const unsigned level = static_cast<unsigned>(state.level);
+    const unsigned requested = requested_stack_quality.load(std::memory_order_relaxed);
+    const unsigned ceiling = level >= 2U ? 4U : level == 1U ? 2U : 1U;
+    const unsigned effective = std::min(requested, ceiling);
+    stack_one.set_quality(effective);
+    stack_two.set_quality(effective);
+    rack_one.set_adaptive_fidelity(level);
+    rack_two.set_adaptive_fidelity(level);
+  }
+
+  void morph_input_topology(float amount, std::size_t frames) noexcept {
+    const float angle = std::clamp(amount, 0.F, .10F);
+    if (angle <= 1e-5F) return;
+    const float direct = std::cos(angle);
+    const float cross = std::sin(angle);
+    for (std::size_t sample = 0U; sample < frames * 2U; ++sample) {
+      const float one = lane_one_output[sample];
+      const float two = lane_two_output[sample];
+      lane_one_output[sample] = one * direct + two * cross;
+      lane_two_output[sample] = two * direct - one * cross;
+    }
+  }
+
   void process_block(const float* input, float* output, std::size_t frames) noexcept {
-    for (std::size_t frame = 0; frame < frames; ++frame) tuner.push(input[frame * 2 + 1]);
+    for (std::size_t frame = 0; frame < frames; ++frame)
+      tuner.push(input[frame * 2U + 1U]);
+    const auto& signals = signal_bus.update(
+        input, frames, dream.profile(), tuner.frequency(), loop.analysis(),
+        loop.reference_track(),
+        loop.reference_frames(), loop.reference_position(), loop.transport());
+    // Input 2/guitar excites Grain on the Input 1/tablet lane. The second rack
+    // receives the common Dream/Loop state but not its own guitar transient,
+    // which prevents a source from recursively exciting itself.
+    rack_one.set_signal_reactions(
+        signals.grain_activity, signals.dream_ghost,
+        signals.cross_pitch_semitones, signals.input_two_brightness,
+        signals.loop_resynthesis_activity, signals.loop_brightness,
+        signals.reference_position, signals.reference_frames, signals.reference_running);
+    rack_two.set_signal_reactions(
+        0.F, signals.dream_ghost, 0.F, .5F, 0.F, .5F,
+        signals.reference_position, signals.reference_frames, signals.reference_running);
     const auto mode = static_cast<InputRoutingMode>(std::min(
         static_cast<unsigned>(InputRoutingMode::Swap), input_mode.load(std::memory_order_relaxed)));
     const float width = input_width.load(std::memory_order_relaxed);
@@ -90,6 +134,8 @@ struct NativeProcessor::Impl {
       } else if (module < kStackToken) {
         const auto rack_module = static_cast<RackModule>(module);
         const bool enabled = !module_bypassed[module].load(std::memory_order_relaxed);
+        if (rack_module == RackModule::Grain && enabled)
+          morph_input_topology(signals.topology_morph, frames);
         any_rack_active = any_rack_active || enabled;
         dream.inject_route(rack_module, lane_one_output.data(), lane_two_output.data(), frames, enabled);
         rack_one.process_module(rack_module, lane_one_output.data(), frames);
@@ -118,6 +164,8 @@ struct NativeProcessor::Impl {
   NativePressure pressure_one, pressure_two;
   LoopProcessor loop;
   NativeDreamEngine dream;
+  SignalStateBus signal_bus;
+  AdaptiveFidelity adaptive_fidelity;
   std::array<float, kBlockFrames * 2> lane_one_input{}, lane_two_input{};
   std::array<float, kBlockFrames * 2> lane_one_output{}, lane_two_output{};
   std::atomic<std::uint64_t> packed_order{};
@@ -128,6 +176,7 @@ struct NativeProcessor::Impl {
   std::atomic<float> input_width{1.F};
   std::atomic<unsigned> input_polarity{0U};
   std::atomic<float> input_gain{1.F}, output_gain{.72F};
+  std::atomic<unsigned> requested_stack_quality{1U};
   float input_route_alpha{};
   InputRouteMatrix input_route_current{};
   std::atomic<std::uint64_t> output_limited_samples{};
@@ -243,7 +292,27 @@ void NativeProcessor::set_stack_sag(float value) noexcept { impl_->stack_one.set
 void NativeProcessor::set_stack_mix(float value) noexcept { impl_->stack_one.set_mix(value); impl_->stack_two.set_mix(value); }
 void NativeProcessor::set_stack_model(AmpModel value) noexcept { impl_->stack_one.set_model(value); impl_->stack_two.set_model(value); }
 void NativeProcessor::set_stack_cabinet(Cabinet value) noexcept { impl_->stack_one.set_cabinet(value); impl_->stack_two.set_cabinet(value); }
-void NativeProcessor::set_stack_quality(unsigned value) noexcept { impl_->stack_one.set_quality(value); impl_->stack_two.set_quality(value); }
+void NativeProcessor::set_stack_quality(unsigned value) noexcept {
+  const unsigned requested = value >= 4U ? 4U : value >= 2U ? 2U : 1U;
+  impl_->requested_stack_quality.store(requested, std::memory_order_relaxed);
+  impl_->apply_adaptive_fidelity();
+}
+void NativeProcessor::observe_render_timing(
+    std::uint64_t render_micros, std::uint64_t deadline_micros) noexcept {
+  if (impl_->adaptive_fidelity.observe(render_micros, deadline_micros))
+    impl_->apply_adaptive_fidelity();
+}
+AdaptiveFidelityState NativeProcessor::adaptive_fidelity_state() const noexcept {
+  return impl_->adaptive_fidelity.state();
+}
+CircuitDnaSnapshot NativeProcessor::circuit_dna(
+    unsigned lane, RackModule module) const noexcept {
+  return lane == 0U ? impl_->rack_one.circuit_dna(module)
+                    : impl_->rack_two.circuit_dna(module);
+}
+LoopAnalysisProfile NativeProcessor::loop_analysis() const noexcept {
+  return impl_->loop.analysis();
+}
 float NativeProcessor::tuner_frequency() const noexcept { return impl_->tuner.frequency(); }
 float NativeProcessor::tuner_level() const noexcept { return impl_->tuner.level(); }
 std::uint64_t NativeProcessor::output_limited_samples() const noexcept { return impl_->output_limited_samples.load(std::memory_order_relaxed); }

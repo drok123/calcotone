@@ -162,8 +162,9 @@ if (!app.includes(startupQuality)) failures.push('native startup does not synchr
 if (!app.includes(liveQuality)) failures.push('live quality buttons do not update native Stack quality');
 if (!host.includes('name == "quality"') || !host.includes('processor.set_stack_quality')) failures.push('native host quality command is missing');
 if (!nativeProcessor.includes('set_stack_quality(unsigned value)')
-    || !nativeProcessor.includes('stack_one.set_quality(value)')
-    || !nativeProcessor.includes('stack_two.set_quality(value)')) {
+    || !nativeProcessor.includes('requested_stack_quality.store(requested')
+    || !nativeProcessor.includes('stack_one.set_quality(effective)')
+    || !nativeProcessor.includes('stack_two.set_quality(effective)')) {
   failures.push('quality command does not reach both Stack lanes');
 }
 

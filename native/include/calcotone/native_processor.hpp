@@ -1,5 +1,6 @@
 #pragma once
 
+#include "calcotone/adaptive_fidelity.hpp"
 #include "calcotone/input_router.hpp"
 #include "calcotone/native_rack.hpp"
 #include "calcotone/loop_processor.hpp"
@@ -72,6 +73,12 @@ class NativeProcessor final {
   void set_stack_model(AmpModel model) noexcept;
   void set_stack_cabinet(Cabinet cabinet) noexcept;
   void set_stack_quality(unsigned quality) noexcept;
+  void observe_render_timing(std::uint64_t render_micros,
+                             std::uint64_t deadline_micros) noexcept;
+  [[nodiscard]] AdaptiveFidelityState adaptive_fidelity_state() const noexcept;
+  [[nodiscard]] CircuitDnaSnapshot circuit_dna(unsigned lane,
+                                                RackModule module) const noexcept;
+  [[nodiscard]] LoopAnalysisProfile loop_analysis() const noexcept;
   float tuner_frequency() const noexcept;
   float tuner_level() const noexcept;
   std::uint64_t output_limited_samples() const noexcept;

@@ -87,6 +87,9 @@ add_library(calcotone_dsp STATIC
   src/loop_processor.cpp
   src/dream_buffer_parity_processor.cpp
   src/native_dream_engine.cpp
+  src/signal_state_bus.cpp
+  src/circuit_dna_profiler.cpp
+  src/adaptive_fidelity.cpp
   src/halo_dual_grain_pitch_processor.cpp
   src/native_processor.cpp
   src/audio_device_config.cpp
@@ -179,6 +182,10 @@ add_executable(native_dream_engine_test tests/native_dream_engine_test.cpp)
 target_link_libraries(native_dream_engine_test PRIVATE calcotone_dsp)
 add_executable(native_dream_live_parity_test tests/native_dream_live_parity_test.cpp)
 target_link_libraries(native_dream_live_parity_test PRIVATE calcotone_dsp)
+add_executable(signal_state_bus_test tests/signal_state_bus_test.cpp)
+target_link_libraries(signal_state_bus_test PRIVATE calcotone_dsp)
+add_executable(science_engine_test tests/science_engine_test.cpp)
+target_link_libraries(science_engine_test PRIVATE calcotone_dsp)
 add_executable(halo_dual_grain_pitch_processor_test tests/halo_dual_grain_pitch_processor_test.cpp)
 target_link_libraries(halo_dual_grain_pitch_processor_test PRIVATE calcotone_dsp)
 
@@ -222,6 +229,8 @@ add_test(NAME native_pressure_live_parity_test COMMAND native_pressure_live_pari
 add_test(NAME dream_buffer_parity_processor_test COMMAND dream_buffer_parity_processor_test)
 add_test(NAME native_dream_engine_test COMMAND native_dream_engine_test)
 add_test(NAME native_dream_live_parity_test COMMAND native_dream_live_parity_test)
+add_test(NAME signal_state_bus_test COMMAND signal_state_bus_test)
+add_test(NAME science_engine_test COMMAND science_engine_test)
 add_test(NAME halo_dual_grain_pitch_processor_test COMMAND halo_dual_grain_pitch_processor_test)
 
 if(WIN32)

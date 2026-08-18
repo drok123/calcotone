@@ -331,6 +331,11 @@ int main() {
     assert(std::abs(unity_playback[frame * 2U] - .137F) < 1e-7F);
     assert(std::abs(unity_playback[frame * 2U + 1U] + .211F) < 1e-7F);
   }
+  const auto loop_analysis = unity_loop.analysis();
+  assert(loop_analysis.energy > .1F && loop_analysis.energy < .3F);
+  assert(loop_analysis.transient >= 0.F && loop_analysis.transient <= 1.F);
+  assert(loop_analysis.brightness >= 0.F && loop_analysis.brightness <= 1.F);
+  assert(loop_analysis.stereo_width > .5F && loop_analysis.stereo_width < .9F);
 
   // 505-style Loop Sync: the first take owns the 128-frame master cycle, the
   // next take lands on an exact three-cycle multiple, and sixteen more cycles

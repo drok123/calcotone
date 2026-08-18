@@ -628,6 +628,9 @@ int main(int argc, char** argv) {
     const auto apply_command = [&](std::string_view line) -> std::string {
       if (line == "health" || line == "stats") {
         const auto loop_waveform = processor.loop_waveform();
+        const auto loop_analysis = processor.loop_analysis();
+        const auto fidelity = processor.adaptive_fidelity_state();
+        const auto grain_dna = processor.circuit_dna(0U, calcotone::RackModule::Grain);
         std::ostringstream status;
         status << "{\"engine\":\"calcotone-native\",\"protocol\":1,\"sampleRate\":" << sample_rate
                << ",\"transport\":\"wasapi\",\"requestedBackend\":\"" << calcotone::audio_backend_name(audio_config.backend) << '"'
@@ -674,6 +677,18 @@ int main(int argc, char** argv) {
                << ",\"preLimiterPeak\":" << processor.pre_limiter_peak()
                << ",\"renderDeadlineMisses\":" << render_deadline_misses.load()
                << ",\"maxRenderMicros\":" << max_render_micros.load()
+               << ",\"scienceFidelity\":" << static_cast<unsigned>(fidelity.level)
+               << ",\"scienceRenderLoad\":" << fidelity.render_load
+               << ",\"scienceFidelityTransitions\":" << fidelity.transitions
+               << ",\"grainDnaDrive\":" << grain_dna.drive
+               << ",\"grainDnaColor\":" << grain_dna.color
+               << ",\"grainDnaDynamics\":" << grain_dna.dynamics
+               << ",\"grainDnaMemory\":" << grain_dna.memory
+               << ",\"grainDnaCalibration\":" << grain_dna.calibration_gain
+               << ",\"loopAnalysisEnergy\":" << loop_analysis.energy
+               << ",\"loopAnalysisTransient\":" << loop_analysis.transient
+               << ",\"loopAnalysisBrightness\":" << loop_analysis.brightness
+               << ",\"loopAnalysisWidth\":" << loop_analysis.stereo_width
                << ",\"recording\":" << (recorder.active() ? "true" : "false")
                << ",\"recordingFrames\":" << recorder.frames()
                << ",\"recordingPeak\":" << recorder.peak()
@@ -973,6 +988,7 @@ int main(int argc, char** argv) {
         auto previous_max = max_render_micros.load(std::memory_order_relaxed);
         while (render_micros > previous_max && !max_render_micros.compare_exchange_weak(
             previous_max, render_micros, std::memory_order_relaxed, std::memory_order_relaxed)) {}
+        processor.observe_render_timing(render_micros, render_deadline_micros);
         if (render_micros >= render_deadline_micros) {
           render_deadline_misses.fetch_add(1, std::memory_order_relaxed);
           if (fifo_safety.observe_deadline_miss())

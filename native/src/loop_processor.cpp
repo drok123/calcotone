@@ -49,7 +49,10 @@ struct LoopProcessor::Impl {
       : rate(std::clamp(requested_rate, 8'000.F, 384'000.F)),
         max_frames(static_cast<std::size_t>(std::ceil(rate * kLoopMaxSeconds))),
         envelope_scale(static_cast<float>(kLoopEnvelopeBins) / static_cast<float>(max_frames)),
-        waveform_publish_period(std::max<std::size_t>(1U, static_cast<std::size_t>(rate / 10.F))) {
+        waveform_publish_period(std::max<std::size_t>(1U, static_cast<std::size_t>(rate / 10.F))),
+        analysis_fast_attack(1.F - std::exp(-1.F / (rate * .002F))),
+        analysis_fast_release(1.F - std::exp(-1.F / (rate * .025F))),
+        analysis_slow(1.F - std::exp(-1.F / (rate * .120F))) {
     for (auto& level : track_levels) level.store(1.F, std::memory_order_relaxed);
     cached_fade = 0.F;
     refresh_fade_cache();
@@ -650,6 +653,19 @@ struct LoopProcessor::Impl {
       data[frame * 2U] = live_left + loop_left * loop_level;
       data[frame * 2U + 1U] = live_right + loop_right * loop_level;
 
+      const float mono = (loop_left + loop_right) * .5F;
+      const float magnitude = std::max(std::abs(loop_left), std::abs(loop_right));
+      analysis_fast_envelope += (magnitude - analysis_fast_envelope)
+          * (magnitude > analysis_fast_envelope ? analysis_fast_attack : analysis_fast_release);
+      analysis_slow_envelope += (magnitude - analysis_slow_envelope) * analysis_slow;
+      analysis_energy_sum += magnitude;
+      analysis_brightness_sum += std::abs(mono - analysis_previous_mono);
+      analysis_width_sum += std::abs(loop_left - loop_right) * .5F;
+      analysis_transient_peak = std::max(
+          analysis_transient_peak, std::max(0.F, analysis_fast_envelope - analysis_slow_envelope));
+      analysis_previous_mono = mono;
+      ++analysis_block_frames;
+
       if (recording) {
         auto& buffer = tracks[record_track];
         if (record_count < max_frames && !buffer.empty()) {
@@ -768,6 +784,16 @@ struct LoopProcessor::Impl {
     published_mute_mask.store(mute_mask & occupied_mask, std::memory_order_relaxed);
     published_solo_mask.store(solo_mask & occupied_mask, std::memory_order_relaxed);
     published_transport.store(static_cast<unsigned>(current_transport()), std::memory_order_relaxed);
+    const float inverse_analysis_frames = analysis_block_frames > 0U
+        ? 1.F / static_cast<float>(analysis_block_frames) : 0.F;
+    published_analysis_energy.store(
+        clamp01(analysis_energy_sum * inverse_analysis_frames), std::memory_order_relaxed);
+    published_analysis_transient.store(
+        clamp01(analysis_transient_peak * 8.F), std::memory_order_relaxed);
+    published_analysis_brightness.store(clamp01(
+        analysis_brightness_sum * inverse_analysis_frames * 8.F), std::memory_order_relaxed);
+    published_analysis_width.store(clamp01(
+        analysis_width_sum * inverse_analysis_frames * 4.F), std::memory_order_relaxed);
 
     waveform_publish_elapsed += processed_frames;
     const bool refresh = waveform_refresh_pending.load(std::memory_order_relaxed)
@@ -780,6 +806,11 @@ struct LoopProcessor::Impl {
   }
 
   void process(float* data, std::size_t frames) noexcept {
+    analysis_energy_sum = 0.F;
+    analysis_brightness_sum = 0.F;
+    analysis_width_sum = 0.F;
+    analysis_transient_peak = 0.F;
+    analysis_block_frames = 0U;
     consume_control();
     if (fade_refresh_pending.load(std::memory_order_relaxed)) refresh_fade_cache();
     apply_journal_swaps(frames);
@@ -826,6 +857,17 @@ struct LoopProcessor::Impl {
   std::size_t waveform_publish_period;
   std::size_t waveform_publish_elapsed{};
   float cached_fade{};
+  float analysis_fast_attack{};
+  float analysis_fast_release{};
+  float analysis_slow{};
+  float analysis_fast_envelope{};
+  float analysis_slow_envelope{};
+  float analysis_previous_mono{};
+  float analysis_energy_sum{};
+  float analysis_brightness_sum{};
+  float analysis_width_sum{};
+  float analysis_transient_peak{};
+  std::size_t analysis_block_frames{};
 
   std::array<std::vector<float>, kLoopTrackCount> tracks;
   std::array<std::array<float, kLoopEnvelopeBins>, kLoopTrackCount> envelopes{};
@@ -899,6 +941,10 @@ struct LoopProcessor::Impl {
   std::atomic<std::uint64_t> published_reference_position{};
   std::atomic<float> published_trim_start{0.F};
   std::atomic<float> published_trim_end{1.F};
+  std::atomic<float> published_analysis_energy{};
+  std::atomic<float> published_analysis_transient{};
+  std::atomic<float> published_analysis_brightness{};
+  std::atomic<float> published_analysis_width{};
   std::array<std::atomic<float>, kLoopWaveformBins> published_waveform{};
   std::atomic<bool> waveform_refresh_pending{true};
   std::atomic<bool> waveform_force{true};
@@ -977,6 +1023,14 @@ std::uint64_t LoopProcessor::position() const noexcept { return impl_->published
 int LoopProcessor::reference_track() const noexcept { return impl_->published_reference_track.load(std::memory_order_relaxed); }
 std::uint64_t LoopProcessor::reference_frames() const noexcept { return impl_->published_reference_frames.load(std::memory_order_relaxed); }
 std::uint64_t LoopProcessor::reference_position() const noexcept { return impl_->published_reference_position.load(std::memory_order_relaxed); }
+LoopAnalysisProfile LoopProcessor::analysis() const noexcept {
+  return {
+    impl_->published_analysis_energy.load(std::memory_order_relaxed),
+    impl_->published_analysis_transient.load(std::memory_order_relaxed),
+    impl_->published_analysis_brightness.load(std::memory_order_relaxed),
+    impl_->published_analysis_width.load(std::memory_order_relaxed),
+  };
+}
 float LoopProcessor::trim_start() const noexcept { return impl_->published_trim_start.load(std::memory_order_relaxed); }
 float LoopProcessor::trim_end() const noexcept { return impl_->published_trim_end.load(std::memory_order_relaxed); }
 std::array<float, kLoopWaveformBins> LoopProcessor::waveform() const noexcept {

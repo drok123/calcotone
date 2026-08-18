@@ -88,6 +88,21 @@ struct DriftClassicProcessor::Impl {
     pan_position = 0.0;
   }
 
+  static void nudge(double& current, double target, double amount) noexcept {
+    current += std::remainder(target - current, kTwoPi) * amount;
+    if (current < 0.0) current += kTwoPi;
+    else if (current >= kTwoPi) current -= kTwoPi;
+  }
+
+  void nudge_reference_phase(float normalized_phase, float amount) noexcept {
+    const double target = clamp01(normalized_phase) * kTwoPi;
+    const double pull = std::clamp(static_cast<double>(amount), 0.0, .25);
+    nudge(phase, target, pull);
+    nudge(phase_b, target + kPi * .5, pull);
+    nudge(rotor_horn_phase, target, pull);
+    nudge(rotor_drum_phase, target + kPi * .37, pull);
+  }
+
   void set_model(unsigned requested) noexcept {
     const unsigned next = std::min(requested, 8U);
     if (next == model) return;
@@ -499,6 +514,9 @@ DriftClassicProcessor::DriftClassicProcessor(float sample_rate)
 DriftClassicProcessor::~DriftClassicProcessor() = default;
 void DriftClassicProcessor::reset() noexcept { impl_->reset(); }
 void DriftClassicProcessor::set_model(unsigned model) noexcept { impl_->set_model(model); }
+void DriftClassicProcessor::nudge_reference_phase(float phase, float amount) noexcept {
+  impl_->nudge_reference_phase(phase, amount);
+}
 std::array<float, 2> DriftClassicProcessor::process_sample(
     float left, float right, float rate, float depth, float shape, float spread, float motion) noexcept {
   return impl_->process_sample(left, right, rate, depth, shape, spread, motion);
