@@ -47,8 +47,28 @@ function ensureListener(port: WebViewPort): void {
   installedPort.addEventListener('message', onMessage);
 }
 
+function requestLine(kind: NativeDesktopRequestKind, id: number, payload: string): string {
+  return payload ? `${REQUEST_PREFIX}:${kind}:${id}:${payload}` : `${REQUEST_PREFIX}:${kind}:${id}`;
+}
+
 export function hasNativeDesktopTransport(): boolean {
   return currentPort() !== null;
+}
+
+// Zero-wait ordered post for trusted, high-rate controls. WebView2 preserves
+// WebMessageReceived ordering for repeated messages from the same top-level page,
+// so knob/fader traffic does not need an acknowledgement before the next value can
+// enter the native control dispatcher. id=0 intentionally has no pending Promise.
+export function nativeDesktopPost(kind: NativeDesktopRequestKind, payload = ''): boolean {
+  const port = currentPort();
+  if (!port) return false;
+  ensureListener(port);
+  try {
+    port.postMessage(requestLine(kind, 0, payload));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function nativeDesktopRequest<T>(
@@ -62,7 +82,7 @@ export function nativeDesktopRequest<T>(
 
   const id = nextRequestId++;
   if (nextRequestId >= Number.MAX_SAFE_INTEGER) nextRequestId = 1;
-  const line = payload ? `${REQUEST_PREFIX}:${kind}:${id}:${payload}` : `${REQUEST_PREFIX}:${kind}:${id}`;
+  const line = requestLine(kind, id, payload);
 
   return new Promise<T | null>((resolve) => {
     const timeout = window.setTimeout(() => {
