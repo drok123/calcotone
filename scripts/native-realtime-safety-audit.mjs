@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 const read = (path) => readFileSync(resolve(process.cwd(), path), 'utf8').replace(/\r\n?/g, '\n');
 const rack = read('native/src/native_rack.cpp');
 const atmos = read('native/src/atmos_parity_processor.cpp');
+const halo = read('native/src/halo_parity_processor.cpp');
 const drift = read('native/src/drift_parity_processor.cpp');
 const ember = read('native/src/ember_parity_processor.cpp');
 const host = read('native/src/wasapi_host.cpp');
@@ -80,6 +81,37 @@ if (atmosImplStart < 0 || atmosProcessStart < 0 || atmosProcessEnd < 0) {
 }
 
 for (const token of [
+  'float glide_smoothing{};',
+  'float jitter_smoothing{};',
+  'float direct_smoothing{};',
+  'float cross_smoothing{};',
+  'std::size_t scatter_interval{};',
+  'glide_smoothing = 1.F - std::exp(-1.F / (sample_rate * .055F));',
+  'jitter_smoothing = 1.F - std::exp(-1.F / (sample_rate * .12F));',
+  'direct_smoothing = 1.F - std::exp(-1.F / (sample_rate * .08F));',
+  'cross_smoothing = 1.F - std::exp(-1.F / (sample_rate * .10F));',
+  'scatter_interval = std::max<std::size_t>(1, static_cast<std::size_t>(std::lround(sample_rate * .42F))) - 1;',
+  '* glide_smoothing;',
+  '* jitter_smoothing;',
+  '* direct_smoothing;',
+  '* cross_smoothing;',
+  'scatter_countdown = scatter_interval;',
+]) requireText(halo, token, 'Halo constant smoothing/timing hoist');
+for (const retired of [
+  'const float amount = 1.F - std::exp(-1.F / (sample_rate * .055F));',
+  'const float jitter_smoothing = 1.F - std::exp(-1.F / (sample_rate * .12F));',
+  'const float direct_smoothing = 1.F - std::exp(-1.F / (sample_rate * .08F));',
+  'const float cross_smoothing = 1.F - std::exp(-1.F / (sample_rate * .10F));',
+]) forbidText(halo, retired, 'Halo retired per-sample constant exponential');
+for (const dynamicToken of [
+  'one_pole_coefficient(highpass_hz, sample_rate)',
+  'one_pole_coefficient(channel_lowpass_hz, sample_rate)',
+  'logarithmic_cutoff(profile.lowpass_range, color)',
+  'std::pow(normalized_feedback, 1.45F)',
+  'std::pow(character, 1.55F)',
+]) requireText(halo, dynamicToken, 'Halo sample-varying DSP remains live');
+
+for (const token of [
   'float mode_mix{1.F};',
   'float mode_fade_step{};',
   'unsigned mode_transition{};',
@@ -114,4 +146,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('Native realtime safety audit passed · rack, Ember, and Drift model changes are dry-crossed; Atmos switches without render-thread allocation and hoists constant smoothing/input-filter exponentials off the sample loop');
+console.log('Native realtime safety audit passed · rack, Ember, and Drift model changes are dry-crossed; Atmos and Halo keep constant smoothing/filter exponentials off the sample loop while model handoffs remain allocation-safe');
