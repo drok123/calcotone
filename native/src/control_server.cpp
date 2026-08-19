@@ -20,6 +20,8 @@
 namespace calcotone {
 namespace {
 constexpr SOCKET kInvalidSocket = INVALID_SOCKET;
+std::mutex embedded_handler_mutex;
+ControlServer::Handler* embedded_handler = nullptr;
 
 std::string_view trim(std::string_view value) noexcept {
   while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) value.remove_prefix(1);
@@ -137,9 +139,25 @@ std::size_t request_content_length(std::string_view request) noexcept {
 }  // namespace
 
 ControlServer::ControlServer(Handler handler, unsigned short port, std::filesystem::path static_root)
-    : handler_(std::move(handler)), port_(port), static_root_(std::move(static_root)) {}
+    : handler_(std::move(handler)), port_(port), static_root_(std::move(static_root)) {
+  std::lock_guard lock(embedded_handler_mutex);
+  embedded_handler = &handler_;
+}
 
-ControlServer::~ControlServer() { stop(); }
+ControlServer::~ControlServer() {
+  stop();
+  std::lock_guard lock(embedded_handler_mutex);
+  if (embedded_handler == &handler_) embedded_handler = nullptr;
+}
+
+std::string dispatch_embedded_control(std::string_view line) {
+  // The control lambda writes atomics / lock-free command state consumed by the
+  // realtime engine. Serialize UI/diagnostic callers here so the handler itself
+  // never needs another lock and the audio callback is never involved.
+  std::lock_guard lock(embedded_handler_mutex);
+  if (!embedded_handler) return R"({"error":"native control handler unavailable"})";
+  return (*embedded_handler)(line);
+}
 
 void ControlServer::start() {
   if (running_.exchange(true)) return;
@@ -230,13 +248,13 @@ void ControlServer::run() noexcept {
     } else if (request.starts_with("OPTIONS ")) {
       send_response(client, 200, "{}", origin);
     } else if (request.starts_with("GET /health ")) {
-      send_response(client, 200, handler_("health"), origin);
+      send_response(client, 200, dispatch_embedded_control("health"), origin);
     } else if (request.starts_with("GET /spectrum ")) {
       send_response(client, 200, native_visual_spectrum().json(), origin);
     } else if (request.starts_with("POST /command ")) {
       const auto separator = request.find("\r\n\r\n");
       const auto command = separator == std::string_view::npos ? std::string_view{} : trim(request.substr(separator + 4));
-      send_response(client, command.empty() ? 400 : 200, command.empty() ? R"({"error":"empty command"})" : handler_(command), origin);
+      send_response(client, command.empty() ? 400 : 200, command.empty() ? R"({"error":"empty command"})" : dispatch_embedded_control(command), origin);
     } else if (request.starts_with("GET ") && !static_root_.empty()) {
       auto target = request_target(request);
       const auto query = target.find('?');
