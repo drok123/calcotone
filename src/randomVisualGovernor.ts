@@ -1,3 +1,5 @@
+import { beginViewportPerformanceHold } from './components/effects/viewportScheduler';
+
 const ROOT_HOLD_CLASS = 'random-hard-hold';
 
 type HeldVideo = {
@@ -8,10 +10,13 @@ type HeldVideo = {
 let heldVideos: HeldVideo[] = [];
 let held = false;
 let observer: MutationObserver | null = null;
+let releaseViewportHold: (() => void) | null = null;
 
 function enterHold(): void {
   if (held) return;
   held = true;
+  releaseViewportHold?.();
+  releaseViewportHold = beginViewportPerformanceHold();
 
   heldVideos = Array.from(document.querySelectorAll<HTMLVideoElement>('video.temporal-video-source')).map((video) => {
     const shouldResume = !video.paused && !video.ended;
@@ -19,10 +24,10 @@ function enterHold(): void {
     return { video, shouldResume };
   });
 
-  // Keep the last valid visual frame intact during RANDOM. The viewport scheduler already
-  // pauses registered physics renderers, and pausing the video elements stops decoder work.
-  // Do not resize or clear canvas backing stores here: doing so can strand a renderer at 1x1
-  // after RANDOM and leave the spectrum/module window blank or white.
+  // Keep the last valid visual frame intact during RANDOM. Registered physics/ASCII
+  // renderers are held by the shared viewport scheduler and video decoder work is
+  // paused here. Do not resize or clear canvas backing stores: doing so can strand a
+  // renderer at 1x1 after RANDOM and leave the spectrum/module window blank or white.
   for (const canvas of document.querySelectorAll<HTMLCanvasElement>('.temporal-video-canvas, .spectrum-screen canvas')) {
     canvas.dataset.randomHeld = 'true';
   }
@@ -31,6 +36,8 @@ function enterHold(): void {
 function exitHold(): void {
   if (!held) return;
   held = false;
+  releaseViewportHold?.();
+  releaseViewportHold = null;
 
   for (const { video, shouldResume } of heldVideos) {
     if (!video.isConnected || !shouldResume) continue;
@@ -39,7 +46,7 @@ function exitHold(): void {
   heldVideos = [];
 
   // Preserve each component's existing backing-store dimensions and simply let its normal
-  // RAF/video-frame loop continue from the last good frame on the next animation frame.
+  // scheduler/video loop continue from the last good frame on the next animation frame.
   requestAnimationFrame(() => {
     for (const canvas of document.querySelectorAll<HTMLCanvasElement>('[data-random-held="true"]')) {
       delete canvas.dataset.randomHeld;
@@ -64,6 +71,8 @@ function uninstall(): void {
   observer = null;
   document.documentElement.classList.remove(ROOT_HOLD_CLASS);
   exitHold();
+  releaseViewportHold?.();
+  releaseViewportHold = null;
 }
 
 install();
