@@ -137,6 +137,12 @@ struct EmberDigitalCaptureProcessor::Impl {
     return one_pole_with_coefficient(input, filter_coefficient(cutoff), channel, index);
   }
 
+  float two_pole(float input, float cutoff, unsigned channel) noexcept {
+    const float coefficient = filter_coefficient(cutoff);
+    input = one_pole_with_coefficient(input, coefficient, channel, 0);
+    return one_pole_with_coefficient(input, coefficient, channel, 1);
+  }
+
   float four_pole(float input, float cutoff, float resonance, unsigned channel) noexcept {
     const float feedback = filter_state[channel][3] * std::clamp(resonance, 0.F, .88F);
     const float coefficient = filter_coefficient(cutoff);
@@ -212,8 +218,8 @@ struct EmberDigitalCaptureProcessor::Impl {
         out_r = four_pole(out_r, cutoff * .985F, .08F + character * .30F, 1);
       } else if (pair == 1) {
         const float cutoff = 7200.F + filter * 2200.F;
-        out_l = one_pole(one_pole(out_l, cutoff, 0, 0), cutoff, 0, 1);
-        out_r = one_pole(one_pole(out_r, cutoff, 1, 0), cutoff, 1, 1);
+        out_l = two_pole(out_l, cutoff, 0);
+        out_r = two_pole(out_r, cutoff, 1);
       } else if (pair == 2) {
         const float cutoff = 9800.F + filter * 2300.F;
         out_l = one_pole(out_l, cutoff, 0, 0);
@@ -226,8 +232,8 @@ struct EmberDigitalCaptureProcessor::Impl {
       out_r -= imaging * .82F;
     } else if (mode == 1) {
       const float cutoff = 15500.F + filter * 2600.F;
-      out_l = one_pole(one_pole(out_l, cutoff, 0, 0), cutoff, 0, 1);
-      out_r = one_pole(one_pole(out_r, cutoff, 1, 0), cutoff, 1, 1);
+      out_l = two_pole(out_l, cutoff, 0);
+      out_r = two_pole(out_r, cutoff, 1);
       const float converter_texture = (character - .5F) * .006F;
       out_l = std::tanh(out_l * (1.F + converter_texture));
       out_r = std::tanh(out_r * (1.F + converter_texture));
@@ -239,8 +245,8 @@ struct EmberDigitalCaptureProcessor::Impl {
     } else if (mode == 3) {
       const float bandwidth = std::min(19200.F, effective_rate * .40F);
       const float cutoff = std::max(1600.F, bandwidth * (.74F + filter * .24F));
-      out_l = one_pole(one_pole(out_l, cutoff, 0, 0), cutoff, 0, 1);
-      out_r = one_pole(one_pole(out_r, cutoff * .994F, 1, 0), cutoff * .994F, 1, 1);
+      out_l = two_pole(out_l, cutoff, 0);
+      out_r = two_pole(out_r, cutoff * .994F, 1);
     } else if (mode == 4) {
       const float cutoff = 1800.F + filter * 10600.F + envelope * 900.F;
       const float resonance = .10F + character * .56F;
