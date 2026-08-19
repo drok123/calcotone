@@ -250,10 +250,14 @@ class DesktopShell {
 
     if (kind == "command") {
       if (payload.empty()) {
-        post_bridge_response(kind, id, R"({"error":"empty command"})");
-      } else {
-        post_bridge_response(kind, id, dispatch_embedded_control(payload));
+        if (id != "0") post_bridge_response(kind, id, R"({"error":"empty command"})");
+        return;
       }
+      if (id == "0") {
+        (void)dispatch_embedded_control(payload);
+        return;
+      }
+      post_bridge_response(kind, id, dispatch_embedded_control(payload));
       return;
     }
     if (kind == "health") {
