@@ -29,6 +29,10 @@ requireText(sharedSource, 'getOutputTimestamp', 'WebAudio presentation clock');
 requireText(visualEngine, 'latestVisualOwner', 'Shared visual snapshot ownership guard');
 requireText(visualEngine, 'getPresentationTimeSeconds?.()', 'Audio-clocked visual timeline');
 requireText(visualEngine, 'requestAnimationFrame(render)', 'UI animation-frame scheduler');
+requireText(visualEngine, 'const INTERACTION_VISUAL_SAMPLE_INTERVAL_MS = 100', 'Direct-manipulation analyser cadence');
+requireText(visualEngine, "const directManipulation = document.body.classList.contains('knob-is-dragging')", 'Direct-manipulation visual-analysis priority signal');
+requireText(visualEngine, '? Math.max(sampleInterval, INTERACTION_VISUAL_SAMPLE_INTERVAL_MS)', 'Interaction-first visual-analysis cadence');
+requireText(visualEngine, 'if (timestamp - lastSample < activeSampleInterval) return', 'Visual-analysis throttle guard');
 requireText(waterfall, 'const frequencyData = new Uint8Array(frequencyBinCount)', 'Waterfall reusable frequency buffer');
 requireText(waterfall, 'analyser.getByteFrequencyData(frequencyData)', 'Waterfall direct live analyser read');
 forbidText(waterfall, 'getLatestVisualSpectrum()', 'Waterfall global snapshot dependency');
@@ -107,4 +111,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE visual ring audit passed (lock-free browser ring, interaction-aware direct embedded spectrum transport, batched native FFT snapshots, audio presentation clocks).');
+console.log('CALCOTONE visual ring audit passed (lock-free browser ring, interaction-budgeted visual analysis, interaction-aware direct embedded spectrum transport, batched native FFT snapshots, audio presentation clocks).');
