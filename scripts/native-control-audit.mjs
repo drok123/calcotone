@@ -24,6 +24,9 @@ for (const token of [
   'this.commandQueue.then(async () =>',
   'this.commandCoalesceKey(line)',
   'this.commandGenerations.get(coalesceKey) !== generation',
+  'this.appliedContinuousState.get(coalesceKey) === line',
+  'this.sendCommand(line, coalesceKey === null)',
+  "nativeDesktopPost('command', line)",
   "nativeDesktopRequest<{ ok?: boolean }>('command'",
   "nativeDesktopRequest<NativeAudioHealth>('health'",
   'this.startHealthMonitor()',
@@ -32,7 +35,7 @@ for (const token of [
 
 for (const [startNeedle, endNeedle, label] of [
   ['  private rememberDesiredState(', '  private profileReplayLines(', 'Native desired-state parser'],
-  ['  private profileReplayLines(', '  private acceptHealth(', 'Native replay parser'],
+  ['  private profileReplayLines(', '  private markApplied(', 'Native replay parser'],
   ['  private commandCoalesceKey(', '  private rememberDesiredState(', 'Native coalescing parser'],
 ]) {
   const start = source.indexOf(startNeedle);
@@ -49,9 +52,11 @@ for (const [startNeedle, endNeedle, label] of [
 
 for (const token of [
   "const REQUEST_PREFIX = 'calcotone'",
+  'port.postMessage(requestLine(kind, 0, payload))',
   'port.postMessage(line)',
   "installedPort.addEventListener('message', onMessage)",
   "message.type !== RESPONSE_TYPE",
+  'export function nativeDesktopPost(',
 ]) requireText(transport, token, 'WebView2 TypeScript transport');
 
 for (const token of [
@@ -80,4 +85,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('Native control audit passed · direct WebView2 transport, stale gesture coalescing, centralized telemetry, and prefix/index parsing are locked');
+console.log('Native control audit passed · ordered zero-wait continuous WebView2 writes, acknowledged structural controls, stale/duplicate coalescing, centralized telemetry, and prefix/index parsing are locked');
