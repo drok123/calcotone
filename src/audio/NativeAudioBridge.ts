@@ -88,6 +88,7 @@ export class NativeAudioBridge {
   private healthRequest: Promise<NativeAudioHealth | null> | null = null;
   private healthTimer: number | null = null;
   private readonly commandGenerations = new Map<string, number>();
+  private readonly appliedContinuousState = new Map<string, string>();
   // Native machine selectors can change topology as well as coefficients. Keep the
   // latest desired operating point beside the transport queue so selecting a new
   // machine commits one coherent profile instead of waiting for the next knob write.
@@ -114,6 +115,7 @@ export class NativeAudioBridge {
     this.stackSnapshot.clear();
     this.loopCommandState.clear();
     this.commandGenerations.clear();
+    this.appliedContinuousState.clear();
   }
 
   private loopStateKey(line: string): string | null {
@@ -211,6 +213,11 @@ export class NativeAudioBridge {
       return [...this.stackSnapshot.entries()].map(([parameterId, value]) => `${parameterId} ${value}`);
     }
     return [];
+  }
+
+  private markApplied(line: string): void {
+    const key = this.commandCoalesceKey(line);
+    if (key) this.appliedContinuousState.set(key, line);
   }
 
   private acceptHealth(health: NativeAudioHealth): NativeAudioHealth {
@@ -325,11 +332,13 @@ export class NativeAudioBridge {
     const generation = coalesceKey ? (this.commandGenerations.get(coalesceKey) ?? 0) + 1 : 0;
     if (coalesceKey) this.commandGenerations.set(coalesceKey, generation);
 
-    // Preserve one globally ordered stream, but discard obsolete continuous values before
-    // they hit the native transport. During a fast drag this bounds the queue to the one
-    // command already in flight plus the newest value instead of replaying every old frame.
+    // Preserve one globally ordered stream, but discard obsolete or already-applied
+    // continuous values before they hit native. A fast drag therefore costs at most the
+    // command already in flight plus the newest value, and selector replay does not make
+    // the queued final knob snapshot cross the bridge a second time.
     const operation = this.commandQueue.then(async () => {
       if (coalesceKey && this.commandGenerations.get(coalesceKey) !== generation) return true;
+      if (coalesceKey && this.appliedContinuousState.get(coalesceKey) === line) return true;
       const sent = await this.sendCommand(line);
       if (!sent) {
         // A failed setter must be retryable. Only clear it if no newer value for the
@@ -337,8 +346,13 @@ export class NativeAudioBridge {
         if (loopKey && this.loopCommandState.get(loopKey) === trimmed) this.loopCommandState.delete(loopKey);
         return false;
       }
+      if (coalesceKey) this.appliedContinuousState.set(coalesceKey, line);
       for (const replay of this.profileReplayLines(line)) {
         if (!await this.sendCommand(replay)) return false;
+        // Replays are intentionally never skipped: selecting a new hardware model can
+        // reset coefficients even when the numeric knob value is unchanged. Recording
+        // them as applied only suppresses the redundant queued write that follows.
+        this.markApplied(replay);
       }
       return true;
     });
