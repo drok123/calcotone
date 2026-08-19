@@ -47,17 +47,26 @@ for (const token of [
 for (const token of [
   "import { getDisplayProfile } from '../../ui/displayProfile'",
   'const MAX_VISUAL_FPS = 20',
+  'const INTERACTION_VISUAL_FPS = 10',
   'Math.min(getDisplayProfile().visualFps, MAX_VISUAL_FPS)',
   'getDisplayProfile().reference1440p ? 15 : 12',
-  'targetInterval = reducedInterval()',
+  'targetInterval = Math.max(preferred, reducedInterval())',
+  'interactionPriorityCount > 0',
 ]) {
   if (!scheduler.includes(token)) failures.push(`viewport scheduler is missing ${token}`);
 }
 
 const maxVisualFpsInit = scheduler.indexOf('const MAX_VISUAL_FPS = 20');
+const interactionPriorityInit = scheduler.indexOf('let interactionPriorityCount = 0');
 const firstPreferredIntervalCall = scheduler.indexOf('let targetInterval = preferredInterval()');
-if (maxVisualFpsInit < 0 || firstPreferredIntervalCall < 0 || maxVisualFpsInit > firstPreferredIntervalCall) {
-  failures.push('viewport scheduler constants must initialize before preferredInterval() is called at module scope (prevents startup TDZ / black screen)');
+if (
+  maxVisualFpsInit < 0 ||
+  interactionPriorityInit < 0 ||
+  firstPreferredIntervalCall < 0 ||
+  maxVisualFpsInit > firstPreferredIntervalCall ||
+  interactionPriorityInit > firstPreferredIntervalCall
+) {
+  failures.push('viewport scheduler constants and interaction state must initialize before preferredInterval() is called at module scope (prevents startup TDZ / black screen)');
 }
 
 for (const [name, source, tokens] of [
@@ -189,4 +198,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('1440p UI fidelity audit passed · sharp raster targets remain intact while animated rows reuse buffers, ASCII follows audio time, and spectrum projection stays allocation-free');
+console.log('1440p UI fidelity audit passed · sharp raster targets remain intact while interaction-safe visual fallback, reusable buffers, audio-timed ASCII, and allocation-free spectrum projection stay locked');
