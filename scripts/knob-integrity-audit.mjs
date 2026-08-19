@@ -3,6 +3,7 @@ import { performance } from 'node:perf_hooks';
 import { resolve } from 'node:path';
 
 const source = readFileSync(resolve(process.cwd(), 'src/components/controls/Knob.tsx'), 'utf8');
+const linearControl = readFileSync(resolve(process.cwd(), 'src/components/controls/LinearControl.tsx'), 'utf8');
 const scheduler = readFileSync(resolve(process.cwd(), 'src/components/effects/viewportScheduler.ts'), 'utf8');
 const visualEngine = readFileSync(resolve(process.cwd(), 'src/visual/VisualEngine.ts'), 'utf8');
 const randomGovernor = readFileSync(resolve(process.cwd(), 'src/randomVisualGovernor.ts'), 'utf8');
@@ -10,6 +11,12 @@ const randomTransfer = readFileSync(resolve(process.cwd(), 'src/randomTransferBr
 const failures = [];
 const requireText = (needle, label) => {
   if (!source.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
+};
+const requireLinearText = (needle, label) => {
+  if (!linearControl.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
+};
+const forbidLinearText = (needle, label) => {
+  if (linearControl.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`);
 };
 const requireSchedulerText = (needle, label) => {
   if (!scheduler.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
@@ -49,6 +56,24 @@ requireText("import { beginViewportInteractionPriority } from '../effects/viewpo
 requireText('releaseVisualPriorityRef.current = beginViewportInteractionPriority();', 'visual interaction-priority acquisition');
 requireText('releaseVisualPriorityRef.current?.();', 'visual interaction-priority release');
 forbidText("window.addEventListener('pointercancel', finish", 'pointer cancellation must not use successful finish handler');
+
+for (const token of [
+  "import { beginViewportInteractionPriority } from '../effects/viewportScheduler';",
+  'const pendingValueRef = useRef<number | null>(null);',
+  'const frameRef = useRef<number | null>(null);',
+  'const activePointerRef = useRef<number | null>(null);',
+  'const releaseVisualPriorityRef = useRef<(() => void) | null>(null);',
+  'if (frameRef.current === null) frameRef.current = requestAnimationFrame(flushPending);',
+  'flushPending();',
+  'releaseVisualPriorityRef.current = beginViewportInteractionPriority();',
+  "document.body.classList.add('knob-is-dragging');",
+  "document.body.classList.remove('knob-is-dragging');",
+  'onPointerDown={handlePointerDown}',
+  'onPointerUp={handlePointerEnd}',
+  'onPointerCancel={handlePointerEnd}',
+  'onLostPointerCapture={handlePointerEnd}',
+]) requireLinearText(token, 'linear-control direct-manipulation contract');
+forbidLinearText('onChange={(event: ReactChangeEvent<HTMLInputElement>) => onChange(Number(event.target.value))}', 'uncoalesced linear-control updates');
 
 requireSchedulerText('const INTERACTION_VISUAL_FPS = 10;', 'interaction visual-rate ceiling');
 requireSchedulerText('let interactionPriorityCount = 0;', 'nested interaction-priority ownership');
@@ -112,7 +137,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `CALCOTONE knob integrity audit passed (${cases.length} mapping cases; `
+  `CALCOTONE control integrity audit passed (${cases.length} knob mapping cases; `
   + `${iterations.toLocaleString()} mappings in ${elapsedMilliseconds.toFixed(1)} ms; `
-  + 'heavy viewport paints and cosmetic React visual publishes yield during direct manipulation; visual snapshots are allocation-light; RANDOM holds remain single-owned).',
+  + 'knobs and linear I/O controls coalesce direct manipulation while heavy viewport paints and cosmetic React visual publishes yield; visual snapshots are allocation-light; RANDOM holds remain single-owned).',
 );
