@@ -155,6 +155,28 @@ for (const token of [
   'data[frame * 2 + channel] = dry[channel] + (processed - dry[channel]) * mode_mix;',
 ]) requireText(ember, token, 'Click-safe dedicated Ember model handoff');
 
+for (const token of [
+  'float input_hp_coefficient{};',
+  'float compressor_attack_coefficient{};',
+  'float compressor_release_coefficient{};',
+  'input_hp_coefficient = coefficient(22.F, rate);',
+  'compressor_attack_coefficient = 1.F - std::exp(-1.F / (rate * .004F));',
+  'compressor_release_coefficient = 1.F - std::exp(-1.F / (rate * .09F));',
+  '(1.F - input_hp_coefficient) * input_hp_out[channel]',
+  '? compressor_attack_coefficient : compressor_release_coefficient',
+]) requireText(ember, token, 'Ember fixed coefficient hoist');
+for (const retired of [
+  'const float g = coefficient(22.F, rate);',
+  'const float attack = 1.F - std::exp(-1.F / (rate * .004F));',
+  'const float release = 1.F - std::exp(-1.F / (rate * .09F));',
+]) forbidText(ember, retired, 'Ember retired per-sample constant coefficient');
+for (const dynamicToken of [
+  'one_pole(wet, tone[ch], coefficient(cutoff, rate))',
+  'one_pole(wet, tone[channel], coefficient(cutoff, rate))',
+  'one_pole(wet, presence[channel], coefficient(presence_hz, rate))',
+  'const float glide = 1.F - std::exp(-1.F / (rate * .045F));',
+]) requireText(ember, dynamicToken, 'Ember sample-varying/block DSP remains live');
+
 requireText(parityGenerator, 'p.value[0]', 'Generated parity wrapper committed model state');
 forbidText(parityGenerator, 'p.target[0].load(std::memory_order_relaxed)', 'Generated parity wrapper target-mode bypass');
 requireText(emberRouteGenerator, 'const float mode_value = p.value[0];', 'Generated Ember specialty committed mode state');
@@ -172,4 +194,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('Native realtime safety audit passed · rack, Ember, and Drift model changes are dry-crossed; Atmos, Halo, and Stomp keep constant/dead setup off specialty or sample hot paths while model handoffs remain allocation-safe');
+console.log('Native realtime safety audit passed · rack, Ember, and Drift model changes are dry-crossed; Atmos, Halo, Stomp, and Ember keep constant/dead setup off specialty or sample hot paths while model handoffs remain allocation-safe');

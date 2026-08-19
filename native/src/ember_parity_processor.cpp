@@ -33,6 +33,9 @@ float quantize(float x, unsigned bits) noexcept {
 
 struct EmberParityProcessor::Impl {
   float rate;
+  float input_hp_coefficient{};
+  float compressor_attack_coefficient{};
+  float compressor_release_coefficient{};
   std::array<std::atomic<float>, 7> target{};
   std::array<float, 7> value{0.F, .14F, 9500.F, .18F, .22F, .38F, .22F};
   int active_mode{-1};
@@ -64,6 +67,9 @@ struct EmberParityProcessor::Impl {
   explicit Impl(float sample_rate) : rate(std::clamp(sample_rate, 8000.F, 384000.F)) {
     for (std::size_t i = 0; i < value.size(); ++i) target[i].store(value[i]);
     mode_fade_step = 1.F / std::max(1.F, rate * .003F);
+    input_hp_coefficient = coefficient(22.F, rate);
+    compressor_attack_coefficient = 1.F - std::exp(-1.F / (rate * .004F));
+    compressor_release_coefficient = 1.F - std::exp(-1.F / (rate * .09F));
   }
 
   unsigned requested_mode() const noexcept {
@@ -101,8 +107,7 @@ struct EmberParityProcessor::Impl {
   }
 
   float highpass_input(float input, unsigned channel) noexcept {
-    const float g = coefficient(22.F, rate);
-    const float output = input - input_hp_in[channel] + (1.F - g) * input_hp_out[channel];
+    const float output = input - input_hp_in[channel] + (1.F - input_hp_coefficient) * input_hp_out[channel];
     input_hp_in[channel] = input;
     input_hp_out[channel] = output;
     return output;
@@ -274,10 +279,8 @@ struct EmberParityProcessor::Impl {
 
   float compressor(float input, unsigned channel, float threshold_db, float ratio) noexcept {
     const float magnitude = std::abs(input);
-    const float attack = 1.F - std::exp(-1.F / (rate * .004F));
-    const float release = 1.F - std::exp(-1.F / (rate * .09F));
     compressor_envelope[channel] += (magnitude - compressor_envelope[channel])
-        * (magnitude > compressor_envelope[channel] ? attack : release);
+        * (magnitude > compressor_envelope[channel] ? compressor_attack_coefficient : compressor_release_coefficient);
     const float level_db = 20.F * std::log10(std::max(compressor_envelope[channel], 1e-7F));
     const float over_db = level_db - threshold_db;
     float reduction_db = 0.F;
@@ -287,7 +290,7 @@ struct EmberParityProcessor::Impl {
     }
     const float target_gain = db_to_gain(reduction_db);
     compressor_gain[channel] += (target_gain - compressor_gain[channel])
-        * (target_gain < compressor_gain[channel] ? attack : release);
+        * (target_gain < compressor_gain[channel] ? compressor_attack_coefficient : compressor_release_coefficient);
     return input * compressor_gain[channel];
   }
 
