@@ -121,6 +121,11 @@ struct HaloParityProcessor::Impl {
   float sample_rate;
   HaloSpaceEchoProcessor space_echo;
   HaloDualGrainPitchProcessor pitch;
+  float glide_smoothing{};
+  float jitter_smoothing{};
+  float direct_smoothing{};
+  float cross_smoothing{};
+  std::size_t scatter_interval{};
   std::array<std::atomic<float>, 7> target{};
   std::array<float, 7> value{1.F, .36F, .22F, .42F, .14F, .58F, .14F};
   std::array<std::vector<float>, 2> delay;
@@ -145,13 +150,18 @@ struct HaloParityProcessor::Impl {
       : sample_rate(std::clamp(rate, 8000.F, 384000.F)),
         space_echo(sample_rate),
         pitch(sample_rate) {
+    glide_smoothing = 1.F - std::exp(-1.F / (sample_rate * .055F));
+    jitter_smoothing = 1.F - std::exp(-1.F / (sample_rate * .12F));
+    direct_smoothing = 1.F - std::exp(-1.F / (sample_rate * .08F));
+    cross_smoothing = 1.F - std::exp(-1.F / (sample_rate * .10F));
+    scatter_interval = std::max<std::size_t>(1, static_cast<std::size_t>(std::lround(sample_rate * .42F))) - 1;
     for (std::size_t index = 0; index < value.size(); ++index) {
       target[index].store(value[index], std::memory_order_relaxed);
     }
     const auto size = static_cast<std::size_t>(sample_rate * 6.6F) + 32;
     delay[0].assign(size, 0.F);
     delay[1].assign(size, 0.F);
-    scatter_countdown = std::max<std::size_t>(1, static_cast<std::size_t>(std::lround(sample_rate * .42F))) - 1;
+    scatter_countdown = scatter_interval;
     reset_scatter_mode(1);
   }
 
@@ -164,7 +174,7 @@ struct HaloParityProcessor::Impl {
     orbit_target.fill(0.F);
     direct_gain.fill(profile.output_trim * (.52F + width * .46F));
     cross_gain.fill(profile.output_trim * ((1.F - width) * .34F));
-    scatter_countdown = std::max<std::size_t>(1, static_cast<std::size_t>(std::lround(sample_rate * .42F))) - 1;
+    scatter_countdown = scatter_interval;
   }
 
   void run_scatter_tick(
@@ -200,9 +210,8 @@ struct HaloParityProcessor::Impl {
 
   void glide() noexcept {
     value[0] = target[0].load(std::memory_order_relaxed);
-    const float amount = 1.F - std::exp(-1.F / (sample_rate * .055F));
     for (std::size_t index = 1; index < value.size(); ++index) {
-      value[index] += (target[index].load(std::memory_order_relaxed) - value[index]) * amount;
+      value[index] += (target[index].load(std::memory_order_relaxed) - value[index]) * glide_smoothing;
     }
   }
 
@@ -228,7 +237,7 @@ struct HaloParityProcessor::Impl {
     write = 0;
     sample_clock = 0;
     pitch.reset();
-    scatter_countdown = std::max<std::size_t>(1, static_cast<std::size_t>(std::lround(sample_rate * .42F))) - 1;
+    scatter_countdown = scatter_interval;
     pitch_scattered = false;
   }
 
@@ -291,7 +300,7 @@ struct HaloParityProcessor::Impl {
       if (profile.scatter > 0.F) {
         if (scatter_countdown == 0) {
           run_scatter_tick(mode, profile, seconds, character);
-          scatter_countdown = std::max<std::size_t>(1, static_cast<std::size_t>(std::lround(sample_rate * .42F))) - 1;
+          scatter_countdown = scatter_interval;
         } else {
           --scatter_countdown;
         }
@@ -305,9 +314,6 @@ struct HaloParityProcessor::Impl {
         fragment_target.fill(1.F);
         orbit_target.fill(0.F);
       }
-      const float jitter_smoothing = 1.F - std::exp(-1.F / (sample_rate * .12F));
-      const float direct_smoothing = 1.F - std::exp(-1.F / (sample_rate * .08F));
-      const float cross_smoothing = 1.F - std::exp(-1.F / (sample_rate * .10F));
       for (unsigned channel = 0; channel < 2; ++channel) {
         jitter_value[channel] += (jitter_target[channel] - jitter_value[channel]) * jitter_smoothing;
         const float positive_orbit = std::max(0.F, orbit_target[channel]);
