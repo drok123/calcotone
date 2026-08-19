@@ -44,6 +44,42 @@ for (const token of [
 forbidText(atmos, 'std::make_unique<AtmosNetwork>', 'Atmos audio callback heap allocation');
 
 for (const token of [
+  'constexpr std::array<float, 7> kControlSmoothingSeconds',
+  'refresh_model_coefficients();',
+  'input_hp_coefficient_ = filter_coefficient(profile.highpass, rate_);',
+  'input_lp_coefficient_ = filter_coefficient(input_lowpass_hz, rate_);',
+  'float input_hp_coefficient_{};',
+  'float input_lp_coefficient_{};',
+  'std::array<float, 7> smoothing_coefficients{};',
+  'smoothing_coefficients[index] = smooth_coefficient(kControlSmoothingSeconds[index], rate);',
+  '* smoothing_coefficients[index];',
+]) requireText(atmos, token, 'Atmos constant-coefficient hoist');
+
+const atmosFrameStart = atmos.indexOf('  std::array<float, 2> process_frame(');
+const atmosFrameEnd = atmos.indexOf('\n private:', atmosFrameStart);
+if (atmosFrameStart < 0 || atmosFrameEnd < 0) {
+  failures.push('Atmos frame processor boundaries missing');
+} else {
+  const frameBody = atmos.slice(atmosFrameStart, atmosFrameEnd);
+  forbidText(frameBody, 'filter_coefficient(profile.highpass, rate_)', 'Atmos per-sample input highpass coefficient');
+  forbidText(frameBody, 'filter_coefficient(input_lowpass_hz, rate_)', 'Atmos per-sample input lowpass coefficient');
+  requireText(frameBody, 'input_hp_coefficient_', 'Atmos cached input highpass use');
+  requireText(frameBody, 'input_lp_coefficient_', 'Atmos cached input lowpass use');
+}
+
+const atmosImplStart = atmos.indexOf('struct AtmosParityProcessor::Impl');
+const atmosProcessStart = atmos.indexOf('  void process(float* data, std::size_t frames) noexcept {', atmosImplStart);
+const atmosProcessEnd = atmos.indexOf('\n  float rate;', atmosProcessStart);
+if (atmosImplStart < 0 || atmosProcessStart < 0 || atmosProcessEnd < 0) {
+  failures.push('Atmos processor hot-loop boundaries missing');
+} else {
+  const processBody = atmos.slice(atmosProcessStart, atmosProcessEnd);
+  forbidText(processBody, 'smooth_coefficient(', 'Atmos per-sample control smoothing exponential');
+  forbidText(processBody, 'smoothing_seconds', 'Atmos per-sample smoothing-time table');
+  requireText(processBody, 'smoothing_coefficients[index]', 'Atmos cached smoothing coefficient use');
+}
+
+for (const token of [
   'float mode_mix{1.F};',
   'float mode_fade_step{};',
   'unsigned mode_transition{};',
@@ -78,4 +114,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('Native realtime safety audit passed · rack, Ember, and Drift model changes are dry-crossed and Atmos switching performs no network heap allocation in the render callback');
+console.log('Native realtime safety audit passed · rack, Ember, and Drift model changes are dry-crossed; Atmos switches without render-thread allocation and hoists constant smoothing/input-filter exponentials off the sample loop');
