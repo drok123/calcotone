@@ -23,6 +23,8 @@ import './loop505Controls'
 import './randomVisualGovernor'
 import './randomTransferBridge'
 import './chordChainPatch'
+import './nativeFinishPass'
+import './nativeFinishPass.css'
 import { installDisplayProfile } from './ui/displayProfile'
 import App from './App.tsx'
 import './approvedFaceplate.css'
@@ -32,8 +34,28 @@ import './loopSurfaceV3'
 
 installDisplayProfile()
 
-createRoot(document.getElementById('root')!).render(
+const query = new URLSearchParams(window.location.search)
+const nativeShell = query.has('native-shell')
+// Browser execution is now an explicit diagnostic surface only. Normal production
+// launch is the local WebView2 desktop shell, where the UI carries control/telemetry
+// and the C++ engine owns every audio sample.
+const browserDiagnostic = query.has('browser-diagnostic') || query.has('diagnostic-audio')
+const root = createRoot(document.getElementById('root')!)
+
+root.render(
   <StrictMode>
-    <App />
+    {nativeShell || browserDiagnostic ? (
+      <App />
+    ) : (
+      <div className="native-shell-required" role="status">
+        <div>
+          <h1>CALCOTONE DESKTOP REQUIRED</h1>
+          <p>
+            Audio no longer starts from a normal browser page. Launch the standalone CALCOTONE Windows app.
+            Browser execution is reserved for explicit diagnostics.
+          </p>
+        </div>
+      </div>
+    )}
   </StrictMode>,
 )

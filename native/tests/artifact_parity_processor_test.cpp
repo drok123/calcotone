@@ -57,6 +57,12 @@ double signature(const std::vector<float>& audio) {
   return result;
 }
 
+float peak(const std::vector<float>& audio) {
+  float result = 0.F;
+  for (float sample : audio) result = std::max(result, std::abs(sample));
+  return result;
+}
+
 std::vector<float> render(unsigned mode, float wear = .46F, float wow = .37F,
                           float noise = .28F, float tone = .64F,
                           float mix = 1.F, std::size_t frames = 72'000U) {
@@ -121,6 +127,28 @@ void test_media_mix_uses_equal_power_routing() {
   }
 }
 
+void test_tascam424_nominal_gain_stays_bounded() {
+  auto input = source(48'000U);
+  const float input_peak = peak(input);
+
+  calcotone::ArtifactParityProcessor processor(kRate);
+  configure(processor, 8U, .162F, .16F, .10F, .62F, 1.F);
+  process_blocks(processor, input);
+
+  const float output_peak = peak(input);
+  assert(output_peak > 1e-4F);
+  // The 424 insert may colour/compress the signal, but ordinary settings must not
+  // behave like an 8x cascaded fuzz gain stage.
+  assert(output_peak < input_peak * 1.35F + .02F);
+}
+
+void test_tascam424_push_is_colour_not_runaway_gain() {
+  const auto nominal = render(8U, .18F, .16F, .10F, .48F, 1.F, 36'000U);
+  const auto pushed = render(8U, .82F, .16F, .10F, .88F, 1.F, 36'000U);
+  assert(std::abs(signature(nominal) - signature(pushed)) > 1e-3);
+  assert(peak(pushed) < .95F);
+}
+
 void test_atr_speed_selects_distinct_transport_operating_points() {
   const auto slow = render(12U, .72F, .04F, .22F, .57F, 1.F, 96'000U);
   const auto fast = render(12U, .72F, .86F, .22F, .57F, 1.F, 96'000U);
@@ -171,6 +199,8 @@ int main() {
   test_console_paths_disable_transport_while_media_paths_keep_it();
   test_insert_mix_is_linear_not_equal_power();
   test_media_mix_uses_equal_power_routing();
+  test_tascam424_nominal_gain_stays_bounded();
+  test_tascam424_push_is_colour_not_runaway_gain();
   test_atr_speed_selects_distinct_transport_operating_points();
   test_noise_controls_actual_media_noise_without_polluting_console_paths();
   test_bcm10_capture_and_1073_summing_remain_distinct();
