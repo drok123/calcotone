@@ -20,6 +20,11 @@ type DisplayProfile = {
   glyphs: string;
 };
 
+type GraphScratch = {
+  characters: string[];
+  accents: string[];
+};
+
 const PROFILES: Record<string, DisplayProfile> = {
   saturation: {
     title: 'E M B E R',
@@ -207,6 +212,7 @@ function drawDisplay(
   module: ModuleState,
   audio: VisualAudioState,
   stamp: number,
+  scratch: GraphScratch,
 ): void {
   const profile = PROFILES[module.id] ?? PROFILES.media;
   const sceneKey = moduleModeKey(module);
@@ -226,10 +232,12 @@ function drawDisplay(
   const graphEnd = Math.max(graphStart + 3, rows - 3);
   const graphRows = Math.max(1, graphEnd - graphStart);
   const enabled = module.enabled && module.available;
-  // Reuse the graph rows for the entire draw. Previously every graph line built
-  // two fresh arrays, creating dozens of short-lived objects per animated frame.
-  const graphCharacters = new Array<string>(innerWidth).fill(' ');
-  const graphAccents = new Array<string>(innerWidth).fill(' ');
+  const graphCharacters = scratch.characters;
+  const graphAccents = scratch.accents;
+  if (graphCharacters.length !== innerWidth) graphCharacters.length = innerWidth;
+  if (graphAccents.length !== innerWidth) graphAccents.length = innerWidth;
+  graphCharacters.fill(' ');
+  graphAccents.fill(' ');
 
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.fillStyle = '#050706';
@@ -324,6 +332,7 @@ export function PressureStyleDisplay({ module, visualState }: PressureStyleDispl
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const moduleRef = useRef(module);
   const audioRef = useRef(visualState);
+  const graphScratchRef = useRef<GraphScratch>({ characters: [], accents: [] });
   moduleRef.current = module;
   audioRef.current = visualState;
 
@@ -370,7 +379,16 @@ export function PressureStyleDisplay({ module, visualState }: PressureStyleDispl
       const interval = active ? 1000 / (display.reference1440p ? 30 : 24) : 250;
       if (stamp - lastDraw < interval) return;
       lastDraw = stamp;
-      drawDisplay(context, width, height, dpr, moduleRef.current, audioRef.current, stamp);
+      drawDisplay(
+        context,
+        width,
+        height,
+        dpr,
+        moduleRef.current,
+        audioRef.current,
+        stamp,
+        graphScratchRef.current,
+      );
     };
 
     const unsubscribe = subscribeViewportAnimation(render);

@@ -8,6 +8,7 @@ const main = read('src/main.tsx');
 const profile = read('src/ui/displayProfile.ts');
 const scheduler = read('src/components/effects/viewportScheduler.ts');
 const moduleDisplay = read('src/components/ascii/PressureStyleDisplay.tsx');
+const railDisplay = read('src/components/ascii/RailCHardwareDisplay.tsx');
 const ascii = read('src/components/ascii/AsciiArtEngine.tsx');
 const spectrum = read('src/components/meters/SpectrumWaterfall.tsx');
 const hdCss = read('src/highDefinition1440.css');
@@ -74,10 +75,23 @@ for (const [name, source, tokens] of [
     'canvasPixelRatio(width, height, 5_400_000)',
     'display.reference1440p ? 30 : 24',
     'subscribeDisplayProfile(resize)',
-    "const graphCharacters = new Array<string>(innerWidth).fill(' ')",
-    "const graphAccents = new Array<string>(innerWidth).fill(' ')",
+    'type GraphScratch = {',
+    'const graphCharacters = scratch.characters',
+    'const graphAccents = scratch.accents',
+    "const graphScratchRef = useRef<GraphScratch>({ characters: [], accents: [] })",
+    'graphScratchRef.current,',
     "graphCharacters.fill(' ')",
     "graphAccents.fill(' ')",
+  ]],
+  ['Rail C hardware display', railDisplay, [
+    'type RailScratch = {',
+    'const chars = scratch.chars',
+    'const accents = scratch.accents',
+    "const scratchRef = useRef<RailScratch>({ chars: [], accents: [] })",
+    'drawRailSpectacle(context, width, height, dpr, props, stamp, scratch)',
+    'draw(context, width, height, dpr, current, stamp, scratchRef.current)',
+    "chars.fill(' ')",
+    "accents.fill(' ')",
   ]],
   ['ASCII engine', ascii, [
     'canvasPixelRatio(width, height, 6_400_000)',
@@ -106,10 +120,20 @@ for (const [name, source, tokens] of [
 }
 
 for (const retired of [
+  "const graphCharacters = new Array<string>(innerWidth).fill(' ')",
+  "const graphAccents = new Array<string>(innerWidth).fill(' ')",
   "const chars = Array.from({ length: innerWidth }, () => ' ')",
   "const accents = Array.from({ length: innerWidth }, () => ' ')",
 ]) {
-  if (moduleDisplay.includes(retired)) failures.push(`module display must not allocate a graph-row array via ${retired}`);
+  if (moduleDisplay.includes(retired)) failures.push(`module display must not allocate animated row buffers via ${retired}`);
+}
+for (const retired of [
+  "const chars = Array.from({ length: columns }, () => ' ')",
+  "const accents = Array.from({ length: columns }, () => ' ')",
+  "const chars = Array.from({ length: innerWidth }, () => ' ')",
+  "const accents = Array.from({ length: innerWidth }, () => ' ')",
+]) {
+  if (railDisplay.includes(retired)) failures.push(`Rail C hardware display must not allocate animated row buffers via ${retired}`);
 }
 for (const retired of [
   "const characters = Array.from({ length: columns }, () => ' ')",
@@ -198,4 +222,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('1440p UI fidelity audit passed · sharp raster targets remain intact while interaction-safe visual fallback, reusable buffers, audio-timed ASCII, and allocation-free spectrum projection stay locked');
+console.log('1440p UI fidelity audit passed · sharp raster targets remain intact while interaction-safe visual fallback, persistent animated buffers, audio-timed ASCII, and allocation-free spectrum projection stay locked');
