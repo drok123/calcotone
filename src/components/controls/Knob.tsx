@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { clamp } from '../../ui/math';
+import { beginViewportInteractionPriority } from '../effects/viewportScheduler';
 
 export function Knob({
   label,
@@ -25,6 +26,7 @@ export function Knob({
   const pendingDragRef = useRef<{ x: number; y: number; fine: boolean } | null>(null);
   const lastClickAtRef = useRef(0);
   const cleanupDragRef = useRef<(() => void) | null>(null);
+  const releaseVisualPriorityRef = useRef<(() => void) | null>(null);
   const [isAdjusting, setIsAdjusting] = useState(false);
 
   useEffect(() => {
@@ -33,6 +35,8 @@ export function Knob({
 
   useEffect(() => () => {
     cleanupDragRef.current?.();
+    releaseVisualPriorityRef.current?.();
+    releaseVisualPriorityRef.current = null;
   }, []);
 
   function handlePointerDown(event: ReactPointerEvent<HTMLSpanElement>): void {
@@ -40,6 +44,8 @@ export function Knob({
     event.preventDefault();
     event.stopPropagation();
     cleanupDragRef.current?.();
+    releaseVisualPriorityRef.current?.();
+    releaseVisualPriorityRef.current = beginViewportInteractionPriority();
 
     dragRef.current = {
       pointerId: event.pointerId,
@@ -129,6 +135,8 @@ export function Knob({
       dragFrameRef.current = null;
       pendingDragRef.current = null;
       cleanupDragRef.current = null;
+      releaseVisualPriorityRef.current?.();
+      releaseVisualPriorityRef.current = null;
       document.body.classList.remove('knob-is-dragging');
       setIsAdjusting(false);
     };
