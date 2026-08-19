@@ -73,6 +73,9 @@ struct StompParityProcessor::Impl {
       : rate(std::clamp(requested_rate, 8'000.F, 384'000.F)) {
     const auto pitch_size = static_cast<std::size_t>(rate * .065F) + 64U;
     for (auto& buffer : pitch_buffer) buffer.assign(pitch_size, 0.F);
+    for (std::size_t index = 0; index < profiles.size(); ++index) {
+      input_hp_coefficients[index] = filter_coefficient(profiles[index].input_hz, rate * 2.F);
+    }
   }
 
   float clip(float x, unsigned mode, float drive, float character) noexcept {
@@ -178,10 +181,19 @@ struct StompParityProcessor::Impl {
       const float character = clamp01(smooth[4]);
       const float body = clamp01(smooth[5]);
       const float mix = clamp01(smooth[6]);
-      const Profile profile = profiles[std::min(mode, 10U)];
-      const float hp_g = filter_coefficient(profile.input_hz, rate * 2.F);
-      const float tone_g = filter_coefficient(profile.tone_low + tone * (profile.tone_high - profile.tone_low), rate * 2.F);
-      const float body_g = filter_coefficient(120.F + body * (900.F + profile.body * 1'500.F), rate * 2.F);
+
+      const Profile* analog_profile = nullptr;
+      float hp_g = 0.F;
+      float tone_g = 0.F;
+      float body_g = 0.F;
+      if (mode <= 10U) {
+        analog_profile = &profiles[mode];
+        hp_g = input_hp_coefficients[mode];
+        tone_g = filter_coefficient(
+            analog_profile->tone_low + tone * (analog_profile->tone_high - analog_profile->tone_low), rate * 2.F);
+        body_g = filter_coefficient(
+            120.F + body * (900.F + analog_profile->body * 1'500.F), rate * 2.F);
+      }
 
       for (unsigned channel = 0; channel < 2U; ++channel) {
         const auto index = frame * 2U + channel;
@@ -194,6 +206,7 @@ struct StompParityProcessor::Impl {
         } else if (mode == 13U) {
           wet = process_compressor(channel, dry, drive, tone, level, character, body);
         } else {
+          const Profile& profile = *analog_profile;
           const float midpoint = (previous[channel] + dry) * .5F;
           previous[channel] = dry;
           const float demand = std::abs(dry) * drive;
@@ -225,6 +238,7 @@ struct StompParityProcessor::Impl {
   }
 
   float rate;
+  std::array<float, 11> input_hp_coefficients{};
   std::array<float, 2> input_low{}, tone_low_state{}, body_low{}, dc_in{}, dc_out{};
   std::array<float, 2> previous{}, device_memory{}, supply{1.F, 1.F};
   std::array<WahState, 2> wah{};

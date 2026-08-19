@@ -5,6 +5,7 @@ const read = (path) => readFileSync(resolve(process.cwd(), path), 'utf8').replac
 const rack = read('native/src/native_rack.cpp');
 const atmos = read('native/src/atmos_parity_processor.cpp');
 const halo = read('native/src/halo_parity_processor.cpp');
+const stomp = read('native/src/stomp_parity_processor.cpp');
 const drift = read('native/src/drift_parity_processor.cpp');
 const ember = read('native/src/ember_parity_processor.cpp');
 const host = read('native/src/wasapi_host.cpp');
@@ -112,6 +113,31 @@ for (const dynamicToken of [
 ]) requireText(halo, dynamicToken, 'Halo sample-varying DSP remains live');
 
 for (const token of [
+  'std::array<float, 11> input_hp_coefficients{};',
+  'input_hp_coefficients[index] = filter_coefficient(profiles[index].input_hz, rate * 2.F);',
+  'const Profile* analog_profile = nullptr;',
+  'if (mode <= 10U) {',
+  'hp_g = input_hp_coefficients[mode];',
+  'const Profile& profile = *analog_profile;',
+  'process_wah(channel, dry, drive, tone, level, character, body)',
+  'process_whammy(channel, dry, drive, tone, level, character)',
+  'process_compressor(channel, dry, drive, tone, level, character, body)',
+]) requireText(stomp, token, 'Stomp analog-only filter setup');
+for (const retired of [
+  'const float hp_g = filter_coefficient(profile.input_hz, rate * 2.F);',
+  'const float tone_g = filter_coefficient(profile.tone_low + tone * (profile.tone_high - profile.tone_low), rate * 2.F);',
+  "const float body_g = filter_coefficient(120.F + body * (900.F + profile.body * 1'500.F), rate * 2.F);",
+]) forbidText(stomp, retired, 'Stomp retired unconditional analog filter setup');
+for (const dynamicToken of [
+  'tone_g = filter_coefficient(',
+  'body_g = filter_coefficient(',
+  'const float attack_coefficient = 1.F - std::exp(-1.F / (rate * attack));',
+  'const float release_coefficient = 1.F - std::exp(-1.F / (rate * release));',
+  'const float tone_coefficient = filter_coefficient(900.F + tone * 9\'500.F, rate);',
+  'const float g = std::tan(kPi * cutoff / rate);',
+]) requireText(stomp, dynamicToken, 'Stomp sample-varying specialty/analog DSP remains live');
+
+for (const token of [
   'float mode_mix{1.F};',
   'float mode_fade_step{};',
   'unsigned mode_transition{};',
@@ -146,4 +172,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('Native realtime safety audit passed · rack, Ember, and Drift model changes are dry-crossed; Atmos and Halo keep constant smoothing/filter exponentials off the sample loop while model handoffs remain allocation-safe');
+console.log('Native realtime safety audit passed · rack, Ember, and Drift model changes are dry-crossed; Atmos, Halo, and Stomp keep constant/dead setup off specialty or sample hot paths while model handoffs remain allocation-safe');
