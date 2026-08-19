@@ -23,6 +23,8 @@ const elasticFifoHeader = readFileSync(resolve(root, 'native/include/calcotone/e
 const elasticFifo = readFileSync(resolve(root, 'native/src/elastic_stereo_fifo.cpp'), 'utf8');
 const ksProbe = readFileSync(resolve(root, 'native/src/ks_wavert_probe.cpp'), 'utf8');
 const nativeBridge = readFileSync(resolve(root, 'src/audio/NativeAudioBridge.ts'), 'utf8');
+const nativeDesktopTransport = readFileSync(resolve(root, 'src/audio/NativeDesktopTransport.ts'), 'utf8');
+const desktopShell = readFileSync(resolve(root, 'native/src/desktop_shell.cpp'), 'utf8');
 const controlServer = readFileSync(resolve(root, 'native/src/control_server.cpp'), 'utf8');
 const launcher = readFileSync(resolve(root, 'native/START-CALCOTONE-NATIVE.bat'), 'utf8');
 const failures = [];
@@ -142,8 +144,13 @@ requireText(app, 'loopParam masterLevel', 'Native Loop level synchronization');
 requireText(app, 'loopTrackLevel', 'Native Loop per-track synchronization');
 requireText(app, 'nativeWaveToRecordedWav', 'Native recorder faceplate integration');
 requireText(nativeBridge, 'private commandQueue: Promise<boolean>', 'Serialized browser/native control commands');
-requireText(nativeBridge, 'this.commandQueue.then(() => this.sendCommand(line))', 'Native command queue sequencing');
-requireText(controlServer, 'listen(listener, SOMAXCONN)', 'Native control burst backlog');
+requireText(nativeBridge, 'this.commandQueue.then(async () =>', 'Native ordered command queue');
+requireText(nativeBridge, 'this.commandGenerations.get(coalesceKey) !== generation', 'Stale continuous-control drop guard');
+requireText(nativeBridge, "nativeDesktopRequest<{ ok?: boolean }>('command'", 'In-process native control request');
+requireText(nativeDesktopTransport, 'port.postMessage(line)', 'WebView2 control postMessage path');
+requireText(desktopShell, 'add_WebMessageReceived(', 'WebView2 native command receive path');
+requireText(desktopShell, 'dispatch_embedded_control(payload)', 'Direct native control dispatch');
+requireText(controlServer, 'listen(listener, SOMAXCONN)', 'Native diagnostic HTTP backlog');
 requireText(controlServer, 'request_content_length(request_storage)', 'Complete native HTTP request reads');
 requireText(launcher, 'CALCOTONE_AUDIO_MODE=exclusive', 'Launcher exclusive-mode request');
 requireText(audioRestartPolicy, 'AudioRuntimeFault::DeviceInvalidated', 'Immediate device invalidation restart');
@@ -174,4 +181,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Latency path audit passed · fixtures ${tight.toFixed(2)} / ${playable.toFixed(2)} / ${slow.toFixed(2)} ms`);
+console.log(`Latency path audit passed · fixtures ${tight.toFixed(2)} / ${playable.toFixed(2)} / ${slow.toFixed(2)} ms · direct WebView2 controls retain global ordering while dropping stale drag values`);
