@@ -244,6 +244,21 @@ export function getLoopState(): LoopState {
   };
 }
 
+/**
+ * Allocation-free read for internal render/timing hot paths. The returned object
+ * is Calcotone-owned live state: consumers must treat it as immutable and must
+ * never retain an array with the intent to mutate it. Public/export/serialization
+ * callers should continue using getLoopState(), which returns defensive copies.
+ */
+export function peekLoopState(): Readonly<LoopState> {
+  return state;
+}
+
+/** BPM-only hot read avoids cloning all cached Loop waveform bins for clocked visuals. */
+export function getLoopBpm(): number {
+  return state.bpm;
+}
+
 export function setLoopState(patch: Partial<LoopSettings>): void {
   const previousTrack = state.selectedTrack;
   const selectedTrack = clampTrack(patch.selectedTrack ?? state.selectedTrack);
