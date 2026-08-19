@@ -129,8 +129,12 @@ float analog_stage(float raw, float input_gain, float drive, float asymmetry,
                    float cutoff, float dc_cutoff, float output_gain,
                    float rate, AnalogState& state) noexcept {
   const float side_drive = std::max(1.F, drive * (raw >= 0.F ? 1.F + asymmetry : 1.F - asymmetry * .62F));
+  const float linear_gain = std::max(1.F, input_gain * side_drive);
   const float driven = std::abs(raw) < 1e-20F ? 0.F : raw * input_gain * side_drive;
-  const float shaped = ada_tanh(driven, state);
+  // Preserve the 424's saturation threshold without multiplying its small-signal gain
+  // by every nonlinear stage. The previous unnormalised double stage could exceed 8x
+  // nominal gain at ordinary settings, which manifested as the persistent fuzzy edge.
+  const float shaped = ada_tanh(driven, state) / linear_gain;
   const float dc_r = std::exp(-2.F * kPi * std::max(2.F, dc_cutoff) / rate);
   const float dc_out = shaped - state.previous_dc_input + dc_r * state.previous_dc_output;
   state.previous_dc_input = shaped;
@@ -266,13 +270,15 @@ struct ArtifactParityProcessor::Impl {
     ModelPoint result{};
     if (mode == 8U) {
       result.insert = true; result.transport = false; result.tascam = true;
-      result.model_input = .82F + wear * 2.9F;
-      result.pre_drive = 1.05F + wear * 4.4F;
-      result.pre_asymmetry = .045F;
-      result.post_drive = 1.F + std::pow(tone, 1.55F) * 7.6F;
-      result.post_asymmetry = .032F + wear * .025F;
-      result.model_output = std::clamp(std::pow(result.model_input, -.38F)
-          * std::pow(result.pre_drive, -.10F) * std::pow(result.post_drive, -.08F), .18F, 1.1F);
+      // 424 channel electronics: retain a useful pushed range without cascading two
+      // large unnormalised gains. Wear drives the input/preamp; Tone drives the output
+      // amplifier colour, while the EQ controls remain centred at their legacy values.
+      result.model_input = .95F + wear * 1.25F;
+      result.pre_drive = 1.F + wear * 2.2F;
+      result.pre_asymmetry = .018F + wear * .020F;
+      result.post_drive = 1.F + std::pow(tone, 1.45F) * 2.6F;
+      result.post_asymmetry = .012F + wear * .018F;
+      result.model_output = .99F;
       result.low_shelf_hz = 100.F;
       result.low_shelf_db = bipolar_around_default(wow, .16F) * 10.F;
       result.high_shelf_hz = 10'000.F;
