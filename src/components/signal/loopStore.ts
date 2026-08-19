@@ -244,15 +244,21 @@ export function getLoopState(): LoopState {
   Object.defineProperties(snapshot, {
     trackLevels: {
       enumerable: true,
+      configurable: true,
       get: () => (trackLevels ??= [...source.trackLevels]),
+      set: (value: number[]) => { trackLevels = value; },
     },
     waveform: {
       enumerable: true,
+      configurable: true,
       get: () => (waveform ??= [...source.waveform]),
+      set: (value: number[]) => { waveform = value; },
     },
     trackRuntime: {
       enumerable: true,
+      configurable: true,
       get: () => (trackRuntime ??= source.trackRuntime.map((track) => ({ ...track, waveform: [...track.waveform] }))),
+      set: (value: LoopTrackRuntime[]) => { trackRuntime = value; },
     },
   });
   return snapshot;
@@ -331,7 +337,7 @@ export function setLoopBpm(value: number): void {
 
 export function cycleLoopQuantize(): LoopQuantize {
   const next: LoopQuantize = state.quantize === 'off' ? 'beat' : state.quantize === 'beat' ? 'bar' : 'off';
-  setLoopState({ bpm: state.bpm, quantize: next });
+  setLoopState({ quantize: next });
   return next;
 }
 
