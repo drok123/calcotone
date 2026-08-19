@@ -65,7 +65,27 @@ for (const token of [
   'PostWebMessageAsJson(',
   'dispatch_embedded_control(payload)',
   'native_visual_spectrum().json()',
+  'if (id == "0") {',
+  '(void)dispatch_embedded_control(payload);',
 ]) requireText(shell, token, 'WebView2 C++ transport');
+
+const commandStart = shell.indexOf('    if (kind == "command") {');
+const healthStart = shell.indexOf('    if (kind == "health") {', commandStart);
+if (commandStart < 0 || healthStart < 0) {
+  failures.push('WebView2 C++ command handler boundaries are missing');
+} else {
+  const commandBody = shell.slice(commandStart, healthStart);
+  const zeroWaitStart = commandBody.indexOf('if (id == "0") {');
+  const zeroWaitEnd = commandBody.indexOf('}', zeroWaitStart);
+  if (zeroWaitStart < 0 || zeroWaitEnd < 0) {
+    failures.push('WebView2 zero-wait command branch is missing');
+  } else {
+    const zeroWaitBody = commandBody.slice(zeroWaitStart, zeroWaitEnd);
+    requireText(zeroWaitBody, '(void)dispatch_embedded_control(payload);', 'Zero-wait native command execution');
+    forbidText(zeroWaitBody, 'post_bridge_response(', 'Zero-wait native response suppression');
+  }
+  requireText(commandBody, 'post_bridge_response(kind, id, dispatch_embedded_control(payload));', 'Acknowledged structural command path');
+}
 
 for (const token of [
   'std::string dispatch_embedded_control',
@@ -85,4 +105,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('Native control audit passed · ordered zero-wait continuous WebView2 writes, acknowledged structural controls, stale/duplicate coalescing, centralized telemetry, and prefix/index parsing are locked');
+console.log('Native control audit passed · ordered zero-wait continuous WebView2 writes execute without discarded acknowledgements, structural controls remain acknowledged, stale/duplicate coalescing and centralized telemetry are locked');
