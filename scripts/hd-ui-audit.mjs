@@ -79,7 +79,7 @@ for (const [name, source, tokens] of [
     'const graphCharacters = scratch.characters',
     'const graphAccents = scratch.accents',
     "const graphScratchRef = useRef<GraphScratch>({ characters: [], accents: [] })",
-    'drawDisplay(context, width, height, dpr, moduleRef.current, audioRef.current, stamp, graphScratchRef.current)',
+    'graphScratchRef.current,',
     "graphCharacters.fill(' ')",
     "graphAccents.fill(' ')",
   ]],
