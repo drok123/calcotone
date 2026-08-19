@@ -53,8 +53,38 @@ for (const token of [
   'if (!changed) return',
   'detail: settingsSnapshot()',
   'if (state.trackLevels[state.selectedTrack] === next) return',
+  'setLoopState({ quantize: next })',
 ]) requireText(store, token, 'Loop settings control-rate contract');
 forbidText(store, 'detail: getLoopState()', 'Loop settings event deep waveform snapshot');
+forbidText(store, 'setLoopState({ bpm: state.bpm, quantize: next })', 'Loop quantize unrelated BPM write');
+
+// Scalar render/timing readers must not eagerly clone the selected 256-bin waveform
+// plus all eight cached track waveforms merely to read BPM, masks or transport state.
+// getLoopState remains a defensive public snapshot: array copies are materialized only
+// if that array property is actually read. Accessor descriptors preserve the old
+// snapshot's enumerable/configurable/locally writable semantics without mutating state.
+for (const token of [
+  'const source = state',
+  'Object.defineProperties(snapshot, {',
+  'get: () => (trackLevels ??= [...source.trackLevels])',
+  'get: () => (waveform ??= [...source.waveform])',
+  'trackRuntime ??= source.trackRuntime.map((track) => ({ ...track, waveform: [...track.waveform] }))',
+  'configurable: true',
+  'set: (value: number[]) => { trackLevels = value; }',
+  'set: (value: number[]) => { waveform = value; }',
+  'set: (value: LoopTrackRuntime[]) => { trackRuntime = value; }',
+]) requireText(store, token, 'Loop allocation-light read contract');
+forbidText(store, 'export function peekLoopState', 'Unused Loop render snapshot scaffolding');
+forbidText(store, 'export function getLoopBpm', 'Unused Loop BPM hot-read scaffolding');
+const getStateStart = store.indexOf('export function getLoopState(): LoopState');
+const setStateStart = store.indexOf('export function setLoopState(', getStateStart);
+if (getStateStart < 0 || setStateStart < 0) failures.push('Loop defensive snapshot boundaries missing');
+else {
+  const getStateBody = store.slice(getStateStart, setStateStart);
+  forbidText(getStateBody, 'trackLevels: [...state.trackLevels]', 'Loop eager track-level snapshot');
+  forbidText(getStateBody, 'waveform: [...state.waveform]', 'Loop eager selected-waveform snapshot');
+  forbidText(getStateBody, 'state.trackRuntime.map((track)', 'Loop eager cached-waveform snapshot');
+}
 
 // Native health packets arrive faster than the visual layer needs new envelopes. Reuse
 // the selected waveform when bins are unchanged and suppress identical idle/stopped
@@ -281,4 +311,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('Loop audit passed · compact realtime track iteration, diffed settings transport, allocation-light native controls, suppressed idle telemetry, bounded undo, decimated waveform and direct V3 controls are intact');
+console.log('Loop audit passed · compact realtime track iteration, lazy defensive snapshots, diffed settings transport, allocation-light native controls, suppressed idle telemetry, bounded undo, decimated waveform and direct V3 controls are intact');

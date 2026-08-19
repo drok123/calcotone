@@ -236,12 +236,32 @@ export function getLoopSettings(): LoopSettings {
 }
 
 export function getLoopState(): LoopState {
-  return {
-    ...state,
-    trackLevels: [...state.trackLevels],
-    waveform: [...state.waveform],
-    trackRuntime: state.trackRuntime.map((track) => ({ ...track, waveform: [...track.waveform] })),
-  };
+  const source = state;
+  let trackLevels: number[] | null = null;
+  let waveform: number[] | null = null;
+  let trackRuntime: LoopTrackRuntime[] | null = null;
+  const snapshot = { ...source } as LoopState;
+  Object.defineProperties(snapshot, {
+    trackLevels: {
+      enumerable: true,
+      configurable: true,
+      get: () => (trackLevels ??= [...source.trackLevels]),
+      set: (value: number[]) => { trackLevels = value; },
+    },
+    waveform: {
+      enumerable: true,
+      configurable: true,
+      get: () => (waveform ??= [...source.waveform]),
+      set: (value: number[]) => { waveform = value; },
+    },
+    trackRuntime: {
+      enumerable: true,
+      configurable: true,
+      get: () => (trackRuntime ??= source.trackRuntime.map((track) => ({ ...track, waveform: [...track.waveform] }))),
+      set: (value: LoopTrackRuntime[]) => { trackRuntime = value; },
+    },
+  });
+  return snapshot;
 }
 
 export function setLoopState(patch: Partial<LoopSettings>): void {
