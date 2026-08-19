@@ -29,6 +29,7 @@ void test_clean_playback_stays_at_user_baseline() {
   assert(state.raises == 0U);
   assert(state.relaxations == 0U);
   assert(state.instability_events == 0U);
+  assert(!state.predictive_cushion);
 }
 
 void test_first_starvation_adds_one_period() {
@@ -37,6 +38,7 @@ void test_first_starvation_adds_one_period() {
   assert(policy.target_frames() == kBase + kPeriod);
   assert(policy.state().raises == 1U);
   assert(policy.state().instability_events == 1U);
+  assert(!policy.state().predictive_cushion);
 }
 
 void test_repeated_faults_are_bounded() {
@@ -66,7 +68,7 @@ void test_burst_inside_cooldown_requires_recurrence() {
   assert(policy.target_frames() > first_target + kPeriod);
 }
 
-void test_stable_playback_relaxes_to_baseline() {
+void test_stable_playback_relaxes_starvation_cushion_conservatively() {
   calcotone::AdaptiveFifoSafety policy(kBase, kPeriod, kRate);
   for (unsigned episode = 0U; episode < 4U; ++episode) {
     policy.observe_block(128U, 1U, 0U, 0U);
@@ -74,7 +76,9 @@ void test_stable_playback_relaxes_to_baseline() {
   }
   assert(policy.target_frames() > kBase);
   const auto raised = policy.target_frames();
-  advance(policy, 31.0);
+  advance(policy, 29.0);
+  assert(policy.target_frames() == raised);
+  advance(policy, 2.0);
   assert(policy.target_frames() == raised - kPeriod);
   advance(policy, 180.0);
   assert(policy.target_frames() == kBase);
@@ -109,6 +113,37 @@ void test_recurring_deadline_misses_preemptively_add_safety() {
   assert(policy.observe_deadline_miss());
   assert(policy.target_frames() == kBase + kPeriod);
   assert(policy.state().instability_events == 2U);
+  assert(policy.state().predictive_cushion);
+}
+
+void test_predictive_cushion_returns_quickly_after_clean_playback() {
+  calcotone::AdaptiveFifoSafety policy(kBase, kPeriod, kRate);
+  assert(!policy.observe_deadline_miss());
+  advance(policy, .10);
+  assert(policy.observe_deadline_miss());
+  assert(policy.target_frames() == kBase + kPeriod);
+  assert(policy.state().predictive_cushion);
+
+  advance(policy, 7.5);
+  assert(policy.target_frames() == kBase + kPeriod);
+  advance(policy, .6);
+  assert(policy.target_frames() == kBase);
+  assert(!policy.state().predictive_cushion);
+}
+
+void test_real_starvation_revokes_predictive_fast_recovery() {
+  calcotone::AdaptiveFifoSafety policy(kBase, kPeriod, kRate);
+  assert(!policy.observe_deadline_miss());
+  advance(policy, .10);
+  assert(policy.observe_deadline_miss());
+  advance(policy, .55);
+  assert(policy.observe_block(128U, 1U, 0U, 0U));
+  const auto raised = policy.target_frames();
+  assert(raised == kBase + kPeriod * 2U);
+  assert(!policy.state().predictive_cushion);
+
+  advance(policy, 9.0);
+  assert(policy.target_frames() == raised);
 }
 
 void test_large_period_keeps_added_latency_bounded_to_one_period() {
@@ -154,6 +189,7 @@ void test_reset_restores_baseline_and_telemetry() {
   assert(state.relaxations == 0U);
   assert(state.instability_events == 0U);
   assert(state.stable_seconds == 0.0);
+  assert(!state.predictive_cushion);
   assert(!policy.observe_deadline_miss());
   assert(policy.target_frames() == kBase);
 }
@@ -164,10 +200,12 @@ int main() {
   test_first_starvation_adds_one_period();
   test_repeated_faults_are_bounded();
   test_burst_inside_cooldown_requires_recurrence();
-  test_stable_playback_relaxes_to_baseline();
+  test_stable_playback_relaxes_starvation_cushion_conservatively();
   test_overrun_drains_an_elevated_target();
   test_isolated_deadline_miss_does_not_add_latency();
   test_recurring_deadline_misses_preemptively_add_safety();
+  test_predictive_cushion_returns_quickly_after_clean_playback();
+  test_real_starvation_revokes_predictive_fast_recovery();
   test_large_period_keeps_added_latency_bounded_to_one_period();
   test_policy_target_reaches_live_fifo_and_trim();
   test_reset_restores_baseline_and_telemetry();
