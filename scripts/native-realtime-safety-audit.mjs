@@ -205,6 +205,23 @@ for (const token of [
 forbidText(emberDigital,
   'output = one_pole(output, cutoff, channel, stage);',
   'Ember Digital repeated four-pole coefficient design');
+for (const token of [
+  'float two_pole(float input, float cutoff, unsigned channel) noexcept {',
+  'input = one_pole_with_coefficient(input, coefficient, channel, 0);',
+  'return one_pole_with_coefficient(input, coefficient, channel, 1);',
+  'out_l = two_pole(out_l, cutoff, 0);',
+  'out_r = two_pole(out_r, cutoff, 1);',
+  'out_r = two_pole(out_r, cutoff * .994F, 1);',
+]) requireText(emberDigital, token, 'Ember Digital same-cutoff two-pole coefficient reuse');
+for (const retired of [
+  'one_pole(one_pole(out_l, cutoff, 0, 0), cutoff, 0, 1)',
+  'one_pole(one_pole(out_r, cutoff, 1, 0), cutoff, 1, 1)',
+  'one_pole(one_pole(out_r, cutoff * .994F, 1, 0), cutoff * .994F, 1, 1)',
+]) forbidText(emberDigital, retired, 'Ember Digital repeated same-cutoff two-pole coefficient design');
+for (const intentionalDifferentCutoff of [
+  'out_l = one_pole(one_pole(out_l, cutoff, 0, 0), cutoff * .86F, 0, 1);',
+  'out_r = one_pole(one_pole(out_r, cutoff * .991F, 1, 0), cutoff * .85F, 1, 1);',
+]) requireText(emberDigital, intentionalDifferentCutoff, 'Ember Digital intentionally different two-pole cutoffs remain live');
 for (const dynamicToken of [
   'return 1.F - std::exp(-2.F * kPi * safe_cutoff / rate);',
   'std::log1p(mu * magnitude)',
@@ -228,4 +245,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('Native realtime safety audit passed · rack, Ember, and Drift model changes are dry-crossed; Atmos, Halo, Stomp, Ember, and Ember Digital keep constant/dead setup and repeated four-pole coefficient design off sample hot paths while model handoffs remain allocation-safe');
+console.log('Native realtime safety audit passed · rack, Ember, and Drift model changes are dry-crossed; Atmos, Halo, Stomp, Ember, and Ember Digital keep constant/dead setup plus repeated same-cutoff four/two-pole coefficient design off sample hot paths while model handoffs remain allocation-safe');
