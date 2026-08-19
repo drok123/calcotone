@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 const source = readFileSync(resolve(process.cwd(), 'src/components/controls/Knob.tsx'), 'utf8');
 const scheduler = readFileSync(resolve(process.cwd(), 'src/components/effects/viewportScheduler.ts'), 'utf8');
 const randomGovernor = readFileSync(resolve(process.cwd(), 'src/randomVisualGovernor.ts'), 'utf8');
+const randomTransfer = readFileSync(resolve(process.cwd(), 'src/randomTransferBridge.ts'), 'utf8');
 const failures = [];
 const requireText = (needle, label) => {
   if (!source.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
@@ -12,11 +13,14 @@ const requireText = (needle, label) => {
 const requireSchedulerText = (needle, label) => {
   if (!scheduler.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
 };
-const requireRandomText = (needle, label) => {
-  if (!randomGovernor.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
+const requireRandomText = (text, needle, label) => {
+  if (!text.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
 };
 const forbidText = (needle, label) => {
   if (source.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`);
+};
+const forbidRandomText = (text, needle, label) => {
+  if (text.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`);
 };
 
 requireText('const next = clamp(dragRef.current.startValue + travel * sensitivity, 0, 1);', 'bounded pointer mapping');
@@ -46,10 +50,11 @@ requireSchedulerText('if (interactionPriorityCount > 0) return 2.75;', 'interact
 requireSchedulerText('interactionPriority: interactionPriorityCount > 0', 'interaction-priority telemetry');
 requireSchedulerText('export function beginViewportPerformanceHold(): () => void {', 'RANDOM performance-hold scheduler API');
 
-requireRandomText("import { beginViewportPerformanceHold } from './components/effects/viewportScheduler';", 'RANDOM scheduler hold import');
-requireRandomText('releaseViewportHold = beginViewportPerformanceHold();', 'RANDOM viewport hold acquisition');
-requireRandomText('releaseViewportHold?.();', 'RANDOM viewport hold release');
-requireRandomText("observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });", 'RANDOM hold state observer');
+requireRandomText(randomTransfer, "import { beginViewportPerformanceHold } from './components/effects/viewportScheduler';", 'RANDOM scheduler hold import');
+requireRandomText(randomTransfer, 'const releaseViewportHold = beginViewportPerformanceHold();', 'RANDOM viewport hold acquisition');
+requireRandomText(randomTransfer, 'releaseViewportHold();', 'RANDOM viewport hold release');
+requireRandomText(randomGovernor, "observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });", 'RANDOM decoder hold state observer');
+forbidRandomText(randomGovernor, 'beginViewportPerformanceHold', 'RANDOM duplicate viewport hold owner');
 
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
 const mapDrag = (startValue, startX, startY, x, y, fine = false) => {
@@ -92,5 +97,5 @@ if (failures.length > 0) {
 console.log(
   `CALCOTONE knob integrity audit passed (${cases.length} mapping cases; `
   + `${iterations.toLocaleString()} mappings in ${elapsedMilliseconds.toFixed(1)} ms; `
-  + 'heavy viewport paints yield during direct manipulation and hold during RANDOM).',
+  + 'heavy viewport paints yield during direct manipulation; RANDOM holds remain single-owned).',
 );
