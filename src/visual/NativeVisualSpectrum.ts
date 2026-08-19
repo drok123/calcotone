@@ -7,6 +7,7 @@ import type { VisualSpectrumSource } from './SharedVisualSpectrum';
 const NATIVE_SPECTRUM_URL = 'http://127.0.0.1:48157/spectrum';
 const DESKTOP_SPECTRUM_INTERVAL_MS = 33;
 const HTTP_SPECTRUM_INTERVAL_MS = 50;
+const INTERACTION_SPECTRUM_INTERVAL_MS = 100;
 
 type NativeSpectrumPayload = { bins?: number[]; frame?: number; sampleRate?: number };
 
@@ -60,9 +61,13 @@ export class NativeVisualSpectrum implements VisualSpectrumSource {
     if (target.length > this.bins.length) target.fill(0, this.bins.length);
 
     const now = performance.now();
-    const interval = hasNativeDesktopTransport()
-      ? DESKTOP_SPECTRUM_INTERVAL_MS
-      : HTTP_SPECTRUM_INTERVAL_MS;
+    const directManipulation = typeof document !== 'undefined'
+      && document.body.classList.contains('knob-is-dragging');
+    const interval = directManipulation
+      ? INTERACTION_SPECTRUM_INTERVAL_MS
+      : hasNativeDesktopTransport()
+        ? DESKTOP_SPECTRUM_INTERVAL_MS
+        : HTTP_SPECTRUM_INTERVAL_MS;
     if (this.requestPending || now - this.lastRequestAt < interval) return;
     this.lastRequestAt = now;
     this.requestPending = true;

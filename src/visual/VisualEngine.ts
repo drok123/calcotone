@@ -20,6 +20,7 @@ const IDLE_STATE: VisualAudioState = {
   driftPhase: 0,
   time: 0,
 };
+const INTERACTION_VISUAL_SAMPLE_INTERVAL_MS = 100;
 
 let latestVisualAudioState: VisualAudioState = IDLE_STATE;
 let latestVisualSpectrum = new Uint8Array(0);
@@ -97,7 +98,11 @@ export function useVisualEngine(
 
     const render = (timestamp: number) => {
       frame = requestAnimationFrame(render);
-      if (timestamp - lastSample < sampleInterval) return;
+      const directManipulation = document.body.classList.contains('knob-is-dragging');
+      const activeSampleInterval = directManipulation
+        ? Math.max(sampleInterval, INTERACTION_VISUAL_SAMPLE_INTERVAL_MS)
+        : sampleInterval;
+      if (timestamp - lastSample < activeSampleInterval) return;
       lastSample = timestamp;
 
       analyser.getByteFrequencyData(data);
@@ -132,10 +137,9 @@ export function useVisualEngine(
       if (latestVisualOwner === owner) latestVisualAudioState = sharedSnapshot;
 
       // Direct manipulation owns the main thread while a knob is moving. Canvas
-      // renderers continue reading the fresh snapshot above, but cosmetic React/CSS
-      // feedback can wait until the hand releases instead of causing an unrelated
-      // workstation-tree render in the middle of a pointer/native-control frame.
-      const directManipulation = document.body.classList.contains('knob-is-dragging');
+      // renderers continue reading the shared snapshot above at the same 10 Hz budget
+      // as spectrum acquisition and heavy viewport paint; cosmetic React/CSS feedback
+      // waits until the hand releases.
       if (!directManipulation && timestamp - lastReactPublish >= reactInterval) {
         lastReactPublish = timestamp;
         setState({ ...sharedSnapshot });
