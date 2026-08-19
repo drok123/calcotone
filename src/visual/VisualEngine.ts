@@ -127,7 +127,12 @@ export function useVisualEngine(
       };
       if (latestVisualOwner === owner) latestVisualAudioState = next;
 
-      if (timestamp - lastReactPublish >= reactInterval) {
+      // Direct manipulation owns the main thread while a knob is moving. Canvas
+      // renderers continue reading the fresh snapshot above, but cosmetic React/CSS
+      // feedback can wait until the hand releases instead of causing an unrelated
+      // workstation-tree render in the middle of a pointer/native-control frame.
+      const directManipulation = document.body.classList.contains('knob-is-dragging');
+      if (!directManipulation && timestamp - lastReactPublish >= reactInterval) {
         lastReactPublish = timestamp;
         setState(next);
       }
