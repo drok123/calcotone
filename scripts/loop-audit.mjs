@@ -53,22 +53,29 @@ for (const token of [
   'if (!changed) return',
   'detail: settingsSnapshot()',
   'if (state.trackLevels[state.selectedTrack] === next) return',
+  'setLoopState({ quantize: next })',
 ]) requireText(store, token, 'Loop settings control-rate contract');
 forbidText(store, 'detail: getLoopState()', 'Loop settings event deep waveform snapshot');
+forbidText(store, 'setLoopState({ bpm: state.bpm, quantize: next })', 'Loop quantize unrelated BPM write');
 
 // Scalar render/timing readers must not eagerly clone the selected 256-bin waveform
 // plus all eight cached track waveforms merely to read BPM, masks or transport state.
 // getLoopState remains a defensive public snapshot: array copies are materialized only
-// if that array property is actually read. Explicit internal hot reads are also exposed.
+// if that array property is actually read. Accessor descriptors preserve the old
+// snapshot's enumerable/configurable/locally writable semantics without mutating state.
 for (const token of [
   'const source = state',
   'Object.defineProperties(snapshot, {',
   'get: () => (trackLevels ??= [...source.trackLevels])',
   'get: () => (waveform ??= [...source.waveform])',
   'trackRuntime ??= source.trackRuntime.map((track) => ({ ...track, waveform: [...track.waveform] }))',
-  'export function peekLoopState(): Readonly<LoopState>',
-  'export function getLoopBpm(): number',
+  'configurable: true',
+  'set: (value: number[]) => { trackLevels = value; }',
+  'set: (value: number[]) => { waveform = value; }',
+  'set: (value: LoopTrackRuntime[]) => { trackRuntime = value; }',
 ]) requireText(store, token, 'Loop allocation-light read contract');
+forbidText(store, 'export function peekLoopState', 'Unused Loop render snapshot scaffolding');
+forbidText(store, 'export function getLoopBpm', 'Unused Loop BPM hot-read scaffolding');
 const getStateStart = store.indexOf('export function getLoopState(): LoopState');
 const setStateStart = store.indexOf('export function setLoopState(', getStateStart);
 if (getStateStart < 0 || setStateStart < 0) failures.push('Loop defensive snapshot boundaries missing');
