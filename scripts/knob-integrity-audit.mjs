@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 
 const source = readFileSync(resolve(process.cwd(), 'src/components/controls/Knob.tsx'), 'utf8');
 const scheduler = readFileSync(resolve(process.cwd(), 'src/components/effects/viewportScheduler.ts'), 'utf8');
+const visualEngine = readFileSync(resolve(process.cwd(), 'src/visual/VisualEngine.ts'), 'utf8');
 const randomGovernor = readFileSync(resolve(process.cwd(), 'src/randomVisualGovernor.ts'), 'utf8');
 const randomTransfer = readFileSync(resolve(process.cwd(), 'src/randomTransferBridge.ts'), 'utf8');
 const failures = [];
@@ -12,6 +13,9 @@ const requireText = (needle, label) => {
 };
 const requireSchedulerText = (needle, label) => {
   if (!scheduler.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
+};
+const requireVisualText = (needle, label) => {
+  if (!visualEngine.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
 };
 const requireRandomText = (text, needle, label) => {
   if (!text.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
@@ -49,6 +53,10 @@ requireSchedulerText('export function beginViewportInteractionPriority(): () => 
 requireSchedulerText('if (interactionPriorityCount > 0) return 2.75;', 'interaction paint budget');
 requireSchedulerText('interactionPriority: interactionPriorityCount > 0', 'interaction-priority telemetry');
 requireSchedulerText('export function beginViewportPerformanceHold(): () => void {', 'RANDOM performance-hold scheduler API');
+
+requireVisualText("const directManipulation = document.body.classList.contains('knob-is-dragging');", 'direct-manipulation React publish guard');
+requireVisualText('if (!directManipulation && timestamp - lastReactPublish >= reactInterval)', 'cosmetic React publish suppression');
+requireVisualText('if (latestVisualOwner === owner) latestVisualAudioState = next;', 'live non-React visual snapshot remains active');
 
 requireRandomText(randomTransfer, "import { beginViewportPerformanceHold } from './components/effects/viewportScheduler';", 'RANDOM scheduler hold import');
 requireRandomText(randomTransfer, 'const releaseViewportHold = beginViewportPerformanceHold();', 'RANDOM viewport hold acquisition');
@@ -97,5 +105,5 @@ if (failures.length > 0) {
 console.log(
   `CALCOTONE knob integrity audit passed (${cases.length} mapping cases; `
   + `${iterations.toLocaleString()} mappings in ${elapsedMilliseconds.toFixed(1)} ms; `
-  + 'heavy viewport paints yield during direct manipulation; RANDOM holds remain single-owned).',
+  + 'heavy viewport paints and cosmetic React visual publishes yield during direct manipulation; RANDOM holds remain single-owned).',
 );
