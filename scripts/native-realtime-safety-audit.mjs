@@ -196,8 +196,17 @@ for (const retired of [
   'const float glide = 1.F - std::exp(-1.F / (rate * time_constants[index]));',
   'const float dc_coefficient = std::exp(-2.F * kPi * 18.F / rate);',
 ]) forbidText(emberDigital, retired, 'Ember Digital retired hot-path fixed coefficient');
+for (const token of [
+  'float filter_coefficient(float cutoff) const noexcept {',
+  'return one_pole_with_coefficient(input, filter_coefficient(cutoff), channel, index);',
+  'const float coefficient = filter_coefficient(cutoff);',
+  'output = one_pole_with_coefficient(output, coefficient, channel, stage);',
+]) requireText(emberDigital, token, 'Ember Digital four-pole coefficient reuse');
+forbidText(emberDigital,
+  'output = one_pole(output, cutoff, channel, stage);',
+  'Ember Digital repeated four-pole coefficient design');
 for (const dynamicToken of [
-  'const float coefficient = 1.F - std::exp(-2.F * kPi * safe_cutoff / rate);',
+  'return 1.F - std::exp(-2.F * kPi * safe_cutoff / rate);',
   'std::log1p(mu * magnitude)',
   'std::expm1(quantized * std::log1p(mu))',
 ]) requireText(emberDigital, dynamicToken, 'Ember Digital sample-varying converter DSP remains live');
@@ -219,4 +228,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('Native realtime safety audit passed · rack, Ember, and Drift model changes are dry-crossed; Atmos, Halo, Stomp, Ember, and Ember Digital keep constant/dead setup off specialty or sample hot paths while model handoffs remain allocation-safe');
+console.log('Native realtime safety audit passed · rack, Ember, and Drift model changes are dry-crossed; Atmos, Halo, Stomp, Ember, and Ember Digital keep constant/dead setup and repeated four-pole coefficient design off sample hot paths while model handoffs remain allocation-safe');
