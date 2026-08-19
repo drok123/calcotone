@@ -8,6 +8,7 @@ const halo = read('native/src/halo_parity_processor.cpp');
 const stomp = read('native/src/stomp_parity_processor.cpp');
 const drift = read('native/src/drift_parity_processor.cpp');
 const ember = read('native/src/ember_parity_processor.cpp');
+const emberDigital = read('native/src/ember_digital_capture_processor.cpp');
 const host = read('native/src/wasapi_host.cpp');
 const parityGenerator = read('native/tools/apply_atmos_parity.py');
 const emberRouteGenerator = read('native/tools/apply_ember_magnetic_route.py');
@@ -177,6 +178,30 @@ for (const dynamicToken of [
   'const float glide = 1.F - std::exp(-1.F / (rate * .045F));',
 ]) requireText(ember, dynamicToken, 'Ember sample-varying/block DSP remains live');
 
+for (const token of [
+  'std::array<float, 6> glide_amount{};',
+  'float dc_coefficient{};',
+  'float limiter_attack_coefficient{};',
+  'float limiter_release_coefficient{};',
+  'glide_amount[index] = 1.F - std::exp(-1.F / (rate * time_constants[index]));',
+  'dc_coefficient = std::exp(-2.F * kPi * 18.F / rate);',
+  'limiter_attack_coefficient = 1.F - std::exp(-1.F / (rate * .001F));',
+  'limiter_release_coefficient = 1.F - std::exp(-1.F / (rate * .06F));',
+  '* glide_amount[index];',
+  'blocked, channel, limiter_attack_coefficient, limiter_release_coefficient,',
+]) requireText(emberDigital, token, 'Ember Digital fixed coefficient hoist');
+for (const retired of [
+  'const float attack = 1.F - std::exp(-1.F / (rate * attack_seconds));',
+  'const float release = 1.F - std::exp(-1.F / (rate * release_seconds));',
+  'const float glide = 1.F - std::exp(-1.F / (rate * time_constants[index]));',
+  'const float dc_coefficient = std::exp(-2.F * kPi * 18.F / rate);',
+]) forbidText(emberDigital, retired, 'Ember Digital retired hot-path fixed coefficient');
+for (const dynamicToken of [
+  'const float coefficient = 1.F - std::exp(-2.F * kPi * safe_cutoff / rate);',
+  'std::log1p(mu * magnitude)',
+  'std::expm1(quantized * std::log1p(mu))',
+]) requireText(emberDigital, dynamicToken, 'Ember Digital sample-varying converter DSP remains live');
+
 requireText(parityGenerator, 'p.value[0]', 'Generated parity wrapper committed model state');
 forbidText(parityGenerator, 'p.target[0].load(std::memory_order_relaxed)', 'Generated parity wrapper target-mode bypass');
 requireText(emberRouteGenerator, 'const float mode_value = p.value[0];', 'Generated Ember specialty committed mode state');
@@ -194,4 +219,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('Native realtime safety audit passed · rack, Ember, and Drift model changes are dry-crossed; Atmos, Halo, Stomp, and Ember keep constant/dead setup off specialty or sample hot paths while model handoffs remain allocation-safe');
+console.log('Native realtime safety audit passed · rack, Ember, and Drift model changes are dry-crossed; Atmos, Halo, Stomp, Ember, and Ember Digital keep constant/dead setup off specialty or sample hot paths while model handoffs remain allocation-safe');
