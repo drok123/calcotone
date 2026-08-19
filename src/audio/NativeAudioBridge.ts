@@ -1,3 +1,9 @@
+import {
+  hasNativeDesktopTransport,
+  nativeDesktopRequest,
+  resetNativeDesktopTransport,
+} from './NativeDesktopTransport';
+
 export interface NativeAudioHealth {
   engine: 'calcotone-native';
   protocol: number;
@@ -48,16 +54,29 @@ export interface NativeAudioHealth {
   loopWaveform?: number[];
 }
 
+export const NATIVE_HEALTH_EVENT = 'calcotone-native-health';
+
 const NATIVE_ORIGIN = 'http://127.0.0.1:48157';
 const PROFILE_SELECTOR_PARAMETERS = new Set(['mode', 'algorithm']);
 const STACK_PROFILE_SELECTORS = new Set(['model', 'cab']);
 const STACK_PROFILE_PARAMETERS = new Set(['drive', 'tone', 'sag', 'mix']);
-const HEALTH_CACHE_MS = 160;
+const CONTINUOUS_COMMANDS = new Set(['inputGain', 'outputGain', 'drive', 'tone', 'sag', 'mix']);
+const DESKTOP_HEALTH_INTERVAL_MS = 50;
+const HTTP_HEALTH_INTERVAL_MS = 160;
+const HEALTH_STALE_MS = 400;
 let nativeBackendEngaged = false;
 
 /** True only while the current Calcotone UI has successfully activated the native engine. */
 export function isNativeBackendEngaged(): boolean {
   return nativeBackendEngaged;
+}
+
+function validHealth(health: NativeAudioHealth | null): health is NativeAudioHealth {
+  return health?.engine === 'calcotone-native' && health.protocol === 1;
+}
+
+function publishHealth(health: NativeAudioHealth): void {
+  window.dispatchEvent(new CustomEvent<NativeAudioHealth>(NATIVE_HEALTH_EVENT, { detail: health }));
 }
 
 export class NativeAudioBridge {
@@ -67,6 +86,8 @@ export class NativeAudioBridge {
   private healthCache: NativeAudioHealth | null = null;
   private healthCacheAt = 0;
   private healthRequest: Promise<NativeAudioHealth | null> | null = null;
+  private healthTimer: number | null = null;
+  private readonly commandGenerations = new Map<string, number>();
   // Native machine selectors can change topology as well as coefficients. Keep the
   // latest desired operating point beside the transport queue so selecting a new
   // machine commits one coherent profile instead of waiting for the next knob write.
@@ -92,6 +113,7 @@ export class NativeAudioBridge {
     this.parameterSnapshot.clear();
     this.stackSnapshot.clear();
     this.loopCommandState.clear();
+    this.commandGenerations.clear();
   }
 
   private loopStateKey(line: string): string | null {
@@ -109,6 +131,26 @@ export class NativeAudioBridge {
       if (end > levelPrefix.length) return `loopTrackLevel:${line.slice(levelPrefix.length, end)}`;
     }
     return null;
+  }
+
+  private commandCoalesceKey(line: string): string | null {
+    const parameterPrefix = 'param ';
+    if (line.startsWith(parameterPrefix)) {
+      const moduleEnd = line.indexOf(' ', parameterPrefix.length);
+      if (moduleEnd < 0) return null;
+      const parameterStart = moduleEnd + 1;
+      const parameterEnd = line.indexOf(' ', parameterStart);
+      if (parameterEnd < 0) return null;
+      const parameterId = line.slice(parameterStart, parameterEnd);
+      if (PROFILE_SELECTOR_PARAMETERS.has(parameterId)) return null;
+      return `param:${line.slice(parameterPrefix.length, moduleEnd)}:${parameterId}`;
+    }
+    const loopKey = this.loopStateKey(line);
+    if (loopKey) return loopKey;
+    const separator = line.indexOf(' ');
+    if (separator <= 0) return null;
+    const name = line.slice(0, separator);
+    return CONTINUOUS_COMMANDS.has(name) ? `control:${name}` : null;
   }
 
   private rememberDesiredState(line: string): void {
@@ -171,6 +213,52 @@ export class NativeAudioBridge {
     return [];
   }
 
+  private acceptHealth(health: NativeAudioHealth): NativeAudioHealth {
+    this.healthCache = health;
+    this.healthCacheAt = performance.now();
+    publishHealth(health);
+    return health;
+  }
+
+  private async requestHealth(signal?: AbortSignal): Promise<NativeAudioHealth | null> {
+    const direct = nativeDesktopRequest<NativeAudioHealth>('health', '', 500);
+    if (direct) {
+      const health = await direct;
+      return validHealth(health) ? health : null;
+    }
+    try {
+      const response = await fetch(this.request(`${NATIVE_ORIGIN}/health`, {
+        cache: 'no-store',
+        ...(signal ? { signal } : {}),
+      }));
+      if (!response.ok) return null;
+      const health = await response.json() as NativeAudioHealth;
+      return validHealth(health) ? health : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private refreshHealth(): Promise<NativeAudioHealth | null> {
+    if (!this.connected) return Promise.resolve(null);
+    if (this.healthRequest) return this.healthRequest;
+    this.healthRequest = this.requestHealth()
+      .then((health) => health ? this.acceptHealth(health) : null)
+      .finally(() => { this.healthRequest = null; });
+    return this.healthRequest;
+  }
+
+  private stopHealthMonitor(): void {
+    if (this.healthTimer !== null) window.clearInterval(this.healthTimer);
+    this.healthTimer = null;
+  }
+
+  private startHealthMonitor(): void {
+    this.stopHealthMonitor();
+    const interval = hasNativeDesktopTransport() ? DESKTOP_HEALTH_INTERVAL_MS : HTTP_HEALTH_INTERVAL_MS;
+    this.healthTimer = window.setInterval(() => { void this.refreshHealth(); }, interval);
+  }
+
   public async probe(timeoutMs = 8_000): Promise<NativeAudioHealth | null> {
     if (window.self !== window.top) {
       this.lastProbeFailure = 'Open the Calcotone preview in a separate tab; embedded previews cannot reach the native host.';
@@ -179,30 +267,25 @@ export class NativeAudioBridge {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(this.request(`${NATIVE_ORIGIN}/health`, {
-        cache: 'no-store',
-        signal: controller.signal,
-      }));
-      if (!response.ok) {
-        this.lastProbeFailure = `Native bridge rejected the connection (HTTP ${response.status}).`;
-        return null;
-      }
-      const health = await response.json() as NativeAudioHealth;
-      if (health.engine !== 'calcotone-native' || health.protocol !== 1) {
-        this.lastProbeFailure = 'Native host protocol did not match this Calcotone build.';
+      const health = await this.requestHealth(controller.signal);
+      if (!health) {
+        this.lastProbeFailure = hasNativeDesktopTransport()
+          ? 'Native desktop bridge did not return a compatible engine response.'
+          : 'Native bridge was unreachable.';
         return null;
       }
       this.connected = true;
       this.lastProbeFailure = '';
-      this.healthCache = health;
-      this.healthCacheAt = performance.now();
       this.resetDesiredState();
+      this.acceptHealth(health);
+      this.startHealthMonitor();
       return health;
     } catch (error) {
       this.connected = false;
       nativeBackendEngaged = false;
       this.healthCache = null;
       this.healthCacheAt = 0;
+      this.stopHealthMonitor();
       this.lastProbeFailure = error instanceof DOMException && error.name === 'AbortError'
         ? 'Native bridge timed out.'
         : 'Native bridge was unreachable.';
@@ -222,20 +305,8 @@ export class NativeAudioBridge {
   public async readHealth(): Promise<NativeAudioHealth | null> {
     if (!this.connected) return null;
     const now = performance.now();
-    if (this.healthCache && now - this.healthCacheAt < HEALTH_CACHE_MS) return this.healthCache;
-    if (this.healthRequest) return this.healthRequest;
-
-    this.healthRequest = fetch(this.request(`${NATIVE_ORIGIN}/health`, { cache: 'no-store' }))
-      .then(async (response) => {
-        if (!response.ok) return null;
-        const health = await response.json() as NativeAudioHealth;
-        this.healthCache = health;
-        this.healthCacheAt = performance.now();
-        return health;
-      })
-      .catch(() => null)
-      .finally(() => { this.healthRequest = null; });
-    return this.healthRequest;
+    if (this.healthCache && now - this.healthCacheAt < HEALTH_STALE_MS) return this.healthCache;
+    return this.refreshHealth();
   }
 
   public async commandLine(line: string): Promise<boolean> {
@@ -250,7 +321,16 @@ export class NativeAudioBridge {
     // sees the final desired snapshot rather than briefly restoring the previous recipe.
     line = trimmed;
     this.rememberDesiredState(line);
-    const operation = this.commandQueue.then(() => this.sendCommand(line)).then(async (sent) => {
+    const coalesceKey = this.commandCoalesceKey(line);
+    const generation = coalesceKey ? (this.commandGenerations.get(coalesceKey) ?? 0) + 1 : 0;
+    if (coalesceKey) this.commandGenerations.set(coalesceKey, generation);
+
+    // Preserve one globally ordered stream, but discard obsolete continuous values before
+    // they hit the native transport. During a fast drag this bounds the queue to the one
+    // command already in flight plus the newest value instead of replaying every old frame.
+    const operation = this.commandQueue.then(async () => {
+      if (coalesceKey && this.commandGenerations.get(coalesceKey) !== generation) return true;
+      const sent = await this.sendCommand(line);
       if (!sent) {
         // A failed setter must be retryable. Only clear it if no newer value for the
         // same field has superseded this queued request.
@@ -273,6 +353,11 @@ export class NativeAudioBridge {
   }
 
   private async sendCommand(line: string): Promise<boolean> {
+    const direct = nativeDesktopRequest<{ ok?: boolean }>('command', line, 750);
+    if (direct) {
+      const result = await direct;
+      return result?.ok === true;
+    }
     try {
       const response = await fetch(this.request(`${NATIVE_ORIGIN}/command`, {
         method: 'POST',
@@ -293,6 +378,8 @@ export class NativeAudioBridge {
     this.healthCache = null;
     this.healthCacheAt = 0;
     this.healthRequest = null;
+    this.stopHealthMonitor();
     this.resetDesiredState();
+    resetNativeDesktopTransport();
   }
 }
