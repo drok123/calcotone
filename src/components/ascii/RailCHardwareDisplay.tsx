@@ -28,6 +28,11 @@ type HardwareProfile = {
   glyphs: string;
 };
 
+type RailScratch = {
+  chars: string[];
+  accents: string[];
+};
+
 const PROFILES: Record<RailCHardwareKind, HardwareProfile> = {
   stomp: {
     title: 'S T O M P',
@@ -190,6 +195,7 @@ function drawRailSpectacle(
   dpr: number,
   props: RailCHardwareDisplayProps,
   stamp: number,
+  scratch: RailScratch,
 ): void {
   const kind = props.kind as 'stomp' | 'stack';
   const profile = PROFILES[kind];
@@ -206,6 +212,10 @@ function drawRailSpectacle(
   const seed = hashRailScene(`${kind}:${props.modeLabel}:${props.detailLabel ?? ''}`);
   const stepX = 2 / Math.max(1, columns - 1);
   const stepY = 2 / Math.max(1, rows - 1);
+  const chars = scratch.chars;
+  const accents = scratch.accents;
+  if (chars.length !== columns) chars.length = columns;
+  if (accents.length !== columns) accents.length = columns;
 
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.fillStyle = '#050706';
@@ -218,8 +228,8 @@ function drawRailSpectacle(
   context.shadowBlur = props.enabled ? (highDefinition ? 2.0 : 2.6) : 1;
 
   for (let row = 0; row < rows; row += 1) {
-    const chars = Array.from({ length: columns }, () => ' ');
-    const accents = Array.from({ length: columns }, () => ' ');
+    chars.fill(' ');
+    accents.fill(' ');
     let intensity = 0;
     const y = (row / Math.max(1, rows - 1)) * 2 - 1;
     for (let column = 0; column < columns; column += 1) {
@@ -312,10 +322,11 @@ function draw(
   dpr: number,
   props: RailCHardwareDisplayProps,
   stamp: number,
+  scratch: RailScratch,
 ): void {
   const profile = PROFILES[props.kind];
   if (props.kind === 'stomp' || props.kind === 'stack') {
-    drawRailSpectacle(context, width, height, dpr, props, stamp);
+    drawRailSpectacle(context, width, height, dpr, props, stamp, scratch);
     return;
   }
   const highDefinition = getDisplayProfile().reference1440p;
@@ -362,6 +373,10 @@ function draw(
   const loopTrackMask = loopState?.trackMask ?? 0;
   const loopTransport = loopState?.transport ?? 'empty';
   const loopSelectedProgress = clamp01(props.loopProgress ?? 0);
+  const chars = scratch.chars;
+  const accents = scratch.accents;
+  if (chars.length !== innerWidth) chars.length = innerWidth;
+  if (accents.length !== innerWidth) accents.length = innerWidth;
 
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.fillStyle = '#050706';
@@ -395,8 +410,8 @@ function draw(
     else if (row === 5) line = `║${fitText(`${props.kind === 'loop' ? 'STATE' : 'MODE '}  ${mode}`, innerWidth).padEnd(innerWidth)}║`;
     else if (row === 6 && detail) line = `║${fitText(`${props.kind === 'loop' ? 'TRACK' : 'PATH '}  ${detail}`, innerWidth).padEnd(innerWidth)}║`;
     else if (row >= graphStart && row < graphEnd) {
-      const chars = Array.from({ length: innerWidth }, () => ' ');
-      const accents = Array.from({ length: innerWidth }, () => ' ');
+      chars.fill(' ');
+      accents.fill(' ');
       if (props.kind === 'loop' && props.trimEditing) {
         const waveform = props.loopWaveform ?? [];
         const localRow = row - graphStart;
@@ -581,6 +596,7 @@ function draw(
 export function RailCHardwareDisplay(props: RailCHardwareDisplayProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const propsRef = useRef(props);
+  const scratchRef = useRef<RailScratch>({ chars: [], accents: [] });
   propsRef.current = props;
 
   useEffect(() => {
@@ -626,7 +642,7 @@ export function RailCHardwareDisplay(props: RailCHardwareDisplayProps) {
       const interval = current.enabled ? 1000 / (display.reference1440p ? 30 : 24) : 250;
       if (stamp - lastDraw < interval) return;
       lastDraw = stamp;
-      draw(context, width, height, dpr, current, stamp);
+      draw(context, width, height, dpr, current, stamp, scratchRef.current);
     };
 
     const unsubscribe = subscribeViewportAnimation(render);
