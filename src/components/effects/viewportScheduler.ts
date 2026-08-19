@@ -11,7 +11,6 @@ const viewportRenderCallbacks = new Set<ViewportRenderCallback>();
 const lastCallbackRender = new Map<ViewportRenderCallback, number>();
 let callbackSnapshot: ViewportRenderCallback[] = [];
 let viewportAnimationFrame = 0;
-let targetInterval = preferredInterval();
 let recoveryFrames = 0;
 let callbackCursor = 0;
 let performanceHoldCount = 0;
@@ -29,6 +28,8 @@ function preferredInterval(): number {
     ? Math.max(normal, 1000 / INTERACTION_VISUAL_FPS)
     : normal;
 }
+
+let targetInterval = preferredInterval();
 
 function reducedInterval(): number {
   return 1000 / (getDisplayProfile().reference1440p ? 15 : 12);
@@ -224,11 +225,11 @@ function disposeViewportScheduler(): void {
   viewportRenderCallbacks.clear();
   lastCallbackRender.clear();
   callbackSnapshot = [];
-  targetInterval = preferredInterval();
   recoveryFrames = 0;
   callbackCursor = 0;
   performanceHoldCount = 0;
   interactionPriorityCount = 0;
+  targetInterval = preferredInterval();
   lastFrameCostMs = 0;
   worstCallbackCostMs = 0;
 }
