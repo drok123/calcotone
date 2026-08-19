@@ -2,36 +2,10 @@ html.targeted-random-dragging article.effect-module:not(.module-pressure) {
   transition: box-shadow 120ms ease, outline-color 120ms ease, transform 120ms ease;
 }
 
-html.targeted-random-dragging article.effect-module:not(.module-pressure)::after {
-  content: "DROP RANDOM";
-  position: absolute;
-  inset: 8px;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-  border: 1px dashed rgba(241, 221, 160, .28);
-  border-radius: 7px;
-  color: rgba(255, 244, 199, .58);
-  font-size: .52rem;
-  letter-spacing: .14em;
-  opacity: .45;
-  z-index: 30;
-}
-
-html.targeted-random-dragging article.effect-module.module-pressure::after {
-  content: "LOOP NOT RANDOMIZED";
-}
-
 article.effect-module.targeted-random-drop-target {
-  outline: 2px solid rgba(255, 244, 199, .74);
-  outline-offset: -3px;
+  outline: 2px dashed rgba(255, 244, 199, .82);
+  outline-offset: -5px;
   box-shadow: 0 0 0 2px rgba(241, 221, 160, .18), 0 0 24px rgba(241, 221, 160, .18);
-}
-
-article.effect-module.targeted-random-drop-target::after {
-  color: #fff4c7;
-  border-color: rgba(255, 244, 199, .74);
-  opacity: 1;
 }
 
 article.effect-module.targeted-random-committed {
