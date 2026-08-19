@@ -35,6 +35,9 @@ forbidText(waterfall, 'getLatestVisualSpectrum()', 'Waterfall global snapshot de
 requireText(nativeSpectrum, "const NATIVE_SPECTRUM_URL = 'http://127.0.0.1:48157/spectrum'", 'Native spectrum diagnostic fallback');
 requireText(nativeSpectrum, 'const DESKTOP_SPECTRUM_INTERVAL_MS = 33', 'Embedded spectrum cadence');
 requireText(nativeSpectrum, 'const HTTP_SPECTRUM_INTERVAL_MS = 50', 'Diagnostic spectrum throttle');
+requireText(nativeSpectrum, 'const INTERACTION_SPECTRUM_INTERVAL_MS = 100', 'Direct-manipulation spectrum throttle');
+requireText(nativeSpectrum, "document.body.classList.contains('knob-is-dragging')", 'Direct-manipulation spectrum priority signal');
+requireText(nativeSpectrum, '? INTERACTION_SPECTRUM_INTERVAL_MS', 'Interaction-first spectrum cadence selection');
 requireText(nativeSpectrum, "nativeDesktopRequest<NativeSpectrumPayload>('spectrum'", 'Direct embedded spectrum transport');
 requireText(nativeSpectrum, 'this.requestPending', 'Overlapping native spectrum request guard');
 requireText(nativeSpectrum, 'getPresentationTimeSeconds()', 'Native processed-frame visual clock');
@@ -104,4 +107,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('CALCOTONE visual ring audit passed (lock-free browser ring, direct embedded spectrum transport, batched native FFT snapshots, audio presentation clocks).');
+console.log('CALCOTONE visual ring audit passed (lock-free browser ring, interaction-aware direct embedded spectrum transport, batched native FFT snapshots, audio presentation clocks).');
