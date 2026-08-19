@@ -156,7 +156,11 @@ requireText(nativeBridge, 'private readonly parameterSnapshot', 'Native module p
 requireText(nativeBridge, 'private readonly stackSnapshot', 'Native Stack profile snapshot');
 requireText(nativeBridge, 'this.rememberDesiredState(line)', 'Native desired-state capture');
 requireText(nativeBridge, 'this.profileReplayLines(line)', 'Native selector profile replay');
-requireText(nativeBridge, '.then(() => this.sendCommand(line))', 'Native FIFO selector commit');
+requireText(nativeBridge, 'this.commandQueue.then(async () =>', 'Native ordered selector commit queue');
+requireText(nativeBridge, 'if (PROFILE_SELECTOR_PARAMETERS.has(parameterId)) return null;', 'Native selectors excluded from stale coalescing');
+requireText(nativeBridge, 'if (STACK_PROFILE_SELECTORS.has(name))', 'Native Stack selector replay');
+requireText(nativeBridge, 'for (const replay of this.profileReplayLines(line))', 'Native selector profile commit replay');
+requireText(nativeBridge, 'this.markApplied(replay)', 'Native selector replay duplicate suppression');
 
 for (const kind of ['stomp', 'stack']) requireText(railCArtwork, `${kind}: {`, `Rail C ${kind} artwork profile`);
 for (const kind of ['stomp', 'stack']) requireText(railC, `kind=\"${kind}\"`, `Rail C ${kind} artwork mount`);
@@ -176,4 +180,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`CALCOTONE dropdown audit passed (${EMBER.length + DRIFT.length + HALO.length + ATMOS.length + GRAIN.length + MICROCOSM.length + ARTIFACT.length + ARTIFACT_DYNAMICS.length} modes checked with immediate native profile commits).`);
+console.log(`CALCOTONE dropdown audit passed (${EMBER.length + DRIFT.length + HALO.length + ATMOS.length + GRAIN.length + MICROCOSM.length + ARTIFACT.length + ARTIFACT_DYNAMICS.length} modes checked with ordered native selector commits and coalesced continuous controls).`);
