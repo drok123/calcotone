@@ -1,5 +1,6 @@
 import {
   hasNativeDesktopTransport,
+  nativeDesktopPost,
   nativeDesktopRequest,
   resetNativeDesktopTransport,
 } from './NativeDesktopTransport';
@@ -332,14 +333,14 @@ export class NativeAudioBridge {
     const generation = coalesceKey ? (this.commandGenerations.get(coalesceKey) ?? 0) + 1 : 0;
     if (coalesceKey) this.commandGenerations.set(coalesceKey, generation);
 
-    // Preserve one globally ordered stream, but discard obsolete or already-applied
-    // continuous values before they hit native. A fast drag therefore costs at most the
-    // command already in flight plus the newest value, and selector replay does not make
-    // the queued final knob snapshot cross the bridge a second time.
+    // Keep one globally ordered stream. In the embedded desktop shell continuous
+    // controls are ordered zero-wait WebView2 posts; structural/model commands retain
+    // acknowledgements. Diagnostic HTTP keeps acknowledgements for every command.
+    // Stale or already-applied continuous values are discarded before transport.
     const operation = this.commandQueue.then(async () => {
       if (coalesceKey && this.commandGenerations.get(coalesceKey) !== generation) return true;
       if (coalesceKey && this.appliedContinuousState.get(coalesceKey) === line) return true;
-      const sent = await this.sendCommand(line);
+      const sent = await this.sendCommand(line, coalesceKey === null);
       if (!sent) {
         // A failed setter must be retryable. Only clear it if no newer value for the
         // same field has superseded this queued request.
@@ -348,7 +349,7 @@ export class NativeAudioBridge {
       }
       if (coalesceKey) this.appliedContinuousState.set(coalesceKey, line);
       for (const replay of this.profileReplayLines(line)) {
-        if (!await this.sendCommand(replay)) return false;
+        if (!await this.sendCommand(replay, false)) return false;
         // Replays are intentionally never skipped: selecting a new hardware model can
         // reset coefficients even when the numeric knob value is unchanged. Recording
         // them as applied only suppresses the redundant queued write that follows.
@@ -366,7 +367,10 @@ export class NativeAudioBridge {
     return response.blob();
   }
 
-  private async sendCommand(line: string): Promise<boolean> {
+  private async sendCommand(line: string, expectAcknowledgement: boolean): Promise<boolean> {
+    if (hasNativeDesktopTransport() && !expectAcknowledgement) {
+      return nativeDesktopPost('command', line);
+    }
     const direct = nativeDesktopRequest<{ ok?: boolean }>('command', line, 750);
     if (direct) {
       const result = await direct;
