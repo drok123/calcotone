@@ -17,6 +17,9 @@ const requireSchedulerText = (needle, label) => {
 const requireVisualText = (needle, label) => {
   if (!visualEngine.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
 };
+const forbidVisualText = (needle, label) => {
+  if (visualEngine.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`);
+};
 const requireRandomText = (text, needle, label) => {
   if (!text.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
 };
@@ -56,7 +59,13 @@ requireSchedulerText('export function beginViewportPerformanceHold(): () => void
 
 requireVisualText("const directManipulation = document.body.classList.contains('knob-is-dragging');", 'direct-manipulation React publish guard');
 requireVisualText('if (!directManipulation && timestamp - lastReactPublish >= reactInterval)', 'cosmetic React publish suppression');
-requireVisualText('if (latestVisualOwner === owner) latestVisualAudioState = next;', 'live non-React visual snapshot remains active');
+requireVisualText('const sharedSnapshot: VisualAudioState = { ...IDLE_STATE };', 'preallocated live visual snapshot');
+requireVisualText('smoothedBands.current.low = low;', 'in-place low-band smoothing state');
+requireVisualText('smoothedBands.current.mid = mid;', 'in-place mid-band smoothing state');
+requireVisualText('smoothedBands.current.high = high;', 'in-place high-band smoothing state');
+requireVisualText('if (latestVisualOwner === owner) latestVisualAudioState = sharedSnapshot;', 'live non-React visual snapshot remains active');
+requireVisualText('setState({ ...sharedSnapshot });', 'React gets isolated published snapshot');
+forbidVisualText('smoothedBands.current = { low, mid, high };', 'per-sample smoothed-band object allocation');
 
 requireRandomText(randomTransfer, "import { beginViewportPerformanceHold } from './components/effects/viewportScheduler';", 'RANDOM scheduler hold import');
 requireRandomText(randomTransfer, 'const releaseViewportHold = beginViewportPerformanceHold();', 'RANDOM viewport hold acquisition');
@@ -105,5 +114,5 @@ if (failures.length > 0) {
 console.log(
   `CALCOTONE knob integrity audit passed (${cases.length} mapping cases; `
   + `${iterations.toLocaleString()} mappings in ${elapsedMilliseconds.toFixed(1)} ms; `
-  + 'heavy viewport paints and cosmetic React visual publishes yield during direct manipulation; RANDOM holds remain single-owned).',
+  + 'heavy viewport paints and cosmetic React visual publishes yield during direct manipulation; visual snapshots are allocation-light; RANDOM holds remain single-owned).',
 );
