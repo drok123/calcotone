@@ -17,6 +17,7 @@ constexpr std::size_t kMaxLines = 12;
 constexpr std::size_t kMaxEarly = 5;
 constexpr std::size_t kEmt140Model = 10U;
 constexpr std::size_t kLexicon224Model = 11U;
+constexpr std::array<float, 7> kControlSmoothingSeconds{0.F,.06F,.06F,.05F,.05F,.08F,.025F};
 constexpr std::size_t max_model_index() noexcept { return kAtmosParityProfiles.size() - 1U; }
 
 float clamp01(float value) noexcept { return std::clamp(value, 0.F, 1.F); }
@@ -118,10 +119,12 @@ class AtmosNetwork {
     for (auto& buffer : predelay_) buffer.assign(predelay_capacity, 0.F);
     const auto early_capacity = static_cast<std::size_t>(rate_ * .22F) + 16U;
     for (auto& buffer : early_history_) buffer.assign(early_capacity, 0.F);
+    refresh_model_coefficients();
   }
 
   void set_model(std::size_t requested) noexcept {
     model_ = std::min(requested, max_model_index());
+    refresh_model_coefficients();
     reset();
   }
 
@@ -164,13 +167,10 @@ class AtmosNetwork {
     if (model_ == kLexicon224Model) converted = lexicon_input_.process(converted[0], converted[1]);
 
     std::array<float, 2> predelayed{};
-    const float input_lowpass_hz = profile.converter_lowpass > 0.F ? profile.converter_lowpass : 16'000.F;
-    const float input_hp_coefficient = filter_coefficient(profile.highpass, rate_);
-    const float input_lp_coefficient = filter_coefficient(input_lowpass_hz, rate_);
     for (unsigned channel = 0; channel < 2; ++channel) {
       const float source = model_ == kEmt140Model ? converted[0] + converted[1] : converted[channel];
-      const float filtered = one_pole(highpass(source, input_hp_low_[channel], input_hp_coefficient),
-                                      input_lp_state_[channel], input_lp_coefficient);
+      const float filtered = one_pole(highpass(source, input_hp_low_[channel], input_hp_coefficient_),
+                                      input_lp_state_[channel], input_lp_coefficient_);
       predelay_[channel][predelay_write_] = filtered;
       const float predelay_seconds = std::min(.05F, profile.predelay[channel] * (1.F + size * .72F));
       predelayed[channel] = read_linear(predelay_[channel], predelay_write_, predelay_seconds * rate_);
@@ -294,6 +294,13 @@ class AtmosNetwork {
   }
 
  private:
+  void refresh_model_coefficients() noexcept {
+    const auto& profile = atmos_parity_profile(model_);
+    const float input_lowpass_hz = profile.converter_lowpass > 0.F ? profile.converter_lowpass : 16'000.F;
+    input_hp_coefficient_ = filter_coefficient(profile.highpass, rate_);
+    input_lp_coefficient_ = filter_coefficient(input_lowpass_hz, rate_);
+  }
+
   float rate_;
   std::size_t model_;
   std::array<std::vector<float>, kMaxLines> lines_;
@@ -306,6 +313,8 @@ class AtmosNetwork {
   std::array<float, kMaxLines> damping_state_{};
   std::array<float, kMaxLines> loop_hp_low_{};
   std::array<float, kMaxLines> phase_{};
+  float input_hp_coefficient_{};
+  float input_lp_coefficient_{};
   std::array<float, 2> input_hp_low_{};
   std::array<float, 2> input_lp_state_{};
   std::array<float, kMaxEarly> early_filter_state_{};
@@ -321,7 +330,10 @@ struct AtmosParityProcessor::Impl {
   explicit Impl(float requested_rate)
       : rate(std::clamp(requested_rate, 8'000.F, 384'000.F)),
         network_a(rate, 2U), network_b(rate, 2U), active(&network_a),
-        fade_total(std::max<std::size_t>(1U, static_cast<std::size_t>(std::lround(rate * .08F)))) {}
+        fade_total(std::max<std::size_t>(1U, static_cast<std::size_t>(std::lround(rate * .08F)))) {
+    for (std::size_t index = 1; index < smoothing_coefficients.size(); ++index)
+      smoothing_coefficients[index] = smooth_coefficient(kControlSmoothingSeconds[index], rate);
+  }
 
   AtmosControls controls() const noexcept {
     return {smooth[1], smooth[2], smooth[3], smooth[4], smooth[5]};
@@ -357,12 +369,11 @@ struct AtmosParityProcessor::Impl {
   }
 
   void process(float* data, std::size_t frames) noexcept {
-    static constexpr std::array<float, 7> smoothing_seconds{0.F,.06F,.06F,.05F,.05F,.08F,.025F};
     for (std::size_t frame = 0; frame < frames; ++frame) {
       smooth[0] = target[0].load(std::memory_order_relaxed);
       for (std::size_t index = 1; index < smooth.size(); ++index) {
-        const float coefficient = smooth_coefficient(smoothing_seconds[index], rate);
-        smooth[index] += (target[index].load(std::memory_order_relaxed) - smooth[index]) * coefficient;
+        smooth[index] += (target[index].load(std::memory_order_relaxed) - smooth[index])
+            * smoothing_coefficients[index];
       }
       const auto requested_model = std::min(max_model_index(),
           static_cast<std::size_t>(std::max(0.F, std::round(smooth[0]))));
@@ -394,6 +405,7 @@ struct AtmosParityProcessor::Impl {
   float rate;
   std::array<std::atomic<float>, 7> target{2.F,2.4F,.52F,.42F,.74F,.18F,.13F};
   std::array<float, 7> smooth{2.F,2.4F,.52F,.42F,.74F,.18F,.13F};
+  std::array<float, 7> smoothing_coefficients{};
   AtmosNetwork network_a;
   AtmosNetwork network_b;
   AtmosNetwork* active;
