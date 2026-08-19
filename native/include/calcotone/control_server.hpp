@@ -46,6 +46,10 @@ class ControlServer final {
   bool startup_ok_{};
 };
 
+// The embedded WebView2 shell shares the exact same command handler as the
+// diagnostic HTTP server, but skips sockets/HTTP/JSON framing on the hot control path.
+std::string dispatch_embedded_control(std::string_view line);
+
 }  // namespace calcotone
 
 #endif

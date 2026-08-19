@@ -1,12 +1,12 @@
+import { NATIVE_HEALTH_EVENT, type NativeAudioHealth } from './audio/NativeAudioBridge';
+
 type TargetRandomKind = 'random' | 'mutate';
 
 type ParameterRange = readonly [number, number];
 
 const MODULE_IDS = ['saturation', 'chorus', 'delay', 'reverb', 'bitcrusher', 'media', 'stomp', 'chaos'] as const;
-const NATIVE_HEALTH_URL = 'http://127.0.0.1:48157/health';
 const RANDOM_MIME = 'application/x-calcotone-random';
 const PEAK_HOLD_MS = 900;
-const IS_NATIVE_SHELL = new URLSearchParams(window.location.search).has('native-shell');
 
 const SAFE_RANGES: Record<string, ParameterRange> = {
   drive: [0.10, 0.68],
@@ -43,7 +43,6 @@ const SAFE_RANGES: Record<string, ParameterRange> = {
 let draggingRandom: TargetRandomKind | null = null;
 let peakHoldUntil = 0;
 let heldOverSegments = 0;
-let healthTimer: number | null = null;
 let observer: MutationObserver | null = null;
 
 function randomCentered(minimum: number, maximum: number): number {
@@ -149,13 +148,25 @@ function identifyRandomButton(button: HTMLButtonElement): TargetRandomKind | nul
   return button.classList.contains('mutate-randomizer-toggle') ? 'mutate' : 'random';
 }
 
-function armRandomButtons(): void {
-  for (const button of document.querySelectorAll<HTMLButtonElement>('button.randomizer-toggle')) {
-    const kind = identifyRandomButton(button);
-    if (!kind) continue;
-    button.draggable = true;
-    button.dataset.randomDragKind = kind;
-    if (!button.title.includes('Drag onto')) button.title += ' · Drag onto one module to randomize only that module';
+function armRandomButton(button: HTMLButtonElement): void {
+  const kind = identifyRandomButton(button);
+  if (!kind) return;
+  button.draggable = true;
+  button.dataset.randomDragKind = kind;
+  if (!button.title.includes('Drag onto')) button.title += ' · Drag onto one module to randomize only that module';
+}
+
+function armRandomButtons(root: ParentNode = document): void {
+  for (const button of root.querySelectorAll<HTMLButtonElement>('button.randomizer-toggle')) armRandomButton(button);
+}
+
+function onMutations(records: MutationRecord[]): void {
+  for (const record of records) {
+    for (const node of record.addedNodes) {
+      if (!(node instanceof Element)) continue;
+      if (node.matches('button.randomizer-toggle')) armRandomButton(node as HTMLButtonElement);
+      armRandomButtons(node);
+    }
   }
 }
 
@@ -246,26 +257,20 @@ function applyOverRange(preLimiterPeak: number): void {
   );
 }
 
-async function pollNativePeak(): Promise<void> {
-  try {
-    const response = await fetch(NATIVE_HEALTH_URL, { cache: 'no-store', credentials: 'omit' });
-    if (!response.ok) return;
-    const health = await response.json() as { preLimiterPeak?: number };
-    applyOverRange(health.preLimiterPeak ?? 0);
-  } catch {
-    if (performance.now() >= peakHoldUntil) applyOverRange(0);
-  }
+function onNativeHealth(event: Event): void {
+  const health = (event as CustomEvent<NativeAudioHealth>).detail;
+  if (health) applyOverRange(health.preLimiterPeak ?? 0);
 }
 
 function install(): void {
   armRandomButtons();
-  observer = new MutationObserver(armRandomButtons);
+  observer = new MutationObserver(onMutations);
   observer.observe(document.documentElement, { childList: true, subtree: true });
   document.addEventListener('dragstart', onDragStart, true);
   document.addEventListener('dragover', onDragOver, true);
   document.addEventListener('drop', onDrop, true);
   document.addEventListener('dragend', clearRandomDrag, true);
-  if (IS_NATIVE_SHELL) healthTimer = window.setInterval(() => void pollNativePeak(), 120);
+  window.addEventListener(NATIVE_HEALTH_EVENT, onNativeHealth);
 }
 
 function uninstall(): void {
@@ -275,8 +280,7 @@ function uninstall(): void {
   document.removeEventListener('dragover', onDragOver, true);
   document.removeEventListener('drop', onDrop, true);
   document.removeEventListener('dragend', clearRandomDrag, true);
-  if (healthTimer !== null) window.clearInterval(healthTimer);
-  healthTimer = null;
+  window.removeEventListener(NATIVE_HEALTH_EVENT, onNativeHealth);
   clearRandomDrag();
 }
 

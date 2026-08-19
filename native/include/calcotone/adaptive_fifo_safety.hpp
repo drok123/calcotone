@@ -13,6 +13,7 @@ struct AdaptiveFifoSafetyState {
   std::uint64_t relaxations{};
   std::uint64_t instability_events{};
   double stable_seconds{};
+  bool predictive_cushion{};
 };
 
 // Consumer-thread-only latency safety policy. The user-selected device period
@@ -42,7 +43,7 @@ class AdaptiveFifoSafety final {
   [[nodiscard]] AdaptiveFifoSafetyState state() const noexcept;
 
  private:
-  bool raise_target(std::uint64_t event_weight = 1U) noexcept;
+  bool raise_target(std::uint64_t event_weight = 1U, bool predictive = false) noexcept;
   bool lower_target() noexcept;
   void mark_unstable(std::uint64_t event_weight) noexcept;
 
@@ -52,6 +53,7 @@ class AdaptiveFifoSafety final {
   std::uint64_t step_frames_{};
   std::uint64_t stable_frames_{};
   std::uint64_t relaxation_window_frames_{};
+  std::uint64_t predictive_relaxation_window_frames_{};
   std::uint64_t adjustment_cooldown_frames_{};
   std::uint64_t cooldown_remaining_frames_{};
   std::uint64_t pending_pressure_{};
@@ -61,6 +63,7 @@ class AdaptiveFifoSafety final {
   std::uint64_t relaxations_{};
   std::uint64_t instability_events_{};
   float sample_rate_{};
+  bool predictive_cushion_{};
 };
 
 }  // namespace calcotone

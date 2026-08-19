@@ -7,10 +7,14 @@
 
 #include <WebView2.h>
 
+#include "calcotone/control_server.hpp"
 #include "calcotone/desktop_shell.hpp"
+#include "calcotone/native_visual_spectrum.hpp"
 
 #include <atomic>
+#include <cctype>
 #include <string>
+#include <string_view>
 #include <utility>
 
 using Microsoft::WRL::Callback;
@@ -22,6 +26,7 @@ namespace {
 constexpr wchar_t kWindowClass[] = L"CalcotoneDesktopShell";
 constexpr int kInitialClientWidth = 1500;
 constexpr int kInitialClientHeight = 940;
+constexpr std::string_view kBridgePrefix = "calcotone:";
 
 void enable_per_monitor_dpi_awareness() {
   using SetProcessDpiAwarenessContextFn = BOOL(WINAPI*)(DPI_AWARENESS_CONTEXT);
@@ -32,6 +37,36 @@ void enable_per_monitor_dpi_awareness() {
   if (set_awareness) {
     set_awareness(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
   }
+}
+
+std::string utf8_from_wide(std::wstring_view text) {
+  if (text.empty()) return {};
+  const int size = WideCharToMultiByte(
+      CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
+  if (size <= 0) return {};
+  std::string result(static_cast<std::size_t>(size), '\0');
+  WideCharToMultiByte(
+      CP_UTF8, 0, text.data(), static_cast<int>(text.size()), result.data(), size, nullptr, nullptr);
+  return result;
+}
+
+std::wstring wide_from_utf8(std::string_view text) {
+  if (text.empty()) return {};
+  const int size = MultiByteToWideChar(
+      CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
+  if (size <= 0) return {};
+  std::wstring result(static_cast<std::size_t>(size), L'\0');
+  MultiByteToWideChar(
+      CP_UTF8, 0, text.data(), static_cast<int>(text.size()), result.data(), size);
+  return result;
+}
+
+bool decimal_id(std::string_view value) noexcept {
+  if (value.empty()) return false;
+  for (const char character : value) {
+    if (!std::isdigit(static_cast<unsigned char>(character))) return false;
+  }
+  return true;
 }
 
 RECT window_rect_for_client(HWND hwnd, int client_width, int client_height) {
@@ -157,6 +192,79 @@ class DesktopShell {
     DestroyWindow(hwnd_);
   }
 
+  bool source_is_local_faceplate(std::wstring_view source) const noexcept {
+    const auto query = faceplate_url_.find(L'?');
+    const auto base = query == std::wstring::npos
+        ? std::wstring_view(faceplate_url_)
+        : std::wstring_view(faceplate_url_).substr(0, query);
+    return !base.empty() && source.starts_with(base);
+  }
+
+  void post_bridge_response(
+      std::string_view kind,
+      std::string_view id,
+      std::string_view payload) {
+    if (!webview_) return;
+    std::string envelope;
+    envelope.reserve(payload.size() + kind.size() + id.size() + 96U);
+    envelope += R"({"type":"calcotone-native-response","kind":")";
+    envelope.append(kind);
+    envelope += R"(","id":)";
+    envelope.append(id);
+    envelope += R"(,"payload":)";
+    envelope.append(payload);
+    envelope += '}';
+    const auto wide = wide_from_utf8(envelope);
+    if (!wide.empty()) webview_->PostWebMessageAsJson(wide.c_str());
+  }
+
+  void handle_web_message(ICoreWebView2WebMessageReceivedEventArgs* args) {
+    if (!args || !webview_) return;
+
+    LPWSTR source_raw = nullptr;
+    if (FAILED(args->get_Source(&source_raw)) || !source_raw) return;
+    const std::wstring source(source_raw);
+    CoTaskMemFree(source_raw);
+    if (!source_is_local_faceplate(source)) return;
+
+    LPWSTR message_raw = nullptr;
+    if (FAILED(args->TryGetWebMessageAsString(&message_raw)) || !message_raw) return;
+    const std::wstring message_wide(message_raw);
+    CoTaskMemFree(message_raw);
+    const std::string message = utf8_from_wide(message_wide);
+    if (!message.starts_with(kBridgePrefix)) return;
+
+    const std::string_view body(message.data() + kBridgePrefix.size(), message.size() - kBridgePrefix.size());
+    const auto kind_end = body.find(':');
+    if (kind_end == std::string_view::npos) return;
+    const auto kind = body.substr(0, kind_end);
+    const auto id_start = kind_end + 1U;
+    const auto id_end = body.find(':', id_start);
+    const auto id = id_end == std::string_view::npos
+        ? body.substr(id_start)
+        : body.substr(id_start, id_end - id_start);
+    if (!decimal_id(id)) return;
+    const auto payload = id_end == std::string_view::npos
+        ? std::string_view{}
+        : body.substr(id_end + 1U);
+
+    if (kind == "command") {
+      if (payload.empty()) {
+        post_bridge_response(kind, id, R"({"error":"empty command"})");
+      } else {
+        post_bridge_response(kind, id, dispatch_embedded_control(payload));
+      }
+      return;
+    }
+    if (kind == "health") {
+      post_bridge_response(kind, id, dispatch_embedded_control("health"));
+      return;
+    }
+    if (kind == "spectrum") {
+      post_bridge_response(kind, id, native_visual_spectrum().json());
+    }
+  }
+
   void begin_webview() {
     const HRESULT started = CreateCoreWebView2EnvironmentWithOptions(
         nullptr, nullptr, nullptr,
@@ -189,6 +297,16 @@ class DesktopShell {
                           settings->put_AreDefaultContextMenusEnabled(FALSE);
                           settings->put_IsStatusBarEnabled(FALSE);
                         }
+
+                        EventRegistrationToken web_message_token{};
+                        webview_->add_WebMessageReceived(
+                            Callback<ICoreWebView2WebMessageReceivedEventHandler>(
+                                [this](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
+                                  handle_web_message(args);
+                                  return S_OK;
+                                }).Get(),
+                            &web_message_token);
+
                         EventRegistrationToken fullscreen_token{};
                         webview_->add_ContainsFullScreenElementChanged(
                             Callback<ICoreWebView2ContainsFullScreenElementChangedEventHandler>(
