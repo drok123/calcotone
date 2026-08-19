@@ -97,7 +97,9 @@ requireText(viewport, '<AsciiArtEngine kind="module" module={module}', 'High-fid
 forbidText(viewport, 'PressureStyleDisplay', 'Retired low-density core module renderer');
 requireText(scheduler, 'function frameBudget(): number', 'Adaptive shared visual frame budget');
 requireText(scheduler, 'const HEAVY_FRAME_MS = 10.5', 'Visual overload fallback threshold');
-requireText(scheduler, 'targetInterval = reducedInterval()', 'Automatic visual-rate fallback');
+requireText(scheduler, 'targetInterval = Math.max(preferred, reducedInterval())', 'Interaction-safe automatic visual-rate fallback');
+requireText(scheduler, 'const INTERACTION_VISUAL_FPS = 10', 'Direct-manipulation visual-rate ceiling');
+requireText(scheduler, 'if (interactionPriorityCount > 0) return 2.75', 'Direct-manipulation paint budget');
 
 const retired = [
   'src/components/motion/MotionPad.tsx',
@@ -144,4 +146,4 @@ if (failures.length) {
   console.error('');
   process.exit(1);
 }
-console.log(`CALCOTONE ASCII landscape audit passed (${dropdownModeCount} deterministic dropdown identities; high-fidelity spectacle module displays; zero decoders).`);
+console.log(`CALCOTONE ASCII landscape audit passed (${dropdownModeCount} deterministic dropdown identities; high-fidelity spectacle module displays; zero decoders; interaction-safe shared scheduler).`);
