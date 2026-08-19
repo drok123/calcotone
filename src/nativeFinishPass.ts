@@ -6,6 +6,7 @@ const MODULE_IDS = ['saturation', 'chorus', 'delay', 'reverb', 'bitcrusher', 'me
 const NATIVE_HEALTH_URL = 'http://127.0.0.1:48157/health';
 const RANDOM_MIME = 'application/x-calcotone-random';
 const PEAK_HOLD_MS = 900;
+const IS_NATIVE_SHELL = new URLSearchParams(window.location.search).has('native-shell');
 
 const SAFE_RANGES: Record<string, ParameterRange> = {
   drive: [0.10, 0.68],
@@ -125,9 +126,8 @@ function randomizeModule(module: HTMLElement, kind: TargetRandomKind): void {
     const current = clamp01(Number(knob.getAttribute('aria-valuenow') ?? 0) / 100);
     let target = targetForParameter(parameterId, current, kind);
 
-    // Artifact's Tascam 424 is deliberately kept in a conservative operating window
-    // until the calibrated C++ transfer is reached; this prevents targeted RANDOM from
-    // recreating the old fuzzy double-saturation corner case.
+    // Keep targeted patches inside the 424's musical operating area; the native DSP
+    // still exposes the full pushed range when the user intentionally turns it up.
     const artifactMode = moduleId === 'media'
       ? module.querySelector<HTMLSelectElement>('select[aria-label="Artifact format"]')?.value
       : null;
@@ -238,6 +238,12 @@ function applyOverRange(preLimiterPeak: number): void {
   meter.title = overSegments > 0
     ? `Pre-limiter peak +${overDb.toFixed(1)} dBFS · over-range held ${PEAK_HOLD_MS} ms`
     : `Pre-limiter peak ${peak > 0 ? (20 * Math.log10(peak)).toFixed(1) : '-∞'} dBFS`;
+  meter.setAttribute(
+    'aria-label',
+    overSegments > 0
+      ? `Output exceeded full scale by ${overDb.toFixed(1)} decibels; peak hold active`
+      : `Output pre-limiter peak ${peak > 0 ? (20 * Math.log10(peak)).toFixed(1) : 'minus infinity'} decibels full scale`,
+  );
 }
 
 async function pollNativePeak(): Promise<void> {
@@ -259,7 +265,7 @@ function install(): void {
   document.addEventListener('dragover', onDragOver, true);
   document.addEventListener('drop', onDrop, true);
   document.addEventListener('dragend', clearRandomDrag, true);
-  healthTimer = window.setInterval(() => void pollNativePeak(), 120);
+  if (IS_NATIVE_SHELL) healthTimer = window.setInterval(() => void pollNativePeak(), 120);
 }
 
 function uninstall(): void {
