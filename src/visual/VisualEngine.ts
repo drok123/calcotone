@@ -56,7 +56,9 @@ export function useVisualEngine(
     const owner = ownerRef.current;
     if (!running || !analyser) {
       previousLevel.current = 0;
-      smoothedBands.current = { low: 0, mid: 0, high: 0 };
+      smoothedBands.current.low = 0;
+      smoothedBands.current.mid = 0;
+      smoothedBands.current.high = 0;
       if (latestVisualOwner === owner) {
         latestVisualAudioState = IDLE_STATE;
         latestVisualSpectrum = new Uint8Array(0);
@@ -74,7 +76,9 @@ export function useVisualEngine(
     // needs a modest cadence for meters, labels and CSS feedback.
     const reactInterval = 1000 / 15;
     const data = new Uint8Array(analyser.frequencyBinCount);
+    const sharedSnapshot: VisualAudioState = { ...IDLE_STATE };
     latestVisualOwner = owner;
+    latestVisualAudioState = sharedSnapshot;
     latestVisualSpectrum = data;
     const lowEnd = Math.floor(data.length * 0.12);
     const midEnd = Math.floor(data.length * 0.48);
@@ -104,7 +108,9 @@ export function useVisualEngine(
       const low = smoothBand(smoothedBands.current.low, rawLow);
       const mid = smoothBand(smoothedBands.current.mid, rawMid);
       const high = smoothBand(smoothedBands.current.high, rawHigh);
-      smoothedBands.current = { low, mid, high };
+      smoothedBands.current.low = low;
+      smoothedBands.current.mid = mid;
+      smoothedBands.current.high = high;
 
       const level = Math.min(1, low * 0.40 + mid * 0.43 + high * 0.17);
       const levelRise = Math.max(0, level - previousLevel.current);
@@ -116,20 +122,23 @@ export function useVisualEngine(
       // provide one. requestAnimationFrame remains only the repaint scheduler; it
       // is no longer the musical/visual timeline.
       const audioTime = analyser.getPresentationTimeSeconds?.() ?? timestamp / 1000;
-      const next = {
-        level,
-        low,
-        mid,
-        high,
-        transient,
-        driftPhase: (audioTime * 0.08) % 1,
-        time: audioTime,
-      };
-      if (latestVisualOwner === owner) latestVisualAudioState = next;
+      sharedSnapshot.level = level;
+      sharedSnapshot.low = low;
+      sharedSnapshot.mid = mid;
+      sharedSnapshot.high = high;
+      sharedSnapshot.transient = transient;
+      sharedSnapshot.driftPhase = (audioTime * 0.08) % 1;
+      sharedSnapshot.time = audioTime;
+      if (latestVisualOwner === owner) latestVisualAudioState = sharedSnapshot;
 
-      if (timestamp - lastReactPublish >= reactInterval) {
+      // Direct manipulation owns the main thread while a knob is moving. Canvas
+      // renderers continue reading the fresh snapshot above, but cosmetic React/CSS
+      // feedback can wait until the hand releases instead of causing an unrelated
+      // workstation-tree render in the middle of a pointer/native-control frame.
+      const directManipulation = document.body.classList.contains('knob-is-dragging');
+      if (!directManipulation && timestamp - lastReactPublish >= reactInterval) {
         lastReactPublish = timestamp;
-        setState(next);
+        setState({ ...sharedSnapshot });
       }
     };
 

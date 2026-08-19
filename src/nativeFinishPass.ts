@@ -44,6 +44,10 @@ let draggingRandom: TargetRandomKind | null = null;
 let peakHoldUntil = 0;
 let heldOverSegments = 0;
 let observer: MutationObserver | null = null;
+let outputMeter: HTMLElement | null = null;
+let outputMeterSpans: HTMLElement[] = [];
+let lastRenderedOverSegments = -1;
+let lastMeterText = '';
 
 function randomCentered(minimum: number, maximum: number): number {
   const centered = (Math.random() + Math.random()) * 0.5;
@@ -222,11 +226,25 @@ function clearRandomDrag(): void {
   }
 }
 
+function resolveOutputMeter(): { meter: HTMLElement; spans: HTMLElement[] } | null {
+  if (outputMeter?.isConnected && outputMeterSpans.length > 0) {
+    return { meter: outputMeter, spans: outputMeterSpans };
+  }
+  outputMeter = document.querySelector<HTMLElement>('.output-meter');
+  outputMeterSpans = outputMeter
+    ? Array.from(outputMeter.querySelectorAll<HTMLElement>('span'))
+    : [];
+  lastRenderedOverSegments = -1;
+  lastMeterText = '';
+  return outputMeter && outputMeterSpans.length > 0
+    ? { meter: outputMeter, spans: outputMeterSpans }
+    : null;
+}
+
 function applyOverRange(preLimiterPeak: number): void {
-  const meter = document.querySelector<HTMLElement>('.output-meter');
-  if (!meter) return;
-  const spans = Array.from(meter.querySelectorAll<HTMLElement>('span'));
-  if (!spans.length) return;
+  const resolved = resolveOutputMeter();
+  if (!resolved) return;
+  const { meter, spans } = resolved;
 
   const peak = Number.isFinite(preLimiterPeak) ? Math.max(0, preLimiterPeak) : 0;
   const overDb = peak > 1 ? 20 * Math.log10(peak) : 0;
@@ -240,21 +258,29 @@ function applyOverRange(preLimiterPeak: number): void {
   }
 
   const overSegments = Math.min(heldOverSegments, spans.length);
-  spans.forEach((span, index) => {
-    const over = overSegments > 0 && index >= spans.length - overSegments;
-    span.classList.toggle('over', over);
-    span.classList.toggle('over-lit', over);
-  });
-  meter.dataset.overDb = overDb.toFixed(1);
-  meter.title = overSegments > 0
+  if (overSegments !== lastRenderedOverSegments) {
+    spans.forEach((span, index) => {
+      const over = overSegments > 0 && index >= spans.length - overSegments;
+      span.classList.toggle('over', over);
+      span.classList.toggle('over-lit', over);
+    });
+    lastRenderedOverSegments = overSegments;
+  }
+
+  const peakText = overSegments > 0
     ? `Pre-limiter peak +${overDb.toFixed(1)} dBFS · over-range held ${PEAK_HOLD_MS} ms`
     : `Pre-limiter peak ${peak > 0 ? (20 * Math.log10(peak)).toFixed(1) : '-∞'} dBFS`;
-  meter.setAttribute(
-    'aria-label',
-    overSegments > 0
-      ? `Output exceeded full scale by ${overDb.toFixed(1)} decibels; peak hold active`
-      : `Output pre-limiter peak ${peak > 0 ? (20 * Math.log10(peak)).toFixed(1) : 'minus infinity'} decibels full scale`,
-  );
+  if (peakText !== lastMeterText) {
+    lastMeterText = peakText;
+    meter.dataset.overDb = overDb.toFixed(1);
+    meter.title = peakText;
+    meter.setAttribute(
+      'aria-label',
+      overSegments > 0
+        ? `Output exceeded full scale by ${overDb.toFixed(1)} decibels; peak hold active`
+        : `Output pre-limiter peak ${peak > 0 ? (20 * Math.log10(peak)).toFixed(1) : 'minus infinity'} decibels full scale`,
+    );
+  }
 }
 
 function onNativeHealth(event: Event): void {
@@ -281,6 +307,10 @@ function uninstall(): void {
   document.removeEventListener('drop', onDrop, true);
   document.removeEventListener('dragend', clearRandomDrag, true);
   window.removeEventListener(NATIVE_HEALTH_EVENT, onNativeHealth);
+  outputMeter = null;
+  outputMeterSpans = [];
+  lastRenderedOverSegments = -1;
+  lastMeterText = '';
   clearRandomDrag();
 }
 

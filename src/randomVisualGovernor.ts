@@ -19,10 +19,10 @@ function enterHold(): void {
     return { video, shouldResume };
   });
 
-  // Keep the last valid visual frame intact during RANDOM. The viewport scheduler already
-  // pauses registered physics renderers, and pausing the video elements stops decoder work.
-  // Do not resize or clear canvas backing stores here: doing so can strand a renderer at 1x1
-  // after RANDOM and leave the spectrum/module window blank or white.
+  // Keep the last valid visual frame intact during RANDOM. The transfer bridge owns
+  // the shared viewport scheduler hold; this governor only pauses decoder work and
+  // marks the held canvases. Do not resize or clear backing stores here: doing so can
+  // strand a renderer at 1x1 after RANDOM and leave a module window blank or white.
   for (const canvas of document.querySelectorAll<HTMLCanvasElement>('.temporal-video-canvas, .spectrum-screen canvas')) {
     canvas.dataset.randomHeld = 'true';
   }

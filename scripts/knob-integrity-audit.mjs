@@ -3,12 +3,31 @@ import { performance } from 'node:perf_hooks';
 import { resolve } from 'node:path';
 
 const source = readFileSync(resolve(process.cwd(), 'src/components/controls/Knob.tsx'), 'utf8');
+const scheduler = readFileSync(resolve(process.cwd(), 'src/components/effects/viewportScheduler.ts'), 'utf8');
+const visualEngine = readFileSync(resolve(process.cwd(), 'src/visual/VisualEngine.ts'), 'utf8');
+const randomGovernor = readFileSync(resolve(process.cwd(), 'src/randomVisualGovernor.ts'), 'utf8');
+const randomTransfer = readFileSync(resolve(process.cwd(), 'src/randomTransferBridge.ts'), 'utf8');
 const failures = [];
 const requireText = (needle, label) => {
   if (!source.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
 };
+const requireSchedulerText = (needle, label) => {
+  if (!scheduler.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
+};
+const requireVisualText = (needle, label) => {
+  if (!visualEngine.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
+};
+const forbidVisualText = (needle, label) => {
+  if (visualEngine.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`);
+};
+const requireRandomText = (text, needle, label) => {
+  if (!text.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
+};
 const forbidText = (needle, label) => {
   if (source.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`);
+};
+const forbidRandomText = (text, needle, label) => {
+  if (text.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`);
 };
 
 requireText('const next = clamp(dragRef.current.startValue + travel * sensitivity, 0, 1);', 'bounded pointer mapping');
@@ -26,7 +45,33 @@ requireText("event.key === 'End'", 'keyboard maximum');
 requireText("event.key === '0' || event.key === 'Enter'", 'keyboard reset');
 requireText('aria-valuenow={Math.round(value * 100)}', 'accessible value reporting');
 requireText("tabIndex={disabled ? -1 : 0}", 'disabled keyboard isolation');
+requireText("import { beginViewportInteractionPriority } from '../effects/viewportScheduler';", 'visual interaction-priority import');
+requireText('releaseVisualPriorityRef.current = beginViewportInteractionPriority();', 'visual interaction-priority acquisition');
+requireText('releaseVisualPriorityRef.current?.();', 'visual interaction-priority release');
 forbidText("window.addEventListener('pointercancel', finish", 'pointer cancellation must not use successful finish handler');
+
+requireSchedulerText('const INTERACTION_VISUAL_FPS = 10;', 'interaction visual-rate ceiling');
+requireSchedulerText('let interactionPriorityCount = 0;', 'nested interaction-priority ownership');
+requireSchedulerText('export function beginViewportInteractionPriority(): () => void {', 'interaction-priority scheduler API');
+requireSchedulerText('if (interactionPriorityCount > 0) return 2.75;', 'interaction paint budget');
+requireSchedulerText('interactionPriority: interactionPriorityCount > 0', 'interaction-priority telemetry');
+requireSchedulerText('export function beginViewportPerformanceHold(): () => void {', 'RANDOM performance-hold scheduler API');
+
+requireVisualText("const directManipulation = document.body.classList.contains('knob-is-dragging');", 'direct-manipulation React publish guard');
+requireVisualText('if (!directManipulation && timestamp - lastReactPublish >= reactInterval)', 'cosmetic React publish suppression');
+requireVisualText('const sharedSnapshot: VisualAudioState = { ...IDLE_STATE };', 'preallocated live visual snapshot');
+requireVisualText('smoothedBands.current.low = low;', 'in-place low-band smoothing state');
+requireVisualText('smoothedBands.current.mid = mid;', 'in-place mid-band smoothing state');
+requireVisualText('smoothedBands.current.high = high;', 'in-place high-band smoothing state');
+requireVisualText('if (latestVisualOwner === owner) latestVisualAudioState = sharedSnapshot;', 'live non-React visual snapshot remains active');
+requireVisualText('setState({ ...sharedSnapshot });', 'React gets isolated published snapshot');
+forbidVisualText('smoothedBands.current = { low, mid, high };', 'per-sample smoothed-band object allocation');
+
+requireRandomText(randomTransfer, "import { beginViewportPerformanceHold } from './components/effects/viewportScheduler';", 'RANDOM scheduler hold import');
+requireRandomText(randomTransfer, 'const releaseViewportHold = beginViewportPerformanceHold();', 'RANDOM viewport hold acquisition');
+requireRandomText(randomTransfer, 'releaseViewportHold();', 'RANDOM viewport hold release');
+requireRandomText(randomGovernor, "observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });", 'RANDOM decoder hold state observer');
+forbidRandomText(randomGovernor, 'beginViewportPerformanceHold', 'RANDOM duplicate viewport hold owner');
 
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
 const mapDrag = (startValue, startX, startY, x, y, fine = false) => {
@@ -68,5 +113,6 @@ if (failures.length > 0) {
 
 console.log(
   `CALCOTONE knob integrity audit passed (${cases.length} mapping cases; `
-  + `${iterations.toLocaleString()} mappings in ${elapsedMilliseconds.toFixed(1)} ms).`,
+  + `${iterations.toLocaleString()} mappings in ${elapsedMilliseconds.toFixed(1)} ms; `
+  + 'heavy viewport paints and cosmetic React visual publishes yield during direct manipulation; visual snapshots are allocation-light; RANDOM holds remain single-owned).',
 );
