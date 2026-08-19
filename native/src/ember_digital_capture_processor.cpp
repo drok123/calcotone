@@ -13,18 +13,14 @@ constexpr float kPi = 3.14159265358979323846F;
 float clamp01(float value) noexcept { return std::clamp(value, 0.F, 1.F); }
 float db_to_gain(float db) noexcept { return std::pow(10.F, db / 20.F); }
 
-float limiter_sample(float input, unsigned channel, float rate,
+float limiter_sample(float input, unsigned channel, float attack, float release,
                      std::array<float, 2>& envelope,
                      std::array<float, 2>& gain_state) noexcept {
   constexpr float threshold_db = -.5F;
   constexpr float ratio = 20.F;
   constexpr float knee_db = .5F;
-  constexpr float attack_seconds = .001F;
-  constexpr float release_seconds = .06F;
 
   const float magnitude = std::abs(input);
-  const float attack = 1.F - std::exp(-1.F / (rate * attack_seconds));
-  const float release = 1.F - std::exp(-1.F / (rate * release_seconds));
   envelope[channel] += (magnitude - envelope[channel])
       * (magnitude > envelope[channel] ? attack : release);
 
@@ -49,6 +45,10 @@ struct EmberDigitalCaptureProcessor::Impl {
   float rate;
   std::array<std::atomic<float>, 6> target{};
   std::array<float, 6> value{0.F, .42F, .5F, .2F, .62F, .22F};
+  std::array<float, 6> glide_amount{};
+  float dc_coefficient{};
+  float limiter_attack_coefficient{};
+  float limiter_release_coefficient{};
 
   float phase{};
   std::array<float, 2> held{};
@@ -64,7 +64,13 @@ struct EmberDigitalCaptureProcessor::Impl {
   std::array<float, 2> limiter_gain{1.F, 1.F};
 
   explicit Impl(float sample_rate) : rate(std::clamp(sample_rate, 8000.F, 384000.F)) {
+    constexpr std::array<float, 6> time_constants{0.F, .012F, .012F, .012F, .012F, .025F};
     for (std::size_t i = 0; i < value.size(); ++i) target[i].store(value[i]);
+    for (std::size_t index = 1; index < glide_amount.size(); ++index)
+      glide_amount[index] = 1.F - std::exp(-1.F / (rate * time_constants[index]));
+    dc_coefficient = std::exp(-2.F * kPi * 18.F / rate);
+    limiter_attack_coefficient = 1.F - std::exp(-1.F / (rate * .001F));
+    limiter_release_coefficient = 1.F - std::exp(-1.F / (rate * .06F));
   }
 
   void reset_model_state() noexcept {
@@ -250,14 +256,10 @@ struct EmberDigitalCaptureProcessor::Impl {
         target[0].load(std::memory_order_relaxed))), 0, 5);
     reset_mode(mode);
 
-    constexpr std::array<float, 6> time_constants{0.F, .012F, .012F, .012F, .012F, .025F};
-    const float dc_coefficient = std::exp(-2.F * kPi * 18.F / rate);
     for (std::size_t frame = 0; frame < frames; ++frame) {
       value[0] = static_cast<float>(mode);
-      for (std::size_t index = 1; index < value.size(); ++index) {
-        const float glide = 1.F - std::exp(-1.F / (rate * time_constants[index]));
-        value[index] += (target[index].load(std::memory_order_relaxed) - value[index]) * glide;
-      }
+      for (std::size_t index = 1; index < value.size(); ++index)
+        value[index] += (target[index].load(std::memory_order_relaxed) - value[index]) * glide_amount[index];
 
       const float drive = clamp01(value[1]);
       const float clock = clamp01(value[2]);
@@ -275,7 +277,9 @@ struct EmberDigitalCaptureProcessor::Impl {
         const float blocked = wet[channel] - dc_input[channel] + dc_coefficient * dc_output[channel];
         dc_input[channel] = wet[channel];
         dc_output[channel] = blocked;
-        wet[channel] = limiter_sample(blocked, channel, rate, limiter_envelope, limiter_gain);
+        wet[channel] = limiter_sample(
+            blocked, channel, limiter_attack_coefficient, limiter_release_coefficient,
+            limiter_envelope, limiter_gain);
         data[frame * 2 + channel] = std::clamp(
             dry[channel] * (1.F - mix) + wet[channel] * mix, -1.2F, 1.2F);
       }
