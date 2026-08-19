@@ -121,19 +121,28 @@ struct EmberDigitalCaptureProcessor::Impl {
     return sign * std::expm1(quantized * std::log1p(mu)) / mu;
   }
 
-  float one_pole(float input, float cutoff, unsigned channel, unsigned index) noexcept {
+  float filter_coefficient(float cutoff) const noexcept {
     const float safe_cutoff = std::clamp(cutoff, 60.F, rate * .46F);
-    const float coefficient = 1.F - std::exp(-2.F * kPi * safe_cutoff / rate);
+    return 1.F - std::exp(-2.F * kPi * safe_cutoff / rate);
+  }
+
+  float one_pole_with_coefficient(float input, float coefficient,
+                                  unsigned channel, unsigned index) noexcept {
     auto& state = filter_state[channel][index];
     state += (input - state) * coefficient;
     return state;
   }
 
+  float one_pole(float input, float cutoff, unsigned channel, unsigned index) noexcept {
+    return one_pole_with_coefficient(input, filter_coefficient(cutoff), channel, index);
+  }
+
   float four_pole(float input, float cutoff, float resonance, unsigned channel) noexcept {
     const float feedback = filter_state[channel][3] * std::clamp(resonance, 0.F, .88F);
+    const float coefficient = filter_coefficient(cutoff);
     float output = input - feedback;
     for (unsigned stage = 0; stage < 4; ++stage)
-      output = one_pole(output, cutoff, channel, stage);
+      output = one_pole_with_coefficient(output, coefficient, channel, stage);
     return output;
   }
 
