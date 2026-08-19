@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 
 const source = readFileSync(resolve(process.cwd(), 'src/components/controls/Knob.tsx'), 'utf8');
 const linearControl = readFileSync(resolve(process.cwd(), 'src/components/controls/LinearControl.tsx'), 'utf8');
+const moduleViewport = readFileSync(resolve(process.cwd(), 'src/components/effects/ModuleViewport.tsx'), 'utf8');
 const scheduler = readFileSync(resolve(process.cwd(), 'src/components/effects/viewportScheduler.ts'), 'utf8');
 const visualEngine = readFileSync(resolve(process.cwd(), 'src/visual/VisualEngine.ts'), 'utf8');
 const randomGovernor = readFileSync(resolve(process.cwd(), 'src/randomVisualGovernor.ts'), 'utf8');
@@ -17,6 +18,12 @@ const requireLinearText = (needle, label) => {
 };
 const forbidLinearText = (needle, label) => {
   if (linearControl.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`);
+};
+const requireViewportText = (needle, label) => {
+  if (!moduleViewport.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
+};
+const forbidViewportText = (needle, label) => {
+  if (moduleViewport.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`);
 };
 const requireSchedulerText = (needle, label) => {
   if (!scheduler.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
@@ -75,6 +82,15 @@ for (const token of [
 ]) requireLinearText(token, 'linear-control direct-manipulation contract');
 forbidLinearText('onChange={(event: ReactChangeEvent<HTMLInputElement>) => onChange(Number(event.target.value))}', 'uncoalesced linear-control updates');
 
+for (const token of [
+  "import { memo, useEffect, useRef, useState } from 'react';",
+  'function ModuleViewportView({ module }: ModuleViewportProps)',
+  'export const ModuleViewport = memo(',
+  '(previous, next) => previous.module === next.module',
+  '<AsciiArtEngine kind="module" module={module}',
+]) requireViewportText(token, 'module viewport React isolation');
+forbidViewportText('data-audio-level=', 'React-driven viewport audio stamp');
+
 requireSchedulerText('const INTERACTION_VISUAL_FPS = 10;', 'interaction visual-rate ceiling');
 requireSchedulerText('let interactionPriorityCount = 0;', 'nested interaction-priority ownership');
 requireSchedulerText('export function beginViewportInteractionPriority(): () => void {', 'interaction-priority scheduler API');
@@ -130,7 +146,7 @@ if (!Number.isFinite(checksum)) failures.push('drag mapping performance probe pr
 if (elapsedMilliseconds > 250) failures.push(`drag mapping exceeded 250 ms for ${iterations.toLocaleString()} iterations (${elapsedMilliseconds.toFixed(1)} ms)`);
 
 if (failures.length > 0) {
-  console.error('\nCALCOTONE knob integrity audit failed:\n');
+  console.error('\nCALCOTONE control integrity audit failed:\n');
   for (const failure of failures) console.error(` - ${failure}`);
   console.error('');
   process.exit(1);
@@ -139,5 +155,5 @@ if (failures.length > 0) {
 console.log(
   `CALCOTONE control integrity audit passed (${cases.length} knob mapping cases; `
   + `${iterations.toLocaleString()} mappings in ${elapsedMilliseconds.toFixed(1)} ms; `
-  + 'knobs and linear I/O controls coalesce direct manipulation while heavy viewport paints and cosmetic React visual publishes yield; visual snapshots are allocation-light; RANDOM holds remain single-owned).',
+  + 'direct controls coalesce input while immutable module viewports skip unrelated React visual churn; visual snapshots are allocation-light; RANDOM holds remain single-owned).',
 );
