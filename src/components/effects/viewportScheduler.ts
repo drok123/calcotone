@@ -5,6 +5,7 @@ export type ViewportRenderCallback = (time: number) => void;
 const HEAVY_FRAME_MS = 10.5;
 const RECOVERY_FRAME_COUNT = 90;
 const MAX_VISUAL_FPS = 20;
+const INTERACTION_VISUAL_FPS = 10;
 
 const viewportRenderCallbacks = new Set<ViewportRenderCallback>();
 const lastCallbackRender = new Map<ViewportRenderCallback, number>();
@@ -14,11 +15,19 @@ let targetInterval = preferredInterval();
 let recoveryFrames = 0;
 let callbackCursor = 0;
 let performanceHoldCount = 0;
+let interactionPriorityCount = 0;
 let lastFrameCostMs = 0;
 let worstCallbackCostMs = 0;
 
-function preferredInterval(): number {
+function normalPreferredInterval(): number {
   return 1000 / Math.min(getDisplayProfile().visualFps, MAX_VISUAL_FPS);
+}
+
+function preferredInterval(): number {
+  const normal = normalPreferredInterval();
+  return interactionPriorityCount > 0
+    ? Math.max(normal, 1000 / INTERACTION_VISUAL_FPS)
+    : normal;
 }
 
 function reducedInterval(): number {
@@ -26,6 +35,7 @@ function reducedInterval(): number {
 }
 
 function frameBudget(): number {
+  if (interactionPriorityCount > 0) return 2.75;
   const preferred = preferredInterval();
   return targetInterval > preferred + .25
     ? 4.5
@@ -93,9 +103,14 @@ function runViewportAnimationFrame(time: number): void {
   // The paint clock is intentionally slower than the audio clock. Renderers always
   // sample the latest audio-derived phase, so skipped frames reduce CPU without
   // accumulating visual drift. Heavy frames fall back again before they can compete
-  // with WebView/native control work.
+  // with WebView/native control work. During a direct manipulation gesture the
+  // interaction interval is a hard floor: visual recovery must never steal time back
+  // from the user's hand until the gesture actually ends.
   if (lastFrameCostMs > HEAVY_FRAME_MS || frameWorst > HEAVY_FRAME_MS) {
-    targetInterval = reducedInterval();
+    targetInterval = Math.max(preferred, reducedInterval());
+    recoveryFrames = 0;
+  } else if (interactionPriorityCount > 0) {
+    targetInterval = preferred;
     recoveryFrames = 0;
   } else if (targetInterval > preferred + .25) {
     recoveryFrames += 1;
@@ -143,14 +158,37 @@ export function beginViewportPerformanceHold(): () => void {
   };
 }
 
+/**
+ * Yield expensive viewport paints while the user is directly manipulating a control.
+ * Unlike a performance hold this keeps motion alive, but caps the shared visual work at
+ * 10 FPS and a tighter per-frame budget until the final pointer sample is committed.
+ */
+export function beginViewportInteractionPriority(): () => void {
+  interactionPriorityCount += 1;
+  targetInterval = preferredInterval();
+  recoveryFrames = 0;
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    interactionPriorityCount = Math.max(0, interactionPriorityCount - 1);
+    targetInterval = preferredInterval();
+    recoveryFrames = 0;
+    scheduleNextFrame();
+  };
+}
+
 export function getViewportSchedulerStats(): {
   held: boolean;
+  interactionPriority: boolean;
   frameCostMs: number;
   worstCallbackCostMs: number;
   targetFps: number;
 } {
   return {
     held: performanceHoldCount > 0,
+    interactionPriority: interactionPriorityCount > 0,
     frameCostMs: lastFrameCostMs,
     worstCallbackCostMs,
     targetFps: Math.round(1000 / targetInterval),
@@ -190,6 +228,7 @@ function disposeViewportScheduler(): void {
   recoveryFrames = 0;
   callbackCursor = 0;
   performanceHoldCount = 0;
+  interactionPriorityCount = 0;
   lastFrameCostMs = 0;
   worstCallbackCostMs = 0;
 }
