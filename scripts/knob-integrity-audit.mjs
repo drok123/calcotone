@@ -3,9 +3,13 @@ import { performance } from 'node:perf_hooks';
 import { resolve } from 'node:path';
 
 const source = readFileSync(resolve(process.cwd(), 'src/components/controls/Knob.tsx'), 'utf8');
+const scheduler = readFileSync(resolve(process.cwd(), 'src/components/effects/viewportScheduler.ts'), 'utf8');
 const failures = [];
 const requireText = (needle, label) => {
   if (!source.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
+};
+const requireSchedulerText = (needle, label) => {
+  if (!scheduler.includes(needle)) failures.push(`${label}: missing ${JSON.stringify(needle)}`);
 };
 const forbidText = (needle, label) => {
   if (source.includes(needle)) failures.push(`${label}: forbidden ${JSON.stringify(needle)}`);
@@ -26,7 +30,16 @@ requireText("event.key === 'End'", 'keyboard maximum');
 requireText("event.key === '0' || event.key === 'Enter'", 'keyboard reset');
 requireText('aria-valuenow={Math.round(value * 100)}', 'accessible value reporting');
 requireText("tabIndex={disabled ? -1 : 0}", 'disabled keyboard isolation');
+requireText("import { beginViewportInteractionPriority } from '../effects/viewportScheduler';", 'visual interaction-priority import');
+requireText('releaseVisualPriorityRef.current = beginViewportInteractionPriority();', 'visual interaction-priority acquisition');
+requireText('releaseVisualPriorityRef.current?.();', 'visual interaction-priority release');
 forbidText("window.addEventListener('pointercancel', finish", 'pointer cancellation must not use successful finish handler');
+
+requireSchedulerText('const INTERACTION_VISUAL_FPS = 10;', 'interaction visual-rate ceiling');
+requireSchedulerText('let interactionPriorityCount = 0;', 'nested interaction-priority ownership');
+requireSchedulerText('export function beginViewportInteractionPriority(): () => void {', 'interaction-priority scheduler API');
+requireSchedulerText('if (interactionPriorityCount > 0) return 2.75;', 'interaction paint budget');
+requireSchedulerText('interactionPriority: interactionPriorityCount > 0', 'interaction-priority telemetry');
 
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
 const mapDrag = (startValue, startX, startY, x, y, fine = false) => {
@@ -68,5 +81,6 @@ if (failures.length > 0) {
 
 console.log(
   `CALCOTONE knob integrity audit passed (${cases.length} mapping cases; `
-  + `${iterations.toLocaleString()} mappings in ${elapsedMilliseconds.toFixed(1)} ms).`,
+  + `${iterations.toLocaleString()} mappings in ${elapsedMilliseconds.toFixed(1)} ms; `
+  + 'heavy viewport paints yield during direct manipulation).',
 );
